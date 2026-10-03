@@ -28,7 +28,7 @@
 - Needs you = waiting, quiet and errored agents (cards arrive in phase 3), oldest first by the time each entered that state; a quiet agent is ordered by the start of its silence (D13).
 - Copy: sentence case; agent names are monospace identifiers, never title-cased; "Give work" is the only term for handing over a task; colour is never the only signal.
 - Tests: unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket (`duohive-test-<random>`), never on `duohive`. No test calls `std::env::set_var` (unsafe in edition 2024, and the workspace denies `unsafe_code`): code that reads the environment takes a `HashMap<String, String>` (`Paths::from_vars`, `run_hook`), and tests that run the built binary set variables with `Command::env`.
-- Test-first applies to every task except Tasks 2–5 and 30, which are infrastructure, spikes and acceptance with no code under test. They are validated instead by: Task 2, `install-tmux.sh` printing the requested `tmux -V` locally and `actionlint` passing on `ci.yml`; Tasks 3–5, a spike report whose every subsection holds measured values and names the fixture or log that proves it; Task 30, the recorded bench output and the author's working day checked against the state table.
+- Test-first applies to every task except Tasks 1b, 2–5 and 30, which are infrastructure, spikes and acceptance with no code under test. They are validated instead by: Task 2, `install-tmux.sh` printing the requested `tmux -V` locally and `actionlint` passing on `ci.yml`; Tasks 3–5, a spike report whose every subsection holds measured values and names the fixture or log that proves it; Task 30, the recorded bench output and the author's working day checked against the state table.
 - Supported CLIs: Claude Code and OpenCode only. Codex is deferred to after v1 (PRD What We're NOT Building); nothing in this plan builds, detects or tests it.
 - Commits: conventional (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`), never a `Co-Authored-By` line; do not push.
 - Spike code is throwaway: it lives under `spikes/`, is excluded from the workspace, and nothing in `crates/` imports it. Recorded fixtures (hook payloads, screen captures) are data and go to `crates/duohive-cli/tests/fixtures/`.
@@ -48,6 +48,9 @@
 ```
 Cargo.toml                      workspace, shared deps and lints
 rust-toolchain.toml  rustfmt.toml  clippy.toml  LICENSE  .gitignore
+Makefile  deny.toml  _typos.toml  .editorconfig   make check = the local gate (Task 1b)
+README.md  CONTRIBUTING.md  CODE_OF_CONDUCT.md  SECURITY.md  CHANGELOG.md  AGENTS.md  CLAUDE.md
+.github/ISSUE_TEMPLATE/  pull_request_template.md  dependabot.yml
 .github/workflows/ci.yml        fmt, clippy, tests on macOS + Linux × tmux 3.2a + latest
 .github/scripts/install-tmux.sh builds a given tmux version from source
 .github/tmux-latest             one line: the tmux version CI calls "latest"
@@ -159,6 +162,51 @@ fn crates_depend_inward_only() {
 
 - [ ] **Step 5: Commit.** `git add -A && git commit -m "chore: cargo workspace with seven crates, toolchain and licence"`
 
+### Task 1b: Repo hygiene — Makefile, supply-chain and spelling checks, community files
+
+Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv, helix, zellij), so every later task inherits one way to format, lint, test and contribute. Infrastructure: no code under test, validated by Step 3.
+
+**Files:**
+- Create: `Makefile`, `deny.toml`, `_typos.toml`, `.editorconfig`
+- Create: `README.md` (replaces the empty staged file), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, `AGENTS.md`, `CLAUDE.md`
+- Create: `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`, `.github/dependabot.yml`
+
+**Interfaces:**
+- Produces: `make check` = the local gate (`fmt-check`, `lint`, `test`, `deny`, `typos`), running exactly the commands CI runs (Task 2), so a green `make check` predicts a green CI. Later tasks' "run the checks" steps may use `make check`.
+
+- [ ] **Step 1: Makefile and tool configs.**
+  - `Makefile`: `.DEFAULT_GOAL := help`; every target `.PHONY` and carrying a `## description` that `make help` prints. Targets and their exact commands:
+    - `fmt`: `cargo fmt --all`
+    - `fmt-check`: `cargo fmt --all --check`
+    - `lint`: `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
+    - `test`: `cargo test --workspace --all-features --locked`
+    - `deny`: `cargo deny check`
+    - `typos`: `typos`
+    - `check`: depends on `fmt-check lint test deny typos`
+    - `cov`: `cargo llvm-cov --workspace --all-features --html` (report only; the 80% gate is added once phase 1 has code)
+    - `doc`: `cargo doc --workspace --no-deps --all-features`
+    - `tools`: `cargo install --locked cargo-deny typos-cli cargo-llvm-cov` and `rustup component add llvm-tools-preview`
+    - `clean`: `cargo clean`
+    - `deny` and `typos` first test for their binary and, when it is missing, fail with `<tool> not found · run make tools`.
+  - `deny.toml` (cargo-deny ≥ 0.18 schema): `[graph] all-features = true`; `[advisories]` defaults (vulnerable and unmaintained crates fail); `[licenses] allow = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]`, `confidence-threshold = 0.9`; `[bans] multiple-versions = "warn"`, `wildcards = "deny"`; `[sources] unknown-registry = "deny"`, `unknown-git = "deny"`. Workspace crates set `publish = false` until phase 5, so their own licence is not checked as a dependency.
+  - `_typos.toml`: excludes `target/`, `*.lock`, `crates/duohive-cli/tests/fixtures/`, `docs/ux/ui-spec.md` mock-ups only if they trip it (add `[default.extend-words]` entries instead where a word is intentional).
+  - `.editorconfig`: `root = true`; `*`: `charset = utf-8`, `end_of_line = lf`, `insert_final_newline = true`, `trim_trailing_whitespace = true`, `indent_style = space`, `indent_size = 4`; `*.{yml,yaml,toml,md,json}`: `indent_size = 2`; `Makefile`: `indent_style = tab`; `*.md`: `trim_trailing_whitespace = false`.
+
+- [ ] **Step 2: Community and agent files.**
+  - `README.md`: name and one-line pitch from the PRD vision; status badge line (CI); "Status: pre-alpha, phase 0" note; what DuoHive is (3–5 bullets from the PRD: org of standing agents, live status at a glance, Duo the manager agent, Claude Code and OpenCode, one lightweight process); requirements (tmux ≥ 3.2, Rust 1.90 to build); build and run (`cargo build --release`, `make check`); links to `docs/README.md`, `CONTRIBUTING.md`, `LICENSE`; licence line "Apache-2.0". No screenshots or install commands that don't exist yet.
+  - `CONTRIBUTING.md`: dev setup (`rustup` picks the toolchain from `rust-toolchain.toml`, `make tools`), the workflow (test first, `make check` before every commit), conventional commit types (`feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`), the docs' precedence (PRD → UI spec → TD), the dependency rule (TD §3.4), the Global Constraints that bite contributors (no `unwrap`/`expect` outside tests, no `unsafe`, `duohive-core` does no I/O, no `std::env::set_var` in tests, tmux tests on a throwaway socket).
+  - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1, verbatim from `https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md`, with the contact set to `duongnv129@gmail.com`.
+  - `SECURITY.md`: supported versions (latest only, pre-1.0); report privately via GitHub security advisories or `duongnv129@gmail.com`, not public issues; scope notes (per-launch tokens, hook socket, the user's CLI configuration is never modified).
+  - `CHANGELOG.md`: Keep a Changelog 1.1.0 format with an `## [Unreleased]` section listing the workspace and repo setup.
+  - `AGENTS.md`: guidance for coding agents working on this repo: read order (`docs/README.md`, then the plan task), `make check` is the gate, Global Constraints summary, commit rules (conventional, never a `Co-Authored-By` line, never push), the dependency rule. `CLAUDE.md` contains one line, `@AGENTS.md`, so both agents read the same file.
+  - `.github/pull_request_template.md`: summary, linked plan task, test plan checklist (`make check` passes, tests added first), docs updated if behaviour changed.
+  - Issue forms (YAML): `bug_report.yml` (DuoHive version, OS, tmux version, CLI and version, steps, expected, actual, `duohive` log excerpt), `feature_request.yml` (problem, proposal, alternatives), `config.yml` with `blank_issues_enabled: false`.
+  - `.github/dependabot.yml`: `version: 2`; ecosystems `cargo` (directory `/`) and `github-actions` (directory `/`), both `interval: weekly`, grouped minor and patch updates. Ratatui and crossterm are ignored for automatic updates (pinned with `=`, upgraded on purpose: Global Constraints).
+
+- [ ] **Step 3: Validate.** `make help` lists every target; `make tools` (once); `make check` passes; `typos` passes over the whole repo, docs included (fix real typos in the docs; whitelist intentional words in `_typos.toml`); `actionlint` has nothing to say about `dependabot.yml` (it isn't a workflow; check it with `yq . .github/dependabot.yml` instead) and the issue forms parse with `yq`.
+
+- [ ] **Step 4: Commit.** `git add -A && git commit -m "chore: makefile, cargo-deny, typos, editorconfig and community files"`
+
 ### Task 2: CI on macOS and Linux against tmux 3.2a and latest
 
 **Files:**
@@ -171,7 +219,7 @@ fn crates_depend_inward_only() {
 
 - [ ] **Step 2: Check the script locally.** `bash .github/scripts/install-tmux.sh 3.2a && ~/.local/tmux-3.2a/bin/tmux -V` → `tmux 3.2a`.
 
-- [ ] **Step 3: Write `ci.yml`.** Triggers: `push`, `pull_request`. Job `lint` (ubuntu-24.04): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. Job `test`: matrix `os: [ubuntu-24.04, macos-14]` × `tmux: ["3.2a", "latest"]`; resolve `latest` from `.github/tmux-latest`; cache `~/.local/tmux-*` keyed by OS and version; run the script, then `cargo test --workspace --all-features --locked` (the same flags as Task 29's local gate). Use `actions/checkout@v4`, `Swatinem/rust-cache@v2`; the toolchain comes from `rust-toolchain.toml`.
+- [ ] **Step 3: Write `ci.yml`.** Triggers: `push`, `pull_request`. Job `lint` (ubuntu-24.04): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. Job `deny` (ubuntu-24.04): `EmbarkStudios/cargo-deny-action@v2` with `command: check`. Job `typos` (ubuntu-24.04): `crate-ci/typos` pinned to a release tag. These run the same checks as `make check` (Task 1b). Job `test`: matrix `os: [ubuntu-24.04, macos-14]` × `tmux: ["3.2a", "latest"]`; resolve `latest` from `.github/tmux-latest`; cache `~/.local/tmux-*` keyed by OS and version; run the script, then `cargo test --workspace --all-features --locked` (the same flags as Task 29's local gate). Use `actions/checkout@v4`, `Swatinem/rust-cache@v2`; the toolchain comes from `rust-toolchain.toml`.
 
 - [ ] **Step 4: Validate the workflow syntax.** `actionlint .github/workflows/ci.yml` (install with `brew install actionlint`) → no output.
 
