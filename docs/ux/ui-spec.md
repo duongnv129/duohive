@@ -17,7 +17,7 @@ Living document, updated in place. It is the source of truth for what every scre
 
 **Anti-patterns:**
 
-- **No decoration:** no borders inside borders, no ASCII art, no banners.
+- **No decoration:** no borders inside borders, no ASCII art, no banners. Two stated exceptions: approval cards in the chat, and the `@` / `/` suggestion popup.
 - **No motion except the working spinner.**
 - **No feature descriptions on screen:** the controls and the `?` map speak for themselves.
 
@@ -25,18 +25,23 @@ Living document, updated in place. It is the source of truth for what every scre
 
 ### 2.1 Status
 
-Each state has a glyph and a word, so it reads without colour.
+Each state has a glyph and a word, so it reads without colour. Rows use the short word ("waiting"); definitions and help use the full one ("waiting on you").
 
-| Glyph | State | Colour token | Shown in Needs you |
-|---|---|---|---|
-| `●` | working | `status.working` (cool blue) | no |
-| `◆` | waiting on you | `status.attention` (**amber**) | yes |
-| `◷` | quiet (no change for the threshold) | `status.attention` (**amber**) | yes |
-| `✕` | errored | `status.error` (red) | yes |
-| `✓` | finished | `status.done` (green) | no (desktop alert instead) |
-| `◌` | starting | `status.muted` | no |
-| `○` | stopped | `status.muted` | no |
-| `~` | prefix: state read from the screen, not reported by the CLI (`~ working`) | inherits the state's colour, dimmed | – |
+| Glyph | State | Meaning | Colour token | In Needs you |
+|---|---|---|---|---|
+| `○` | stopped | No live session | `fg.muted` | no |
+| `◌` | starting | The CLI is launching | `fg.muted` | no |
+| `●` | working | Running a turn. Animated as a spinner (below) | `status.working` | no |
+| `◆` | waiting (on you) | The CLI is asking you something | `status.attention` (amber) | yes |
+| `✓` | finished | The turn just ended and you haven't looked. Selecting the agent makes it idle | `status.done` | no (desktop alert) |
+| `◦` | idle | At rest with a live session and nothing new | `fg.muted` | no |
+| `✕` | errored | Failed to launch, or exited unexpectedly; the reason is on its row | `status.error` | yes |
+| `◷` | quiet | Overlay: a working or starting agent with no output and no hook for the quiet threshold. Replaces the working glyph | `status.attention` (amber) | yes |
+| `~` | marker before the glyph | The state was read from the screen, not reported by the CLI (`~● working`) | none; glyph only | – |
+
+- **Duo:** goes straight to idle after a turn; it is never shown as finished.
+- **Working spinner:** the `●` cycles `◐◓◑◒` at 4 frames a second, only on rows on screen. The word stays fixed. With **Reduce motion** on (Settings), it stays `●`. Mock-ups draw the static `●`.
+- **State cell:** `~` marker (or a space), glyph, the word padded to 8 cells, then the time right-aligned in 4 cells (`● working    2m`). Times use `2m`, `4h`, `3d`.
 
 ### 2.2 Tree glyphs
 
@@ -46,34 +51,44 @@ Each state has a glyph and a word, so it reads without colour.
 | `▣` | Team |
 | `◇` | Role |
 | (none) | Agent: just its name |
-| `▾` `▸` | Unfolded / folded group (shown in the compact tree) |
+| `▾` `▸` | Unfolded / folded group. Used for folding only |
+| `▌` | Selected row (left bar, plus the `selection` background) |
+| `✉ 1` | Messages waiting for this agent |
+
+- **Focused pane:** always drawn with a heavy border (`┏━┓`); other panes use a light one (`┌─┐`). Colour (`border.focus`) is added, never relied on.
 
 ### 2.3 Colour tokens
 
-Themes map tokens to colours, and every token pair meets 4.5:1 contrast.
+Themes map tokens to colours. Every text token meets 4.5:1 on `bg`, `bg.panel` and `selection` in both default themes (§6 lists the ratios).
 
 | Token | Use | Default (dark) | Default (light) |
 |---|---|---|---|
-| `fg` / `fg.muted` | Text / secondary text, inherited values | #D6DAE0 / #7D8590 | #1F2328 / #6E7781 |
+| `fg` / `fg.muted` | Text / secondary text, inherited values, stopped, starting, idle, worktree states | #D6DAE0 / #8B949E | #1F2328 / #57606A |
 | `bg` / `bg.panel` | Screen / focused pane | #0F1115 / #161A21 | #FFFFFF / #F6F8FA |
-| `border` / `border.focus` | Pane borders / focused pane | #2A2F38 / #5B8DEF | #D0D7DE / #2F6FEB |
-| `status.working` | ● | #5B8DEF | #2F6FEB |
-| `status.attention` | ◆ ◷, Needs you, approval cards | **#F2B33D** (amber) | **#B7791F** |
-| `status.done` | ✓ | #3FB950 | #1A7F37 |
-| `status.error` | ✕, error lines | #F85149 | #CF222E |
-| `accent.duo` | ⬢ and Duo's name | #C9A227 (honey) | #9A6700 |
-| `selection` | Selected row | bg #24324A | bg #DDF4FF |
+| `border` / `border.focus` | Pane borders / focused pane | #2A2F38 / #6CA0F5 | #D0D7DE / #0B5CD5 |
+| `status.working` | ● | #6CA0F5 | #0B5CD5 |
+| `status.attention` | ◆ ◷, Needs you, approval cards | **#F2B33D** (amber) | **#8A5A00** |
+| `status.done` | ✓ | #3FB950 | #116329 |
+| `status.error` | ✕, error lines, the `org.toml` banner | #FF6B61 | #C11C28 |
+| `accent.duo` | ⬢ and Duo's name | #C9A227 (honey) | #7D5300 |
+| `selection` | Selected row background | #1E2738 | #EAF4FF |
 
 ### 2.4 Text
 
 - **Names:** agent names are monospace identifiers (`auth-service`), never title-cased.
-- **Times:** short form (`2m`, `4h`); absolute times only in chat (`10:05`).
-- **Last reply:** the agent's last reply goes under its row, in quotes, cut with `…` at the pane edge.
+- **Times:** short form (`2m`, `4h`, `3d`); absolute times only in chat (`10:05`).
+- **Last reply:** the agent's last reply goes under its row, in quotes.
 - **Labels:** sentence case everywhere ("Needs you", "Give work").
+- **Inherited values:** always `inherit: <value>`, in `fg.muted`.
+- **Truncation:**
+  - names are cut in the middle with `…` (`billing-…-worker`);
+  - pane titles and breadcrumbs are cut from the left (`… › Backend › billing-api`);
+  - last replies are cut at the pane edge with `…`;
+  - chat lines wrap with a hanging indent under the message text.
 
 ## 3. Layout
 
-The main screen has three panes (§4.1).
+The main screen has three panes (§4.1): the org pane (with Needs you pinned at its bottom), the agent pane, and the chat pane.
 
 | Width × height | Org pane | Agent pane | Chat pane |
 |---|---|---|---|
@@ -85,105 +100,216 @@ The main screen has three panes (§4.1).
 Below 80×24, DuoHive shows only "Make the window at least 80×24" and the current Needs you count.
 
 - **Shrink order:** on a small terminal, the agent pane loses detail first, then the last-reply lines go, then the tree's connector lines. Needs you and the chat input never go.
-- **Focus:** the focused pane has a `border.focus` border and is named in the footer.
+- **Focus:** the focused pane has a heavy border and is named in the footer. `tab` moves focus: org → Needs you → agent → chat.
+- **Padding:** 1 cell inside every border. The selected-row bar `▌` sits in that cell.
 - **Resizing:** drag the chat pane's top edge, or use `ctrl+↑` / `ctrl+↓`.
 
 ## 4. Screens
 
 ### 4.1 Main screen
 
+Six agents plus Duo. The org pane has focus, and auth-service is selected.
+
 ```
- DuoHive   7 agents · ● 2 working · ◆ 1 needs you · ◷ 1 quiet                               ? keys 
-┌─ Org ──────────────────────────────────────────┐┌─ auth-service · Claude · worktree retry-loop ──┐
-│ ⬢ Duo · your manager agent       ● idle        ││ ✓ go test ./... (14 passed)                    │
-│ ├─ ▣ Payments                    ◆ 1 needs you ││ ● Pushed branch duohive/auth-service/retry-loop│
-│ │  ├─ ◇ Backend                                ││                                                │
-│ │  │  ├─ auth-service          ● working 2m    ││ ❯                                              │
-│ │  │  │   "Running go test ./..."              ││                                                │
-│ │  │  └─ billing-api           ◆ waiting  4m   ││                                                │
-│ │  │      "Allow edit to api.go?"              ││   live terminal of the selected agent          │
-│ │  └─ ◇ QA                                     ││   enter: type into it · z: zoom                │
-│ │     └─ pay-qa                ○ stopped       ││                                                │
-│ └─ ▣ Growth                                    ││                                                │
-│    └─ ◇ Squad (3)              ● 1 ◷ 1         ││                                                │
-│       ├─ squad-1               ~ working 1m    ││                                                │
-│       ├─ squad-2               ✓ finished      ││                                                │
-│       └─ squad-3               ◷ quiet   6m    ││                                                │
-├─ Needs you (2) ────────────────────────────────┤│                                                │
-│ ◆ billing-api   waiting 4m  "Allow edit…"      ││                                                │
-│ ◷ squad-3       quiet 6m                       ││                                                │
-└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
-┌─ ⬢ Duo · ● idle ─────────────────────────────────────────────────────────────────────────────────┐
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                            ? help 
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude · worktree retry-loop ──┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ ✓ go test ./... (14 passed)                    │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ ✓ Ready for review · 3 files changed           │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                │
+┃▌│  │  ├─ auth-service ✉ 1     ● working    2m  ┃│ ❯                                              │
+┃ │  │  │   "Running go test ./..."              ┃│                                                │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
+┃ │  │      "Allow edit to api.go?"              ┃│   (live terminal of the selected agent)        │
+┃ │  └─ ◇ QA                                     ┃│   enter type · z zoom · PgUp/PgDn scroll       │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
 │ 10:05 you   what's blocking the Payments team?                                                   │
 │ 10:05 Duo   billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
-│             → @auth-service "push when tests pass"                       delivered 10:05         │
+│             → @auth-service "run the tests again"        queued (auth-service is working)        │
 │ ❯ _                                                                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
- tab pane · enter type · space task · s start/stop · n new · e edit · z zoom · ? help
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help
 ```
 
 - **Header:**
-  - the counts by state; clicking a count filters the tree to it;
-  - `? keys` opens the key map.
+  - the agent count and the counts by state; the "need you" count always equals the Needs you list;
+  - clicking a count filters the tree to that state (same as `f`);
+  - `? help` opens the key map.
 - **Org pane:**
-  - the tree, with each agent's state, time in state and last reply;
-  - roll-ups on teams and roles (`◆ 1 needs you`, `● 1 ◷ 1`);
-  - **Needs you** is pinned at the bottom of the pane, listing every waiting, quiet or errored agent, oldest first.
-- **Agent pane:**
-  - the selected agent's live terminal;
-  - its title shows the agent, its CLI, and where it runs (directory or worktree name);
-  - `enter` sends your typing to the agent, and `ctrl+q` returns to the tree.
-- **Chat pane (Duo):**
-  - plain text goes to Duo, `@name` messages an agent, and `/` opens commands;
-  - Duo's actions appear as `→` lines with their results (`delivered`, `started`).
+  - the tree, with each agent's state cell and last reply;
+  - **roll-ups** on every team and role with a non-zero working or attention count (`● 1 ◆ 1`); a `~` leads the roll-up when any counted state is read from the screen (`~● 1 ◷ 1`);
+  - **Needs you** is pinned at the bottom of the pane (§4.1.3).
+- **Agent pane:** the selected node's content (§4.1.2).
+- **Chat pane (Duo):** §4.6 and §4.7.
 - **Footer:** the keys for the focused pane.
 
-**Compact layout (80×24):** the tree drops connectors and last replies, and the chat shrinks to 4 rows.
+**Compact layout (80×24):** the tree drops connectors and last replies and folds with `▾` `▸`, the state cell keeps glyph and time, and the chat shrinks to 4 rows.
 
 ```
- DuoHive  ● 2 · ◆ 1 · ◷ 1                                               ? keys 
-┌─ Org ────────────────────────┐┌─ auth-service · Claude ──────────────────────┐
-│ ⬢ Duo                ● idle  ││ ✓ go test ./... (14 passed)                  │
-│ ▾ Payments           ◆ 1     ││ ● Pushed branch                              │
-│   ▾ Backend                  ││                                              │
-│     auth-service     ● 2m    ││ ❯                                            │
-│     billing-api      ◆ 4m    ││                                              │
-│   ▸ QA (1)           ○       ││                                              │
-│ ▾ Growth                     ││                                              │
-│   ▸ Squad (3)        ● 1 ◷ 1 ││                                              │
-├─ Needs you (2) ──────────────┤│                                              │
-│ ◆ billing-api  4m            ││                                              │
-│ ◷ squad-3      6m            ││                                              │
-└──────────────────────────────┘└──────────────────────────────────────────────┘
-┌─ ⬢ Duo · ● idle ─────────────────────────────────────────────────────────────┐
+ DuoHive  ● 2 · ◆ 2                                                     ? help 
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│ ✓ go test ./... (14 passed)                  │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ ✓ Ready for review                           │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
+┃▌   auth-service ✉1   ●   2m  ┃│ ❯                                            │
+┃     billing-api      ◆   4m  ┃│                                              │
+┃   ▸ QA (1)           ○       ┃│                                              │
+┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
+┃     squad-1         ~●   1m  ┃│                                              │
+┃     squad-2          ✓   3m  ┃│                                              │
+┃     squad-3          ◷   6m  ┃│                                              │
+┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
 │ 10:05 Duo  billing-api is waiting on approval.                               │
 │ ❯ _                                                                          │
 └──────────────────────────────────────────────────────────────────────────────┘
- tab pane · enter type · space task · ? help
+ tab pane · ↑↓ move · space give work · ? help
 ```
+
+#### 4.1.1 Filter
+
+`f` cycles a filter by state (◆ need you, ● working, ✓ finished, off). The tree keeps only matching agents and their parents, and a chip shows in the header. `esc` clears it. Clicking a header count sets the same filter.
+
+```
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you   filtered: ◆ · esc clears                 ? help 
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃
+┃ │  └─ ◇ Backend               ● 1 ◆ 1          ┃
+┃ │     └─ billing-api          ◆ waiting    4m  ┃
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃
+┃    └─ squad-3                 ◷ quiet      6m  ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+```
+
+#### 4.1.2 Agent pane
+
+The agent pane has two modes.
+
+| Mode | Enter / leave | Keys |
+|---|---|---|
+| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` scroll the agent's scrollback, `enter` starts typing |
+| **Typing** | `enter` starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent). The title shows `TYPING` and the border is heavy |
+
+To zoom while typing, press `ctrl+q`, then `z`.
+
+```
+┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
+┃ ✓ go test ./... (14 passed)                                          ┃
+┃ ✓ Ready for review · 3 files changed                                 ┃
+┃                                                                      ┃
+┃ ❯ also add a test for the third retry_                               ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ TYPING · every key goes to auth-service, ctrl+c too · ctrl+q stop typing
+```
+
+**What the pane shows** depends on the selection:
+
+- **A running agent:** its live terminal (§4.1).
+- **Duo:** Duo's own live terminal. When Duo's CLI asks a question, Duo is waiting and joins Needs you; you answer here.
+
+```
+┌─ ⬢ Duo · Codex · your manager agent ─────────────────────┐
+│ codex wants to run: gh pr list --state open              │
+│ Allow? (y) yes  (n) no                                   │
+│                                                          │
+│ (Duo's own terminal: answer its CLI's prompts here)      │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **A team or role:** a summary of its agents, defaults and prompt.
+
+```
+┌─ ◇ Backend · in Payments ────────────────────────────────┐
+│ 2 agents · ● 1 working · ◆ 1 waiting                     │
+│ Defaults  CLI Claude Code · model inherit: sonnet        │
+│           worktrees inherit: off                         │
+│ Prompt    API URLs use hyphens. Run make test bef…       │
+│                                                          │
+│ space give work to this role · e edit                    │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **A stopped agent:**
+
+```
+┌─ pay-qa · Claude · ~/code/pay-qa ────────────────────────┐
+│                                                          │
+│   ○ stopped · space to give work                         │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **An empty org:**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│   Your org is empty · n to add a team, role or agent,    │
+│   or ask Duo to set one up                               │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **At start-up,** while DuoHive reattaches to running agents:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│   Reconnecting to 6 agents…                              │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+#### 4.1.3 Needs you
+
+- **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval · Add pay-web`, §4.6).
+- **Order:** oldest first, by time since entering the state.
+- **Keys:** it is a `tab` stop; `↑↓` move.
+  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode.
+  - On a card row, it focuses that card in the chat.
+
+#### 4.1.4 Desktop alerts
+
+- **When:** an agent becomes waiting, quiet or errored; Duo raises an approval card; an agent other than Duo finishes. Each kind can be turned off in Settings.
+- **Content:** the title is "<agent> needs you" (or "<agent> finished"); the body is the last reply.
+- **Click:** focuses the terminal and selects the agent, where the system's notifier reports clicks.
+- **Once:** one alert per agent per state change.
+- **Unavailable:** when the system has no notifier, the footer says "desktop alerts unavailable" once per session.
 
 ### 4.2 Zoomed agent
 
-`z` on an agent: its terminal fills the screen, and the footer still shows the Needs you count so nothing is missed.
+`z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` restores.
 
 ```
- DuoHive › auth-service (zoomed)                                                            z back 
-┌─ auth-service · Claude · ~/code/auth-service ────────────────────────────────────────────────────┐
-│ (full-screen live terminal of the agent)                                                         │
-│                                                                                                  │
-│ ✓ go test ./... (14 passed)                                                                      │
-│ ● Pushed branch duohive/auth-service/retry-loop                                                  │
-│                                                                                                  │
-│ ❯                                                                                                │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
- typing goes to the agent · ctrl+q tree · z restore · ◆ 1 needs you (billing-api)
+ DuoHive › auth-service (zoomed)                                                         z restore 
+┏━ auth-service · Claude · worktree retry-loop ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ (full-screen live terminal of the agent)                                                         ┃
+┃                                                                                                  ┃
+┃ ✓ go test ./... (14 passed)                                                                      ┃
+┃ ✓ Ready for review · 3 files changed                                                             ┃
+┃                                                                                                  ┃
+┃ ❯                                                                                                ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ enter type · z restore · PgUp/PgDn scroll · ◆ 2 need you (squad-3, billing-api)
 ```
 
 ### 4.3 First-run setup
 
-Three steps, shown once, when no org exists. Every field has a sensible default; `enter` on the last field moves to Next.
+Three steps, shown once, when no org exists. Every field has a sensible default; `enter` on the last field moves to Next. `esc` on step 1 asks whether to quit; on later steps it goes back.
 
-**Step 1: you and Duo.** DuoHive lists the CLIs it found and their versions.
+**Step 1: you and Duo.** DuoHive lists the CLIs it found and their versions. A CLI that isn't installed has its radio disabled, `(-)`.
 
 ```
 ┌─ Welcome to DuoHive · step 1 of 3 ───────────────────────────────────┐
@@ -192,10 +318,26 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 │  Duo, your manager agent, helps you steer it.                        │
 │                                                                      │
 │  Your name     [ Duong_______________ ]                              │
-│  Duo runs on   ( ) Claude Code  (•) Codex  ( ) OpenCode              │
-│                   found: claude 2.1 · codex 0.9 · opencode 1.4       │
+│  Duo runs on   ( ) Claude Code  (•) Codex  (-) OpenCode              │
+│                found: claude 2.1 · codex 0.9 · opencode not found    │
 │                                                                      │
-│                                         [ Next → ]   [ Quit ]        │
+│  enter next · esc quit (asks first)      [ Next → ]   [ Quit ]       │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**No CLI at all:** a blocking screen, like the tmux one (§4.12).
+
+```
+┌─ DuoHive needs an agent CLI ─────────────────────────────────────────┐
+│                                                                      │
+│  None of Claude Code, Codex or OpenCode was found on your PATH.      │
+│                                                                      │
+│    Claude Code  claude.ai/code                                       │
+│    Codex        github.com/openai/codex                              │
+│    OpenCode     opencode.ai                                          │
+│                                                                      │
+│  Install at least one, then run duohive again.                       │
+│                                                  [ q Quit ]          │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -204,30 +346,34 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 ```
 ┌─ Choose a starting org · step 2 of 3 ────────────────────────────────┐
 │                                                                      │
-│  ▸ Agent Squad      3 generalists that take any task                 │
-│    Product Team     Backend · Frontend · QA, one agent each          │
-│    Engineering Org  several teams, each Backend + QA                 │
-│    Blank            just you and Duo; build it yourself              │
+│▌ Agent Squad      a Generalist role; any free agent takes a task     │
+│  Product Team     Backend · Frontend · QA, one agent each            │
+│  Engineering Org  several teams, each Backend + QA                   │
+│  Blank            just you and Duo; build it yourself                │
 │                                                                      │
-│  ┄ Preview ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄        │
+│  ┄ Preview ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄     │
 │  ⬢ Duo                                                               │
-│  └─ ◇ Squad                                                          │
-│     ├─ squad-1   ├─ squad-2   └─ squad-3                             │
+│  └─ ◇ Generalist                                                     │
+│     ├─ squad-1                                                       │
+│     ├─ squad-2                                                       │
+│     └─ squad-3                                                       │
 │                                                                      │
 │                            [ ← Back ]   [ Next → ]   [ Quit ]        │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Step 3: fill in the template.** It asks only what the template needs; for Agent Squad, worktrees default to on.
+**Step 3: fill in the template.** It asks only what the template needs.
+
+Agent Squad (worktrees default to on; 1–100 agents):
 
 ```
 ┌─ Set up Agent Squad · step 3 of 3 ───────────────────────────────────┐
 │                                                                      │
-│  Agents        [ 3 ]  (1–20)                                         │
+│  Agents        [ 3 ]  (1–100)                                        │
 │  Directory     [ ~/code/my-app____________________ ]  ✓ git repo     │
-│  CLI           (•) Claude Code  ( ) Codex  ( ) OpenCode              │
+│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
 │  Worktrees     [x] new work runs in its own worktree                 │
-│  Squad prompt  [ You are a careful engineer. Keep changes small; ]   │
+│  Role prompt   [ You are a careful engineer. Keep changes small; ]   │
 │                [ run the tests before you say you are done.     ]    │
 │                                                                      │
 │  You can change all of this later.                                   │
@@ -235,40 +381,100 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.4 Team, role and agent forms
+Product Team:
 
-Opened with `n` (new) or `e` (edit), or by right-click → New or Edit.
+```
+┌─ Set up Product Team · step 3 of 3 ──────────────────────────────────┐
+│                                                                      │
+│  Team name     [ Product_____________ ]                              │
+│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
+│  Backend dir   [ ~/code/api_______________ ]  ✓ git repo             │
+│  Frontend dir  [ ~/code/web_______________ ]  ✓ git repo             │
+│  QA dir        [ ~/code/api_______________ ]  ✓ git repo             │
+│  Worktrees     [ ] new work runs in its own worktree                 │
+│                                                                      │
+│  Each role gets one agent and a starter prompt you can edit.         │
+│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Engineering Org (one "team name + repo" row per team):
+
+```
+┌─ Set up Engineering Org · step 3 of 3 ───────────────────────────────┐
+│                                                                      │
+│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
+│  Teams         name                 repo                             │
+│              [ Payments_______ ]  [ ~/code/payments____ ] ✓          │
+│              [ Growth_________ ]  [ ~/code/growth______ ] ✓          │
+│              [ _______________ ]  [ ___________________ ]            │
+│                [ + Add team ]   empty rows are ignored               │
+│  Worktrees     [ ] new work runs in its own worktree                 │
+│                                                                      │
+│  Each team gets Backend and QA roles with one agent each.            │
+│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.4 Org editing
+
+#### 4.4.1 Forms
+
+Opened with `n` (new) or `e` (edit), or from the right-click menu.
 
 - **Inherited values:** shown as `inherit: <value>` in `fg.muted`; typing overrides them, and clearing a field restores inheritance.
-- **Stacked prompts:** the prompts this agent stacks under are shown read-only above its own prompt, so you see everything it will be told.
-- **Validation:** directories are checked as you type (`✓ git repo`, `✕ not found`), and `Save` stays disabled until the form is valid.
+- **Stacked prompts:** the prompts this agent stacks under are shown read-only above its own prompt, one line per level; empty levels show "(none)".
+- **Validation:** checked as you type, with an error line under the field. `Save` stays disabled until the form is valid.
+- **Renaming:** only while the agent is stopped and has no worktrees; otherwise the name field is read-only with the reason under it.
+- **Running agents:** edits are saved now and apply on the agent's next start.
 
 ```
 ┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────────┐
 │                                                                              │
 │  Name        [ billing-api_________ ]                                        │
-│  CLI         [ Claude Code ▾ ]             inherited from Backend            │
+│              rename only while stopped with no worktrees                     │
+│  CLI         [ inherit: Claude Code ▾ ]                                      │
 │  Directory   [ ~/code/billing______________ ]  ✓ git repo                    │
 │  Model       [ inherit: sonnet ▾ ]          Effort  [ inherit: high ▾ ]      │
 │  Flags       [ ______________________________ ]                              │
 │  Worktrees   [ inherit: off ▾ ]                                              │
 │                                                                              │
 │  Prompt  (stacks under: Org › Payments › Backend)                            │
-│  ┊ Org      Ask before you delete anything.                                  │
-│  ┊ Backend  API URLs use hyphens. Run make test before done.                 │
+│  ┊ Org       Ask before you delete anything.                                 │
+│  ┊ Payments  (none)                                                          │
+│  ┊ Backend   API URLs use hyphens. Run make test before done.                │
 │  [ Own: Owns the billing service; invoices and retries.        ]             │
 │                                                                              │
+│  billing-api is running: changes apply on next start                         │
 │  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Form errors:** a duplicate name; worktrees on a directory that isn't a git repo (that radio is disabled, with the reason); the model list failing (while it loads, the field shows "loading models…").
+
+```
+┌─ New agent · Payments › Backend ─────────────────────────────────────────────┐
+│                                                                              │
+│  Name        [ auth-service________ ]                                        │
+│              ✕ an agent named auth-service already exists                    │
+│  CLI         [ inherit: Claude Code ▾ ]                                      │
+│  Directory   [ ~/notes_____________________ ]  ✓ found                       │
+│  Worktrees   (•) agent's directory   (-) new worktree                        │
+│              new worktree needs a git repo; ~/notes isn't one                │
+│  Model       [ inherit: sonnet ▾ ]                                           │
+│              ✕ couldn't list claude's models · type a name or keep inherit   │
+│                                                                              │
+│  fix 1 error to save                             [ Save ]  [ Cancel ]        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ```
 ┌─ New role · in Payments ─────────────────────────────────────────────┐
 │                                                                      │
-│  Name       [ Frontend____________ ]                                 │
+│  Name         [ Frontend____________ ]                               │
 │  Defaults for its agents (empty = inherit from Payments)             │
 │    CLI        [ inherit: Claude Code ▾ ]                             │
-│    Directory  [ ~/code/web_______________ ]                          │
+│    Directory  [ ~/code/web_______________ ]  ✓ git repo              │
 │    Worktrees  [ inherit: off ▾ ]                                     │
 │  Role prompt  [ You build React UI. Follow the design system.    ]   │
 │  Agents       [ 1 ] create this many now (pay-web-1 …)               │
@@ -277,74 +483,217 @@ Opened with `n` (new) or `e` (edit), or by right-click → New or Edit.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.5 Give work
-
-`space` on an agent, or on a role. The task box takes multiple lines (`alt+enter`).
-
-- **Where it runs:** the choice is pre-set from the agent's worktree default.
-- **To an agent:**
+**Edit org:** `e` on the Duo row. It edits `org.toml`'s org-level defaults and Duo's name and CLI. Changing Duo's CLI restarts Duo after a confirmation.
 
 ```
-┌─ Give work · auth-service ─────────────────────────────────────────────────────────────┐
-│ Task  [ Add retry with backoff to the payment client. AC: 3 tries, jitter. ]           │
-│ Run   (•) new worktree   ( ) ~/code/auth-service        agent default: worktree        │
+┌─ Edit org · saved to org.toml ───────────────────────────────────────────────┐
+│                                                                              │
+│  Duo                                                                         │
+│    Name        [ Duo______ ]                                                 │
+│    Runs on     [ Codex ▾ ]   changing it restarts Duo (asks first)           │
+│  Defaults for every agent                                                    │
+│    CLI         [ Claude Code ▾ ]   Model [ sonnet ▾ ]   Effort [ high ▾ ]    │
+│    Worktrees   [ off ▾ ]                                                     │
+│  Org prompt    [ Ask before you delete anything._______________ ]            │
+│                                                                              │
+│  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 4.4.2 New, move, delete
+
+- **`n`** opens a chooser of what can be created at the selection: on Duo, a team or a role; on a team, a role in it or a team next to it; on a role or an agent, an agent in that role.
+
+```
+┌─ New · Payments selected ────────────┐
+│▌ Role in Payments                    │
+│  Team next to Payments               │
+│  Agent: select a role first          │
+│                                      │
+│ ↑↓ choose · enter open form · esc    │
+└──────────────────────────────────────┘
+```
+
+- **Right-click** opens the node's menu, listing every action with its key. Disabled actions show the reason (for example "Delete · stop it first"). Duo's menu has Edit org; team and role menus have Give work (roles only), New here, Edit, Move to and Delete.
+
+```
+┌─ pay-qa ───────────────┐
+│ Give work      space   │
+│ Start          s       │
+│ Edit           e       │
+│ New here…      n       │
+│ Move to…       m       │
+│ Delete         d       │
+│ Zoom           z       │
+│ Worktrees      w       │
+│ Hide replies   v       │
+└────────────────────────┘
+```
+
+- **`m`** opens "Move to…", listing valid targets. When the move changes inherited values, the picker lists them before you confirm.
+
+```
+┌─ Move pay-qa to… ────────────────────────────────────────┐
+│                                                          │
+│  Payments › Backend                                      │
+│  Payments › QA          current                          │
+│▌ Generalist                                              │
+│                                                          │
+│  Moving changes what pay-qa inherits:                    │
+│    worktrees   off → on                                  │
+│    role prompt QA → Generalist                           │
+│                                                          │
+│  ↑↓ choose · enter move · esc cancel                     │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **Drag and drop:** valid targets are highlighted while dragging. An invalid drop (an agent onto a team, a team onto a role) is refused with the reason in the footer. A drop that changes inherited values opens the same list as "Move to…" for confirmation.
+- **`d`** deletes. It is disabled on any agent that isn't stopped, with the reason in the footer. Deleting a role or team lists every agent it removes, and is disabled while any of them is running (§4.8).
+
+### 4.5 Give work
+
+`space` on an agent or a role. The task box takes multiple lines (`alt+enter`). `enter` is disabled while the task is empty. `space` on a team or on Duo does nothing, and the footer says "space gives work to an agent or a role".
+
+What happens depends on the agent's state:
+
+| State | Give work |
+|---|---|
+| stopped, errored | Starts a fresh session with the task. "Run" picks the agent's directory or a new worktree, pre-set from the agent's default |
+| finished, idle | The task is typed in as the next turn of the existing session, which keeps its context. It runs where the session already runs |
+| working, waiting | Refused. The dialog offers "Send as message instead"; the message is typed in when the agent is at rest |
+
+**A stopped agent:**
+
+```
+┌─ Give work · pay-qa · ○ stopped ───────────────────────────────────────────────────────┐
+│ Task  [ Add retry cases for PAY-88. AC: 3 tries, jitter, no double charge. ]           │
+│ Run   ( ) new worktree   (•) ~/code/pay-qa              agent default: directory       │
+│ Starts a fresh session.                                                                │
 │                                             enter give · alt+enter new line · esc      │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **To a role:** it shows which free agent will take the task; `tab` picks a different one.
+**A finished or idle agent:**
 
 ```
-┌─ Give work · role Squad (2 of 3 free) ─────────────────────────────────────────────────┐
-│ Task  [ Fix the flaky date test in billing/time_test.go_____________________ ]         │
-│ Goes to  squad-2 (free 12m) · tab to pick another agent                                │
-│ Run   (•) new worktree   ( ) ~/code/my-app                                             │
+┌─ Give work · squad-2 · ✓ finished ─────────────────────────────────────────────────────┐
+│ Task  [ Now make the date test run in UTC as well._______________________ ]            │
+│ Run   in worktree flaky-date, as the next turn of squad-2's session                    │
 │                                             enter give · alt+enter new line · esc      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**A busy agent:**
+
+```
+┌─ Give work · auth-service · ● working ─────────────────────────────────────────────────┐
+│ Task  [ Also cover the timeout path.______________________________________ ]           │
+│ auth-service is working. Give work when it is at rest, or send this as a               │
+│ message: it is typed in when auth-service is at rest.                                  │
+│                   [ Give work ] (disabled)   ▌[ Send as message instead ]              │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**A role:** a free agent (stopped, finished or idle) takes the task; the dialog shows which one, and `↑↓` in "Goes to" picks another.
+
+```
+┌─ Give work · role Generalist (1 of 3 free) ────────────────────────────────────────────┐
+│ Task     [ Fix the flaky date test in billing/time_test.go__________________ ]         │
+│ Goes to  ▌squad-2 (finished 3m)                        ↑↓ pick another                 │
+│ Run      (•) new worktree   ( ) ~/code/my-app                                          │
+│                                             enter give · alt+enter new line · esc      │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**A role with no free agent:** `enter` asks Duo to propose a new agent. That raises an approval card that holds the task; approving it creates the agent and gives it the task.
+
+```
+┌─ Give work · role Payments › Backend (0 of 2 free) ────────────────────────────────────┐
+│ Task     [ Add an idempotency key to POST /payments.________________________ ]         │
+│ Goes to  No free agent · enter asks Duo to propose one                                 │
+│          (the approval card holds the task)                                            │
+│                                             enter ask Duo · esc                        │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.6 Duo's approval cards and actions
 
-When Duo proposes an org change, a card appears in the chat, outlined in amber.
+When Duo proposes an org change, or wants to stop a working or waiting agent, a card appears in the chat, outlined in amber.
 
-- **Approve** (`y`) applies the change.
-- **Edit** (`e`) opens the form pre-filled.
-- **Reject** (`n`) tells Duo it was declined.
-- **Cards wait:** while a card is waiting, Duo waits for your answer, and the card is also listed under Needs you.
+- **Keys:** `↑` from an empty chat input focuses the newest card (heavy border). `y`, `e` and `n` act only while a card has focus; `esc` returns to the input.
+  - **Approve** (`y`) applies the change.
+  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the chat.
+  - **Reject** (`n`) tells Duo it was declined.
+- **Several cards:** only the newest takes keys; reach the others from Needs you.
+- **Answered cards** collapse into one `→` line with the result ("→ approved: stop squad-1").
+- **Duo isn't blocked:** Duo keeps working while a card waits. Each card is its own Needs you row.
+- **Action lines:** each of Duo's actions shows as a `→` line with its result: `delivered`, `queued (… is working)`, `started`, `typed in`, `stopped`, `refused`.
 
 ```
 ┌─ ⬢ Duo · ● working ──────────────────────────────────────────────────────────────────────────────┐
+│ 10:15 Duo   squad-1 has been quiet 12m. Proposed: stop it.                                       │
+│             → approved: stop squad-1                                 10:16                       │
 │ 10:20 you   split story PAY-88 by role and assign it                                             │
 │ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                    │
-│             ┌ Proposed change ──────────────────────────────────────────────┐                    │
-│             │ + Add agent pay-web in Payments › Frontend (new role)         │                    │
-│             │   CLI Claude Code · ~/code/web · worktrees on                 │                    │
-│             │ [y] Approve   [e] Edit   [n] Reject                           │                    │
-│             └───────────────────────────────────────────────────────────────┘                    │
-│             → start auth-service "PAY-88a backend: retry endpoint"      started                  │
-│             → start pay-qa "PAY-88c QA: retry cases"                     started                 │
+│             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                │
+│             → give work pay-qa "PAY-88c QA: retry cases"                started                  │
+│             ┏━ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                   │
+│             ┃ + Add agent pay-web in Payments › Frontend (new role)          ┃                   │
+│             ┃   CLI Claude Code · ~/code/web · worktrees on                  ┃                   │
+│             ┃ [y] Approve   [e] Edit   [n] Reject                            ┃                   │
+│             ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                   │
 │ ❯ _                                                                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 4.7 Chat suggestions
-
-Typing `@` or `/` opens a list above the input. It filters as you type; `tab` or `enter` takes an item, and `esc` closes the list. Agents show their state, so you can see who is free before messaging.
+The card's row in Needs you:
 
 ```
-┌─ ⬢ Duo · ● idle ─────────────────────────────────────────────────────────────────────────────────┐
+┌─ Org ──────────────────────────────────────────┐
+│ …                                              │
+├─ Needs you (3) ────────────────────────────────┤
+│ ◷ squad-3      quiet      6m                   │
+│ ◆ billing-api  waiting    4m  "Allow edit to…" │
+│ ◆ Duo          approval   1m  Add pay-web      │
+└────────────────────────────────────────────────┘
+```
+
+### 4.7 Chat
+
+- **Input:** always takes typed text. `enter` sends; `alt+enter` adds a line; `PgUp` / `PgDn` scroll the chat history.
+- **Plain text** goes to Duo. While Duo is busy it waits, shown as queued, and is typed in when Duo is at rest.
+- **`@agent text`** goes straight to that agent:
+  - to an agent at rest, it is typed in at once;
+  - to a working or waiting agent, it waits: the chat shows `→ … queued (pay-qa is working)` and the agent's row shows `✉ 1`;
+  - to a stopped agent, it starts the agent with the message as its task.
+- **Messages between agents** are not shown in the chat, only as `✉` on the recipient's row.
+
+**Suggestions:** typing `@` or `/` opens a list above the input. It filters as you type; `tab` or `enter` takes an item, and `esc` closes the list. Agents show their state, so you can see who is free.
+
+```
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
 │   ┌──────────────────────────────────────────┐                                                   │
-│   │ ▸ @auth-service      ● working 2m        │                                                   │
-│   │   @billing-api       ◆ waiting 4m        │                                                   │
-│   │   @pay-qa            ○ stopped           │                                                   │
+│   │▌@auth-service      ● working    2m       │                                                   │
+│   │ @billing-api       ◆ waiting    4m       │                                                   │
+│   │ @pay-qa            ○ stopped    1d       │                                                   │
 │   └──────────────────────────────────────────┘                                                   │
 │ ❯ @a_                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+```
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
+│   ┌──────────────────────────────────────────┐                                                   │
+│   │▌/help     commands and keys              │                                                   │
+│   │ /agents   every agent and its state      │                                                   │
+│   └──────────────────────────────────────────┘                                                   │
+│ ❯ /_                                                                                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
 ### 4.8 Confirmations
 
-Asked only for actions that stop work or remove something. `y` confirms, `n` or `esc` cancels.
+Asked only for actions that stop work, remove something or replace the org. Every destructive dialog opens with focus on Cancel; `enter` acts on the focused button, `y` confirms, and `n` or `esc` cancels.
 
 ```
 ┌─ Stop agent? ────────────────────────────────────────────────┐
@@ -352,70 +701,170 @@ Asked only for actions that stop work or remove something. `y` confirms, `n` or 
 │  Stop auth-service? It is working (2m) in a worktree.        │
 │  The worktree and its branch are kept.                       │
 │                                                              │
-│                               [ y Stop ]   [ n Cancel ]      │
+│                              [ y Stop ]   ▌[ n Cancel ]      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─ Delete role? ───────────────────────────────────────────────┐
+│                                                              │
+│  Delete role QA in Payments? It removes 1 agent:             │
+│    pay-qa (stopped)                                          │
+│  Worktrees are kept and stay listed under w.                 │
+│                                                              │
+│                            [ y Delete ]   ▌[ n Cancel ]      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─ Replace your org? ──────────────────────────────────────────┐
+│                                                              │
+│  A new org from Product Team replaces your current org       │
+│  (6 agents). Running agents are stopped first.               │
+│  Your current org.toml is kept as a backup.                  │
+│                                                              │
+│                           [ y Replace ]   ▌[ n Cancel ]      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.9 Worktrees
 
-`w` opens the list of DuoHive's worktrees. Merged-and-clean ones are removed automatically; the rest stay here until you remove them. Removing a dirty worktree asks first.
+`w` opens the list of DuoHive's worktrees. States are words in `fg.muted`, never status glyphs or amber.
+
+- **Automatic removal:** a worktree is removed once its branch is merged (normal, squash or rebase) and it has no uncommitted changes.
+- **Checked:** when its agent finishes, after start-up, when this list opens, and every 10 minutes, against `origin`'s default branch (or the local default branch when there is no remote).
+- **By hand:** `d` removes a worktree; removing anything not merged and clean asks first.
 
 ```
 ┌─ Worktrees · 4 · removed automatically once merged and clean ────────────────────────────────────┐
-│   Agent          Branch                                  State                                   │
-│ ▸ auth-service   duohive/auth-service/retry-loop         ● in use                                │
-│   pay-qa         duohive/pay-qa/retry-cases              ✓ merged · removing                     │
-│   squad-2        duohive/squad-2/flaky-date              ◆ not merged · 2 files changed          │
-│   squad-1        duohive/squad-1/readme                  ✓ merged · dirty, kept                  │
+│   Agent          Branch                             State                                        │
+│▌  auth-service   duohive/auth-service/retry-loop    in use                                       │
+│   pay-qa         duohive/pay-qa/retry-cases         merged · removing                            │
+│   squad-2        duohive/squad-2/flaky-date         not merged · 2 files changed                 │
+│   squad-1        duohive/squad-1/readme             merged · uncommitted changes, kept           │
 │                                                                                                  │
-│ enter open in agent · d remove (asks if dirty) · esc back                                        │
+│ checked 3m ago against origin/main                                                               │
+│ enter open in agent · d remove (asks unless merged and clean) · esc back                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.10 Settings
 
-`S` opens Settings. Changes save immediately. Key bindings open their own editor.
+`,` opens Settings. Settings are personal and saved to `settings.toml` as you change them. Org-level defaults and Duo live in the org (Edit org, §4.4.1). "New org from template…" replaces the current org after a confirmation (§4.8) and keeps a backup.
 
 ```
-┌─ Settings ───────────────────────────────────────────────────────────────┐
+┌─ Settings · saved to settings.toml ──────────────────────────────────────┐
 │                                                                          │
-│  Duo                                                                     │
-│    Name                 [ Duo______ ]                                    │
-│    Runs on              [ Codex ▾ ]                                      │
-│  Defaults for new agents                                                 │
-│    CLI · model · effort [ Claude Code ▾ ] [ sonnet ▾ ] [ high ▾ ]        │
-│    Worktrees            [ off ▾ ]                                        │
+│  You                                                                     │
+│    Your name            [ Duong_____ ]                                   │
 │  Attention                                                               │
 │    Quiet after          [ 5 ] minutes                                    │
 │    Desktop alerts       [x] needs you   [x] finished                     │
 │  Look                                                                    │
-│    Theme                [ auto ▾ ]   Last reply under agents [x]         │
+│    Theme                [ auto ▾ ]                                       │
+│    Last reply under agents [x]     Reduce motion [ ]                     │
 │  Keys                   [ Edit key bindings → ]                          │
+│  Org                    [ New org from template… ]                       │
+│    org defaults and Duo: e on Duo (Edit org)                             │
 │                                                                          │
 │  changes save immediately · esc back                                     │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Key bindings** (a phase 4 screen): a list of actions and their keys.
+
+```
+┌─ Key bindings ───────────────────────────────────────────────────────┐
+│                                                                      │
+│   Action                 Key                                         │
+│▌  Give work              space                                       │
+│   Start / stop           s                                           │
+│   New                    n                                           │
+│   Edit                   e                                           │
+│   Settings               ,                                           │
+│   …                                                                  │
+│                                                                      │
+│  enter rebind (press the new key) · backspace default · esc back     │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
 ### 4.11 Key map
 
-`?` from anywhere. It lists the keys for the current bindings, including any you have changed.
+`?` from anywhere. It lists the current bindings, including any you have changed.
 
 ```
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────┐
-│ Everywhere                     Org pane                    Agent pane                            │
-│  tab   next pane                ↑↓    move                  typing  to the agent                 │
-│  ?     this help                ←→    fold / unfold         ctrl+q  back to tree                 │
-│  ctrl+c quit (agents keep on)   enter type into agent       z       zoom                         │
-│                                 space give work                                                  │
-│ Chat (Duo)                      s     start / stop          Mouse                                │
-│  enter send                     n     new team/role/agent    click   select / focus              │
-│  @     message an agent         e     edit                  right   menu                         │
-│  /     commands                 m     move                  wheel   scroll                       │
-│  y n   approve / reject card    d     delete (stopped)      drag    move node                    │
-│                                 w     worktrees                                                  │
-│                                 v     last reply on/off                                          │
+│ Everywhere                       Org pane                         Agent pane                     │
+│  tab       next pane/field        ↑↓        move                   enter     start typing        │
+│  shift+tab previous pane          ←→        fold / unfold          ctrl+q    stop typing         │
+│  ?         this help              enter     open agent pane        z         zoom / restore      │
+│  ,         settings               space     give work              space     give work           │
+│  w         worktrees              s         start / stop           PgUp/Dn   scroll back         │
+│  f         filter tree by state   n         new here…                                            │
+│  esc       back one level         e         edit (Duo: Edit org)  Chat (Duo)                     │
+│  q         quit (agents run on)   m         move to…               enter     send                │
+│  ctrl+c    quit if not typing     d         delete (stopped)       alt+enter new line            │
+│  ctrl+↑↓   resize chat            z         zoom agent             @ /       agents / commands   │
+│                                   v         last reply on/off      ↑         newest card         │
+│ Mouse                             o         open org.toml          y e n     approve/edit/reject │
+│  click     select / focus                                          PgUp/Dn   scroll history      │
+│  right     node menu             Needs you                                                       │
+│  wheel     scroll                 ↑↓        move                                                 │
+│  drag      move node              enter     go to agent or card                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+Below 100 columns it becomes one scrolling column:
+
+```
+┌─ Keys · ? to close ──────────────────────┐
+│ Everywhere                               │
+│  tab       next pane/field               │
+│  shift+tab previous pane                 │
+│  ?         this help                     │
+│  ,         settings                      │
+│  w         worktrees                     │
+│  f         filter tree by state          │
+│ ↓ more · PgUp/PgDn scroll                │
+└──────────────────────────────────────────┘
+```
+
+| Where | Key | Action |
+|---|---|---|
+| Everywhere | `tab` / `shift+tab` | Next / previous pane or field |
+| | `?` | Key map |
+| | `,` | Settings |
+| | `w` | Worktrees |
+| | `f` | Filter the tree by state |
+| | `esc` | Back one level; clears a filter; never quits (step 1 of first run asks) |
+| | `q` | Quit; agents keep running. Not while typing in the chat, a form or the agent pane |
+| | `ctrl+c` | Quit, when not typing |
+| | `ctrl+↑` / `ctrl+↓` | Resize the chat pane |
+| Org pane | `↑` `↓` | Move |
+| | `←` `→` | Fold / unfold |
+| | `enter` | Agent or Duo: focus the agent pane. Team or role: fold / unfold |
+| | `space` | Give work (agent or role) |
+| | `s` | Stopped agent: start it with no task (it waits, idle). Running agent: stop it (asks first) |
+| | `n` | New here… |
+| | `e` | Edit; on Duo, Edit org |
+| | `m` | Move to… |
+| | `d` | Delete (stopped agents only) |
+| | `z` | Zoom the selected agent |
+| | `v` | Last reply on / off |
+| | `o` | Open `org.toml` in `$EDITOR` |
+| Needs you | `↑` `↓`, `enter` | Move; go to the agent or card |
+| Agent pane | `enter` / `ctrl+q` | Start / stop typing |
+| | `z` | Zoom / restore |
+| | `space` | Give work |
+| | `PgUp` / `PgDn` | Scroll the agent's scrollback |
+| Chat | `enter` / `alt+enter` | Send / new line |
+| | `@` / `/` | Agent / command suggestions |
+| | `↑` | From an empty input: focus the newest approval card |
+| | `y` / `e` / `n` | Approve / edit / reject the focused card |
+| | `PgUp` / `PgDn` | Scroll the chat history |
+| Dialogs and forms | `enter`, `esc`, `ctrl+s` | Act on the focused button, cancel, save |
+| Give work | `↑` `↓` | Pick the agent in "Goes to" |
+| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll; move a node or resize the chat |
 
 ### 4.12 Errors and empty states
 
@@ -436,23 +885,35 @@ Errors are shown where they apply, with how to fix them.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**An agent that can't start (on its row):**
+**Errors on rows:** Duo failing to start; a CLI that isn't installed; a missing directory (only that agent is invalid; the rest of the org works); a crash; a worktree that couldn't be created (the agent stays stopped and the task is kept); an untested CLI version (a notice in `fg.muted`, not an error).
 
 ```
 ┌─ Org ────────────────────────────────────────────────────────────────┐
+│ ⬢ Duo · your manager agent          ✕ errored    1m                  │
+│     codex exited at start (code 127) · e Edit org                    │
+│ ├─ ▣ Payments                                                        │
 │ │  ├─ ◇ Backend                                                      │
-│ │  │  ├─ auth-service          ✕ errored                             │
-│ │  │  │   codex not found · install it or change this agent's CLI (e)│
-│ │  │  └─ billing-api           ○ stopped                             │
+│ │  │  ├─ auth-service               ✕ errored    2m                  │
+│ │  │  │   codex not found · install it or change its CLI (e)         │
+│ │  │  ├─ billing-api                ○ stopped    1d                  │
+│ │  │  │   ✕ ~/code/billing not found · e to fix                      │
+│ │  │  ├─ pay-api                    ✕ errored    5m                  │
+│ │  │  │   exited unexpectedly (code 1) · space retry · s stop        │
+│ │  │  └─ pay-web                    ○ stopped    8m                  │
+│ │  │      ✕ couldn't create worktree: branch exists · space          │
+│ │  └─ pay-qa                        ● working    3m                  │
+│ │      notice: claude 2.3 untested (tested up to 2.1)                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**`org.toml` doesn't parse (banner; the last good org stays):**
+An errored agent stays errored, and in Needs you, until you give it work or stop it.
+
+**`org.toml` doesn't parse** (a banner in `status.error`; the last good org stays):
 
 ```
- ⚠ org.toml line 42: unknown CLI "claud" · using your last good org · e to open the editor
+ ✕ org.toml line 42: unknown CLI "claud" · using your last good org · o open in $EDITOR
 ┌─ Org ──────────────────────────────────────────┐
-│ ⬢ Duo                       ● idle             │
+│ ⬢ Duo · your manager agent    ◦ idle       1m  │
 │ ├─ ▣ Payments                                  │
 │ …                                              │
 └────────────────────────────────────────────────┘
@@ -462,10 +923,10 @@ Errors are shown where they apply, with how to fix them.
 
 ```
 ┌─ Org ──────────────────────────────────────────┐
-│ ⬢ Duo                       ● idle             │
+│ ⬢ Duo · your manager agent    ◦ idle       1m  │
 │ └─ ▣ Payments                                  │
 │    └─ ◇ Frontend                               │
-│        no agents yet · n to add one, or ask Duo│
+│        no agents yet · n to add one or ask Duo │
 └────────────────────────────────────────────────┘
 ```
 
@@ -473,22 +934,42 @@ Errors are shown where they apply, with how to fix them.
 
 | Rule | Detail |
 |---|---|
-| One meaning per key | `enter` acts on the selection; `esc` backs out one level, and never quits; `tab` moves focus; `?` opens help; `y` / `n` answer any question |
-| Typing goes where focus is | In the agent pane, every key goes to the agent except `ctrl+q`; in the chat, every key goes to the input |
-| Mouse parity | Click selects and focuses. Right-click opens the node's menu. The wheel scrolls the pane under the pointer. Dragging a node moves it, and dragging the chat edge resizes it |
-| Nothing destructive by surprise | Stop, delete and remove-dirty-worktree ask first; Duo's org changes always come as approval cards |
-| Attention is earned | Amber appears only for waiting, quiet, errored and approval cards; desktop alerts only for those and for finished agents (each can be turned off) |
-| Calm | No animation except the `●` working spinner; no sound |
+| One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
+| Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`. The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
+| Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
+| Mouse parity | Click selects and focuses. Right-click opens the node's menu. The wheel scrolls the pane under the pointer. Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters |
+| Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of working or waiting agents, come as approval cards |
+| Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
+| Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |
 
 ## 6. Accessibility
 
-- **State without colour:** every state has a glyph and a word, and colour-blind safe palettes are tested (deuteranopia, protanopia).
-- **Monochrome:** with colours disabled (`NO_COLOR`), the focused pane is shown with a double-line border.
-- **Contrast:** every text token meets 4.5:1 on its background in both default themes.
+- **State without colour:** every state has a glyph and a word; `~` is a glyph, not a dimmed colour. Colour-blind safe palettes are tested (deuteranopia, protanopia).
+- **Monochrome (`NO_COLOR`):** the focused pane keeps its heavy border, and the selected row keeps its `▌` bar.
+- **Contrast:** computed with the WCAG formula; the lowest ratio of each text token across `bg`, `bg.panel` and `selection`:
+
+| Token | Dark | Light |
+|---|---|---|
+| `fg` | 10.67 | 14.20 |
+| `fg.muted` | 4.87 | 5.75 |
+| `status.working` | 5.69 | 5.39 |
+| `status.attention` | 8.05 | 5.33 |
+| `status.done` | 5.89 | 6.65 |
+| `status.error` | 5.37 | 5.45 |
+| `accent.duo` | 6.19 | 6.07 |
+
 - **No blinking text.**
 
 ## 7. Copy
 
-- **Short and specific:** say what happened and what to do next ("codex not found · install it or change this agent's CLI (e)").
+- **Short and specific:** say what happened and what to do next ("codex not found · install it or change its CLI (e)").
 - **Name the agent:** use the agent's name, not "the agent".
 - **"You" and "Duo":** "you" for the user and "Duo" for the manager agent; never "the system".
+- **One verb for work:** "Give work" is the only user-facing term for handing an agent a task.
+
+## 8. UX checks
+
+The screens are checked against the PRD's [UX principles](../product/prd.md#ux-principles) twice:
+
+1. **After phase 2:** during phase 2 the author keeps a **friction log** (anything slow, confusing or missed). At the end of the phase, the UI/UX improvement pass fixes the top items and re-checks every screen.
+2. **Before launch:** a second check covers the phase 3–4 screens (Duo's chat and cards, task to a role, first-run templates, Settings and the key-binding editor).
