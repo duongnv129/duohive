@@ -6,13 +6,13 @@
 
 **Architecture:** Seven crates with inward-only dependencies (TD §3.4). `duohive-core` holds the domain, the port traits and a sans-I/O engine. The engine is one task that owns all state, takes `Command`s and adapter `Input`s, and publishes `Event`s (TD §3.2–3.3). Adapters (tmux runtime, CLI adapters, SQLite/TOML store, hook listener) run as their own tasks and reach the core only through channels or the port traits. The TUI renders events and sends commands.
 
-**Tech Stack:** Rust 1.90.0 (edition 2024), tokio 1.53, ratatui =0.30.2, crossterm =0.29.0, rusqlite 0.40 (bundled SQLite, WAL), toml 1.1, serde 1, serde_json 1, thiserror 2, tracing 0.1 + tracing-subscriber 0.3 + tracing-appender 0.2, shell-words 1.1, getrandom 0.4, libc 0.2, insta 1.49, tempfile 3. tmux 3.2 or newer. MSRVs checked against Rust 1.90 on the crates.io index (2026-10-03): the highest are ratatui 0.30.2 (1.88), toml 1.1 and getrandom 0.4 (1.85), tokio 1.53 and serde_json (1.71); every pin builds on 1.90, so none changed. Task 1 re-checks this before writing `Cargo.toml`.
+**Tech Stack:** Rust 1.99.0 (edition 2024), tokio 1.53, ratatui =0.30.2, crossterm =0.29.0, rusqlite 0.40 (bundled SQLite, WAL), toml 1.1, serde 1, serde_json 1, thiserror 2, tracing 0.1 + tracing-subscriber 0.3 + tracing-appender 0.2, shell-words 1.1, getrandom 0.4, libc 0.2, insta 1.49, tempfile 3. tmux 3.2 or newer. Versions checked on the crates.io index (2026-10-03): every pin is the latest stable release (patch updates come through `Cargo.lock` and Dependabot); the highest MSRVs are ratatui 0.30.2 (1.88), toml 1.1 and getrandom 0.4 (1.85), all below the 1.99 toolchain.
 
 **Spec:** [docs/product/prd.md](../product/prd.md) (what), [docs/ux/ui-spec.md](../ux/ui-spec.md) (how it looks), [docs/design/technical-design.md](../design/technical-design.md) (how it is built), [docs/plans/v1-roadmap.md](v1-roadmap.md) (order). When they disagree, the PRD decides *what*, the UI/UX spec decides *how it looks*, and the TD decides *how it's built*. Section references below are "TD §4.2", "UI §2.1", "PRD Org model".
 
 ## Global Constraints
 
-- Toolchain `1.90.0` in `rust-toolchain.toml`; `rust-version = "1.90"`; `edition = "2024"`; licence `Apache-2.0`.
+- Toolchain `1.99.0` in `rust-toolchain.toml`; `rust-version = "1.99"`; `edition = "2024"`; licence `Apache-2.0`.
 - Crates: `duohive-core`, `duohive-tmux`, `duohive-cli`, `duohive-store`, `duohive-tui`, `duohive-mcp`, `duohive` (binary). Dependency rule: `duohive-core` depends on no `duohive-*` crate; `duohive-tmux`, `duohive-cli`, `duohive-store`, `duohive-tui`, `duohive-mcp` depend only on `duohive-core`; only `duohive` depends on all of them.
 - `duohive-core` does no I/O: no filesystem, process, socket or terminal access (tokio `sync`/`time` only, for the driver loop).
 - Ratatui and crossterm pinned with `=`; upgraded on purpose only.
@@ -147,9 +147,9 @@ fn crates_depend_inward_only() {
 - [ ] **Step 2: Run it and see it fail.** `cargo test -p duohive --test dependency_rule` → FAIL (no workspace yet, or missing crates).
 
 - [ ] **Step 3: Create the workspace.**
-  - First re-check the MSRVs: `cargo info <crate>@<version>` for each Tech Stack pin shows a `rust-version` ≤ 1.90 (checked when this plan was written; see Tech Stack). Lower a pin only if one fails.
-  - `rust-toolchain.toml`: `channel = "1.90.0"`, `components = ["rustfmt", "clippy"]`.
-  - Root `Cargo.toml`: `members = ["crates/*"]`, `exclude = ["spikes"]`, `resolver = "3"`, `[workspace.package]` with `edition = "2024"`, `rust-version = "1.90"`, `license = "Apache-2.0"`.
+  - First re-check the MSRVs: `cargo info <crate>@<version>` for each Tech Stack pin shows a `rust-version` ≤ 1.99 (checked when this plan was written; see Tech Stack). Lower a pin only if one fails.
+  - `rust-toolchain.toml`: `channel = "1.99.0"`, `components = ["rustfmt", "clippy"]`.
+  - Root `Cargo.toml`: `members = ["crates/*"]`, `exclude = ["spikes"]`, `resolver = "3"`, `[workspace.package]` with `edition = "2024"`, `rust-version = "1.99"`, `license = "Apache-2.0"`.
   - `[workspace.lints.rust] unsafe_code = "deny"`; `[workspace.lints.clippy] unwrap_used = "deny"`, `expect_used = "deny"`, `dbg_macro = "deny"`, `print_stdout = "deny"`, `print_stderr = "deny"` (the TUI and subcommands that must print use a local `#[expect(clippy::print_stdout)]` with a reason).
   - `clippy.toml`: `allow-unwrap-in-tests = true`, `allow-expect-in-tests = true`, `allow-print-in-tests = true`.
   - `rustfmt.toml`: `max_width = 100` (stable options only).
@@ -193,7 +193,7 @@ Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv,
   - `.editorconfig`: `root = true`; `*`: `charset = utf-8`, `end_of_line = lf`, `insert_final_newline = true`, `trim_trailing_whitespace = true`, `indent_style = space`, `indent_size = 4`; `*.{yml,yaml,toml,md,json}`: `indent_size = 2`; `Makefile`: `indent_style = tab`; `*.md`: `trim_trailing_whitespace = false`.
 
 - [ ] **Step 2: Community and agent files.**
-  - `README.md`: name and one-line pitch from the PRD vision; status badge line (CI); "Status: pre-alpha, phase 0" note; what DuoHive is (3–5 bullets from the PRD: org of standing agents, live status at a glance, Duo the manager agent, Claude Code and OpenCode, one lightweight process); requirements (tmux ≥ 3.2, Rust 1.90 to build); build and run (`cargo build --release`, `make check`); links to `docs/README.md`, `CONTRIBUTING.md`, `LICENSE`; licence line "Apache-2.0". No screenshots or install commands that don't exist yet.
+  - `README.md`: name and one-line pitch from the PRD vision; status badge line (CI); "Status: pre-alpha, phase 0" note; what DuoHive is (3–5 bullets from the PRD: org of standing agents, live status at a glance, Duo the manager agent, Claude Code and OpenCode, one lightweight process); requirements (tmux ≥ 3.2, Rust 1.99 to build); build and run (`cargo build --release`, `make check`); links to `docs/README.md`, `CONTRIBUTING.md`, `LICENSE`; licence line "Apache-2.0". No screenshots or install commands that don't exist yet.
   - `CONTRIBUTING.md`: dev setup (`rustup` picks the toolchain from `rust-toolchain.toml`, `make tools`), the workflow (test first, `make check` before every commit), conventional commit types (`feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`), the docs' precedence (PRD → UI spec → TD), the dependency rule (TD §3.4), the Global Constraints that bite contributors (no `unwrap`/`expect` outside tests, no `unsafe`, `duohive-core` does no I/O, no `std::env::set_var` in tests, tmux tests on a throwaway socket).
   - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1, verbatim from `https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md`, with the contact set to `duongnv129@gmail.com`.
   - `SECURITY.md`: supported versions (latest only, pre-1.0); report privately via GitHub security advisories or `duongnv129@gmail.com`, not public issues; scope notes (per-launch tokens, hook socket, the user's CLI configuration is never modified).
