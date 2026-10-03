@@ -78,7 +78,7 @@ Commands and events are plain serialisable enums. When the core moves into a bac
 | Crate | Contents |
 |---|---|
 | `duohive-core` | Domain, ports, engine. No I/O |
-| `duohive-tmux` | `Runtime` over tmux (control mode, windows, flow control, subscriptions) |
+| `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling) |
 | `duohive-cli` | `CliAdapter` for Claude Code and OpenCode |
 | `duohive-store` | `Store` over SQLite, `org.toml` and `settings.toml` |
 | `duohive-tui` | Ratatui views, input, layout |
@@ -94,10 +94,10 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 | Source | Mechanism | Gives |
 |---|---|---|
 | **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
-| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Every pane except the selected one is silenced (no-output or paused flow control, chosen by spike S0), so it sends no `%output`. Activity comes instead from a control-mode format subscription on each agent window's activity time (`refresh-client -B`, tmux ≥ 3.2; one window per agent, so `#{window_activity}` is the agent's), which tmux reports about once a second when it changes | Activity times, which feed "quiet" and trigger settle reads |
+| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0; it covers new windows with no per-window command, and silences every pane on the connection, so a live view of the selected pane in phase 2 needs its own path), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
-- **Spike S0:** the subscription mechanism (reports keep arriving for silenced panes, at the expected rate, at 100 windows) and the silencing method (no-output or paused flow control) are **verified in spike S0** before `duohive-tmux` is written. Fallback: one `list-windows -F '#{window_id} #{window_activity}'` per second over the same connection, which costs one command for all agents.
+- **Spike S0** (`docs/plans/spike-report.md` S0): format subscriptions (`refresh-client -B`) did report for silenced panes at 100 windows, about once a second, with the same delay as polling (median 0.47–0.57 s), but their reader cost more CPU than the one-a-second `list-windows` at 100 noisy windows on both tmux 3.2a and latest, so the poll is the mechanism. `no-output` beat paused flow control on tmux server + reader CPU and needs nothing per new window. A closed window is reported as `%unlinked-window-close @N` (not `%window-close`), and is also absent from the next reply.
 - **Start-up:** git checks (worktree merges, directory checks for git repos) run after the first frame, so they never delay it.
 
 ### 4.2 Status engine
@@ -127,7 +127,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 
 ### 4.3 Cost at scale
 
-- **No per-agent polling:** activity is pushed by tmux, so an idle org costs almost nothing.
+- **No per-agent polling:** one activity query a second covers every agent (spike S0: about 0.2–0.3 % of a core in the reader at 100 windows).
 - **One full screen at a time:** the selected pane alone streams full output into a terminal emulator; the other 99 send activity reports only.
 - **Bounded reads:** a busy agent redrawing a spinner many times a second costs one screen read after it settles.
 
@@ -300,7 +300,7 @@ Errors are shown where they apply, never only in a log.
 |---|---|
 | Core | Unit tests with fake ports and an injected clock. They cover inheritance and prompt stacking, every transition of the state machine (§4.2), quiet, Needs you and alerts, giving work by state, the inbox and its limits, token rights, approval cards, task-to-role picking and worktree rules |
 | CLI adapters | For Claude Code and OpenCode: snapshot tests of each built launch command; parsing of recorded hook payloads, screen captures and Duo replies from pinned CLI versions |
-| tmux runtime | Integration tests on a real tmux with a throwaway socket. They cover start, send, flow control, activity subscriptions, exit statuses and pane reads |
+| tmux runtime | Integration tests on a real tmux with a throwaway socket. They cover start, send, no-output silencing, activity polling, exit statuses and pane reads |
 | Git | Integration tests on throwaway repos for normal, squash and rebase merge detection |
 | TUI | Ratatui `TestBackend` snapshots at 80×24 and 160×48 for every screen, and key and mouse tests for every action |
 | End to end | A fake agent CLI that fires hooks drives full scenarios, such as "story → Duo splits it → three agents finish → Duo reports", with no model calls |
@@ -317,7 +317,7 @@ Errors are shown where they apply, never only in a log.
   - the time from output settling to a screen-read (`~`) status on screen;
   - start-up time;
   - binary size.
-- **Phase 1:** a basic `bench` (10 agents; idle CPU, memory and hook-to-screen time) runs from the start, so the silencing (no-output or paused flow control, chosen by spike S0) and settle choices are measured early.
+- **Phase 1:** a basic `bench` (10 agents; idle CPU, memory and hook-to-screen time) runs from the start, so the `no-output` silencing (spike S0) and settle choices are measured early.
 - **Release gate:** CI runs the full benchmark on every release. Results on macOS arm64 (Apple M-series) must meet every PRD target, or the release fails; Linux x86_64 results are reported but don't block.
 
 ## 11. CI and release
@@ -342,8 +342,8 @@ Errors are shown where they apply, never only in a log.
 |---|---|
 | A CLI changes its hooks or flags | Adapters pinned to tested versions, spikes before each adapter, a notice for untested versions, screen reading as fallback |
 | tmux control mode differs across versions | Support 3.2 and newer only; CI on 3.2 and latest |
-| The settle mechanism doesn't work as planned: subscriptions don't report for silenced panes (no-output or paused flow control, chosen by spike S0), report too slowly, or cost too much at 100 windows | Spike S0 before `duohive-tmux`; fallback: one `list-windows` activity query per second for all agents |
-| Silencing (no-output or paused flow control, chosen by spike S0) does not quiet busy panes enough at 100 agents | Measured by the basic `bench` in phase 1; fallback: pause unselected panes harder and read on settle only |
+| The settle mechanism doesn't work as planned: the one-a-second `list-windows` activity query for all agents (chosen by spike S0 over format subscriptions) reports too slowly or costs too much at 100 windows | Spike S0 measured it before `duohive-tmux` (median delay 0.48–0.53 s, reader about 0.2–0.3 % of a core at 100 windows); the basic `bench` re-measures it in phase 1 |
+| Silencing (`no-output`, chosen by spike S0) does not quiet busy panes enough at 100 agents | Measured by the basic `bench` in phase 1; fallback: pause unselected panes harder and read on settle only |
 | Ratatui pre-1.0 breaking changes | Pinned version, deliberate upgrades |
 | Users whose agents run on Codex can't use DuoHive for them in v1 | Codex is deferred to after v1, not ruled out: it is one more adapter and spike behind the same `CliAdapter` port |
 | Single process: work pauses while DuoHive is closed | Accepted for v1; the command/event boundary makes a background service a later move |
