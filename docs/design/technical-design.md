@@ -117,7 +117,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | working | Turn ends (Duo) | idle |
 | finished | The user selects the agent (`ViewAgent`) | idle |
 | finished, idle | New work: a task as the next turn, or a delivered message | working |
-| any running state | Unexpected exit (non-zero status, or the pane dies without the CLI's end hook) | errored |
+| any running state | Unexpected exit (non-zero status, or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
 | errored | Stopped (`s`, or by Duo) | stopped |
 
