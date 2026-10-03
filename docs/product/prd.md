@@ -66,6 +66,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 
 ## Open Questions
 
+None. All were resolved on 2026-10-03; each answer is in the Decisions Log. Interviews with 3–5 other leads before launch remain worth doing, but no longer block the design.
 
 ---
 
