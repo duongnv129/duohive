@@ -13,7 +13,7 @@ DuoHive is a Rust/Ratatui terminal app that manages standing AI coding agents as
 
 ## Constraints
 
-- Toolchain 1.90.0, edition 2024, licence Apache-2.0.
+- Toolchain 1.99.0, edition 2024, licence Apache-2.0.
 - No `unwrap`/`expect` outside tests; no `unsafe`.
 - `duohive-core` does no I/O.
 - Ratatui and crossterm are pinned with `=`.
