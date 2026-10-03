@@ -1,4 +1,9 @@
 /target
 spikes/**/target
 *.profraw
-spikes/**/out/
+# Spike logs stay local; the small evidence files the spike report cites are committed.
+spikes/**/out/*
+!spikes/**/out/summary.txt
+!spikes/**/out/close-*.txt
+!spikes/**/out/flags-*.txt
+!spikes/**/out/selected-*.txt
