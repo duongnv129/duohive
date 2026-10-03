@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+  deny:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  typos:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crate-ci/typos@v1.42.3
+
+  test:
+    name: test (${{ matrix.os }}, tmux ${{ matrix.tmux }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+        tmux: ["3.2a", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve the tmux version
+        id: tmux
+        run: |
+          if [ "${{ matrix.tmux }}" = "latest" ]; then
+            version="$(tr -d '[:space:]' < .github/tmux-latest)"
+          else
+            version="${{ matrix.tmux }}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Cache tmux
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/tmux-*
+          key: tmux-${{ runner.os }}-${{ runner.arch }}-${{ steps.tmux.outputs.version }}
+      - name: Install tmux ${{ steps.tmux.outputs.version }}
+        run: bash .github/scripts/install-tmux.sh "${{ steps.tmux.outputs.version }}"
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-features --locked
