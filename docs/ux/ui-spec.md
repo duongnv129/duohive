@@ -145,7 +145,7 @@ Six agents plus Duo. The org pane has focus, and auth-service is selected.
   - `? help` opens the key map.
 - **Org pane:**
   - the tree, with each agent's state cell and last reply;
-  - **roll-ups** on every team and role with a non-zero working or attention count (`● 1 ◆ 1`); a `~` leads the roll-up when any counted state is read from the screen (`~● 1 ◷ 1`);
+  - **roll-ups** on every team and role with a non-zero working or attention count (attention = waiting `◆`, quiet `◷` or errored `✕`; `● 1 ◆ 1`); a `~` leads the roll-up when any counted state is read from the screen (`~● 1 ◷ 1`);
   - **Needs you** is pinned at the bottom of the pane (§4.1.3).
 - **Agent pane:** the selected node's content (§4.1.2).
 - **Chat pane (Duo):** §4.6 and §4.7.
@@ -476,7 +476,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 │    Directory  [ ~/code/web_______________ ]  ✓ git repo              │
 │    Worktrees  [ inherit: off ▾ ]                                     │
 │  Role prompt  [ You build React UI. Follow the design system.    ]   │
-│  Agents       [ 1 ] create this many now (pay-web-1 …)               │
+│  Agents       [ 1 ] create this many now (payments-frontend-1 …)     │
 │                                                                      │
 │                                          [ Create ]  [ Cancel ]      │
 └──────────────────────────────────────────────────────────────────────┘
@@ -889,7 +889,7 @@ Errors are shown where they apply, with how to fix them.
 ```
 ┌─ Org ────────────────────────────────────────────────────────────────┐
 │ ⬢ Duo · your manager agent          ✕ errored    1m                  │
-│     opencode exited at start (code 127) · e Edit org                 │
+│     opencode not found (code 127) · e Edit org                       │
 │ ├─ ▣ Payments                                                        │
 │ │  ├─ ◇ Backend                                                      │
 │ │  │  ├─ auth-service               ✕ errored    2m                  │
