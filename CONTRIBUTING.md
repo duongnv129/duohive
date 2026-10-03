@@ -4,7 +4,7 @@ Thank you for helping. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Setup
 
-1. Install [rustup](https://rustup.rs). It picks the toolchain (1.90.0) from `rust-toolchain.toml`.
+1. Install [rustup](https://rustup.rs). It picks the toolchain (1.99.0) from `rust-toolchain.toml`.
 2. Install tmux 3.2 or later.
 3. Run `make tools` to install `cargo-deny`, `typos` and `cargo-llvm-cov`.
 

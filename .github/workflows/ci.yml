@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -39,8 +39,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: crate-ci/typos@v1.42.3
+      - uses: actions/checkout@v7
+      - uses: crate-ci/typos@v1.50.3
 
   test:
     name: test (${{ matrix.os }}, tmux ${{ matrix.tmux }})
@@ -52,7 +52,7 @@ jobs:
         os: [ubuntu-24.04, macos-14]
         tmux: ["3.2a", "latest"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Resolve the tmux version
         id: tmux
         run: |
@@ -63,7 +63,7 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
       - name: Cache tmux
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.local/tmux-*
           key: tmux-${{ runner.os }}-${{ runner.arch }}-${{ steps.tmux.outputs.version }}-${{ hashFiles('.github/scripts/install-tmux.sh') }}
