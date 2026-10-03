@@ -2,7 +2,7 @@
 
 Findings from the phase 0–1 spikes (plan Tasks 3–5). Each section records what was measured, the
 log that shows it, and the decision taken. The spike code is throwaway and lives in `spikes/`.
-Its raw logs (`spikes/*/out/`) are not committed, so the key lines are quoted here.
+Its large raw logs (`spikes/*/out/`) are not committed, so the key lines are quoted here. The small evidence files the report cites (`out/summary.txt` and the `close-*`, `flags-*` and `selected-*` outputs) are committed.
 
 ## S0 tmux activity for silenced panes at 100 windows
 
@@ -112,7 +112,7 @@ What the tables show:
 
 - **Server CPU is set by the panes:** about 10 % of a core for 100 noisy panes, with or without a client. The control client adds no more than the noise between runs, about ±1 point.
 - **Reader CPU is small either way:** under 0.4 % of a core.
-- **Subscribe vs poll, 100 noisy windows:** both send about 100 lines a second (9,123 against 9,465 lines in the 3.7c noisy runs). Subscription lines are about twice as long (600 KB against 319 KB of log), and the subscribe reader measured more CPU than the poll reader on both versions, in both runs.
+- **Subscribe vs poll, 100 noisy windows:** both send about 100 lines a second (9,123 against 9,465 lines in the 3.7c noisy runs). Subscription lines are about twice as long (600 KB against 319 KB of log), and the subscribe reader measured more CPU than the poll reader on both versions, on the mean of the two runs. In every run but one, subscribe was higher. The exception is 3.2a run 2, where `no-output` measured 0.235 % against poll's 0.239 %, which is within noise.
 - **Subscribe vs poll, idle:** subscribe sends nothing, so its reader CPU is 3 to 4 times lower than poll's.
 
 ### S0.4 Formats
@@ -181,7 +181,7 @@ The main runs' `kill-window` of `@102` shows the same: `%unlinked-window-close @
 | `read-only` | set | set |
 | `wait-exit` | set | set |
 | `no-detach-on-destroy` | not set (ignored) | set |
-| `!flag` | clears the flag | clears the flag |
+| `!flag` | clears the flag (`flags-*.txt`; `!no-output` also in `selected-*.txt`) | clears the flag (same) |
 
 - **Unknown flags:** an unknown flag (`bogus-flag`) is ignored without `%error`, and so is `no-detach-on-destroy` on 3.2a. A typo fails silently, so check `#{client_flags}` if it matters.
 - **No-output has no per-pane exception** (`selected.py`, `out/selected-*.txt`, both versions):
@@ -221,16 +221,20 @@ So: not `subscribe`, but `poll`.
 
 This is the fallback the TD already named, now the primary mechanism. No `refresh-client -B` or `-A` commands are needed.
 
+**Separators.** The `-F` separators are free to choose. The spike used spaces. Plan Task 19 uses tabs (`list-windows -t =duohive -F '#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}'`), and tabs are better: a live pane's `#{pane_dead_status}` is empty, so with spaces its line ends in a trailing space that is easy to mis-split. With tabs the last field is simply empty.
+
 ### S0.6 TD changes
 
 S0.5 differs from TD §4.1 (`poll` instead of subscriptions; silencing named as `no-output`), so `docs/design/technical-design.md` was edited:
 
-- **§3.1, `duohive-tmux` row:** "control mode, windows, flow control, subscriptions" → "control mode, windows, no-output silencing, activity polling".
+- **§3.4, `duohive-tmux` row:** "control mode, windows, flow control, subscriptions" → "control mode, windows, no-output silencing, activity polling".
 - **§4.1, tmux-activity row:**
   - silencing names `no-output` (spike S0), and notes that it silences every pane on the connection, so a live view of the selected pane (phase 2) needs its own path;
   - activity comes from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` per second for all agents, in place of the `refresh-client -B` subscription.
 - **§4.1, S0 bullet:** records the result (subscriptions worked, at the same delay, but cost more reader CPU than one poll at 100 noisy windows) and the window-close line.
 - **§4.3, "No per-agent polling" bullet:** now says one activity query a second for all agents, not "pushed by tmux".
+- **§4.3, "One full screen at a time" bullet (review fix):** replaced with "No pane streams in phases 0–1". Every pane is silenced by `no-output`, and the phase-2 live view of the selected agent needs its own path.
+- **§12, phase 4 row (review fix):** "flow-control tuning" → "silencing and activity-poll tuning".
 - **§9, tmux runtime row:** "activity subscriptions" → "activity polling".
 - **§10, phase 1 bullet:** "silencing (no-output or paused flow control, chosen by spike S0)" → "`no-output` silencing (spike S0)".
 - **§13, settle-mechanism row:** rewritten for the poll mechanism. Its risk is now that the poll is too slow or costs too much at 100 windows; the mitigation is that spike S0 measured it, and the bench re-measures it.
