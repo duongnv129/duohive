@@ -1,0 +1,6 @@
+[files]
+extend-exclude = ["target/", "*.lock", "crates/duohive-cli/tests/fixtures/"]
+
+[default.extend-words]
+ratatui = "ratatui"
+Ratatui = "Ratatui"
