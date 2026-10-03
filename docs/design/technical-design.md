@@ -23,6 +23,7 @@ DuoHive is a Rust app built on Ratatui. For v1 it runs as **one process**, organ
 | Status | CLI hooks, then tmux activity, then a screen read on settle | Exact where possible, cheap at scale, honest (`~`) where guessed |
 | Concurrency | tokio; the core is one task that owns all state | Commands are processed in order, with no locks in business logic |
 | Storage | `org.toml` for the org; `settings.toml` for personal settings; SQLite (WAL) for live state | The org stays shareable and hand-editable; live state stays local |
+| Supported CLIs | Claude Code and OpenCode in v1; Codex is deferred to after v1 | Two CLIs done well before a third; each CLI is one adapter behind the `CliAdapter` port, so adding Codex later changes no other layer |
 | Agents' tools | MCP through a `duohive mcp` helper per agent, authenticated by a per-launch token | Every supported CLI speaks MCP; the helper finds DuoHive by socket |
 | CLI settings | Hooks, MCP and instructions passed per launch | The user's global CLI configuration is never modified |
 | Approvals | DuoHive never auto-approves a CLI prompt and passes no auto-approve flags of its own | Commit, push, merge, publish and delete wait for the user, for every agent (PRD) |
@@ -40,7 +41,7 @@ DuoHive is a Rust app built on Ratatui. For v1 it runs as **one process**, organ
             │  └───────┬──────────────────┬────────────────────┬───────────────────┘  │
             │          ▼                  ▼                    ▼                      │
             │   Runtime port        CLI adapter port      Storage port                │
-            │   (tmux impl)         Claude·Codex·OpenCode (SQLite + TOML)             │
+            │   (tmux impl)         Claude·OpenCode       (SQLite + TOML)             │
             └──────────┬──────────────────┬────────────────────┬──────────────────────┘
                        ▼                  ▼                    ▼
                tmux -L duohive     agent CLIs and hooks   ~/.config, ~/.local/share
@@ -54,7 +55,7 @@ Dependencies point inward only:
 |---|---|---|
 | **Core** | Org model and inheritance, agent lifecycle, status engine, inbox, Duo's actions and chat, approval cards, worktree rules, task-to-role picking | tmux, terminals, SQL, the TUI, MCP |
 | **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Notifier`, `Git` | Any implementation |
-| **Adapters** | tmux runtime, the three CLI adapters, SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
+| **Adapters** | tmux runtime, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
 | **Interfaces** | TUI; MCP endpoint | Each other |
 
 ### 3.2 Command/event boundary
@@ -78,7 +79,7 @@ Commands and events are plain serialisable enums. When the core moves into a bac
 |---|---|
 | `duohive-core` | Domain, ports, engine. No I/O |
 | `duohive-tmux` | `Runtime` over tmux (control mode, windows, flow control, subscriptions) |
-| `duohive-cli` | `CliAdapter` for Claude Code, Codex, OpenCode |
+| `duohive-cli` | `CliAdapter` for Claude Code and OpenCode |
 | `duohive-store` | `Store` over SQLite, `org.toml` and `settings.toml` |
 | `duohive-tui` | Ratatui views, input, layout |
 | `duohive-mcp` | MCP endpoint and the `duohive mcp` helper |
@@ -92,7 +93,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 
 | Source | Mechanism | Gives |
 |---|---|---|
-| **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the CLI's JSON payload from stdin, authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
+| **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
 | **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Every pane except the selected one is paused by flow control, so it sends no `%output`. Activity comes instead from a control-mode format subscription on each agent window's activity time (`refresh-client -B`, tmux ≥ 3.2; one window per agent, so `#{window_activity}` is the agent's), which tmux reports about once a second when it changes | Activity times, which feed "quiet" and trigger settle reads |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
@@ -167,10 +168,10 @@ A fresh launch:
 | | Standing instructions | Hooks | MCP | Model, effort | Duo's chat replies (§6.5) |
 |---|---|---|---|---|---|
 | Claude Code | `--append-system-prompt` | per-launch `--settings` file | `--mcp-config` | `--model`; effort setting | transcript path in the hook payload |
-| Codex | per-launch `-c` override | per-launch `notify` plus approval events | `-c mcp_servers…` | `-m`, `-c model_reasoning_effort` | notify's last message, plus its session log |
 | OpenCode | DuoHive-owned agent definition, selected through an environment variable | DuoHive plugin | same config | provider and model config | the plugin's events |
 
-- **Spike first:** each mechanism is verified by a short spike against the pinned CLI version before its adapter is written. Where a mechanism is missing, the fallback is a temporary instructions file in the run directory, never the user's global configuration.
+- **v1 CLIs:** Claude Code and OpenCode only. Codex is deferred to after v1; it would be a third adapter with its own spike.
+- **Spike first:** each mechanism is verified by a short spike against the pinned CLI version before its adapter is written (S1 Claude Code, S2 OpenCode). Where a mechanism is missing, the fallback is a temporary instructions file in the run directory, never the user's global configuration.
 - **Model and effort lists:** read from each CLI at runtime, never hard-coded. While loading, the form shows "loading models…"; on failure, the user can type a name.
 - **Version check:** each adapter declares the CLI versions it was tested on. An untested version still runs, with a notice on the agent's row.
 
@@ -251,7 +252,7 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 ### 6.5 Duo chat
 
 - **Input:** the user's chat line goes into Duo's inbox as a "you" message. It is typed in when Duo is at rest; otherwise it is queued and shown as queued in the chat.
-- **Replies:** each adapter extracts Duo's reply at the end of a turn (§5.2): Claude Code from the transcript path in its hook payload; Codex from notify's last message plus its session log; OpenCode from its plugin events. Each is verified in that CLI's spike.
+- **Replies:** each adapter extracts Duo's reply at the end of a turn (§5.2): Claude Code from the transcript path in its hook payload; OpenCode from its plugin events. Each is verified in that CLI's spike.
 - **Transcript:** chat lines, action lines and card results are stored in a `chat` table in `state.db`, so the history survives restarts.
 - **Duo's own CLI prompts:** when Duo's CLI asks for approval, Duo becomes waiting and joins Needs you; the user answers in the agent pane by selecting Duo.
 
@@ -297,7 +298,7 @@ Errors are shown where they apply, never only in a log.
 | Layer | How |
 |---|---|
 | Core | Unit tests with fake ports and an injected clock. They cover inheritance and prompt stacking, every transition of the state machine (§4.2), quiet, Needs you and alerts, giving work by state, the inbox and its limits, token rights, approval cards, task-to-role picking and worktree rules |
-| CLI adapters | Snapshot tests of each built launch command; parsing of recorded hook payloads, screen captures and Duo replies from pinned CLI versions |
+| CLI adapters | For Claude Code and OpenCode: snapshot tests of each built launch command; parsing of recorded hook payloads, screen captures and Duo replies from pinned CLI versions |
 | tmux runtime | Integration tests on a real tmux with a throwaway socket. They cover start, send, flow control, activity subscriptions, exit statuses and pane reads |
 | Git | Integration tests on throwaway repos for normal, squash and rebase merge detection |
 | TUI | Ratatui `TestBackend` snapshots at 80×24 and 160×48 for every screen, and key and mouse tests for every action |
@@ -328,7 +329,7 @@ Errors are shown where they apply, never only in a log.
 
 | PRD phase | Built here |
 |---|---|
-| 1. Org and agents | Spike S0 and the adapter spikes; `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli`; a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
+| 1. Org and agents | Spike S0 and the adapter spikes (S1 Claude Code, S2 OpenCode); `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli` (the Claude Code and OpenCode adapters); a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
 | 2. One screen | `duohive-tui`: agent pane (watch and type), Needs you, notifications, Give work with the worktree option; the UI/UX improvement pass at the end |
 | 3. Duo and messaging | `duohive-mcp` and tokens, inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
 | 4. Scale and polish | Performance targets at 100 agents on the release benchmark, flow-control tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor |
@@ -343,4 +344,5 @@ Errors are shown where they apply, never only in a log.
 | The settle mechanism doesn't work as planned: subscriptions don't report for paused panes, report too slowly, or cost too much at 100 windows | Spike S0 before `duohive-tmux`; fallback: one `list-windows` activity query per second for all agents |
 | Flow control does not quiet busy panes enough at 100 agents | Measured by the basic `bench` in phase 1; fallback: pause unselected panes harder and read on settle only |
 | Ratatui pre-1.0 breaking changes | Pinned version, deliberate upgrades |
+| Users whose agents run on Codex can't use DuoHive for them in v1 | Codex is deferred to after v1, not ruled out: it is one more adapter and spike behind the same `CliAdapter` port |
 | Single process: work pauses while DuoHive is closed | Accepted for v1; the command/event boundary makes a background service a later move |
