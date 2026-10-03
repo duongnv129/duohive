@@ -1,0 +1,40 @@
+
+     `/learn-codebase` is available if the user wants to front-load the entire repo into memory in a single pass (~5 
+     minutes on a typical repo, optional). Otherwise memory builds passively as work happens.
+
+     Live activity: http://localhost:37777
+     ✨ Get up to 100% more usage from your plan — memory runs off-plan, free for up to 14 days 
+     https://cmem.ai/pro?from=welcome-hint         
+     How it works: `/how-it-works`
+                                                                                                                      
+     This message disappears once the first observation lands.
+
+     View Observations Live @ http://localhost:37777             
+     ✨ Get up to 100% more usage from your plan — memory runs off-plan, free for up to 14 days 
+     https://cmem.ai/pro?from=session-start                                                                          
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔ tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and reattach for focus tracking ▔
+   Manage MCP servers
+   24 servers                             
+                                                                                                
+     User MCPs (/HOME/.claude.json)
+   ❯ ✔ example                              26 tools
+
+     claude.ai                                                
+     ✔ claude.ai Connector                  32 tools
+     ✔ claude.ai Claude Docs                8 tools 
+     ⚠ claude.ai draw.io                    needs authentication                                
+     ⚠ claude.ai Excalidraw                 needs authentication
+     ⚠ claude.ai Google Drive               needs authentication
+     ⚠ claude.ai Mermaid Chart              needs authentication
+     ⚠ claude.ai Supericons                 needs authentication
+     ⚠ claude.ai Three.js 3D Viewer         needs authentication
+     → Show unused connectors               11 hidden               
+                                                                                                                    
+     Built-in MCPs (always available)                                                                                 
+     ✔ duohive                              1 tool                                                                    
+     ✔ plugin:claude-mem:mcp-search         17 tools                                                                  
+     ✔ plugin:ecc:chrome-devtools           30 tools
+     ✔ plugin:obsidian-second-brain:vault   12 tools
+
+   https://code.claude.com/docs/en/mcp for help                                                                     
+   ↑/↓ to navigate · Enter to confirm · Esc to cancel                                                                   
