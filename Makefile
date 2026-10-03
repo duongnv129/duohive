@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := help
 
 CARGO_HOME ?= $(HOME)/.cargo
-TYPOS_VERSION := 1.42.3
+TYPOS_VERSION := 1.50.3
 CARGO_DENY_VERSION := 0.20.2
 CARGO_LLVM_COV_VERSION := 0.9.1
 TYPOS_BIN := $(CARGO_HOME)/bin/typos
@@ -42,7 +42,7 @@ cov: ## Build an HTML coverage report
 doc: ## Build the API docs
 	cargo doc --workspace --no-deps --all-features
 
-# typos-cli is pinned (TYPOS_VERSION) because newer releases need rustc 1.95 (the repo pins 1.90); CI's crate-ci/typos uses the same version (1.42.3).
+# Tool versions are pinned so local results match CI; CI's crate-ci/typos uses TYPOS_VERSION too. Bump them together.
 tools: ## Install cargo-deny, typos and cargo-llvm-cov
 	cargo install --locked cargo-deny@$(CARGO_DENY_VERSION) typos-cli@$(TYPOS_VERSION) cargo-llvm-cov@$(CARGO_LLVM_COV_VERSION)
 	rustup component add llvm-tools-preview
