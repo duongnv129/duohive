@@ -40,7 +40,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 | Jira or any ticket system | Work is given in plain language, directly or through Duo; integrations come after the core is proven |
 | Reviving or forking an agent's old conversation | A stopped agent starts fresh. Simpler, and enough to test the hypothesis |
 | Diff review inside DuoHive | Agents and git already cover review; not core to "managing a team" |
-| A git worktree per agent | Standing agents own their own directory; worktrees are a later option (see Open Questions) |
 | Shared task lists and file locks | Duo and messaging cover coordination for v1 |
 | Shell terminals nested under agents | Not needed to manage agents |
 | Custom CLIs beyond Claude Code, OpenCode, Codex | Three well-supported CLIs first; pluggable CLIs later |
@@ -61,7 +60,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do standing agents beat the session-per-task model for people other than the author? (validate in interviews)
-- [ ] Is a git worktree per agent needed in v1? Every competitor has it; two agents on one repo may collide.
+- [ ] What happens to a task's worktree when the task is done: kept until you remove it, removed once its branch is merged, or removed when the agent stops?
 - [ ] How much of the org should Duo control? v1 is "talk, plus start and stop"; full control over the structure is undecided.
 - [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
 - [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
@@ -106,11 +105,12 @@ When **I have more work than I can do and a team of AI agents to do it**, I want
 | **Must** | Light at scale: the targets in Success Metrics | A requirement, not a feature: the reason to rebuild |
 | **Must** | Agents keep running when DuoHive closes; reopening reconnects | Standing agents must outlive the app |
 | **Should** | Quick prompt to one agent; type straight into an agent's pane | Fast steering without the chat |
+| **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch | Two agents on one repo don't collide; the manager picks per task |
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
 | **Could** | First-run setup that builds a starter org | Speeds up "time to first team" |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
-| **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, worktrees, shared tasks and locks, nested terminals, custom CLIs | See *What We're NOT Building* |
+| **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, shared tasks and locks, nested terminals, custom CLIs | See *What We're NOT Building* |
 
 ### The org model
 
@@ -140,6 +140,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
 | Directory | Where it works |
 | Prompt | Its standing instructions |
 | Model, effort | Chosen from what the CLI offers |
+| Worktree default | Whether new work runs in a fresh git worktree (on/off); you can change it each time you give work |
 | Status (live) | stopped · starting · working · waiting on you · finished · errored |
 
 - **Inheritance:** a team or role can set any agent field as a default for everything under it.
@@ -160,7 +161,7 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
 | Chat about anything | A normal AI chat |
 | See the org and each agent's screen | "What's blocking the Payments team?" |
 | Message an agent and wait for its answer | "Tell auth-service to rebase and run the tests, then tell me what failed" |
-| Start and stop agents | "Start pay-qa on the login regression" |
+| Start and stop agents, choosing directory or worktree | "Start pay-qa on the login regression, in a worktree" |
 | **Cannot (v1):** create, edit, move or delete teams, roles or agents | The org's structure stays yours |
 
 - **Visible actions:** every action Duo takes appears in the chat as an `→` line.
@@ -218,7 +219,7 @@ The minimum to test the hypothesis is **the Must rows**: an org chart of standin
 
 1. **Install:** `duohive` (one binary; needs tmux and at least one agent CLI).
 2. **First run:** set-up asks your name, creates Duo, then your first team, role and agent (name, CLI, directory, prompt).
-3. **Give work:** select the agent, press `space`, type the task. The agent starts and its status turns to working.
+3. **Give work:** select the agent, press `space`, type the task, and choose where it runs: the agent's own directory, or a fresh git worktree on a new branch (the agent's default is pre-selected). The agent starts and its status turns to working.
 4. **Watch:** the tree shows status and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
 5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
 6. **Close and come back:** quitting DuoHive leaves every agent running, and reopening shows the team exactly as it is.
@@ -232,7 +233,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | # | Phase | Delivers | Status | Depends |
 |---|---|---|---|---|
 | 1 | Org and agents | Define the org (in-app and file), start and stop standing agents on the three CLIs, the org tree with live status | pending | – |
-| 2 | One screen | Agent pane (watch and type), Needs you, notifications, quick prompt | pending | 1 |
+| 2 | One screen | Agent pane (watch and type), Needs you, notifications, quick prompt with the worktree option | pending | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents, the benchmark, first-run setup, model and effort picker, key and mouse completeness | pending | 3 |
 | 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done, 30-day daily-use test passed | pending | 4 |
@@ -255,7 +256,8 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
 | Manager agent | Duo: talk, plus start and stop | Talk only; full control | Useful without the org changing under you |
 | Layout | One screen: tree, agent, chat | Separate views | A manager sees and steers without switching |
-| Scope | Jira, review, worktrees, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
+| Scope | Jira, review, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
+| Worktrees | An option per task: the agent's directory or a fresh worktree, with a per-agent default | Always a worktree (market default); never | Standing agents usually own a repo; worktrees when agents share one |
 | Stack | Rust + Ratatui, tmux-backed | Go + Bubble Tea; own terminal service | Smallest footprint; tmux keeps agents alive and attachable |
 | Name | DuoHive (`duohive`, `dh`); Duo for the agent | Hivly, Cohorai, Myrmi | Personal brand and hive metaphor; clean on registries |
 | Distribution | Open source, Apache-2.0, own repo | Proprietary; fork an existing tool | The author owns and drives the product |
