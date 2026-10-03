@@ -1119,7 +1119,8 @@ The database file and its directory are created owner-only (0600 / 0700); tokens
 
 ```rust
 pub enum ControlLine { Begin { cmd: u64 }, End { cmd: u64 }, Error { cmd: u64 }, Body(String),
-    WindowClose { window: String },   // from "%unlinked-window-close @N" (what tmux 3.2a and 3.7c send, S0.4) or "%window-close @N" Exit { reason: Option<String> }, Other(String) }
+    WindowClose { window: String },   // from "%unlinked-window-close @N" (what tmux 3.2a and 3.7c send, S0.4) or "%window-close @N"
+    Exit { reason: Option<String> }, Other(String) }
 pub struct ControlParser { /* tracks whether inside a %begin block */ }
 impl ControlParser { pub fn feed(&mut self, line: &str) -> ControlLine; }
 pub fn tmux_quote(arg: &str) -> Result<String, QuoteError>;   // single-quoted for a control-mode command line; '\n' → Err(QuoteError::Newline)
@@ -1172,7 +1173,7 @@ impl duohive_core::ports::Runtime for TmuxRuntime {}
 Mechanics:
 - **Server set-up** (`server.rs`, idempotent): if `has-session -t =duohive` fails, `new-session -d -s duohive -n duohive-home -x 160 -y 48 'tail -f /dev/null'` (the keeper window keeps the session when no agent runs). Then `set-option -g remain-on-exit on`, `set-option -g default-size 160x48`.
 - **Connection** (`connection.rs`): one child `tmux -L <socket> -C attach-session -t =duohive`; commands written one per line; replies matched FIFO to `%begin/%end` blocks (oneshot per request); notifications routed to `activity.rs`. On start: the S0.5 silencing (D25), `refresh-client -f no-output,ignore-size` (one command; it covers windows created later), then the activity poll. On EOF or `%exit`, it first tries to reattach: if `tmux -L <socket> has-session -t =duohive` succeeds, it starts a new control client, re-sends the silencing and activity commands, and diffs `list-windows` against its window table, emitting `PaneDied` / `WindowGone` for windows that died or vanished meanwhile; no `ConnectionLost`. Only when the server is gone or the reattach fails → `ConnectionLost { reason }`.
-- **Activity** (`activity.rs`), the S0.5 `poll`: `list-windows -t =duohive -F '#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}'` once a second, diffed against the previous reply. Tabs keep a live pane's empty `pane_dead_status` an empty last field (S0.5). It emits `RuntimeEvent::Activity` on a changed activity time and `PaneDied { agent, window, status }` when a pane turns dead, mapping window → agent through the runtime's table. A table entry lives until its window closes, even after a newer window for the same agent exists, so a late exit still names its own window. A table window missing from a poll reply is gone: `WindowGone { agent, window }`, unless that window was already reported gone.
+- **Activity** (`activity.rs`), the S0.5 `poll`: `list-windows -t =duohive -F "#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}"` once a second, diffed against the previous reply. Tabs keep a live pane's empty `pane_dead_status` an empty last field (S0.5). The format is double-quoted on purpose: tmux turns `\t` into a real tab only inside double quotes, and inside single quotes it passes a literal backslash-t (checked on 3.2a and 3.7c). It emits `RuntimeEvent::Activity` on a changed activity time and `PaneDied { agent, window, status }` when a pane turns dead, mapping window → agent through the runtime's table. A table entry lives until its window closes, even after a newer window for the same agent exists, so a late exit still names its own window. A table window missing from a poll reply is gone: `WindowGone { agent, window }`, unless that window was already reported gone.
 - **start:** `run_dir = cfg.run_root/<agent>`; create it (0700), check every `cmd.files` path is inside it (else `StartFailed`), write `cmd.files` (0600) and `run_dir/launch.sh` (0700):
   ```sh
   #!/bin/sh
@@ -1186,7 +1187,7 @@ Mechanics:
 - **kill:** `kill-window -t <window>` for exactly the window given, never by agent name, so killing an old window can't touch a relaunched one.
 - **paste:** `tmux -L <socket> load-buffer -b <buffer_name> -` as a separate process with the text on stdin (no command-line length or newline limits), then `paste-buffer -d -p -b <buffer_name> -t <id>`, then the submit keys. Failure → `PasteFailed`.
 - **capture:** `capture-pane -p -J -t <id>` → `Screen { text }` (body lines joined with `\n`).
-- **inventory:** `list-windows -t =duohive -F '#{window_id}\t#{@duohive_agent}\t#{pane_dead}\t#{pane_dead_status}\t#{window_activity}'` → `Inventory`; untagged windows (the keeper) skipped.
+- **inventory:** `list-windows -t =duohive -F "#{window_id}\t#{@duohive_agent}\t#{pane_dead}\t#{pane_dead_status}\t#{window_activity}"` (double-quoted so `\t` is a real tab, as in Activity) → `Inventory`; untagged windows (the keeper) skipped.
 
 - [ ] **Step 1: Write the failing integration tests.** `support::TestServer::new()` picks socket `duohive-test-<random hex>` and a temp `run_root`, uses `tmux` from `PATH`, and on `Drop` runs `kill-server`. Programs are `/bin/sh` one-liners; no CLI needed.
 
