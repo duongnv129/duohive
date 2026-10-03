@@ -4,7 +4,7 @@ Living document. Updated in place as decisions change. It covers what DuoHive is
 
 ## 1. What DuoHive is
 
-DuoHive is an open-source terminal app for running an **org of AI coding agents** on your own machine. You lay out your org as a tree (teams, roles, agents), give each agent its standing instructions, directory and CLI, and steer the whole org from one screen, including through **Duong**, a manager agent you chat with.
+DuoHive is an open-source terminal app for running an **org of AI coding agents** on your own machine. You lay out your org as a tree (teams, roles, agents), give each agent its standing instructions, directory and CLI, and steer the whole org from one screen, including through **Duo**, a manager agent you chat with.
 
 It is a new product, built from scratch in its own repository.
 
@@ -21,7 +21,7 @@ It is a new product, built from scratch in its own repository.
 
 ## 3. Who it is for
 
-**v1:** Duong and his team: an engineering manager running 5–10 agents day to day, up to 100 on a capable machine. Published openly on GitHub, but not tuned for outside users yet: opinionated defaults, macOS and Linux, three CLIs.
+**v1:** the author and their team: an engineering manager running 5–10 agents day to day, up to 100 on a capable machine. Published openly on GitHub, but not tuned for outside users yet: opinionated defaults, macOS and Linux, three CLIs.
 
 **Later:** engineering leads and developers who run AI agent teams.
 
@@ -31,13 +31,13 @@ It is a new product, built from scratch in its own repository.
 
 - G1. One screen to see and steer the whole org: who is working, who is waiting on you, and what each agent last said.
 - G2. An org chart, not a session list: teams, roles and standing agents, with settings passed down the tree.
-- G3. A manager agent (Duong) you chat with, which can see the org, message agents, and start or stop them.
+- G3. A manager agent (Duo) you chat with, which can see the org, message agents, and start or stop them.
 - G4. Light enough to forget it is running: the targets in §8.
 - G5. Agents keep running when DuoHive is closed, and DuoHive picks them back up when reopened.
 
 **Non-goals (v1)**
 
-- Agents that supervise and delegate to other agents (a chain of command). The tree organises; you direct the work, alone or through Duong.
+- Agents that supervise and delegate to other agents (a chain of command). The tree organises; you direct the work, alone or through Duo.
 - Jira or any ticket system; `/tickets` and `/assign`.
 - Reviving or forking an agent's earlier conversation.
 - Reviewing an agent's git diff inside DuoHive.
@@ -50,7 +50,7 @@ It is a new product, built from scratch in its own repository.
 ## 5. The org model
 
 ```
-Duong (you, the manager)         ← root; your manager agent lives here
+You (the manager)                ← root; your manager agent, Duo, lives here
 ├── Team: Payments               ← optional grouping (team or project)
 │   ├── Role: Backend            ← a role holds one or more agents
 │   │   ├── auth-service         ← agent (standing teammate)
@@ -88,7 +88,7 @@ Duong (you, the manager)         ← root; your manager agent lives here
 **Lifecycle.**
 
 - **Starting:** an agent starts when you give it work (a quick prompt, an `@` message, or typing into it), never just because DuoHive opened. So 100 defined agents cost nothing until they are used.
-- **Stopping:** it stops when you stop it, when Duong stops it, or when its CLI exits. Its next piece of work starts a fresh session.
+- **Stopping:** it stops when you stop it, when Duo stops it, or when its CLI exits. Its next piece of work starts a fresh session.
 - **Deleting:** only a stopped agent can be deleted.
 
 **Where the org lives.**
@@ -97,22 +97,22 @@ Duong (you, the manager)         ← root; your manager agent lives here
 - **Saving:** it is saved to a plain, readable file (`~/.config/duohive/org.toml`) that you can keep in git or share with your team. DuoHive writes it; you never have to edit it by hand, but hand edits are picked up on the next start.
 - **Live state:** which session belongs to which agent, and the chat history, is kept separately on your machine, so the shareable file stays clean.
 
-## 6. The manager agent: Duong
+## 6. The manager agent: Duo
 
-The root of the tree is **Duong**, a manager agent: a Claude Code, OpenCode or Codex session you chat with about anything. It is how you talk to your whole org from one place.
+The root of the tree is you, and your manager agent is **Duo**: a Claude Code, OpenCode or Codex session you chat with about anything. It is how you talk to your whole org from one place. It is named Duo by default (you plus Duo make the duo in DuoHive), and you can rename it in Settings.
 
-| Duong can | Example |
+| Duo can | Example |
 |---|---|
 | Answer anything | A normal AI chat |
 | See the org: agents, roles, teams, status, and what each agent's screen shows | "What's blocking the Payments team?" |
 | Message any agent and wait for its answer | "Tell auth-service to rebase and run the tests, then tell me what failed" |
 | Start and stop agents | "Start pay-qa on the login regression" |
 
-| Duong cannot (v1) | Why |
+| Duo cannot (v1) | Why |
 |---|---|
 | Create, edit, move or delete teams, roles or agents | The org's structure stays yours; it changes only through your own keys or clicks |
 
-- **Visible actions:** every action Duong takes appears in the chat as an `→` line (`→ start pay-qa`, `→ @auth-service rebase…`), so nothing happens out of sight.
+- **Visible actions:** every action Duo takes appears in the chat as an `→` line (`→ start pay-qa`, `→ @auth-service rebase…`), so nothing happens out of sight.
 - **Approvals stay with you:** commit, push, merge, publish and delete still wait for you, whichever agent is asked.
 
 ## 7. Features (v1)
@@ -124,7 +124,7 @@ Everything a manager needs is on one screen, with three panes always visible.
 ```
  DuoHive · 12 agents · 3 working · 1 waiting on you                           ? keys
 ┌ Org ───────────────────────────────────────────┐┌ auth-service · Claude · ~/code/auth-service ────┐
-│ ★ Duong · manager                      ● idle  ││ ✓ go test ./... (14 passed)                     │
+│ ★ You · manager                        ● idle  ││ ✓ go test ./... (14 passed)                     │
 │ ├─ ▣ Payments                    1 waiting     ││ ● Pushed branch fix/retry-loop                  │
 │ │  ├─ ◇ Backend                                ││                                                 │
 │ │  │  ├─ auth-service          ● working 2m    ││ ❯                                               │
@@ -140,9 +140,9 @@ Everything a manager needs is on one screen, with three panes always visible.
 ├ Needs you (1) ─────────────────────────────────┤│                                                 │
 │ ◆ billing-api  "Allow edit…"                   ││                                                 │
 └────────────────────────────────────────────────┘└─────────────────────────────────────────────────┘
-┌ Duong ● idle ─────────────────────────────────────────────────────────────────────────────────────┐
+┌ Duo ● idle ───────────────────────────────────────────────────────────────────────────────────────┐
 │ 10:05 you    what's blocking the Payments team?                                                   │
-│ 10:05 Duong  billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
+│ 10:05 Duo    billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
 │              → @auth-service "push when tests pass"                               delivered 10:05 │
 │ ❯ _                                                                                               │
 └───────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -151,7 +151,7 @@ Everything a manager needs is on one screen, with three panes always visible.
 
 **Org pane.**
 
-- **Tree:** a connector-line tree with Duong at the root. Teams are marked ▣ and roles ◇; agents show by name.
+- **Tree:** a connector-line tree with you at the root and Duo as your manager agent. Teams are marked ▣ and roles ◇; agents show by name.
 - **Status column:** ● working, ◆ waiting on you, ✓ finished, ○ stopped, ✕ errored, with how long the agent has been in that state.
 - **Last reply:** each agent's last reply sits under its name. `v` hides it for a compact view.
 - **Folding:** a folded group shows a count and a roll-up (`▣ Growth (3) ● 1 working`).
@@ -163,9 +163,9 @@ Everything a manager needs is on one screen, with three panes always visible.
 - **Typing:** typing in the pane goes straight to the agent; `ctrl+q` returns to the tree.
 - **Zoom:** `z` zooms the pane to full screen and back.
 
-**Chat pane (Duong).**
+**Chat pane (Duo).**
 
-- **Plain text** goes to Duong.
+- **Plain text** goes to Duo.
 - **`@agent text`** messages an agent directly; it is typed in once the agent is at rest, never onto an approval prompt.
 - **Commands:** `/help` lists commands; `/agents` lists agents with status.
 - **Suggestions:** typing `/` or `@` opens a list to pick from.
@@ -181,18 +181,18 @@ Everything a manager needs is on one screen, with three panes always visible.
 
 | Flow | What happens |
 |---|---|
-| First run | No org yet: a 3-step setup asks your name, creates Duong, then your first team, role and agent |
+| First run | No org yet: a 3-step setup asks your name, creates Duo, then your first team, role and agent |
 | Add | New team, role or agent through a form; values inherited from above show greyed until overridden |
 | Edit, move, delete | On any node; delete only when its agents are stopped |
 | Give work | A one-line prompt to the selected agent, which starts it if stopped |
 | Type into an agent | Talk to it directly in its pane |
-| Start / stop | Per agent, or through Duong |
+| Start / stop | Per agent, or through Duo |
 | Notify | A desktop alert when an agent waits on you or finishes; clicking it selects that agent |
 | Settings | Default tool, model and effort; key bindings; notifications; theme |
 
 ### 7.3 Agents talking to agents
 
-Agents, including Duong, can message each other through DuoHive's tools (MCP): send a message, check it arrived, read another agent's screen, wait for it to finish. Messages are queued and delivered only when the receiving agent is at rest.
+Agents, including Duo, can message each other through DuoHive's tools (MCP): send a message, check it arrived, read another agent's screen, wait for it to finish. Messages are queued and delivered only when the receiving agent is at rest.
 
 ### 7.4 Every action, by key and by mouse
 
@@ -233,7 +233,7 @@ Measured with a benchmark that ships with DuoHive, on an Apple M-series machine,
 
 ## 11. Success measures
 
-- **Daily driver:** Duong runs his daily work (5–10 agents) on DuoHive instead of his current tool.
+- **Daily driver:** the author runs their daily work (5–10 agents) on DuoHive instead of his current tool.
 - **Performance:** every target in §8 is met on the release benchmark.
 - **Org from scratch:** a new user can install DuoHive, create an org of 3 agents and give each work in under 10 minutes, following only the README.
 
@@ -246,6 +246,6 @@ Measured with a benchmark that ships with DuoHive, on an Apple M-series machine,
 ## 13. Open items
 
 - **UI/UX improvement pass** on the one-screen layout and the org tree, after v1 is in daily use.
-- **Duong's control:** stays at "talk, plus start and stop agents"; full control over the org's structure is a later decision.
+- **Duo's control:** stays at "talk, plus start and stop agents"; full control over the org's structure is a later decision.
 - **After-v1 candidates:** revive and fork; Jira; diff review; worktrees; chain of command (agents that delegate to agents).
 - **Pre-launch name checks:** trademark, crate, repository and domain.
