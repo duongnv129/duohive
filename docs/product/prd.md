@@ -66,7 +66,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 
 ## Open Questions
 
-- [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
 
 ---
 
@@ -88,6 +87,8 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 **Non-users (v1)**
 
 - **Someone running one agent at a time:** the CLI alone is enough.
+
+**Secondary user: the task runner.** A developer who just wants several tasks run in parallel and doesn't care which agent does which. They start from the **Agent Squad** template and give tasks to the squad, never to a named agent, so the org model costs them nothing.
 - **Someone who wants a GUI, a web board or cloud agents:** DuoHive is local and terminal-first.
 - **Someone who wants fully autonomous multi-agent pipelines:** v1 keeps a human in charge.
 - **Windows-native users:** tmux is required.
@@ -113,7 +114,8 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch, removed automatically once that branch is merged | Two agents on one repo don't collide; the manager picks per task |
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
-| **Could** | First-run setup that builds a starter org | Speeds up "time to first team" |
+| **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
+| **Must** | Give a task to a role: a free agent in it takes the task; if none is free, Duo proposes a new agent through an approval card | Task runners never have to pick a teammate |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
 | **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, shared tasks and locks, nested terminals, custom CLIs | See *What We're NOT Building* |
 
@@ -223,6 +225,20 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
   - the chat history survives restarts.
 - **Moving and sizing:** `tab` or a click moves between panes. On a small terminal, the agent pane shrinks first.
 
+### Setup templates
+
+Templates give a ready-made org in seconds; everything they create stays editable. They are offered at first run and later through "New org from template".
+
+| Template | What you get | For |
+|---|---|---|
+| **Agent Squad** | One role, Generalist, with N agents (default 3) sharing one directory and CLI. Give a task to the squad, and a free agent takes it | Task runners who want parallel work |
+| **Product Team** | One team with Backend, Frontend and QA roles, one agent each, with a starter prompt per role | A small team shipping stories |
+| **Engineering Org** | Several teams you name, each with Backend and QA roles and its own repo | Managers running many projects |
+| **Blank** | Only you and Duo | Advanced users who build their own |
+
+- **Agent Squad tasks:** with a squad, tasks go to the role, not to an agent. Worktrees default to **on**, so squad agents never collide in the shared directory.
+- **More templates later:** the set can grow, and saving your own org as a template is a later candidate.
+
 ### UX principles
 
 Every screen is checked against these before it ships.
@@ -243,7 +259,7 @@ The minimum to test the hypothesis is **the Must rows**: an org chart of standin
 ### User flow: install to a working team
 
 1. **Install:** `duohive` (one binary; needs tmux and at least one agent CLI).
-2. **First run:** set-up asks your name, creates Duo, then your first team, role and agent (name, CLI, directory, prompt).
+2. **First run:** set-up asks your name, creates Duo, then offers the templates (Agent Squad, Product Team, Engineering Org, Blank). You pick one, fill in its directories and CLI, and the org is ready; edit anything afterwards.
 3. **Give work:** select the agent, press `space`, type the task, and choose where it runs: the agent's own directory, or a fresh git worktree on a new branch (the agent's default is pre-selected). The agent starts and its status turns to working.
 4. **Watch:** the tree shows status and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
 5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
@@ -269,7 +285,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | 1 | Org and agents | Define the org (in-app and file), start and stop standing agents on the three CLIs, the org tree with live status | pending | – |
 | 2 | One screen | Agent pane (watch and type), Needs you, notifications, quick prompt with the worktree option | pending | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions | pending | 2 |
-| 4 | Scale and polish | Performance targets met at 100 agents, the benchmark, first-run setup, model and effort picker, key and mouse completeness | pending | 3 |
+| 4 | Scale and polish | Performance targets met at 100 agents, the benchmark, first-run setup with templates, model and effort picker, key and mouse completeness | pending | 3 |
 | 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
 
 - **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status.
@@ -286,6 +302,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 |---|---|---|---|
 | Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; confirmed by the primary user, who assigns story subtasks to teammates by role; delegation deferred |
 | Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
+| Two kinds of user | Setup templates (Agent Squad, Product Team, Engineering Org, Blank) and tasks given to a role | Managers only; task-per-session mode | One product serves managers and task runners; the org model stays intact |
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
 | Manager agent | Duo: talk, start and stop agents, and propose org changes you approve | Talk only; start/stop only; full control | A story never stalls on a missing agent, and the org never changes without your say-so |
