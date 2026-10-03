@@ -220,8 +220,8 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **Duo:** Duo's own live terminal. When Duo's CLI asks a question, Duo is waiting and joins Needs you; you answer here.
 
 ```
-┌─ ⬢ Duo · Codex · your manager agent ─────────────────────┐
-│ codex wants to run: gh pr list --state open              │
+┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────┐
+│ opencode wants to run: gh pr list --state open           │
 │ Allow? (y) yes  (n) no                                   │
 │                                                          │
 │ (Duo's own terminal: answer its CLI's prompts here)      │
@@ -309,7 +309,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 Three steps, shown once, when no org exists. Every field has a sensible default; `enter` on the last field moves to Next. `esc` on step 1 asks whether to quit; on later steps it goes back.
 
-**Step 1: you and Duo.** DuoHive lists the CLIs it found and their versions. A CLI that isn't installed has its radio disabled, `(-)`.
+**Step 1: you and Duo.** DuoHive lists the supported CLIs it found (Claude Code and OpenCode in v1) and their versions. A CLI that isn't installed has its radio disabled, `(-)`.
 
 ```
 ┌─ Welcome to DuoHive · step 1 of 3 ───────────────────────────────────┐
@@ -318,8 +318,8 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 │  Duo, your manager agent, helps you steer it.                        │
 │                                                                      │
 │  Your name     [ Duong_______________ ]                              │
-│  Duo runs on   ( ) Claude Code  (•) Codex  (-) OpenCode              │
-│                found: claude 2.1 · codex 0.9 · opencode not found    │
+│  Duo runs on   (•) Claude Code  (-) OpenCode                         │
+│                found: claude 2.1 · opencode not found                │
 │                                                                      │
 │  enter next · esc quit (asks first)      [ Next → ]   [ Quit ]       │
 └──────────────────────────────────────────────────────────────────────┘
@@ -330,10 +330,9 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 ```
 ┌─ DuoHive needs an agent CLI ─────────────────────────────────────────┐
 │                                                                      │
-│  None of Claude Code, Codex or OpenCode was found on your PATH.      │
+│  Neither Claude Code nor OpenCode was found on your PATH.            │
 │                                                                      │
 │    Claude Code  claude.ai/code                                       │
-│    Codex        github.com/openai/codex                              │
 │    OpenCode     opencode.ai                                          │
 │                                                                      │
 │  Install at least one, then run duohive again.                       │
@@ -371,7 +370,7 @@ Agent Squad (worktrees default to on; 1–100 agents):
 │                                                                      │
 │  Agents        [ 3 ]  (1–100)                                        │
 │  Directory     [ ~/code/my-app____________________ ]  ✓ git repo     │
-│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
+│  CLI           (•) Claude Code  (-) OpenCode                         │
 │  Worktrees     [x] new work runs in its own worktree                 │
 │  Role prompt   [ You are a careful engineer. Keep changes small; ]   │
 │                [ run the tests before you say you are done.     ]    │
@@ -387,7 +386,7 @@ Product Team:
 ┌─ Set up Product Team · step 3 of 3 ──────────────────────────────────┐
 │                                                                      │
 │  Team name     [ Product_____________ ]                              │
-│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
+│  CLI           (•) Claude Code  (-) OpenCode                         │
 │  Backend dir   [ ~/code/api_______________ ]  ✓ git repo             │
 │  Frontend dir  [ ~/code/web_______________ ]  ✓ git repo             │
 │  QA dir        [ ~/code/api_______________ ]  ✓ git repo             │
@@ -403,7 +402,7 @@ Engineering Org (one "team name + repo" row per team):
 ```
 ┌─ Set up Engineering Org · step 3 of 3 ───────────────────────────────┐
 │                                                                      │
-│  CLI           (•) Claude Code  ( ) Codex  (-) OpenCode              │
+│  CLI           (•) Claude Code  (-) OpenCode                         │
 │  Teams         name                 repo                             │
 │              [ Payments_______ ]  [ ~/code/payments____ ] ✓          │
 │              [ Growth_________ ]  [ ~/code/growth______ ] ✓          │
@@ -490,7 +489,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 │                                                                              │
 │  Duo                                                                         │
 │    Name        [ Duo______ ]                                                 │
-│    Runs on     [ Codex ▾ ]   changing it restarts Duo (asks first)           │
+│    Runs on     [ OpenCode ▾ ]   changing it restarts Duo (asks first)        │
 │  Defaults for every agent                                                    │
 │    CLI         [ Claude Code ▾ ]   Model [ sonnet ▾ ]   Effort [ high ▾ ]    │
 │    Worktrees   [ off ▾ ]                                                     │
@@ -890,11 +889,11 @@ Errors are shown where they apply, with how to fix them.
 ```
 ┌─ Org ────────────────────────────────────────────────────────────────┐
 │ ⬢ Duo · your manager agent          ✕ errored    1m                  │
-│     codex exited at start (code 127) · e Edit org                    │
+│     opencode exited at start (code 127) · e Edit org                 │
 │ ├─ ▣ Payments                                                        │
 │ │  ├─ ◇ Backend                                                      │
 │ │  │  ├─ auth-service               ✕ errored    2m                  │
-│ │  │  │   codex not found · install it or change its CLI (e)         │
+│ │  │  │   opencode not found · install it or change its CLI (e)      │
 │ │  │  ├─ billing-api                ○ stopped    1d                  │
 │ │  │  │   ✕ ~/code/billing not found · e to fix                      │
 │ │  │  ├─ pay-api                    ✕ errored    5m                  │
@@ -962,7 +961,7 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 
 ## 7. Copy
 
-- **Short and specific:** say what happened and what to do next ("codex not found · install it or change its CLI (e)").
+- **Short and specific:** say what happened and what to do next ("opencode not found · install it or change its CLI (e)").
 - **Name the agent:** use the agent's name, not "the agent".
 - **"You" and "Duo":** "you" for the user and "Duo" for the manager agent; never "the system".
 - **One verb for work:** "Give work" is the only user-facing term for handing an agent a task.

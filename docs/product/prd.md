@@ -29,7 +29,7 @@ Developers and engineering leads now run several AI coding agents at once (Claud
 
 ## Proposed Solution
 
-DuoHive is an open-source terminal app that runs your agents as an **org chart**: teams, roles and **standing agents**, each with its own name, instructions, directory and CLI, which you steer from **one screen**. At the root of the tree sits **Duo**, a manager agent you chat with; Duo can see the whole org, message any agent and start or stop them, so you direct the team in plain language instead of hopping between panes. DuoHive stays light enough to forget it is running, from 10 to 100 agents.
+DuoHive is an open-source terminal app that runs your agents as an **org chart**: teams, roles and **standing agents**, each with its own name, instructions, directory and CLI (Claude Code or OpenCode in v1), which you steer from **one screen**. At the root of the tree sits **Duo**, a manager agent you chat with; Duo can see the whole org, message any agent and start or stop them, so you direct the team in plain language instead of hopping between panes. DuoHive stays light enough to forget it is running, from 10 to 100 agents.
 
 We chose standing agents in an org chart over the market's session-per-task model because the problem is not "run tasks in parallel", which existing tools do well. The problem is "manage a team of agents over days": knowing who does what, giving each one standing instructions once, and seeing the whole team at a glance.
 
@@ -49,7 +49,8 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 | Diff review inside DuoHive | Agents and git already cover review; not core to "managing a team" |
 | Shared task lists and file locks | Duo and messaging cover coordination for v1 |
 | Shell terminals nested under agents | Not needed to manage agents |
-| Custom CLIs beyond Claude Code, OpenCode, Codex | Three well-supported CLIs first; pluggable CLIs later |
+| Codex | Deferred to after v1: focus on two CLIs, Claude Code and OpenCode, done well; Codex is a later candidate |
+| Custom CLIs beyond Claude Code and OpenCode | Two well-supported CLIs first; pluggable CLIs later |
 | Windows, accounts, cloud sync, telemetry | Local-first and private; Windows lacks tmux (WSL2 best effort) |
 
 ## Success Metrics
@@ -74,7 +75,7 @@ None. All were resolved on 2026-10-03; each answer is in the Decisions Log. Inte
 
 **Primary user**
 
-- **Who:** an engineering manager or tech lead who runs 5–10 AI coding agents across several repos, often for different projects or teams.
+- **Who:** an engineering manager or tech lead who runs 5–10 AI coding agents on Claude Code or OpenCode across several repos, often for different projects or teams.
 - **Current behaviour:** opens agents in tmux panes or a session-manager TUI, retypes each agent's instructions, and checks panes one by one to find who is stuck.
 - **Trigger:** a new batch of work (a sprint, a set of fixes) to spread across agents, or the moment several agents are waiting at once and it's unclear which.
 - **Success state:** opens one screen, sees the whole team, asks Duo what is blocked, and unblocks it, without opening a single pane unless they want to.
@@ -91,6 +92,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 - **Someone who wants a GUI, a web board or cloud agents:** DuoHive is local and terminal-first.
 - **Someone who wants fully autonomous multi-agent pipelines:** v1 keeps a human in charge.
 - **Windows-native users:** tmux is required.
+- **Codex-only users:** v1 supports Claude Code and OpenCode; Codex is deferred to after v1.
 
 **Secondary user: the task runner.** A developer who just wants several tasks run in parallel and doesn't care which agent does which. They start from the **Agent Squad** template and give tasks to its Generalist role, never to a named agent, so the org model costs them nothing.
 
@@ -103,7 +105,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | Priority | Capability | Rationale |
 |---|---|---|
 | **Must** | Org chart: teams → roles → standing agents, edited in-app, saved to a shareable file; one org per install | The core of the hypothesis |
-| **Must** | Agent definition: name, CLI, flags, directory, prompt, model, effort; inherited from team and role, prompts stack | Instructions written once, not per session |
+| **Must** | Agent definition: name, CLI (Claude Code or OpenCode), flags, directory, prompt, model, effort; inherited from team and role, prompts stack | Instructions written once, not per session |
 | **Must** | One screen: org tree with live status and last reply, the selected agent's live terminal, chat with Duo | See and steer the whole team at a glance |
 | **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them, and propose org changes you approve through approval cards; every action visible | Direct the team in plain language |
 | **Must** | Agent-to-agent messages, delivered only when the receiver is at rest. Each sender is identified by a per-launch secret token DuoHive issues, never by a name anyone can set | Duo, and agents, can coordinate safely; no agent can pose as Duo to start a delegation chain |
@@ -118,7 +120,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
 | **Must** | Give a task to a role: a free agent in it takes the task; if none is free, Duo proposes a new agent through an approval card | Task runners never have to pick a teammate |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
-| **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, shared tasks and locks, nested terminals, custom CLIs | See *What We're NOT Building* |
+| **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, shared tasks and locks, nested terminals, Codex (deferred to after v1), custom CLIs | See *What We're NOT Building* |
 
 ### The org model
 
@@ -143,7 +145,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
 | Agent field | Meaning |
 |---|---|
 | Name | Unique; how you address it (`@auth-service`) |
-| CLI | Claude Code, OpenCode or Codex |
+| CLI | Claude Code or OpenCode |
 | Flags | Extra options passed to the CLI |
 | Directory | Where it works |
 | Prompt | Its standing instructions |
@@ -186,7 +188,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
 
 ### Duo, the manager agent
 
-Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" is the default name, since you and Duo make the duo in DuoHive; you can rename it. Changing Duo's CLI restarts Duo after a confirmation.
+Duo is a Claude Code or OpenCode session at the root of your org. "Duo" is the default name, since you and Duo make the duo in DuoHive; you can rename it. Changing Duo's CLI restarts Duo after a confirmation.
 
 | Duo can | Example |
 |---|---|
@@ -248,7 +250,7 @@ The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); th
 ```
 
 - **Status you can trust:**
-  - **Exact where reported:** Claude Code reports its state through hooks, Codex through its notify calls and approval requests, OpenCode through its events. Those states show plainly.
+  - **Exact where reported:** Claude Code reports its state through hooks, OpenCode through its events. Those states show plainly.
   - **Marked where read:** where a CLI reports nothing, DuoHive reads its screen and marks the state with `~`.
   - **Quiet agents surface:** a working agent with no output and no hook for the quiet threshold shows "quiet" and joins **Needs you**, so a stuck agent shows up even on a CLI that reports little.
 - **Org pane:**
@@ -298,12 +300,12 @@ Every screen is checked against these before it ships.
 
 ### MVP scope
 
-The minimum to test the hypothesis is **every Must row**: an org chart of standing agents on all three CLIs, the one screen, Duo with chat, start and stop and approval cards, agent messaging, Needs you and alerts, honest status, setup templates, task to a role, agents that outlive the app, and the performance targets. Phases 1–4 deliver them. Should and Could items ship if they fit; they don't block the 30-day daily-use test.
+The minimum to test the hypothesis is **every Must row**: an org chart of standing agents on both v1 CLIs (Claude Code and OpenCode), the one screen, Duo with chat, start and stop and approval cards, agent messaging, Needs you and alerts, honest status, setup templates, task to a role, agents that outlive the app, and the performance targets. Phases 1–4 deliver them. Should and Could items ship if they fit; they don't block the 30-day daily-use test.
 
 ### User flow: install to a working team
 
 1. **Install:** `duohive` (one binary; needs tmux and at least one agent CLI).
-2. **First run:** set-up asks your name, creates Duo, then offers the templates (Agent Squad, Product Team, Engineering Org, Blank). You pick one, fill in its directories and CLI, and the org is ready; edit anything afterwards.
+2. **First run:** set-up asks your name, creates Duo, then offers the templates (Agent Squad, Product Team, Engineering Org, Blank). You pick one, fill in its directories and CLI (Claude Code or OpenCode), and the org is ready; edit anything afterwards.
 3. **Give work:** select the agent, press `space`, type the task, and choose where it runs: the agent's own directory, or a fresh git worktree on a new branch (the agent's default is pre-selected). The agent starts and its status turns to working. An agent that is finished or idle takes the task as its next turn instead.
 4. **Watch:** the tree shows status and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
 5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
@@ -326,7 +328,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 
 | # | Phase | Delivers | Status | Depends |
 |---|---|---|---|---|
-| 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on the three CLIs, the org tree with live status, a basic `bench` | pending | – |
+| 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | pending | – |
 | 2 | One screen | Agent pane (watch and type), Needs you, notifications, Give work with the worktree option; the UI/UX improvement pass at the end | pending | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents on the release benchmark, first-run setup with templates (Agent Squad needs task to a role, phase 3), model and effort picker, key and mouse completeness, the key-binding editor | pending | 3 |
@@ -345,6 +347,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Decision | Choice | Alternatives | Rationale |
 |---|---|---|---|
 | Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; confirmed by the primary user, who assigns story subtasks to teammates by role; delegation deferred |
+| Supported CLIs | Claude Code and OpenCode in v1; Codex deferred to after v1 (decided 2026-10-03) | Claude Code, OpenCode and Codex in v1 | Two CLIs done well beat three done thinly; Codex stays a later candidate |
 | Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
 | Two kinds of user | Setup templates (Agent Squad, Product Team, Engineering Org, Blank) and tasks given to a role | Managers only; task-per-session mode | One product serves managers and task runners; the org model stays intact |
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
