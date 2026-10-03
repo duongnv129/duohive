@@ -67,7 +67,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
-- [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
 - [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
 - [ ] What should the UI/UX improvement pass change once v1 is in daily use?
 
@@ -109,6 +108,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them, and propose org changes you approve; every action visible | Direct the team in plain language |
 | **Must** | Agent-to-agent messages, delivered only when the receiver is at rest | Duo, and agents, can coordinate safely |
 | **Must** | "Needs you" list and desktop notifications | Nobody stuck unnoticed |
+| **Must** | Honest status: exact where the CLI reports its state, marked `~` where DuoHive is reading the screen, and "quiet" for an agent unchanged too long | You always know how much to trust a status, and a silent agent can't hide |
 | **Must** | Light at scale: the targets in Success Metrics | A requirement, not a feature: the reason to rebuild |
 | **Must** | Agents keep running when DuoHive closes; reopening reconnects | Standing agents must outlive the app |
 | **Should** | Quick prompt to one agent; type straight into an agent's pane | Fast steering without the chat |
@@ -148,7 +148,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
 | Prompt | Its standing instructions |
 | Model, effort | Chosen from what the CLI offers |
 | Worktree default | Whether new work runs in a fresh git worktree (on/off); you can change it each time you give work |
-| Status (live) | stopped · starting · working · waiting on you · finished · errored |
+| Status (live) | stopped · starting · working · waiting on you · finished · errored · quiet. A `~` before the state (`~ working`) means DuoHive is reading the screen rather than hearing it from the CLI; "quiet 5m" means nothing has changed for 5 minutes (the threshold is a setting) |
 
 - **Inheritance:** a team or role can set any agent field as a default for everything under it.
   - **Prompts stack:** org, then team, then role, then agent. For example, "API URLs use hyphens" is written once, on the Backend role.
@@ -207,6 +207,10 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
  tab next pane · enter type into agent · space prompt agent · s start/stop · n new · e edit · z zoom
 ```
 
+- **Status you can trust:**
+  - **Exact where reported:** Claude Code reports its state through hooks, Codex through its notify calls and approval requests, OpenCode through its events. Those states show plainly.
+  - **Marked where read:** where a CLI reports nothing, DuoHive reads its screen and marks the state with `~`.
+  - **Quiet agents surface:** an agent whose state and output haven't changed for the quiet threshold shows "quiet" and joins **Needs you**, so a stuck agent shows up even on a CLI that reports little.
 - **Org pane:**
   - a connector-line tree, with status and how long each agent has been in that state;
   - the last reply under each agent, which you can hide for a compact view;
@@ -274,6 +278,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
 | Manager agent | Duo: talk, start and stop agents, and propose org changes you approve | Talk only; start/stop only; full control | A story never stalls on a missing agent, and the org never changes without your say-so |
+| Status honesty | Exact states from each CLI; `~` when read from the screen; "quiet" after a threshold, surfaced in Needs you | Always look confident; exact status for fully-hooked CLIs only | The manager knows how far to trust each status, on every CLI |
 | Layout | One screen: tree, agent, chat | Separate views | A manager sees and steers without switching |
 | Scope | Jira, review, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
 | Worktrees | An option per task: the agent's directory or a fresh worktree, with a per-agent default | Always a worktree (market default); never | Standing agents usually own a repo; worktrees when agents share one |
