@@ -7,12 +7,17 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Install the toolchain from rust-toolchain.toml
@@ -23,6 +28,7 @@ jobs:
 
   deny:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
@@ -31,6 +37,7 @@ jobs:
 
   typos:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@v1.42.3
@@ -38,6 +45,7 @@ jobs:
   test:
     name: test (${{ matrix.os }}, tmux ${{ matrix.tmux }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -58,7 +66,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/tmux-*
-          key: tmux-${{ runner.os }}-${{ runner.arch }}-${{ steps.tmux.outputs.version }}
+          key: tmux-${{ runner.os }}-${{ runner.arch }}-${{ steps.tmux.outputs.version }}-${{ hashFiles('.github/scripts/install-tmux.sh') }}
       - name: Install tmux ${{ steps.tmux.outputs.version }}
         run: bash .github/scripts/install-tmux.sh "${{ steps.tmux.outputs.version }}"
       - name: Install the toolchain from rust-toolchain.toml

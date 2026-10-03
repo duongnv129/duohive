@@ -11,7 +11,7 @@ case "$(uname -s)" in
     sudo apt-get install -y libevent-dev libncurses-dev bison pkg-config
     ;;
   Darwin)
-    brew install libevent ncurses pkg-config bison
+    brew install libevent ncurses pkg-config bison utf8proc jemalloc
     # These formulae are keg-only: expose them to configure and make.
     for formula in libevent ncurses bison; do
       keg="$(brew --prefix "${formula}")"

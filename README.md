@@ -23,6 +23,7 @@ DuoHive is an open-source terminal app that runs your agents as an org chart, st
 
 ```sh
 cargo build --release
+make tools   # once: install the pinned dev tools
 make check   # format, lint, test, dependency and spelling checks
 ```
 

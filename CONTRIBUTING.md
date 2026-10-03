@@ -13,7 +13,7 @@ Thank you for helping. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Workflow
 
 - Write the test first, then the code. The exceptions are infrastructure, spikes and acceptance tasks that have no code under test.
-- Run `make check` before every commit. It runs the same commands as CI: format check, clippy, tests, `cargo deny` and `typos`.
+- Run `make tools` once to install the pinned dev tools, then `make check` before every commit. It runs the same commands as CI: format check, clippy, tests, `cargo deny` and `typos`.
 - Use conventional commit types: `feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`.
 
 ## Where the truth lives
