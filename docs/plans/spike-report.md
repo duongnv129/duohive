@@ -242,7 +242,139 @@ S0.5 differs from TD §4.1 (`poll` instead of subscriptions; silencing named as 
 
 ## S1 Claude Code
 
-(Task 4)
+Code: `spikes/s1-claude/` (`launch.sh`, `record-hook.sh`, `mcp-dummy.py`, `cap.sh`, `keys.sh`, `export.py`). `launch.sh <agent> [task]` writes `settings.json` (hooks), `mcp.json` and `command.txt` to `/tmp/duohive-spike/run/<agent>/` and starts `claude` in a window of `tmux -L duohive-spike` (120×40, `remain-on-exit on`, a clean environment with no `CLAUDE*` variables), with `DUOHIVE_TOKEN` set on the window. Every hook runs `record-hook.sh <agent> <ClaudeEvent>`, which saves stdin to `hooks/<ClaudeEvent>-<n>.json` and a line to `hooks/index.log`. `export.py` copies the raw captures into the fixtures with home paths changed to `/HOME`, emails and the user name replaced, and thinking signatures (opaque blobs that embed account ids) blanked; nothing else is changed.
+
+Fixtures: `crates/duohive-cli/tests/fixtures/claude/2.1.288/` (paths below are relative to it). Screens are raw `capture-pane -p -J` output, padding included (`.editorconfig` keeps it).
+
+Scenarios, all with `--model haiku` in the throwaway directory `/private/tmp/duohive-spike/work` (new to Claude Code at the start), on 2026-10-04:
+
+| Agent | Scenario | Hooks (`hooks/index.log`) |
+|---|---|---|
+| a1 | start with no task; trust dialog answered "Yes" | `SessionStart-1` |
+| a1 | sentinel turn | `UserPromptSubmit-1`, `Stop-1` |
+| a1 | write `hello.txt`, approval answered Yes | `UserPromptSubmit-2`, `PreToolUse-1`, `PermissionRequest-1`, `Notification-1`, `PostToolUse-1`, `Stop-2` |
+| a1 | write `no.txt`, approval answered No | `UserPromptSubmit-3`, `PreToolUse-2`, `PermissionRequest-2`, `Notification-2`, then nothing |
+| a1 | two-line task pasted with `paste-buffer -p`, then `Enter` | `UserPromptSubmit-4`, `Stop-3` |
+| a1 | quit with `/exit` `Enter` | `SessionEnd-1` |
+| a2 | start with a task (`--effort low`) | `SessionStart-2`, `UserPromptSubmit-5`, `Stop-4` |
+| a2 | turn, then `kill -9` of the `claude` process mid-turn | `UserPromptSubmit-6`, then nothing |
+
+### S1.1 Version
+
+`claude --version` → `2.1.288 (Claude Code)`. Regex: `^(\d+)\.(\d+)\.(\d+) \(Claude Code\)$`; the first two groups are the tested major.minor (`2.1`). The binary is `~/.local/share/claude/versions/2.1.288`, reached through `claude` on `PATH`. The `SessionStart` payload does not carry the version; the transcript entries do (`"version":"2.1.288"`, `replies/transcript-a1.jsonl`).
+
+### S1.2 Standing instructions
+
+`--append-system-prompt "<text>"`, appended to Claude Code's own system prompt (the default prompt, tools and the user's CLAUDE.md stay). Verified by the sentinel: instructions "If you are asked for the sentinel, reply with the single word HIVE-SENTINEL and nothing else", task "What is the sentinel?", reply `HIVE-SENTINEL` (`replies/Stop-1.last_assistant_message.txt`, `screens/at-rest-after-turn.txt`; again as a first prompt in `replies/Stop-4.last_assistant_message.txt`). a1 ran in a directory with no earlier session, so the answer did not come from a memory plugin.
+
+### S1.3 Hooks
+
+Configured by one per-launch file, `--settings <run>/settings.json`, in the standard shape `{"hooks": {"<Event>": [{"matcher": "", "hooks": [{"type": "command", "command": "<cmd> <agent> <Event>"}]}]}}`. Each hook gets its JSON payload on **stdin**, so `duohive hook` reads it there, as TD §4.1 assumes. `DUOHIVE_TOKEN`, set on the tmux window, reached every hook (`token=set` on every line of `hooks/index.log`). The hook's parent process is the `claude` process, which is the pane process. Every payload has `session_id`, `transcript_path`, `cwd` and `hook_event_name`; all but `SessionStart` also have `prompt_id`.
+
+| Claude Code hook (matcher) | DuoHive event | Fires | Payload fields used | Fixture |
+|---|---|---|---|---|
+| `SessionStart` (`""`; payload `source` is `startup`) | `session-start` | once the input box is ready, after the trust dialog if one is shown | `model` (resolved id, e.g. `claude-haiku-4-5-20251001`), `transcript_path` | `hooks/SessionStart-1.json`, `hooks/SessionStart-2.json` |
+| `UserPromptSubmit` (`""`) | `busy` | when a prompt is submitted, a first-prompt task included | `prompt` (multi-line kept) | `hooks/UserPromptSubmit-1.json` … `-6.json` |
+| `PreToolUse` (`""`) | `busy` | before each tool call, before its approval prompt | `tool_name`, `tool_input` | `hooks/PreToolUse-1.json`, `-2.json` |
+| `PostToolUse` (`""`) | `busy` | after a tool ran; the first hook after an approval answered Yes | `tool_name` | `hooks/PostToolUse-1.json` |
+| `PermissionRequest` (`""`) | `needs-input` | at once when the approval prompt is shown (same second as `PreToolUse`) | `tool_name`, `tool_input` (the prompt text for the card) | `hooks/PermissionRequest-1.json`, `-2.json` |
+| `Notification` (`""`; `notification_type` = `permission_prompt`) | `needs-input` (backup) | about 6 s after the approval prompt is shown | `message` ("Claude needs your permission") | `hooks/Notification-1.json`, `-2.json` |
+| `Stop` (`""`) | `turn-end` | when a turn ends normally | `last_assistant_message` (S1.4) | `hooks/Stop-1.json` … `-4.json` |
+| `StopFailure` (`""`) | `turn-end` | registered; did not fire (it is for turns ended by an API error) | — | none |
+| `SessionEnd` (`""`) | `session-end` | on `/exit` | `reason` (`prompt_input_exit`) | `hooks/SessionEnd-1.json` |
+
+Also registered and never fired: `PermissionDenied` (it reports denials by auto mode's classifier, not the user's "No"). `Notification` with `idle_prompt` did not fire within 90 s at rest (a2, after `Stop-4`), so it is not used. The `PermissionRequest` hook prints nothing, so it makes no decision and the prompt still shows (`screens/approval-write.txt`); the adapter must never return a decision from it (TD §2).
+
+**Coverage:** all five DuoHive events have a hook (`HookCoverage` complete, `last_reply` from a hook). Three gaps are not events but transitions with no hook, and go to the other sources (S1.13):
+
+- **Approval answered No:** the turn ends with "User rejected write to …" and the prompt returns, but no `Stop`, `PostToolUse` or `PermissionDenied` fires (`hooks/index.log` after `Notification-2`; `screens/after-approve-no.txt`). The agent stays `needs-input` until a settle read finds it at rest.
+- **Trust dialog:** appears before `SessionStart` (S1.8), so a new directory sits in `starting` with no hook.
+- **Crash:** `kill -9` fires no `SessionEnd`; tmux reports the death (S1.9).
+
+Global settings still apply: `--settings` adds to the user's settings, so the user's own hooks and plugins run too (here a memory plugin's `SessionStart` output and "4 async Stop hooks completed" appear on screen, `screens/at-rest-no-task.txt`, `screens/approval-write.txt`). DuoHive's hooks are additional and do not depend on them.
+
+### S1.4 Last reply
+
+- **Hook:** `Stop` carries the final assistant text as `last_assistant_message` (`hooks/Stop-2.json`: "File created at `/private/tmp/duohive-spike/work/hello.txt` with content \"hi\"."). Extracted as-is to `replies/Stop-<n>.last_assistant_message.txt`. This is the primary source; no file read is needed.
+- **Transcript (fallback):** `transcript_path`, `~/.claude/projects/<cwd with / and . as ->/<session_id>.jsonl`, one JSON object per line. Many entry types (`attachment`, `mode`, `permission-mode`, `last-prompt`, `ai-title`, `system`, `file-history-snapshot`) surround the conversation; only `type: "user"` and `type: "assistant"` matter (`replies/transcript-a1.jsonl` keeps only those). An assistant message is split over several entries, one per content block (`thinking`, `text`, `tool_use`), sharing `message.id`.
+- **Extraction rule (transcript):** skip entries with `isSidechain: true`; a turn starts at a `user` entry whose `message.content` is a string (tool results are arrays); the reply is the `text` blocks of the last `assistant` message (`message.id`) in that turn that has any, joined. Applied to `replies/transcript-a1.jsonl`, it gives exactly `last_assistant_message` for all three completed turns (`HIVE-SENTINEL`, the `hello.txt` line, `OK`). The denied turn has no text; its tool result entry carries `"toolDenialKind": "user-rejected"`.
+
+### S1.5 MCP
+
+`--mcp-config <run>/mcp.json` with `{"mcpServers": {"duohive": {"type": "stdio", "command": "python3", "args": [".../mcp-dummy.py"]}}}`. The `/mcp` dialog lists it as `✔ duohive  1 tool` (`screens/mcp-list.txt`), with no approval dialog (unlike a project `.mcp.json`). It is not written anywhere: the project's entry in `~/.claude.json` keeps `mcpServers: {}` (S1.12). The tool's name for Claude is `mcp__duohive__ping`; it was not called (that would show an approval prompt, like any MCP tool). `--strict-mcp-config` exists to drop the user's other servers; DuoHive does not pass it, so the user's servers stay available.
+
+### S1.6 Model and effort
+
+- **Flags:** `--model <alias|full id>` (aliases in `--help`: `fable`, `opus`, `sonnet`; `haiku` also works and resolved to `claude-haiku-4-5-20251001`, `hooks/SessionStart-1.json`). `--effort <low|medium|high|xhigh|max>`.
+- **Effort on a model without it:** `--effort low` with Haiku 4.5 starts with no error; the `/model` picker says "Effort not supported for Haiku 4.5" (`screens/model-picker.txt`) and, on Opus 5.5, "Low effort" (`screens/model-picker-opus.txt`), so the flag applies where supported and is ignored otherwise.
+- **Listing:** no non-interactive model listing ("no listing"). The only list is the `/model` picker, whose Enter "becomes the default for new sessions", a write to the user's settings, so DuoHive never drives it (it was closed with `Esc`; `~/.claude/settings.json` unchanged, `screens/model-closed.txt`). Fallback: read the `--model` aliases and the `--effort` choices from `claude --help` at runtime, and let the user type any other model.
+
+### S1.7 Screens
+
+Rules match the screen with trailing blank rows dropped and each line's trailing whitespace trimmed. The last two lines are the status line (here the user's own custom one) and the mode line (`⏸ manual mode on`), so rules must not use the last line; they anchor on the input box, a `❯` line between two full-width `─` rules.
+
+| State | Distinguishing text | Fixture |
+|---|---|---|
+| Trust dialog (start-up) | `Quick safety check: Is this a project you created or one you trust?` and `Yes, I trust this folder`; the default choice is `❯ No, exit`, so `Enter` alone quits | `screens/startup-trust.txt` |
+| Working | a line just above the input box matching `^\S (\S.*)… \(\d+s` (spinner glyph, verb, `…`, elapsed time), e.g. `✽ Elucidating… (1s)`, `· Architecting… (2s · thinking)` | `screens/working-1.txt`, `screens/working-2.txt`, `screens/working-3.txt` |
+| Approval prompt | no input box; `Do you want to …?` then `❯ 1. Yes` … `3. No` and `Esc to cancel · Tab to amend` | `screens/approval-write.txt`, `screens/approval-write-2.txt` |
+| At rest | input box present, no working line; after a turn the line above it is `✻ <Verb>ed for <n>s · done <time>` (no `…`) | `screens/at-rest-no-task.txt`, `screens/at-rest-after-turn.txt`, `screens/after-approve-yes.txt`, `screens/after-approve-no.txt`, `screens/with-task-done.txt` |
+| Exited | `Resume this session with:` and `claude --resume <id>`, then tmux's `Pane is dead (status 0, …)` | `screens/after-exit.txt` |
+| Killed | the last frame, then tmux's `Pane is dead (signal kill, …)` | `screens/after-kill9.txt` |
+
+Other screens: a slash-command menu while `/exit` is typed (`screens/exit-typed.txt`), the `/mcp` and `/model` dialogs (`screens/mcp-list.txt`, `screens/model-picker.txt`), and the multi-line paste in the input box (`screens/paste-before-enter.txt`). 1.5 s after a launch with a task the screen was still blank (`screens/startup-with-task-1s.txt`).
+
+### S1.8 Ready
+
+- **Without a first prompt:** `SessionStart` (`source: startup`) fires when the input box is drawn, about 1–2 s after launch in a trusted directory. Typing before that is not needed: DuoHive sends no keys until then.
+- **With a first prompt** (`claude … "<task>"`): `SessionStart` then `UserPromptSubmit` for the task one second later (`hooks/index.log` 00:46:30 → 00:46:31); the task is submitted by Claude Code itself, with no keys.
+- **Start-up prompts:** the workspace-trust dialog, shown the first time Claude Code runs in a directory (`screens/startup-trust.txt`). It comes before `SessionStart`, so no hook fires until it is answered; with a first prompt, the task waits behind it. Answering "Yes" records `hasTrustDialogAccepted: true` for that directory in `~/.claude.json` (Claude Code's own write, S1.12); later launches there show no dialog (a2). It is an approval, so DuoHive does not answer it: the screen rule marks the agent waiting `~` and the user answers in the pane. In the spike it was answered with `Down`, `Enter`. Also seen: a one-line tmux notice above the `/mcp` dialog, "tmux focus-events off · add 'set -g focus-events on' …" (`screens/mcp-list.txt`), which is not a prompt; DuoHive's own tmux config can set `focus-events on`. Login and update prompts did not appear (the account was signed in, and the pinned version was current); their text is not captured here.
+
+### S1.9 Quit
+
+`/exit` typed (`send-keys -l /exit`), then `Enter`: exit status 0 (`#{pane_dead_status}` 0) and `SessionEnd` with `reason: "prompt_input_exit"` (`hooks/SessionEnd-1.json`, `screens/after-exit.txt`). The slash-command menu that opens while typing does not change what `Enter` runs (`screens/exit-typed.txt`). Quit keys: `Text("/exit")`, `Enter`. Killed with `kill -9`: `#{pane_dead}` 1, `#{pane_dead_status}` empty and `#{pane_dead_signal}` `kill`; no `SessionEnd` (`screens/after-kill9.txt`, `hooks/index.log`), and Claude Code records `lastGracefulShutdown: false` for the project.
+
+### S1.10 Paste
+
+`load-buffer` of a two-line task, `paste-buffer -p` (bracketed paste), then `Enter`: both lines land in the input box without submitting (`screens/paste-before-enter.txt`), and `Enter` submits them as one turn: one `UserPromptSubmit` whose `prompt` is `"This is a two-line task.\nReply with the single word OK and use no tools."` (`hooks/UserPromptSubmit-4.json`), reply `OK` (`replies/Stop-3.last_assistant_message.txt`). Submit key: `Enter`.
+
+### S1.11 Approvals untouched
+
+The launch command (`/tmp/duohive-spike/run/<agent>/command.txt`) is `claude --append-system-prompt … --settings … --mcp-config … --model haiku [--effort low] [task]`: no `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--permission-mode` or `--allowedTools`. Every payload has `permission_mode: "default"`, and a file write prompted both times (`screens/approval-write.txt`, `screens/approval-write-2.txt`, `hooks/PermissionRequest-1.json`). Option 2 of the prompt ("Yes, and switch to accept edits … for this session") is the user's to choose.
+
+### S1.12 Global config untouched
+
+| File | Before | After a full cycle (2 launches, 6 turns, `/exit`, `kill -9`) |
+|---|---|---|
+| `~/.claude/settings.json` | `347192aa21dc3e027cbd40f7f1812787cd0d0d65` | `347192aa21dc3e027cbd40f7f1812787cd0d0d65` (equal) |
+| `~/.claude.json` | `17702bf40022d9cc7ddb1276f7b921ce02e40fd1` | `59551d442f544281ce910ac47f2d7a62d32ceb96` (changed) |
+
+There is no `~/.claude/settings.local.json`. `~/.claude.json` is Claude Code's own state file, rewritten by every running session: it changed between two checksums taken before any spike launch (`5057922…` → `17702bf…`) while other sessions ran. A key-level diff of before and after shows, from the spike's launches:
+
+- `projects["/private/tmp/duohive-spike/work"]` added: `hasTrustDialogAccepted: true` (from answering the trust dialog), the last session's cost, tokens, durations and id, `lastGracefulShutdown: false` (after the `kill -9`), and empty `allowedTools`, `mcpServers`, `enabledMcpjsonServers`;
+- counters: `numStartups`, `tipsHistory`, `tipLifetimeShownCounts`, `pluginUsage.*`.
+
+The rest of the diff (another project's stats, cache slots) came from other sessions. All of it is Claude Code's normal bookkeeping for any launch; nothing DuoHive passes per launch (hooks, MCP server, instructions, model, effort) was persisted. So the S1.12 check for the adapter is: `~/.claude/settings.json` byte-equal, and in `~/.claude.json` the launched directory's `allowedTools` and `mcpServers` stay empty.
+
+### S1.13 Fallbacks and TD changes
+
+No mechanism is missing: instructions, hooks, MCP, model and effort are all per-launch flags, so no temporary file in `run/<agent>/` is needed beyond the `--settings` and `--mcp-config` files themselves. The gaps and their fallbacks:
+
+| Gap | Fallback | Fixture |
+|---|---|---|
+| Approval answered No: no hook leaves `needs-input` | tmux activity, then the settle read: input box, no working line → at rest | `hooks/index.log`, `screens/after-approve-no.txt` |
+| Approval answered Yes: no hook at the answer itself | `PostToolUse` (or `Stop`) moves the agent back to `busy`/`turn-end` | `hooks/PostToolUse-1.json` |
+| Trust dialog before `SessionStart` | screen rule → waiting `~`; the user answers it (`startup_prompts` true) | `screens/startup-trust.txt` |
+| Crash: no `SessionEnd` | pane death from the activity poll; a signal death has an empty `#{pane_dead_status}`, so the poll also reads `#{pane_dead_signal}` | `screens/after-kill9.txt` |
+| No model listing | `--model` aliases and `--effort` choices from `claude --help`; other models typed | `screens/model-picker.txt` |
+
+TD edits (`docs/design/technical-design.md`):
+
+- **§5.2 Claude Code row:** hooks column names the hook events; "effort setting" → `--effort`; replies column → `last_assistant_message` in the `Stop` payload, with the transcript as fallback.
+- **§5.2 notes:** a "Spike S1" bullet (no fallback file needed; the three gaps above and where they are covered; no model listing and the picker writes the user's default); the model-and-effort bullet says where Claude Code's lists come from.
+- **§6.5 Replies:** Claude Code's reply comes from `last_assistant_message` in the `Stop` payload; the transcript is the fallback.
+- **§4.1 tmux-activity row:** the poll format adds `#{pane_dead_signal}`, as a killed CLI leaves `#{pane_dead_status}` empty; "pane deaths with exit status" → "with exit status or signal".
+- **§5.5 Failed launch or crash:** "the exit status kept by tmux" → "the exit status or signal".
 
 ## S2 OpenCode
 
