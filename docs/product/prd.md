@@ -60,7 +60,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do standing agents beat the session-per-task model for people other than the author? (validate in interviews)
-- [ ] What happens to a task's worktree when the task is done: kept until you remove it, removed once its branch is merged, or removed when the agent stops?
 - [ ] How much of the org should Duo control? v1 is "talk, plus start and stop"; full control over the structure is undecided.
 - [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
 - [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
@@ -105,7 +104,7 @@ When **I have more work than I can do and a team of AI agents to do it**, I want
 | **Must** | Light at scale: the targets in Success Metrics | A requirement, not a feature: the reason to rebuild |
 | **Must** | Agents keep running when DuoHive closes; reopening reconnects | Standing agents must outlive the app |
 | **Should** | Quick prompt to one agent; type straight into an agent's pane | Fast steering without the chat |
-| **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch | Two agents on one repo don't collide; the manager picks per task |
+| **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch, removed automatically once that branch is merged | Two agents on one repo don't collide; the manager picks per task |
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
 | **Could** | First-run setup that builds a starter org | Speeds up "time to first team" |
@@ -150,6 +149,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
   - **Starting:** an agent starts when it is given work, never just because DuoHive opened, so 100 defined agents cost nothing until used.
   - **Stopping:** it stops when you or Duo stop it, or when its CLI exits. Its next task starts a fresh session.
   - **Deleting:** only a stopped agent can be deleted.
+  - **Worktrees:** a task run in a worktree keeps it while the work is in progress. DuoHive removes the worktree once its branch is merged, and never removes one that holds uncommitted changes; an unmerged worktree stays until you remove it.
 - **Where the org lives:** in a readable file you can share or keep in git. DuoHive writes it, and hand edits are picked up on the next start. Live state (sessions, chat history) stays on your machine.
 
 ### Duo, the manager agent
@@ -258,6 +258,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Layout | One screen: tree, agent, chat | Separate views | A manager sees and steers without switching |
 | Scope | Jira, review, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
 | Worktrees | An option per task: the agent's directory or a fresh worktree, with a per-agent default | Always a worktree (market default); never | Standing agents usually own a repo; worktrees when agents share one |
+| Worktree clean-up | Removed automatically once its branch is merged; never while it holds uncommitted changes | Keep until removed by hand; remove when the agent stops | No pile-up of finished worktrees, and no lost work |
 | Stack | Rust + Ratatui, tmux-backed | Go + Bubble Tea; own terminal service | Smallest footprint; tmux keeps agents alive and attachable |
 | Name | DuoHive (`duohive`, `dh`); Duo for the agent | Hivly, Cohorai, Myrmi | Personal brand and hive metaphor; clean on registries |
 | Distribution | Open source, Apache-2.0, own repo | Proprietary; fork an existing tool | The author owns and drives the product |
