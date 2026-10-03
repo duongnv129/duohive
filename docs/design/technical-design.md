@@ -106,7 +106,8 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 
 | From | Event | To |
 |---|---|---|
-| stopped, errored | Give work, `s`, your `@` message, `start_agent` | starting |
+| stopped | Give work, `s`, your `@` message, `start_agent` | starting |
+| errored | Give work, your `@` message, `start_agent` (`s` on an errored agent stops it) | starting |
 | starting | The CLI is ready and has a task | working |
 | starting | The CLI is ready with no task (`s`) | idle |
 | starting | Launch fails: CLI missing, pane dies, or not ready within the timeout | errored |
@@ -118,7 +119,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | finished, idle | New work: a task as the next turn, or a delivered message | working |
 | any running state | Unexpected exit (non-zero status, or the pane dies without the CLI's end hook) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
-| errored | Stopped | stopped |
+| errored | Stopped (`s`, or by Duo) | stopped |
 
 - **Quiet:** an overlay flag on working and starting only. It is set when an agent has had no activity and no hook event for the quiet threshold (default 5 minutes, from `settings.toml`), and cleared by any activity or hook. A waiting agent stays waiting.
 - **Needs you:** waiting agents, quiet agents, errored agents, and every pending card (`CardRaised` adds it, `CardAnswered` removes it). Ordered oldest first by the time each entered its state.
