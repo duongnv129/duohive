@@ -1,0 +1,22 @@
+[package]
+name = "duohive"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+duohive-core = { workspace = true }
+duohive-tmux = { workspace = true }
+duohive-cli = { workspace = true }
+duohive-store = { workspace = true }
+duohive-tui = { workspace = true }
+duohive-mcp = { workspace = true }
+
+[dev-dependencies]
+duohive-core = { workspace = true, features = ["testkit"] }
+toml = { workspace = true }

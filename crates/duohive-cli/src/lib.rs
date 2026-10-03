@@ -1,0 +1,1 @@
+//! duohive-cli crate.
