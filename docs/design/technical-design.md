@@ -128,7 +128,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 ### 4.3 Cost at scale
 
 - **No per-agent polling:** one activity query a second covers every agent (spike S0: about 0.2–0.3 % of a core in the reader at 100 windows).
-- **One full screen at a time:** the selected pane alone streams full output into a terminal emulator; the other 99 send activity reports only.
+- **No pane streams in phases 0–1:** every pane is silenced with `no-output`, so the connection carries only command replies and the once-a-second activity poll. Spike S0 found that `no-output` has no per-pane exception, so the phase-2 live view of the selected agent needs its own path: a second client, or `!no-output` with the other panes paused.
 - **Bounded reads:** a busy agent redrawing a spinner many times a second costs one screen read after it settles.
 
 **Latency budget** (PRD: reported states under 1 s at 10 agents and under 2 s at 100; screen-read states under 2 s):
@@ -333,7 +333,7 @@ Errors are shown where they apply, never only in a log.
 | 1. Org and agents | Spike S0 and the adapter spikes (S1 Claude Code, S2 OpenCode); `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli` (the Claude Code and OpenCode adapters); a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
 | 2. One screen | `duohive-tui`: agent pane (watch and type), Needs you, notifications, Give work with the worktree option; the UI/UX improvement pass at the end |
 | 3. Duo and messaging | `duohive-mcp` and tokens, inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
-| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, flow-control tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor |
+| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor |
 | 5. Open-source launch | The pre-launch UX check, CI release gate, `cargo-dist` release, docs |
 
 ## 13. Risks
