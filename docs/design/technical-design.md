@@ -99,7 +99,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 
 - **A state machine per agent:** `stopped → starting → working ⇄ waiting → finished`, plus `errored`. A hook event moves it exactly; a settled screen read can move it only where the adapter has no hook for that transition, and marks the result `~`.
 - **Quiet:** an agent with no activity and no hook event for the quiet threshold (default 5 minutes, a setting) becomes `quiet` and is added to Needs you. Any activity clears it.
-- **Needs you:** waiting, errored and quiet agents, plus finished agents you have not yet looked at.
+- **Needs you:** waiting, errored and quiet agents. A finished agent raises a desktop alert instead.
 
 ### 4.3 Cost at scale
 
