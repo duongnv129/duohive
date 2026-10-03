@@ -33,6 +33,7 @@ cov: ## Build an HTML coverage report
 doc: ## Build the API docs
 	cargo doc --workspace --no-deps --all-features
 
+# typos-cli is pinned to 1.42.3 because newer releases need rustc 1.95 (the repo pins 1.90); CI's crate-ci/typos uses the same version.
 tools: ## Install cargo-deny, typos and cargo-llvm-cov
 	cargo install --locked cargo-deny typos-cli@1.42.3 cargo-llvm-cov
 	rustup component add llvm-tools-preview
