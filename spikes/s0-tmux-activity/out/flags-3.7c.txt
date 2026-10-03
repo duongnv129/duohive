@@ -1,0 +1,12 @@
+# tmux 3.7c
+no-output => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,no-output,UTF-8|
+ignore-size => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,ignore-size,UTF-8|
+pause-after=1 => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,pause-after=1,UTF-8|
+no-output,ignore-size => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,ignore-size,no-output,UTF-8|
+pause-after=1,ignore-size => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,ignore-size,pause-after=1,UTF-8|
+active-pane => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,active-pane,UTF-8|
+read-only => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,read-only,UTF-8|
+wait-exit => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,wait-exit,UTF-8|
+no-detach-on-destroy => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,no-detach-on-destroy,UTF-8|
+!no-output => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,UTF-8|
+bogus-flag => before|after: attached,focused,control-mode,UTF-8|attached,focused,control-mode,UTF-8|

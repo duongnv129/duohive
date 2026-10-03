@@ -1,0 +1,426 @@
+== 3.2a-no-output
+delay n=116 missing=0 median=0.470s p95=0.899s max=0.976s
+rate/window/s (mean,max): bursty=0.339,0.424, dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000, noisy=0.962,0.983
+min gap between reports per kind (s): bursty=0.995, noisy=0.995
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.01, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791044589
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.14% rss max 12.9 MiB mean 10.3 MiB
+cpu server: 4.54% rss max 8.8 MiB mean 6.0 MiB
+
+== 3.2a-no-output-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000
+min gap between reports per kind (s): 
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.02, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045561
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 2.5 MiB mean 1.4 MiB
+cpu reader: 0.09% rss max 16.6 MiB mean 11.3 MiB
+cpu server: 0.12% rss max 3.8 MiB mean 2.9 MiB
+
+== 3.2a-no-output-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.984,1.000
+min gap between reports per kind (s): noisy=0.987
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.01, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791046774
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.241%
+cpu client: 0.00% rss max 1.3 MiB mean 1.1 MiB
+cpu reader: 0.25% rss max 13.8 MiB mean 10.1 MiB
+cpu server: 9.29% rss max 7.2 MiB mean 5.7 MiB
+
+== 3.2a-no-output-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=1.011,1.011
+min gap between reports per kind (s): noisy=0.995
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.01, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791047679
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.235%
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.23% rss max 13.9 MiB mean 10.6 MiB
+cpu server: 10.09% rss max 11.5 MiB mean 8.8 MiB
+
+== 3.2a-none
+cpu server: 4.82% rss max 6.0 MiB mean 4.7 MiB
+
+== 3.2a-none-idle
+cpu server: 0.00% rss max 3.8 MiB mean 2.4 MiB
+
+== 3.2a-none-noisy
+cpu server: 10.16% rss max 9.3 MiB mean 6.5 MiB
+
+== 3.2a-pause
+delay n=112 missing=0 median=0.470s p95=0.955s max=1.133s
+rate/window/s (mean,max): bursty=0.366,0.449, dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000, noisy=1.000,1.000
+min gap between reports per kind (s): bursty=0.993, noisy=0.992
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 83, after 0; ['%pause %102']
+%pause=103 %continue=0 errors=[]
+dead: [(1.02, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.03, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791044711
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.24% rss max 13.7 MiB mean 10.5 MiB
+cpu server: 6.36% rss max 7.5 MiB mean 5.2 MiB
+
+== 3.2a-pause-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000
+min gap between reports per kind (s): 
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.04, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045602
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.06% rss max 11.3 MiB mean 10.1 MiB
+cpu server: 0.12% rss max 3.2 MiB mean 2.8 MiB
+
+== 3.2a-pause-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.999,1.000
+min gap between reports per kind (s): noisy=0.988
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.02, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.02, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791046866
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.282%
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.28% rss max 9.7 MiB mean 9.7 MiB
+cpu server: 10.81% rss max 9.8 MiB mean 6.4 MiB
+
+== 3.2a-pause-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.991,1.000
+min gap between reports per kind (s): noisy=0.994
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.03, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.03, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit server exited unexpectedly']
+sample window line: %subscription-changed act $0 @1 1 - : 1791047771
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.385%
+cpu client: 0.00% rss max 2.5 MiB mean 1.3 MiB
+cpu reader: 0.38% rss max 16.0 MiB mean 10.8 MiB
+cpu server: 11.37% rss max 10.0 MiB mean 7.8 MiB
+
+== 3.2a-poll
+delay n=112 missing=0 median=0.533s p95=0.975s max=1.094s
+rate/window/s (mean,max): bursty=1.000,1.000, dead=1.000,1.000, idle=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): bursty=0.951, dead=0.951, idle=0.951, keeper=0.951, noisy=0.951
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.02, '@101 1791044832 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: None
+sample pane line: None
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.20% rss max 13.5 MiB mean 10.6 MiB
+cpu server: 5.65% rss max 8.5 MiB mean 5.4 MiB
+
+== 3.2a-poll-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.999,0.999, idle=0.999,0.999, keeper=0.999,0.999
+min gap between reports per kind (s): dead=0.951, idle=0.951, keeper=0.951
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.02, '@101 1791045644 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.283%
+cpu client: 0.00% rss max 1.1 MiB mean 1.1 MiB
+cpu reader: 0.27% rss max 12.9 MiB mean 11.0 MiB
+cpu server: 0.18% rss max 3.6 MiB mean 2.9 MiB
+
+== 3.2a-poll-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): dead=0.950, keeper=0.951, noisy=0.950
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.02, '@101 1791046956 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.201%
+cpu client: 0.00% rss max 1.2 MiB mean 1.1 MiB
+cpu reader: 0.20% rss max 11.8 MiB mean 9.8 MiB
+cpu server: 11.42% rss max 11.0 MiB mean 7.3 MiB
+
+== 3.2a-poll-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): dead=0.941, keeper=0.941, noisy=0.940
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.05, '@101 1791047862 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.239%
+cpu client: 0.00% rss max 1.2 MiB mean 1.1 MiB
+cpu reader: 0.24% rss max 14.0 MiB mean 10.0 MiB
+cpu server: 9.53% rss max 6.9 MiB mean 5.1 MiB
+
+== 3.7c-no-output
+delay n=113 missing=0 median=0.510s p95=0.930s max=0.992s
+rate/window/s (mean,max): bursty=0.355,0.424, dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000, noisy=1.000,1.000
+min gap between reports per kind (s): bursty=0.994, noisy=0.994
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.02, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045076
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.19% rss max 13.1 MiB mean 10.6 MiB
+cpu server: 5.78% rss max 8.6 MiB mean 6.6 MiB
+
+== 3.7c-no-output-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000
+min gap between reports per kind (s): 
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.04, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045726
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.087%
+cpu client: 0.00% rss max 3.1 MiB mean 1.6 MiB
+cpu reader: 0.09% rss max 12.8 MiB mean 10.6 MiB
+cpu server: 0.18% rss max 3.8 MiB mean 3.5 MiB
+
+== 3.7c-no-output-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.999,1.000
+min gap between reports per kind (s): noisy=0.983
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.02, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.02, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791047141
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.352%
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.35% rss max 9.7 MiB mean 9.6 MiB
+cpu server: 11.01% rss max 8.5 MiB mean 6.8 MiB
+
+== 3.7c-no-output-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.994,1.000
+min gap between reports per kind (s): noisy=0.985
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.07, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.07, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791047956
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.389%
+cpu client: 0.00% rss max 2.5 MiB mean 1.6 MiB
+cpu reader: 0.40% rss max 13.8 MiB mean 10.1 MiB
+cpu server: 10.46% rss max 8.4 MiB mean 6.7 MiB
+
+== 3.7c-no-output-noisy-r3
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.982,1.000
+min gap between reports per kind (s): noisy=0.930
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(1.02, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.05, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791048578
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.461%
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.46% rss max 9.7 MiB mean 9.7 MiB
+cpu server: 9.25% rss max 7.2 MiB mean 5.5 MiB
+
+== 3.7c-none
+cpu server: 4.85% rss max 7.8 MiB mean 6.2 MiB
+
+== 3.7c-none-idle
+cpu server: 0.03% rss max 2.8 MiB mean 2.1 MiB
+
+== 3.7c-none-noisy
+cpu server: 10.64% rss max 8.3 MiB mean 6.5 MiB
+
+== 3.7c-pause
+delay n=115 missing=0 median=0.567s p95=0.974s max=1.021s
+rate/window/s (mean,max): bursty=0.361,0.449, dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000, noisy=1.000,1.000
+min gap between reports per kind (s): bursty=0.995, noisy=0.995
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 83, after 0; ['%pause %102']
+%pause=103 %continue=0 errors=[]
+dead: [(1.04, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.03, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045198
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+cpu client: 0.00% rss max 1.6 MiB mean 1.5 MiB
+cpu reader: 0.20% rss max 14.2 MiB mean 10.4 MiB
+cpu server: 5.79% rss max 9.6 MiB mean 6.1 MiB
+
+== 3.7c-pause-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, idle=0.000,0.000, keeper=0.000,0.000
+min gap between reports per kind (s): 
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.01, '%subscription-changed dead $0 @101 101 %101 : 0 '), (19.98, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791045767
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.003%
+cpu client: 0.00% rss max 4.2 MiB mean 1.9 MiB
+cpu reader: 0.08% rss max 14.1 MiB mean 12.0 MiB
+cpu server: 0.15% rss max 4.2 MiB mean 3.5 MiB
+
+== 3.7c-pause-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=1.000,1.000
+min gap between reports per kind (s): noisy=0.994
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.02, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.03, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791047233
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.367%
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.36% rss max 14.2 MiB mean 10.2 MiB
+cpu server: 11.52% rss max 8.7 MiB mean 7.0 MiB
+
+== 3.7c-pause-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.761,0.830
+min gap between reports per kind (s): noisy=0.995
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.03, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.04, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791048049
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.317%
+cpu client: 0.00% rss max 1.9 MiB mean 1.6 MiB
+cpu reader: 0.31% rss max 13.4 MiB mean 10.1 MiB
+cpu server: 10.86% rss max 9.0 MiB mean 6.6 MiB
+
+== 3.7c-pause-noisy-r3
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.000,0.000, keeper=0.000,0.000, noisy=0.822,0.898
+min gap between reports per kind (s): noisy=0.995
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=102 %continue=0 errors=[]
+dead: [(1.03, '%subscription-changed dead $0 @101 101 %101 : 0 '), (20.03, '%subscription-changed dead $0 @101 101 %101 : 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: %subscription-changed act $0 @1 1 - : 1791048485
+sample pane line: %subscription-changed dead $0 @1 1 %1 : 0 
+reader cpu (getrusage, subscribed..end): 0.248%
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.24% rss max 9.7 MiB mean 9.7 MiB
+cpu server: 9.78% rss max 9.9 MiB mean 6.6 MiB
+
+== 3.7c-poll
+delay n=116 missing=0 median=0.478s p95=0.940s max=1.015s
+rate/window/s (mean,max): bursty=1.000,1.000, dead=1.000,1.000, idle=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): bursty=0.944, dead=0.944, idle=0.944, keeper=0.944, noisy=0.944
+%output leaks from silenced panes after silencing: 0
+late window # late-created @102 %102: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.05, '@101 1791045319 1 3')]
+window-close: ['%unlinked-window-close @102'] exit: ['%exit']
+sample window line: None
+sample pane line: None
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.19% rss max 12.9 MiB mean 10.6 MiB
+cpu server: 5.07% rss max 9.6 MiB mean 6.4 MiB
+
+== 3.7c-poll-idle
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=0.999,0.999, idle=0.999,0.999, keeper=0.999,0.999
+min gap between reports per kind (s): dead=0.946, idle=0.946, keeper=0.947
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.02, '@101 1791046690 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.315%
+cpu client: 0.00% rss max 2.6 MiB mean 1.6 MiB
+cpu reader: 0.33% rss max 16.3 MiB mean 10.8 MiB
+cpu server: 0.21% rss max 3.7 MiB mean 3.3 MiB
+
+== 3.7c-poll-noisy
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): dead=0.955, keeper=0.954, noisy=0.954
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.03, '@101 1791047324 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.216%
+cpu client: 0.00% rss max 1.6 MiB mean 1.6 MiB
+cpu reader: 0.21% rss max 14.6 MiB mean 10.8 MiB
+cpu server: 11.11% rss max 8.9 MiB mean 6.9 MiB
+
+== 3.7c-poll-noisy-r2
+delay n=0 missing=0 median=nans p95=nans max=nans
+rate/window/s (mean,max): dead=1.000,1.000, keeper=1.000,1.000, noisy=1.000,1.000
+min gap between reports per kind (s): dead=0.870, keeper=0.873, noisy=0.870
+%output leaks from silenced panes after silencing: 0
+late window None: %output lines before pause point 0, after 0; []
+%pause=0 %continue=0 errors=[]
+dead: [(20.03, '@101 1791048140 1 3')]
+window-close: [] exit: ['%exit']
+sample window line: None
+sample pane line: None
+reader cpu (getrusage, subscribed..end): 0.244%
+cpu client: 0.00% rss max 1.5 MiB mean 1.5 MiB
+cpu reader: 0.24% rss max 14.2 MiB mean 9.8 MiB
+cpu server: 9.29% rss max 7.1 MiB mean 5.4 MiB
+
