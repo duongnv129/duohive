@@ -27,16 +27,17 @@
 - Duo goes straight to idle after a turn and is never "finished".
 - Needs you = waiting, quiet and errored agents (cards arrive in phase 3), oldest first by the time each entered that state.
 - Copy: sentence case; agent names are monospace identifiers, never title-cased; "Give work" is the only term for handing over a task; colour is never the only signal.
-- Tests: unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket (`duohive-test-<random>`), never on `duohive`.
+- Tests: unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket (`duohive-test-<random>`), never on `duohive`. No test calls `std::env::set_var` (unsafe in edition 2024, and the workspace denies `unsafe_code`): code that reads the environment takes a `HashMap<String, String>` (`Paths::from_vars`, `run_hook`), and tests that run the built binary set variables with `Command::env`.
+- Test-first applies to every task except Tasks 2–5 and 30, which are infrastructure, spikes and acceptance with no code under test. They are validated instead by: Task 2, `install-tmux.sh` printing the requested `tmux -V` locally and `actionlint` passing on `ci.yml`; Tasks 3–5, a spike report whose every subsection holds measured values and names the fixture or log that proves it; Task 30, the recorded bench output and the author's working day checked against the state table.
 - Supported CLIs: Claude Code and OpenCode only. Codex is deferred to after v1 (PRD What We're NOT Building); nothing in this plan builds, detects or tests it.
 - Commits: conventional (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`), never a `Co-Authored-By` line; do not push.
 - Spike code is throwaway: it lives under `spikes/`, is excluded from the workspace, and nothing in `crates/` imports it. Recorded fixtures (hook payloads, screen captures) are data and go to `crates/duohive-cli/tests/fixtures/`.
 
 ## Review Focus
 
-1. **A hook must never disturb the agent's CLI.** When DuoHive is closed, the socket is stale, the token is missing, stdin is garbage or the data dir is unwritable, `duohive hook` still exits 0 within 1 s and prints nothing (Claude Code turns hook stdout into context). Worst case: socket connect 200 ms + write 200 ms, then the database fallback's SQLite `busy_timeout` 300 ms, then one append to `logs/hook.log` — about 0.7 s plus process start. Test: Task 22 `hook_never_fails_the_cli`.
+1. **A hook must never disturb the agent's CLI.** When DuoHive is closed, the socket is stale, the token is missing, stdin is garbage or the data dir is unwritable, `duohive hook` still exits 0 within 1 s and prints nothing (Claude Code turns hook stdout into context). Worst case: stdin read deadline 300 ms (a CLI that leaves stdin open and silent), then socket connect 200 ms (a helper thread and `recv_timeout`) + write 150 ms, then the database fallback's SQLite `busy_timeout` 200 ms, then one append to `logs/hook.log` — 850 ms plus process start, opening the database and the log append, under 1 s. Tests: Task 22 `hook_never_fails_the_cli`, `hook_survives_silent_open_stdin`, `hook_survives_an_unreachable_socket`.
 2. **A broken hand edit of `org.toml` is never overwritten.** The banner shows the line and error, the last good org stays in use, and in-app org edits are refused until the file parses, so the user's hand edit survives. Tests: Task 14 `edits_refused_while_org_file_invalid`, Task 16 `unknown_cli_reports_line`.
-3. **Restarting DuoHive while agents run keeps the truth.** Live windows keep their state, hooks fired while DuoHive was closed are replayed in order, a dead pane applies the exit rules, and an agent whose window vanished (reboot) is stopped, not errored. Tests: Task 15 `reconnect_*`, Task 29 `e2e_restart_reconnects`.
+3. **Restarting DuoHive while agents run keeps the truth.** Live windows keep their state, hooks fired while DuoHive was closed are replayed in order before a dead pane applies the exit rules, and an agent whose window vanished (reboot) is stopped, not errored. Tests: Task 15 `reconnect_*`, Task 29 `e2e_restart_reconnects`.
 4. **Task and prompt text reaches the CLI verbatim.** Quotes, newlines, `$(…)`, backticks, a leading `-`, and non-ASCII text are passed literally, never shell-interpreted or split. Tests: Task 19 `launch_script_passes_args_verbatim`, Tasks 20–21 `launch_snapshot_hostile_text`.
 5. **Two DuoHive instances, or a stale `run.sock` after a crash.** A second instance refuses to start with a clear message instead of stealing hooks, and a stale socket file from a crash is replaced. Tests: Task 22 `second_instance_refused`, `stale_socket_replaced`.
 
@@ -79,16 +80,16 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 | # | Decision |
 |---|---|
 | D1 | **Per-launch tokens are generated in phase 1.** Hooks authenticate with them (TD §4.1, §6.1), even though the roadmap lists tokens under phase 3. Phase 3 adds tool rights on top. Token = 32 random bytes, lowercase hex. |
-| D2 | **Three transitions the TD §4.2 table lacks:** `starting → waiting` (trust or login prompt at launch), `waiting → finished/idle` (the turn ends after the user declines), `finished/idle → working` (a new turn the user typed straight into the pane). A hook takes each. As TD §4.2 allows for any transition, a settled screen read takes each only when the adapter has no hook for it (`needs_input`, `turn_end`, `busy` respectively), marked `~`: screen needs-input while starting → waiting, screen at-rest while waiting → finished/idle, screen busy while finished/idle → working. A starting agent whose adapter lacks a hook is read once before the start timeout fires (Task 13), so a trust or login prompt shows as `~◆ waiting` rather than a timeout error. |
+| D2 | **Three transitions the TD §4.2 table lacks:** `starting → waiting` (trust or login prompt at launch), `waiting → finished/idle` (the turn ends after the user declines), `finished/idle → working` (a new turn the user typed straight into the pane). A hook takes each. As TD §4.2 allows for any transition, a settled screen read takes each only when the adapter has no hook for it (`needs_input`, `turn_end`, `busy` respectively), marked `~`: screen needs-input while starting → waiting, screen at-rest while waiting → finished/idle, screen busy while finished/idle → working. One exception: a start-up prompt (Claude Code's workspace trust, a login) appears before the CLI can fire any hook, so a needs-input screen while starting moves the agent to waiting whatever the adapter's hook coverage. A starting agent whose CLI can show a start-up prompt (the adapter's `startup_prompts()`, from Sn.8) is read once before the start timeout fires (Task 13), whatever its hook coverage, so a trust or login prompt shows as `~◆ waiting` rather than a timeout error. |
 | D3 | **Prompt stacking format:** levels joined by a blank line, each under a Markdown heading: `# Org`, `# Team: <name>`, `# Role: <name>`, `# Agent: <name>`. Empty or whitespace-only levels are left out. |
 | D4 | **Names:** agent names match `^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$`, are unique across the org, and may not equal Duo's name. Team names are unique; role names are unique within their parent (team, or the root). Team and role names: 1–40 characters, trimmed, no control characters, no `›`. |
 | D5 | **Duo's directory** is the user's home directory. Phase 1 starts Duo as an ordinary agent with the org prompt only; Duo's fixed prompt and MCP tools arrive in phase 3. |
 | D6 | **Timers:** a start must be ready within 120 s (how this meets quiet: D20); stop grace 5 s; settle read 1.5 s after the last activity change; a starting agent's pre-timeout screen read 5 s before the start timeout (D2). |
 | D7 | **Phase 1 layout:** header, org pane at the UI §3 widths (50 columns at ≥ 100 wide, 32 in the compact layout), and a side pane with the selected node's summary. No chat pane (phase 3), no live terminal (phase 2). A running agent's side pane shows how to attach: `tmux -L duohive attach -t duohive:<agent>`. Needs you is shown but is not a `tab` stop until phase 2. |
-| D8 | **Phase 1 keys:** `↑↓` move, `s` start/stop (on an errored agent, stop: D16), `n` new, `e` edit, `d` delete, `v` last reply on/off, `o` open `org.toml` in `$EDITOR` (then reload), `q`/`ctrl+c` quit. `space` (Give work dialog), `?`, `m`, `f`, `w`, `z`, folding and the mouse arrive in phases 2–4. Give work exists as an engine command now. |
+| D8 | **Phase 1 keys:** `↑↓` move, `s` start/stop (on an errored agent, stop: D16), `n` new, `e` edit, `d` delete, `v` last reply on/off, `o` open `org.toml` in `$EDITOR` (then reload), `q`/`ctrl+c` quit. `space` (Give work dialog), `?`, `m`, `f`, `w`, `z`, `,` (Settings), folding and the mouse arrive in phases 2–4. Give work exists as an engine command now. |
 | D9 | **Agent windows vanished while DuoHive was closed** (reboot) → stopped, without an error. tmux windows with no session row are left running and logged, never killed. |
 | D10 | **`org.toml` is rewritten from the model** on in-app edits, so hand-written comments are lost; the previous file is kept as `org.toml.bak`. Hand edits are re-read at start and after `o`. The last good org is copied to `<data_dir>/org.last-good.toml` after every successful load or save. |
-| D11 | **Role form "Agents [n]"** names new agents `<team-slug>-<role-slug>-<k>` for a role in a team, or `<role-slug>-<k>` for a role directly under Duo, so names stay unique across teams (`payments-frontend-1`, `growth-frontend-1`). A slug is the name lowercased, spaces → `-`, other characters dropped; when the name would pass D4's 40 characters, each slug is cut to its first 16. `k` counts from 1, skipping names that exist. UI §4.4.1's New role mock was edited to match (`payments-frontend-1 …`). Team and role forms carry CLI, Directory, Model, Effort, Flags, Worktrees and Prompt (the PRD lets any field be a default; UI §4.4.1 draws only some). |
+| D11 | **Role form "Agents [n]"** names new agents `<team-slug>-<role-slug>-<k>` for a role in a team, or `<role-slug>-<k>` for a role directly under Duo, so names stay unique across teams (`payments-frontend-1`, `growth-frontend-1`). A slug is the name lowercased, spaces → `-`, other characters dropped, runs of `-` collapsed to one, and leading and trailing `-` stripped (`+Growth  Ops` → `growth-ops`); when the name would pass D4's 40 characters, each slug is cut to its first 16 and stripped of a trailing `-` again. A slug that ends up empty is left out with its separator. `k` counts from 1, skipping names that exist. UI §4.4.1's New role mock was edited to match (`payments-frontend-1 …`). Team and role forms carry CLI, Directory, Model, Effort, Flags, Worktrees and Prompt (the PRD lets any field be a default; UI §4.4.1 draws only some). |
 | D12 | **Roll-ups** list `● working`, `◆ waiting`, `◷ quiet`, `✕ errored` in that order, non-zero only, with a leading `~` when any counted agent's state was read from the screen. Errored counts as an attention state; UI §4.1's roll-up rule was edited to name it. |
 | D13 | **Quiet time** shown on a row is the time since the silence began (last activity or hook), which is also the Needs you ordering key. Ages under a minute show `<1m`. |
 | D14 | **Model and effort** are free-text fields with `inherit:` placeholders in phase 1; the picker, live model lists and "loading models…" arrive in phase 4. |
@@ -100,6 +101,15 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 | D20 | **Start timeout vs quiet:** a starting agent errors at the start timeout (120 s, D6) whatever the quiet threshold. Quiet applies to a starting agent only when the threshold is below the timeout, which with whole minutes means only a 1-minute threshold; at 2 minutes or more the timeout comes first. |
 | D21 | **Exit with no end hook:** for an adapter whose coverage has no `session_end` hook, a pane that dies with status 0 is stopped and a non-zero status is errored. Where the adapter has an end hook, status 0 without it is still errored (TD §4.2). |
 | D22 | **Replayed hooks are enriched:** hooks queued in `pending_hooks` while DuoHive was closed pass through the adapter's `enrich_hook` when replayed (Claude Code's last reply read from the transcript), exactly as live ones do (Task 27's `EnrichingStore`). |
+| D23 | **The state cell's word is padded to 9 cells** (`working` + 2), so `● working    2m` has four spaces before a two-character age. UI §2.1's "padded to 8 cells" was edited to 9. Task 23. |
+| D24 | **A missing CLI goes through the state machine:** stopped (or errored) → starting (`Launch`) → errored (`LaunchFailed`, `<binary> not found · install it or change its CLI (e)`), as TD §4.2's "Launch fails: CLI missing" row says; nothing is sent to tmux. There is no stopped → errored edge. Tasks 9, 11. |
+| D25 | **Unselected panes are silenced by the method spike S0 picks:** `refresh-client -f no-output` or paused flow control (`pause-after` plus `refresh-client -A '%<pane>:pause'`). S0 measures both (activity reports keep arriving, at what rate, and CPU at 100 windows) and records the choice in S0.5; `duohive-tmux` builds only that one, and the bench measures it. TD §4.1, §10 and §13 were edited from "paused by flow control" to "silenced (no-output or paused flow control, chosen by spike S0)". Tasks 3, 19, 28. |
+| D26 | **Directory probes run after the first frame** (TD §4.1 Start-up). `Engine::new` and `start_up` never call the `DirProbe`; until `Input::DirInventory` arrives (Task 27's detection task sends it after the first frame, with `CliInventory`), an agent's directory status is pending: no directory problem on its row, and nothing waits for it. A launch probes its own agent's directory when it runs (always after the first frame: it follows a key, a command or the inventory), and org edits probe the directories they touch. Tasks 8, 11, 14, 15, 27. |
+| D27 | **An agent needs a directory to launch.** No directory resolved (none on the agent, role, team or org; Duo always has `~`, D5) refuses Start and Give work with `no directory set · e to fix`, which is also the row's problem line. This needs no probe, so it shows from the first frame. Tasks 8, 11. |
+| D28 | **TD §8's "No agent CLI installed → full-screen message at first run" is deferred to phase 4's first-run setup.** In phase 1 a missing CLI shows only on the rows of agents that use it (D24), and a first run with no CLI found starts a blank org on Claude Code. |
+| D29 | **Broken files at start-up:** an `org.toml` that doesn't parse starts the engine on `last_good_org()` (or `Org::blank(CliKind::Claude)` when there is none; edits are refused anyway, Review Focus 2) with `org_error` set, so the banner shows. An invalid `settings.toml` starts on `Settings::default()` with `settings_error` set and the banner ` ✕ settings.toml line N: <error> · using default settings`; while it is set, `UpdateSettings` applies in memory but is not saved, so the hand edit survives. Tasks 11, 23, 27. |
+| D30 | **Launches before the first `CliInventory` are queued.** `StartAgent` and `GiveWork` launches that arrive before detection finishes wait, in order, in the engine and run when `CliInventory` arrives; the agent's row is unchanged until then. Detection takes at most one `--version` timeout (2 s) after the first frame, so the wait is short and nothing is lost. Task 11. |
+| D31 | **tmux socket and session:** the server is `tmux -L duohive` unless `DUOHIVE_TMUX_SOCKET` names another socket (tests, the bench and the smoke run use their own, so they never touch the user's agents); the session is always `duohive`. The attach hint (D7) uses the socket in use. Tasks 16, 19, 23. |
 
 ---
 
@@ -176,21 +186,21 @@ Deliverable: `docs/plans/spike-report.md` section **S0** with the headings below
 - Modify (only if the mechanism changes): `docs/design/technical-design.md` §4.1, §13
 
 **Interfaces:**
-- Produces, for Task 18–19: report section **S0.4 Formats** (the exact `%subscription-changed` line for a window subscription and a pane subscription, the `%window-close` and `%exit` lines, the client flags accepted by `refresh-client -f` on 3.2a), and **S0.5 Decision**: `subscribe` or `poll`, with the exact commands DuoHive sends.
+- Produces, for Task 18–19: report section **S0.4 Formats** (the exact `%subscription-changed` line for a window subscription and a pane subscription, the `%window-close` and `%exit` lines, the client flags accepted by `refresh-client -f` on 3.2a), and **S0.5 Decision**: `subscribe` or `poll`, and the silencing method `no-output` or `pause` (D25), with the exact commands DuoHive sends.
 
-- [ ] **Step 1: Write `run.sh <tmux-binary> <windows> <seconds>`.** It starts a throwaway server `-L duohive-s0-$$`, sets `remain-on-exit on`, creates session `duohive` with a keeper window (`tail -f /dev/null`), then `<windows>` windows: one third noisy (`while :; do date; sleep 0.1; done`), one third bursty (10 s of output every 30 s), one third idle (`cat`). It attaches one control client `tmux -L … -C attach -t =duohive`, sends `refresh-client -f no-output,ignore-size`, `refresh-client -B 'act:@*:#{window_activity}'`, `refresh-client -B 'dead:%*:#{pane_dead} #{pane_dead_status}'`, and timestamps every line it reads into `out/<version>-notifications.log`. It samples `ps -o %cpu=,rss=` for the tmux server and the reader every second into `out/<version>-cpu.csv`. It kills one idle window's process with `exit 3` at t = 20 s.
+- [ ] **Step 1: Write `run.sh <tmux-binary> <windows> <seconds> <silence>`** (`<silence>` is `no-output` or `pause`). It starts a throwaway server `-L duohive-s0-$$`, sets `remain-on-exit on`, creates session `duohive` with a keeper window (`tail -f /dev/null`), then `<windows>` windows: one third noisy (`while :; do date; sleep 0.1; done`), one third bursty (10 s of output every 30 s), one third idle (`cat`). It attaches one control client `tmux -L … -C attach -t =duohive` and silences every pane: with `no-output`, `refresh-client -f no-output,ignore-size`; with `pause`, `refresh-client -f pause-after=1,ignore-size` and then `refresh-client -A '%<pane>:pause'` for every pane. It then sends `refresh-client -B 'act:@*:#{window_activity}'`, `refresh-client -B 'dead:%*:#{pane_dead} #{pane_dead_status}'`, and timestamps every line it reads into `out/<version>-<silence>-notifications.log`. It samples `ps -o %cpu=,rss=` for the tmux server and the reader every second into `out/<version>-<silence>-cpu.csv`. It kills one idle window's process with `exit 3` at t = 20 s.
 
-- [ ] **Step 2: Run on both versions.** `bash .github/scripts/install-tmux.sh 3.2a`, then `./run.sh ~/.local/tmux-3.2a/bin/tmux 100 120` and `./run.sh $(which tmux) 100 120` (latest). Also run `poll` mode (the same windows, no subscriptions, `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` once a second) for the cost comparison.
+- [ ] **Step 2: Run on both versions with both silencing methods.** `bash .github/scripts/install-tmux.sh 3.2a`, then `./run.sh ~/.local/tmux-3.2a/bin/tmux 100 120 no-output`, `… pause`, and the same two with `$(which tmux)` (latest). Also run `poll` mode (the same windows, no subscriptions, `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` once a second) for the cost comparison.
 
 - [ ] **Step 3: Write the report S0** with these headings and measured values:
   - **S0.1 Setup:** machine, OS, tmux versions, window mix.
-  - **S0.2 Reports for silenced panes:** do `act` reports arrive for windows whose output is not sent (`no-output`)? Median and p95 delay from a change to its report; reports per window per second (expected ≤ 1).
-  - **S0.3 Cost:** tmux server and reader CPU % and RSS at 100 windows, idle and noisy, for `subscribe` vs `poll`; and with no control client at all (baseline).
+  - **S0.2 Reports for silenced panes:** for each silencing method (`no-output`, `pause`), do `act` reports keep arriving for windows whose output is not sent? Median and p95 delay from a change to its report; reports per window per second (expected ≤ 1). For `pause`, whether panes stay paused (no `%continue` without a request) and whether a new window must be paused explicitly.
+  - **S0.3 Cost:** tmux server and reader CPU % and RSS at 100 windows, idle and noisy, for `subscribe` with each silencing method vs `poll`; and with no control client at all (baseline).
   - **S0.4 Formats:** the exact lines (see Interfaces). Whether `pane_dead_status` arrives for the `exit 3` window.
-  - **S0.5 Decision:** `subscribe` if, on both 3.2a and latest, reports arrive for silenced windows with median delay ≤ 1.1 s and the reader's CPU at 100 noisy windows is no more than `poll`'s; else `poll`. Also record: whether `no-output` exists on 3.2a (else the per-pane `refresh-client -A '%<pane>:off'` alternative and its result).
+  - **S0.5 Decision:** `subscribe` if, on both 3.2a and latest, reports arrive for silenced windows with median delay ≤ 1.1 s and the reader's CPU at 100 noisy windows is no more than `poll`'s; else `poll`. Silencing (D25): the method under which reports keep arriving on both versions at the lower tmux server + reader CPU at 100 noisy windows; on a tie, `no-output` (one command, nothing to do per new window). Record the exact commands for the chosen method, including what a new window needs.
   - **S0.6 TD changes:** none, or the exact edit made.
 
-- [ ] **Step 4: Update the TD** only if S0.5 differs from TD §4.1 (fallback chosen, or a different flag): edit §4.1's tmux-activity row and the S0 bullet, and §13's settle-mechanism row.
+- [ ] **Step 4: Update the TD** only if S0.5 differs from TD §4.1 (fallback chosen, or a different flag): edit §4.1's tmux-activity row and the S0 bullet, and §13's settle-mechanism row. Name the chosen silencing method in §4.1 in place of "chosen by spike S0".
 
 - [ ] **Step 5: Commit.** `git add -A && git commit -m "docs: spike S0 tmux activity subscriptions at 100 windows"`
 
@@ -211,7 +221,7 @@ One task per CLI, same procedure and the same report headings, so Tasks 20–21 
   - **Sn.4 Last reply:** where the last reply is (payload field, transcript path and format, session log) and the extraction rule.
   - **Sn.5 MCP:** the per-launch MCP mechanism, verified by listing a dummy stdio server's tool (for phase 3).
   - **Sn.6 Model and effort:** the flags, and how to list models and efforts at runtime, or "no listing" (for phase 4).
-  - **Sn.7 Screens:** captures (`capture-pane -p -J`) of: at rest, working, an approval prompt, any start-up prompt (trust, login, update notice); the distinguishing text for each (these become `read_screen` rules).
+  - **Sn.7 Screens:** captures (`capture-pane -p -J`) of: at rest, working, an approval prompt, any start-up prompt (trust, login, update notice); the distinguishing text for each (these become `read_screen` rules, matched against the screen with trailing blank rows dropped and each line's trailing whitespace trimmed, as `capture-pane` pads both).
   - **Sn.8 Ready:** what signals the CLI is ready, with and without a first prompt; what start-up prompts can appear.
   - **Sn.9 Quit:** the keys or command that exit with status 0 and fire the end hook (if any).
   - **Sn.10 Paste:** whether `paste-buffer -p` of a multi-line task followed by `Enter` submits it as one turn; what the submit key is.
@@ -371,10 +381,11 @@ Rules (PRD Inheritance, TD §5.1): prompt stacks org → team → role → agent
 pub fn validate(org: &Org) -> Vec<FieldError>;                    // blocking: the org is not used if non-empty
 pub enum DirStatus { GitRepo, Found, Missing }
 pub trait DirProbe: Send + Sync { fn probe(&self, dir: &Path) -> DirStatus; }
-pub fn agent_problem(r: &ResolvedAgent, home: &Path, probe: &dyn DirProbe) -> Option<String>;   // non-blocking, per agent
+pub fn agent_problem(r: &ResolvedAgent, home: &Path, dir: Option<DirStatus>) -> Option<String>;   // non-blocking, per agent;
+    // dir = the caller's probe of expand_home(directory); None = not probed yet (pending, D26): only "no directory set" can be reported
 pub fn next_agent_names(org: &Org, team: Option<&NodeName>, role: &NodeName, count: u8) -> Vec<AgentName>;   // D11: <team-slug>-<role-slug>-<k>
 ```
-Blocking rules (TD §7, D4): agent names unique including Duo's name — message `an agent named <x> already exists`; team names unique — `a team named <x> already exists`; role names unique within their parent — `a role named <x> already exists in <parent>`; flags parse (from `resolve`). Three levels and supported CLIs are enforced by the types and the file schema (Task 16). Non-blocking (TD §7 "Missing directory"): no directory resolved → `no directory set · e to fix`; directory missing → `✕ <dir as written> not found · e to fix` (UI §4.12).
+Blocking rules (TD §7, D4): agent names unique including Duo's name — message `an agent named <x> already exists`; team names unique — `a team named <x> already exists`; role names unique within their parent — `a role named <x> already exists in <parent>`; flags parse (from `resolve`). Three levels and supported CLIs are enforced by the types and the file schema (Task 16). Non-blocking (TD §7 "Missing directory"): no directory resolved → `no directory set · e to fix` (D27; Duo resolves `~`); directory missing → `✕ <dir as written> not found · e to fix` (UI §4.12); directory pending (`dir` None) → no problem (D26).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -387,14 +398,18 @@ Blocking rules (TD §7, D4): agent names unique including Duo's name — message
 }
 #[test] fn same_role_name_in_different_teams_is_fine() { /* Backend in Payments and Growth (PRD example) → [] */ }
 #[test] fn example_org_is_valid() { assert!(validate(&example_org()).is_empty()); }
-#[test] fn missing_directory_invalidates_only_that_agent() { /* FakeDirs: ~/code/billing Missing → Some("✕ ~/code/billing not found · e to fix"); others None */ }
-#[test] fn no_directory_reported() { assert_eq!(agent_problem(&r_without_dir, h, &probe), Some("no directory set · e to fix".into())); }
+#[test] fn missing_directory_invalidates_only_that_agent() { /* each agent probed with FakeDirs (~/code/billing Missing) → billing-api Some("✕ ~/code/billing not found · e to fix"); others None */ }
+#[test] fn no_directory_reported() { assert_eq!(agent_problem(&r_without_dir, h, None), Some("no directory set · e to fix".into())); }
+#[test] fn pending_directory_reports_no_problem() { /* D26: billing-api with directory "~/code/billing", dir None → None */ }
 #[test] fn next_agent_names_skip_existing() {
     /* role "Frontend" in Payments, existing payments-frontend-1 → next_agent_names(org, Some(Payments), Frontend, 2) == [payments-frontend-2, payments-frontend-3];
        the same role name in Growth → [growth-frontend-1]; root role "Frontend" → [frontend-1] */
 }
 #[test] fn next_agent_names_fit_forty_characters() {
     /* team "Customer Success Operations", role "Platform Reliability Engineering" → ["customer-success-platform-reliabi-1"] (each slug cut to 16) */
+}
+#[test] fn slugs_strip_and_collapse_hyphens() {
+    /* D11: team "+Growth  Ops" (starts with a symbol, two spaces), role "Front - End" → ["growth-ops-front-end-1"] */
 }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit validate`
@@ -442,7 +457,7 @@ The table (TD §4.2 plus D2, marked †):
 | Starting, Working, Waiting, Finished, Idle | UnexpectedExit | Errored |
 | Starting, Working, Waiting, Finished, Idle, Errored | Stop | Stopped |
 
-(D2's "user typed into the pane" case is `NewWork` from a hook; Task 12 maps it.)
+(D2's "user typed into the pane" case is `NewWork` from a hook; Task 12 maps it. A missing CLI is `Launch` then `LaunchFailed` (D24, Task 11); there is no stopped → errored edge.)
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -454,6 +469,10 @@ const TABLE: &[(AgentState, Trigger, AgentState)] = &[ /* every row above, expan
         assert_eq!(transition(f, &t), None, "{f:?} {t:?}"); } } }
 }
 #[test] fn duo_never_finishes() { assert_eq!(transition(Working, &TurnEnded { is_duo: true }), Some(Idle)); }
+#[test] fn missing_cli_goes_through_starting() {
+    /* D24 */ assert_eq!(transition(Stopped, &LaunchFailed), None);
+    assert_eq!(transition(Stopped, &Launch), Some(Starting)); assert_eq!(transition(Starting, &LaunchFailed), Some(Errored));
+}
 #[test] fn words_and_glyphs_match_ui_2_1() { assert_eq!(Waiting.word(), "waiting"); assert_eq!(Errored.glyph(), '✕'); /* all seven */ }
 #[test] fn free_means_stopped_finished_idle() {
     let free: Vec<_> = ALL_STATES.into_iter().filter(|s| s.is_free()).collect();
@@ -510,6 +529,7 @@ pub trait CliAdapter: Send + Sync {
     fn read_screen(&self, screen: &str) -> ScreenSignal;
     fn quit_keys(&self) -> Vec<Key>;
     fn submit_keys(&self) -> Vec<Key>;                             // after a paste
+    fn startup_prompts(&self) -> bool;                             // Sn.8 lists a start-up prompt (trust, login, update notice): D2, Task 13
     fn enrich_hook(&self, _event: &str, _payload: &mut serde_json::Value) {}   // default no-op; may read files; called by the hook listener, never the engine
 }
 pub struct Adapters(HashMap<CliKind, Box<dyn CliAdapter>>);    // not Clone: shared as Arc<Adapters> by the engine, the hook listener and start_system
@@ -521,16 +541,17 @@ pub fn untested_notice(binary: &str, version: &str, tested: &[&str]) -> Option<S
 pub trait Clock: Send { fn now(&self) -> Millis; }
 pub trait Ids: Send { fn new_token(&mut self) -> Token; }
 pub trait Runtime: Send {                   // fire-and-forget; results return as RuntimeEvent inputs
-    fn start(&mut self, agent: &AgentName, cmd: LaunchCommand);
+    fn start(&mut self, agent: &AgentName, cmd: LaunchCommand);   // creates <run_root>/<agent>/ (0700; run_root from TmuxConfig, Task 19),
+                                                                   // writes cmd.files and launch.sh there, opens the window
     fn stop(&mut self, agent: &AgentName, quit: Vec<Key>, grace: Duration);
-    fn kill(&mut self, agent: &AgentName);
+    fn kill(&mut self, agent: &AgentName, window: &WindowId);     // that window only, never a newer one for the same agent
     fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>);
     fn capture(&mut self, agent: &AgentName);
     fn inventory(&mut self);
 }
 pub enum RuntimeEvent { Started { agent: AgentName, window: WindowId }, StartFailed { agent: AgentName, reason: String },
-    Activity { agent: AgentName, at_secs: u64 }, PaneDied { agent: AgentName, status: Option<i32> },
-    WindowGone { agent: AgentName }, Screen { agent: AgentName, text: String },
+    Activity { agent: AgentName, at_secs: u64 }, PaneDied { agent: AgentName, window: WindowId, status: Option<i32> },
+    WindowGone { agent: AgentName, window: WindowId }, Screen { agent: AgentName, text: String },
     PasteFailed { agent: AgentName, reason: String }, Inventory(Vec<LiveWindow>), ConnectionLost { reason: String } }
 pub struct LiveWindow { pub agent: AgentName, pub window: WindowId, pub dead: Option<Option<i32>>, pub activity_secs: u64 }
 pub struct OrgFileError { pub line: Option<usize>, pub message: String }
@@ -562,6 +583,7 @@ pub enum OrgEdit { AddTeam(TeamDraft), AddRole { team: Option<NodeName>, role: R
 pub struct AgentView { pub status: Status, pub last_reply: Option<String>, pub notice: Option<String>, pub problem: Option<String> }
 pub struct NeedsYouItem { pub agent: AgentName, pub state: AgentState, pub quiet: bool, pub since: Millis, pub excerpt: Option<String> }
 pub struct Snapshot { pub org: Org, pub agents: BTreeMap<AgentName, AgentView>, pub needs_you: Vec<NeedsYouItem>, pub org_error: Option<OrgFileError>,
+                     pub settings_error: Option<OrgFileError>,   // D29: settings.toml invalid at start-up, defaults in use
                      pub reconnecting: u32 }   // running session rows awaiting the tmux inventory (UI §4.1.2 "Reconnecting to N agents…"); 0 = none
 pub enum Event { Snapshot(Box<Snapshot>), OrgChanged { org: Box<Org>, problems: BTreeMap<AgentName, String> },
     AgentStatusChanged { agent: AgentName, status: Status }, LastReplyChanged { agent: AgentName, reply: Option<String> },
@@ -571,12 +593,12 @@ pub enum Event { Snapshot(Box<Snapshot>), OrgChanged { org: Box<Org>, problems: 
 // testkit.rs (feature "testkit")
 pub fn example_org() -> Org; pub struct FakeClock(Arc<AtomicU64>);  /* advance(Duration) */
 pub struct FakeIds; /* tokens "tok-1", "tok-2", … */  pub struct FakeDirs;
-pub struct FakeRuntime { pub calls: Arc<Mutex<Vec<RuntimeCall>>> }   pub enum RuntimeCall { Start(AgentName, LaunchCommand), Stop(AgentName, Vec<Key>, Duration), Kill(AgentName), Paste(AgentName, String, Vec<Key>), Capture(AgentName), Inventory }
+pub struct FakeRuntime { pub calls: Arc<Mutex<Vec<RuntimeCall>>> }   pub enum RuntimeCall { Start(AgentName, LaunchCommand), Stop(AgentName, Vec<Key>, Duration), Kill(AgentName, WindowId), Paste(AgentName, String, Vec<Key>), Capture(AgentName), Inventory }
 pub struct FakeStore { /* in-memory; `fail_next_save` switch; `org_result` for load_org */ }
-pub struct StubAdapter { pub kind: CliKind, pub coverage: HookCoverage, pub presence: CliPresence }   // StubAdapter::new(kind): complete coverage, presence Found { "2.1.0" }, tested ["2.1"]; detect() returns presence
+pub struct StubAdapter { pub kind: CliKind, pub coverage: HookCoverage, pub presence: CliPresence, pub startup_prompts: bool }   // StubAdapter::new(kind): complete coverage, presence Found { "2.1.0" }, tested ["2.1"], startup_prompts false; detect() returns presence
 // StubAdapter::launch → program = binary(), args = ["--task", task] when a task is given;
 // parse_hook maps event names "session-start" "busy" "needs-input" "turn-end" "session-end" 1:1,
-// turn-end takes last_reply from payload["last_reply"]; read_screen maps a screen whose last line is
+// turn-end takes last_reply from payload["last_reply"]; read_screen maps a screen whose last non-empty line, trailing whitespace trimmed, is
 // "BUSY" | "ASK" | "REST" to Busy | NeedsInput | AtRest; quit_keys = [Text("/exit"), Enter]; submit = [Enter].
 ```
 
@@ -622,27 +644,31 @@ pub struct EngineConfig { pub home: PathBuf, pub data_dir: PathBuf, pub hook_exe
     pub start_timeout: Duration /* 120 s, D6 */, pub stop_grace: Duration /* 5 s */, pub settle_after: Duration /* 1.5 s */ }
 pub struct Ports { pub runtime: Box<dyn Runtime>, pub store: Box<dyn Store>, pub clock: Box<dyn Clock>,
                    pub ids: Box<dyn Ids>, pub dirs: Arc<dyn DirProbe> }
-pub enum Input { Command(Command), Runtime(RuntimeEvent), Hook(HookMessage), CliInventory(Vec<(CliKind, CliPresence)>), Tick }
-pub struct Engine { /* org, org_error, settings, agents: BTreeMap<AgentName, AgentRt>, cli: HashMap<CliKind, CliPresence>, cfg, ports, adapters */ }
+pub enum Input { Command(Command), Runtime(RuntimeEvent), Hook(HookMessage), CliInventory(Vec<(CliKind, CliPresence)>),
+    DirInventory(Vec<(PathBuf, DirStatus)>) /* D26: every resolved agent directory, probed after the first frame */, Tick }
+pub struct Engine { /* org, org_error, settings, settings_error, agents: BTreeMap<AgentName, AgentRt>, cli: Option<HashMap<CliKind, CliPresence>> (None until the first CliInventory),
+                      dirs: Option<HashMap<PathBuf, DirStatus>> (None = pending, D26), queued_launches (D30), cfg, ports, adapters */ }
 impl Engine {
-    pub fn new(org: Org, org_error: Option<OrgFileError>, settings: Settings, cfg: EngineConfig, ports: Ports, adapters: Arc<Adapters>) -> Engine;
+    pub fn new(org: Org, org_error: Option<OrgFileError>, settings: Settings, settings_error: Option<OrgFileError>,
+               cfg: EngineConfig, ports: Ports, adapters: Arc<Adapters>) -> Engine;   // D29
     pub fn handle(&mut self, input: Input) -> Vec<Event>;
     pub fn snapshot(&self) -> Snapshot;
     pub fn next_deadline(&self) -> Option<Millis>;   // Task 13
 }
 ```
-`AgentRt` (private): `status`, `token`, `window`, `task_at_launch`, `stopping`, `saw_end_hook`, `last_signal_at`, `last_activity_secs`, `settle_due`, `start_deadline`, `last_reply`, `notice`, `last_task`, `restart_after_stop`. Every status change saves a `SessionRow`; a save failure emits `CommandRejected { reason: "couldn't save state: <err>" }` and the engine carries on.
+`AgentRt` (private): `status`, `token`, `window` (the agent's current window: set by `Started`, cleared on a relaunch until the next `Started`; Task 12 ignores exits of any other window), `task_at_launch`, `stopping`, `saw_end_hook`, `last_signal_at`, `last_activity_secs`, `settle_due`, `start_deadline`, `last_reply`, `notice`, `last_task`, `restart_after_stop`, `waiting_prompt` (the `NeedsInput { prompt }` text while waiting, cleared when it leaves waiting; Task 13's Needs you excerpt). Every status change saves a `SessionRow`; a save failure emits `CommandRejected { reason: "couldn't save state: <err>" }` and the engine carries on.
 
 Behaviour:
-- **Fresh launch** (`StartAgent` on stopped/errored with no task; `GiveWork` on stopped/errored with the task; TD §5.1): resolve (Task 7); `agent_problem` (Task 8) → refuse with `CommandRejected { reason: problem }`; CLI `Missing` → errored `"<binary> not found · install it or change its CLI (e)"` with no launch; else new token, `run_dir = data_dir/run/<agent>`, `adapter.launch(spec)`, append env `DUOHIVE_TOKEN`, `DUOHIVE_AGENT`, `DUOHIVE_DATA_DIR`, then `runtime.start`; state `Launch` → starting; `start_deadline = now + start_timeout`; `last_task = task`. An untested version sets the notice (`AgentNoticeChanged`).
+- **Fresh launch** (`StartAgent` on stopped/errored with no task; `GiveWork` on stopped/errored with the task; TD §5.1): before the first `CliInventory`, queue it and do nothing else (D30; queued launches run in order when the inventory arrives); resolve (Task 7); probe the agent's directory through `ports.dirs` (D26) and `agent_problem(r, home, Some(status))` (Task 8) → refuse with `CommandRejected { reason: problem }` (D27 covers no directory); CLI `Missing` → `Launch` → starting, then at once `LaunchFailed` → errored `"<binary> not found · install it or change its CLI (e)"`, both status changes emitted and nothing sent to the runtime (D24); else, if the agent still has a recorded window (as after `ConnectionLost`, which errors agents without killing their windows), `runtime.kill(agent, old_window)` first and clear `window`; new token, `run_dir = data_dir/run/<agent>`, `adapter.launch(spec)`, append env `DUOHIVE_TOKEN`, `DUOHIVE_AGENT`, `DUOHIVE_DATA_DIR`, then `runtime.start`; state `Launch` → starting; `start_deadline = now + start_timeout`; `last_task = task`. An untested version sets the notice (`AgentNoticeChanged`).
 - **Give work on finished/idle:** `runtime.paste(agent, task, adapter.submit_keys())`, trigger `NewWork` → working, `from_screen = false`.
 - **Give work on working/waiting:** `GiveWorkRefused { agent, state }`, nothing sent (TD §5.1; the "send as message" offer is phase 3's inbox).
 - **StartAgent on a running agent:** `CommandRejected { reason: "<agent> is already running" }`.
-- **StopAgent:** running → `stopping = true`, `runtime.stop(agent, adapter.quit_keys(), stop_grace)`; the state changes when the window goes (Task 12). Errored → `Stop` → stopped, `runtime.kill`. Stopped → no-op.
+- **StopAgent:** running → `stopping = true`, `runtime.stop(agent, adapter.quit_keys(), stop_grace)`; the state changes when the window goes (Task 12). Errored → `Stop` → stopped, `runtime.kill(agent, window)` when it still has a window. Stopped → no-op.
 - **ViewAgent:** finished → `Viewed` → idle; otherwise no-op.
 - `StartFailed { reason }` → `LaunchFailed` → errored with `reason`; `last_task` kept for retry.
+- `CliInventory` → record presence, then run the queued launches in order (D30). `DirInventory` → cache the statuses and emit `OrgChanged { org, problems }` with each agent's directory problem (D26).
 
-- [ ] **Step 1: Write the failing tests** in `engine/lifecycle.rs` with `FakeRuntime`, `FakeStore`, `FakeClock`, `FakeIds`, `FakeDirs`, `StubAdapter` (complete coverage) over `example_org()` with directories set.
+- [ ] **Step 1: Write the failing tests** in `engine/lifecycle.rs` with `FakeRuntime`, `FakeStore`, `FakeClock`, `FakeIds`, `FakeDirs`, `StubAdapter` (complete coverage) over `example_org()` with directories set. The harness sends `CliInventory` (every kind `Found`) right after `Engine::new` unless a test says otherwise.
 
 ```rust
 #[test] fn start_stopped_agent_launches_with_no_task() { /* calls == [Start(pay-qa, cmd)], cmd.args has no "--task"; status Starting; session row saved with token "tok-1" */ }
@@ -656,11 +682,15 @@ Behaviour:
 #[test] fn give_work_waiting_is_refused() { /* billing-api waiting → events contain GiveWorkRefused{ agent: billing-api, state: Waiting }; calls empty; still Waiting */ }
 #[test] fn start_running_agent_rejected() { /* CommandRejected "pay-qa is already running" */ }
 #[test] fn missing_directory_refuses_start() { /* FakeDirs Missing → CommandRejected "✕ ~/code/pay-qa not found · e to fix"; no Start call */ }
-#[test] fn missing_cli_errors_without_launch() { /* CliInventory Opencode Missing; agent on opencode → Errored, error "opencode not found · install it or change its CLI (e)"; no Start */ }
+#[test] fn missing_cli_errors_through_starting() { /* D24: CliInventory Opencode Missing; StartAgent on an opencode agent → events AgentStatusChanged Starting then AgentStatusChanged Errored "opencode not found · install it or change its CLI (e)"; no Start call */ }
+#[test] fn launch_before_cli_inventory_is_queued() { /* D30: no CliInventory yet; StartAgent pay-qa → no events, no runtime call; CliInventory → calls == [Start(pay-qa, cmd)], Starting */ }
+#[test] fn no_directory_refuses_start() { /* D27: agent with no directory anywhere up the tree → CommandRejected "no directory set · e to fix"; no Start call */ }
+#[test] fn relaunch_kills_the_old_window_first() { /* pay-qa Started "@7", then errored by ConnectionLost (window still recorded); GiveWork "Retry" → calls == [Kill(pay-qa, "@7"), Start(pay-qa, cmd)] */ }
 #[test] fn untested_version_sets_notice() { /* Found "2.3.0", tested ["2.1"] → AgentNoticeChanged "notice: claude 2.3 untested (tested up to 2.1)"; still launches */ }
 #[test] fn start_failed_errors_and_keeps_task() { /* StartFailed "branch exists" → Errored with that reason; last_task == Some(task) */ }
+#[test] fn dir_inventory_reports_missing_directories() { /* D26: before DirInventory, problems has no billing-api entry; DirInventory [(~/code/billing expanded, Missing)] → OrgChanged problems[billing-api] == "✕ ~/code/billing not found · e to fix" */ }
 #[test] fn stop_running_sends_quit_keys_with_grace() { /* calls == [Stop(a, [Text("/exit"), Enter], 5s)]; state unchanged until window goes */ }
-#[test] fn stop_errored_goes_stopped() { /* Stopped; error cleared; Kill called */ }
+#[test] fn stop_errored_goes_stopped() { /* Stopped; error cleared; Kill(agent, its window) called when it has one */ }
 #[test] fn view_finished_goes_idle() { /* squad-2 finished; ViewAgent → AgentStatusChanged{ squad-2, Idle }; ViewAgent on idle squad-1 → no events */ }
 #[test] fn store_failure_is_reported_not_fatal() { /* FakeStore fail_next_save → CommandRejected "couldn't save state: …"; status still Starting */ }
 ```
@@ -683,21 +713,22 @@ Rules:
 - **Hook → trigger** (any accepted hook sets `last_signal_at = now`, clears quiet, and sets `from_screen = false` on a move):
   - `Ready` in starting → `Ready { has_task: task_at_launch }`.
   - `Busy` in starting → `Ready { has_task: true }`; in waiting → `Answered`; in finished/idle → `NewWork` (D2); in working → no move.
-  - `NeedsInput` in working or starting → `NeedsInput`.
+  - `NeedsInput { prompt }` in working or starting → `NeedsInput`; `waiting_prompt = prompt`.
   - `TurnEnded { last_reply }` in working or waiting → `TurnEnded { is_duo }`; a `Some` reply that differs emits `LastReplyChanged`.
   - `SessionEnded` → `saw_end_hook = true`; no move.
 - **Screen read** (TD §4.2, D2): `adapter.read_screen(text)`; a `ScreenState` moves the agent only when the adapter's `coverage()` has no hook for the trigger it implies:
   - `Busy`: starting → `Ready { has_task: true }`, waiting → `Answered`, finished/idle → `NewWork` (D2) — when `busy` is false;
-  - `NeedsInput`: working or starting (D2: a trust or login prompt) → `NeedsInput` — when `needs_input` is false;
+  - `NeedsInput`: starting → `NeedsInput` whatever the coverage (D2: a trust or login prompt appears before any hook can fire); working → `NeedsInput` — when `needs_input` is false;
   - `AtRest`: working or waiting (D2) → `TurnEnded { is_duo }` — when `turn_end` is false; starting → `Ready { has_task: task_at_launch }` — when `ready` is false.
   A move made this way sets `from_screen = true`. `last_reply` from the screen is used only when `coverage.last_reply` is false.
-- **Exits** (TD §5.5): on `PaneDied { status }` or `WindowGone`:
+- **Window identity:** `PaneDied { window, .. }` and `WindowGone { window, .. }` count only when `window` is the agent's current window (`AgentRt.window`). An event for any other window — the old one, killed after a crash and a relaunch, or the one a Duo CLI change stopped — or arriving while a relaunch waits for `Started` (window `None`) is ignored with a `tracing::debug!`, so it can never error or stop the new session.
+- **Exits** (TD §5.5): on `PaneDied { status }` or `WindowGone` for the current window:
   1. `stopping` → `Stop` → stopped (if `restart_after_stop`, launch again with no task);
   2. else state starting → errored: status 127 → `"<binary> not found (code 127)"` (D17), otherwise `"<binary> exited at start (code N)"`;
   3. else status `Some(0)` and (`saw_end_hook`, or the adapter's `coverage.session_end` is false: D21) → `Stop` → stopped;
   4. else `UnexpectedExit` → errored `"exited unexpectedly (code N)"` (or `"exited unexpectedly"` when there is no status).
-  Then `runtime.kill` for a dead pane; stopped deletes the session row; errored keeps it with `window = None`.
-- `Started { window }` records the window. `ConnectionLost { reason }` → every running agent → errored `"tmux server exited"`.
+  Then `runtime.kill(agent, window)` for a dead pane; stopped deletes the session row; errored keeps it with `window = None`.
+- `Started { window }` records the window. `ConnectionLost { reason }` (sent only after the runtime failed to reattach to the tmux server, Task 19) → every running agent → errored `"tmux server exited"`; their `window` stays recorded, and a relaunch kills it first (Task 11).
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -717,6 +748,10 @@ Rules:
 #[test] fn screen_needs_input_while_starting_goes_waiting_without_hook() {
     /* D2: coverage needs_input=false; Starting; Screen "…ASK" → Waiting, from_screen = true */
 }
+#[test] fn screen_needs_input_while_starting_goes_waiting_even_with_hook() {
+    /* D2: complete coverage (needs_input hooked); Starting; Screen "…ASK" (a trust prompt before any hook) → Waiting, from_screen = true;
+       the same screen while Working → no move */
+}
 #[test] fn turn_end_finishes_and_sets_last_reply() { /* Finished; LastReplyChanged Some("Ready for review") */ }
 #[test] fn duo_turn_end_goes_idle() { /* Duo Working; hook turn-end → AgentStatusChanged{ Duo, Idle }; never Finished */ }
 #[test] fn screen_read_moves_only_unhooked_transitions_and_marks_tilde() {
@@ -735,6 +770,10 @@ Rules:
 #[test] fn exit_127_while_starting_says_not_found() { /* Starting on claude, PaneDied Some(127) → Errored "claude not found (code 127)" (D17) */ }
 #[test] fn exit_while_starting_says_exited_at_start() { /* Duo on opencode, status 2 → "opencode exited at start (code 2)" */ }
 #[test] fn window_gone_after_stop_is_stopped() { /* StopAgent auth-service (Working); WindowGone → Stopped, error None, session row deleted */ }
+#[test] fn exits_of_an_old_window_are_ignored() {
+    /* pay-qa Started "@3"; PaneDied{ "@3", Some(1) } → Errored, Kill(pay-qa, "@3"); GiveWork "Retry" → Starting (window None);
+       WindowGone{ pay-qa, "@3" } → no events, still Starting; Started "@4"; WindowGone{ pay-qa, "@3" } and PaneDied{ pay-qa, "@3", Some(1) } → no events */
+}
 #[test] fn connection_lost_errors_running_agents() { /* "tmux server exited"; stopped agents unchanged */ }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::signals`
@@ -754,9 +793,9 @@ Rules:
 - **Activity:** an `at_secs` different from the last one sets `last_activity_secs`, `last_signal_at = max(last_signal_at, at_secs*1000)`, clears quiet, and sets `settle_due = now + settle_after`.
 - **Quiet** (TD §4.2): on Tick, a working or starting agent with `now − last_signal_at ≥ settings.quiet_after()` becomes quiet with `quiet_since = last_signal_at` (D13). Any state change clears quiet. Waiting never goes quiet.
 - **Settle:** on Tick with `settle_due ≤ now`: if the adapter's coverage is not complete and the agent is running → `runtime.capture(agent)` once; `settle_due = None`.
-- **Pre-timeout read** (D2, D6): on Tick, a starting agent whose adapter's coverage is not complete and whose `start_deadline − 5 s ≤ now` gets one `runtime.capture` (once per launch), so a trust or login prompt can move it to `~◆ waiting` (Task 12) before the timeout.
-- **Start timeout:** on Tick, starting with `start_deadline ≤ now` → `runtime.kill`, `LaunchFailed` → errored `"not ready within 120s"` (the configured value), whatever the quiet threshold (D20).
-- **Needs you:** waiting, quiet and errored agents; `since` = `quiet_since` for quiet, else `status.since`; sorted by `since`, then name; excerpt = waiting prompt (from `NeedsInput { prompt }`) or the error text. `NeedsYouChanged` is emitted only when the list changes.
+- **Pre-timeout read** (D2, D6): on Tick, a starting agent whose adapter's `startup_prompts()` is true (Sn.8: the CLI can show a trust, login or update prompt), whatever its hook coverage, and whose `start_deadline − 5 s ≤ now` gets one `runtime.capture` (once per launch), so a trust or login prompt can move it to `~◆ waiting` (Task 12) before the timeout. Claude Code's workspace-trust prompt appears before any hook, so complete coverage is no reason to skip it.
+- **Start timeout:** on Tick, starting with `start_deadline ≤ now` → `runtime.kill(agent, window)` when its window is known, `LaunchFailed` → errored `"not ready within 120s"` (the configured value), whatever the quiet threshold (D20).
+- **Needs you:** waiting, quiet and errored agents; `since` = `quiet_since` for quiet, else `status.since`; sorted by `since`, then name; excerpt = the waiting prompt (`AgentRt.waiting_prompt`, Task 11, set from `NeedsInput { prompt }`) or the error text. `NeedsYouChanged` is emitted only when the list changes.
 - **`next_deadline`:** the earliest of every `settle_due`, `start_deadline`, pending pre-timeout read (`start_deadline − 5 s`), and `last_signal_at + quiet_after` for non-quiet working/starting agents.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -770,14 +809,15 @@ Rules:
 #[test] fn settle_reads_screen_once_after_activity_stops() { /* incomplete coverage; Activity at t; Tick at t+1.4 s → no Capture; t+1.5 s → one Capture; later Tick → none */ }
 #[test] fn complete_coverage_never_reads_screen() { /* complete coverage; Activity at t; Ticks at t+1.5 s and t+10 s → no Capture call */ }
 #[test] fn starting_agent_screen_read_once_before_timeout() {
-    /* coverage needs_input=false; StartAgent at 0; Tick at 114 s → no Capture; 115 s → one Capture(pay-qa); 118 s → none;
+    /* StubAdapter with startup_prompts true and complete coverage; StartAgent at 0; Tick at 114 s → no Capture; 115 s → one Capture(pay-qa); 118 s → none;
        Screen "…ASK" → Waiting (from_screen); Tick at 120 s → no timeout error */
 }
-#[test] fn start_timeout_errors_and_kills() { /* 120 s → Errored "not ready within 120s"; Kill called */ }
+#[test] fn no_pre_read_without_startup_prompts() { /* startup_prompts false, coverage incomplete; StartAgent at 0; Ticks at 115 s and 118 s → no Capture */ }
+#[test] fn start_timeout_errors_and_kills() { /* 120 s → Errored "not ready within 120s"; Kill(agent, its window) called */ }
 #[test] fn needs_you_holds_waiting_quiet_errored_oldest_first() { /* billing-api waiting 4m, squad-3 quiet 6m → [squad-3, billing-api] */ }
 #[test] fn needs_you_changed_only_on_change() { /* billing-api enters Waiting → one NeedsYouChanged; a Tick with nothing new → no NeedsYouChanged; Activity on auth-service (not quiet) → none */ }
 #[test] fn next_deadline_is_earliest_timer() {
-    /* now 0; auth-service Working with last_signal_at 0 (quiet at 300 s); pay-qa Starting at 10 s with incomplete coverage (pre-read at 125 s, timeout 130 s);
+    /* now 0; auth-service Working with last_signal_at 0 (quiet at 300 s); pay-qa Starting at 10 s on an adapter with startup_prompts true (pre-read at 125 s, timeout 130 s);
        Activity on squad-1 at 20 s (settle at 21.5 s) → next_deadline == Millis(21_500); after that settle read → Millis(125_000) */
 }
 ```
@@ -794,7 +834,7 @@ Rules:
 **Interfaces:**
 - Produces: handling of `Command::EditOrg`, `Command::ReloadOrg`, `Command::UpdateSettings`.
 
-Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `validate`, reject with the first `FieldError.message` if any, else `store.save_org`, replace the org, emit `OrgChanged { org, problems }` (problems from `agent_problem` for every agent).
+Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `validate`, reject with the first `FieldError.message` if any, else `store.save_org`, replace the org, emit `OrgChanged { org, problems }` (problems from `agent_problem` for every agent: once `DirInventory` has arrived, with the cached statuses plus a `ports.dirs` probe of each directory this edit adds or changes; before it, pending, D26).
 - Refused while `org_error` is set: `"org.toml has an error · fix it first (o)"` (Review Focus 2).
 - Delete agent: only when stopped, else `"stop <agent> first"`. Delete team or role: only when every agent in it is stopped, else `"stop <agent> first"` naming the first running one. Duo can't be deleted: `"Duo can't be deleted"`.
 - Rename (EditAgent with a new name): only while stopped (phase 1 has no worktrees), else `"rename only while stopped with no worktrees"`. Session rows move to the new name.
@@ -802,7 +842,7 @@ Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `valid
 - `AddRole { agents: n }` adds `next_agent_names` agents with empty fields.
 - `EditOrgDefaults` with a new `duo.cli` while Duo runs: stop Duo with `restart_after_stop = true` (the TUI asked first).
 - `ReloadOrg`: `store.load_org()`; `Err(e)` → keep the current org, set `org_error`, emit `OrgFileError(Some(e))`; `Ok(Some(org))` and valid → replace, clear error, `OrgChanged` + `OrgFileError(None)`; valid parse but `validate` errors → `OrgFileError(Some({ line: None, message: "<path>: <message>" }))`, keep the current org.
-- `UpdateSettings(s)`: `store.save_settings`, replace settings (the quiet threshold takes effect on the next Tick).
+- `UpdateSettings(s)`: `store.save_settings`, replace settings (the quiet threshold takes effect on the next Tick). While `settings_error` is set (D29), replace settings without saving, so the broken hand edit survives.
 
 - [ ] **Step 1: Write the failing tests.**
 
@@ -821,8 +861,9 @@ Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `valid
 #[test] fn reload_invalid_keeps_last_good_and_reports_line() { /* load_org Err{line 42, "unknown CLI \"claud\""} → OrgFileError event; org unchanged */ }
 #[test] fn reload_valid_clears_banner() { /* org_error set; load_org Ok(Some(example_org())) → events OrgChanged and OrgFileError(None); snapshot().org_error None */ }
 #[test] fn reload_with_duplicate_names_reports_path() { /* load_org Ok(org with two "squad-1") → OrgFileError(Some{ line: None, message: "role[Generalist].agent[squad-1].name: an agent named squad-1 already exists" }); org unchanged */ }
-#[test] fn change_duo_cli_restarts_running_duo() { /* Stop(Duo); WindowGone → Starting again on the new CLI */ }
+#[test] fn change_duo_cli_restarts_running_duo() { /* Duo Started "@2"; EditOrgDefaults with a new duo.cli → Stop(Duo); WindowGone{ Duo, "@2" } → Starting again on the new CLI */ }
 #[test] fn update_settings_saves_and_changes_threshold() { /* UpdateSettings{ quiet_after_minutes: 2 } → FakeStore saved settings has 2; auth-service Working silent 2m + Tick → quiet */ }
+#[test] fn update_settings_not_saved_while_settings_file_invalid() { /* D29: settings_error set; UpdateSettings{ quiet_after_minutes: 2 } → save_settings not called; auth-service Working silent 2m + Tick → quiet */ }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::org_edit`
 - [ ] **Step 3: Implement.**
@@ -842,7 +883,11 @@ impl Engine { pub fn start_up(&mut self) -> Vec<Event>; }   // loads sessions, a
 pub async fn run_core(engine: Engine, commands: tokio::sync::mpsc::Receiver<Command>,
     inputs: tokio::sync::mpsc::Receiver<Input>, events: tokio::sync::mpsc::UnboundedSender<Event>);
 ```
-`start_up`: `load_sessions` → restore each row's status, token, window, last reply (rows for agents no longer in the org are deleted); then `runtime.inventory()`; emit `Snapshot` with `reconnecting` = the number of restored rows in a running state (the TUI shows UI §4.1.2's "Reconnecting to N agents…" while it is non-zero). On `RuntimeEvent::Inventory(windows)`, for each session row (D9): live window → keep the restored state and set `last_activity_secs`; dead pane (`dead: Some(status)`) → the exit rules of Task 12; no window and state running → stopped, no error, row deleted. Windows with no row → `tracing::info!`, left alone. Then replay `store.take_pending_hooks()` in order through the normal hook path (in the binary the `Store` is Task 27's `EnrichingStore`, so replayed hooks are enriched like live ones: D22); then `NeedsYouChanged` and `Reconnected`.
+`start_up`: `load_sessions` → restore each row's status, token, window, last reply, with `last_signal_at = now` (the time DuoHive was closed is not silence it saw, so no restored agent goes quiet before a full threshold has passed) (rows for agents no longer in the org are deleted); then `runtime.inventory()`; emit `Snapshot` with `reconnecting` = the number of restored rows in a running state (the TUI shows UI §4.1.2's "Reconnecting to N agents…" while it is non-zero). `start_up` never calls the `DirProbe` (D26). On `RuntimeEvent::Inventory(windows)`, in this order (D9):
+  1. for each session row: live window → keep the restored state and set `last_activity_secs`; dead pane (`dead: Some(status)`) → keep the restored state for now; no window and state running → stopped, no error, row deleted. Windows with no row → `tracing::info!`, left alone.
+  2. replay `store.take_pending_hooks()` in order through the normal hook path (in the binary the `Store` is Task 27's `EnrichingStore`, so replayed hooks are enriched like live ones: D22). Hooks for agents stopped in step 1 no longer match a token and are dropped.
+  3. apply Task 12's exit rules to each dead pane, so a session-end replayed in step 2 counts (`saw_end_hook`) and a clean exit while DuoHive was closed is stopped, not errored.
+  4. `NeedsYouChanged` and `Reconnected`.
 
 `run_core`: `tokio::select!` over `commands.recv()`, `inputs.recv()`, and `sleep_until(next_deadline)` (→ `Tick`); sends every returned `Event`; ends on `Command::Shutdown` or when both channels close. The engine is the only owner of state (TD §3.3).
 
@@ -853,6 +898,15 @@ pub async fn run_core(engine: Engine, commands: tokio::sync::mpsc::Receiver<Comm
 #[test] fn reconnect_dead_pane_applies_exit_rules() { /* dead Some(Some(1)) → Errored "exited unexpectedly (code 1)" */ }
 #[test] fn reconnect_missing_window_marks_stopped() { /* D9: no error, row deleted */ }
 #[test] fn reconnect_replays_pending_hooks_in_order() { /* busy then turn-end queued → Finished */ }
+#[test] fn reconnect_clean_exit_while_closed_is_stopped() {
+    /* coverage session_end=true; row auth-service Working; pending turn-end then session-end; Inventory dead Some(Some(0)) →
+       Stopped, error None, row deleted (hooks replayed before the exit rules) */
+}
+#[test] fn reconnect_does_not_mark_quiet_immediately() {
+    /* row auth-service Working whose last hook was 10 min before the restart; live window; first Tick after Inventory → not quiet;
+       advance quiet_after (5 min) + Tick → quiet */
+}
+#[test] fn start_up_does_not_probe_directories() { /* D26: FakeDirs counting probes; Engine::new + start_up + Inventory → 0 probes; problems pending (no "not found" lines) */ }
 #[test] fn reconnect_keeps_errored_agents_errored() { /* errored row, no window → still Errored, in needs_you */ }
 #[test] fn session_for_deleted_agent_is_dropped() { /* row for "gone-agent" (not in the org) → FakeStore delete_session(gone-agent) called; Snapshot.agents has no gone-agent */ }
 #[test] fn reconnecting_count_then_reconnected() { /* rows: auth-service Working, squad-2 Finished, pay-qa Stopped → Snapshot.reconnecting == 2; after Inventory → events end with Reconnected */ }
@@ -878,7 +932,8 @@ For the paused-time test, the driver's `FakeClock` follows `tokio::time::Instant
 ```rust
 pub struct Paths { pub config_dir: PathBuf, pub data_dir: PathBuf, pub tmux_socket: String }
 impl Paths {
-    pub fn from_env() -> Result<Paths, PathsError>;   // Global Constraints; tmux_socket from DUOHIVE_TMUX_SOCKET else "duohive"
+    pub fn from_vars(vars: &HashMap<String, String>) -> Result<Paths, PathsError>;   // Global Constraints; tmux_socket from DUOHIVE_TMUX_SOCKET else "duohive" (D31)
+    pub fn from_env() -> Result<Paths, PathsError>;   // collects std::env::vars() and delegates to from_vars
     pub fn org_toml(&self) -> PathBuf; pub fn org_backup(&self) -> PathBuf;      // org.toml.bak
     pub fn org_last_good(&self) -> PathBuf;                                       // data_dir/org.last-good.toml
     pub fn settings_toml(&self) -> PathBuf; pub fn state_db(&self) -> PathBuf;
@@ -932,7 +987,7 @@ Atomic save: write `org.toml.tmp` in the same directory, `fsync`, copy the curre
 #[test] fn save_refreshes_last_good() { /* save example_org → load_org(&p.org_last_good()) == Some(example_org()) */ }
 #[test] fn missing_settings_file_gives_defaults() { assert_eq!(load_settings(&missing).unwrap().quiet_after_minutes, 5); }
 #[test] fn settings_round_trip() { let s = Settings { quiet_after_minutes: 7, theme: Theme::Light, ..Default::default() }; save_settings(&path, &s).unwrap(); assert_eq!(load_settings(&path).unwrap(), s); }
-#[test] fn paths_follow_xdg_then_home() { /* XDG_CONFIG_HOME=/x → /x/duohive; unset → $HOME/.config/duohive; DUOHIVE_DATA_DIR wins */ }
+#[test] fn paths_follow_xdg_then_home() { /* Paths::from_vars only, never std::env::set_var: {HOME: /h, XDG_CONFIG_HOME: /x} → /x/duohive; {HOME: /h} → /h/.config/duohive; DUOHIVE_DATA_DIR wins; DUOHIVE_TMUX_SOCKET sets tmux_socket, else "duohive" */ }
 ```
 (`org-bad-cli.toml` is a valid example org padded so that `cli = "claud"` sits on line 42.)
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
@@ -949,7 +1004,7 @@ Atomic save: write `org.toml.tmp` in the same directory, `fsync`, copy the curre
 - Produces:
 
 ```rust
-pub fn open_db(path: &Path, busy_timeout: Duration) -> Result<rusqlite::Connection, StoreError>;   // WAL, migrations; the app passes 1000 ms, `duohive hook` 300 ms (Review Focus 1)
+pub fn open_db(path: &Path, busy_timeout: Duration) -> Result<rusqlite::Connection, StoreError>;   // WAL, migrations; the app passes 1000 ms, `duohive hook` 200 ms (Review Focus 1)
 pub fn insert_pending_hook(conn: &rusqlite::Connection, m: &HookMessage, received_at: Millis) -> Result<(), StoreError>;  // used by `duohive hook`
 pub struct SqliteStore { /* paths, conn */ }
 impl SqliteStore { pub fn open(paths: &Paths) -> Result<SqliteStore, StoreError>; }
@@ -998,7 +1053,8 @@ pub enum ControlLine { Begin { cmd: u64 }, End { cmd: u64 }, Error { cmd: u64 },
     WindowClose { window: String }, Exit { reason: Option<String> }, Other(String) }
 pub struct ControlParser { /* tracks whether inside a %begin block */ }
 impl ControlParser { pub fn feed(&mut self, line: &str) -> ControlLine; }
-pub fn tmux_quote(arg: &str) -> String;    // single-quoted for a control-mode command line; rejects '\n' (returns Err)
+pub fn tmux_quote(arg: &str) -> Result<String, QuoteError>;   // single-quoted for a control-mode command line; '\n' → Err(QuoteError::Newline)
+#[derive(thiserror::Error)] pub enum QuoteError { #[error("a tmux command argument can't contain a newline")] Newline }
 pub struct TmuxVersion { pub major: u32, pub minor: u32, pub raw: String }
 pub fn parse_version(out: &str) -> Option<TmuxVersion>;   // "tmux 3.2a" "tmux 3.7c" "tmux next-3.6" "tmux master"→None
 impl TmuxVersion { pub fn supported(&self) -> bool; }     // ≥ 3.2
@@ -1019,6 +1075,7 @@ impl TmuxVersion { pub fn supported(&self) -> bool; }     // ≥ 3.2
 #[test] fn parses_window_close_and_exit() { /* "%window-close @4" → WindowClose{ window: "@4" }; "%exit" → Exit{ reason: None }; "%exit server exited" → Exit{ reason: Some("server exited") } */ }
 #[test] fn unknown_notifications_are_other() { assert_eq!(ControlParser::default().feed("%session-renamed $1 x"), ControlLine::Other("%session-renamed $1 x".into())); }
 #[test] fn tmux_quote_escapes_single_quotes() { assert_eq!(tmux_quote("it's").unwrap(), r"'it'\''s'"); }
+#[test] fn tmux_quote_rejects_newlines() { assert_eq!(tmux_quote("a\nb"), Err(QuoteError::Newline)); }
 #[test] fn versions_parse() { assert_eq!(parse_version("tmux 3.2a").map(|v| (v.major, v.minor)), Some((3, 2))); assert!(!parse_version("tmux 3.1c").unwrap().supported()); assert_eq!(parse_version("tmux next-3.6").map(|v| v.minor), Some(6)); }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --lib`
@@ -1036,7 +1093,8 @@ impl TmuxVersion { pub fn supported(&self) -> bool; }     // ≥ 3.2
 - Produces:
 
 ```rust
-pub struct TmuxConfig { pub tmux_bin: PathBuf, pub socket: String, pub session: String /* "duohive" */, pub buffer_name: String /* "duohive-<pid>" */ }
+pub struct TmuxConfig { pub tmux_bin: PathBuf, pub socket: String /* D31 */, pub session: String /* "duohive" */, pub buffer_name: String /* "duohive-<pid>" */,
+                        pub run_root: PathBuf /* <data_dir>/run: start creates run_root/<agent>/ and its launch.sh */ }
 pub fn tmux_version(cfg: &TmuxConfig) -> Result<Option<TmuxVersion>, TmuxError>;   // None = tmux not found
 pub struct TmuxRuntime { /* sends requests to the connection task */ }
 impl TmuxRuntime {
@@ -1046,9 +1104,9 @@ impl duohive_core::ports::Runtime for TmuxRuntime {}
 ```
 Mechanics:
 - **Server set-up** (`server.rs`, idempotent): if `has-session -t =duohive` fails, `new-session -d -s duohive -n duohive-home -x 160 -y 48 'tail -f /dev/null'` (the keeper window keeps the session when no agent runs). Then `set-option -g remain-on-exit on`, `set-option -g default-size 160x48`.
-- **Connection** (`connection.rs`): one child `tmux -L <socket> -C attach-session -t =duohive`; commands written one per line; replies matched FIFO to `%begin/%end` blocks (oneshot per request); notifications routed to `activity.rs`. On start: `refresh-client -f no-output,ignore-size` (or S0.5's alternative), then the activity mechanism. EOF or `%exit` → `ConnectionLost`.
-- **Activity** (`activity.rs`) — build only the S0.5 choice: `subscribe` = the S0.4 `act` (`@*`, `#{window_activity}`) and `dead` (`%*`, `#{pane_dead} #{pane_dead_status}`) subscriptions; `poll` = `list-windows -t =duohive -F '#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}'` once a second, diffed. Either way it emits `RuntimeEvent::Activity` on a changed activity time and `PaneDied` when a pane turns dead, mapping window → agent through the runtime's table.
-- **start:** create `run_dir` (0700), write `cmd.files` (0600) and `run_dir/launch.sh` (0700):
+- **Connection** (`connection.rs`): one child `tmux -L <socket> -C attach-session -t =duohive`; commands written one per line; replies matched FIFO to `%begin/%end` blocks (oneshot per request); notifications routed to `activity.rs`. On start: the S0.5 silencing method (D25) — `refresh-client -f no-output,ignore-size`, or `refresh-client -f pause-after=…,ignore-size` plus `refresh-client -A '%<pane>:pause'` for every agent pane — then the activity mechanism. On EOF or `%exit`, it first tries to reattach: if `tmux -L <socket> has-session -t =duohive` succeeds, it starts a new control client, re-sends the silencing and activity commands, and diffs `list-windows` against its window table, emitting `PaneDied` / `WindowGone` for windows that died or vanished meanwhile; no `ConnectionLost`. Only when the server is gone or the reattach fails → `ConnectionLost { reason }`.
+- **Activity** (`activity.rs`) — build only the S0.5 choice: `subscribe` = the S0.4 `act` (`@*`, `#{window_activity}`) and `dead` (`%*`, `#{pane_dead} #{pane_dead_status}`) subscriptions; `poll` = `list-windows -t =duohive -F '#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}'` once a second, diffed. Either way it emits `RuntimeEvent::Activity` on a changed activity time and `PaneDied { agent, window, status }` when a pane turns dead, mapping window → agent through the runtime's table. A table entry lives until its window closes, even after a newer window for the same agent exists, so a late exit still names its own window.
+- **start:** `run_dir = cfg.run_root/<agent>`; create it (0700), check every `cmd.files` path is inside it (else `StartFailed`), write `cmd.files` (0600) and `run_dir/launch.sh` (0700):
   ```sh
   #!/bin/sh
   export PATH=<sh_quote(current PATH)>      # Review Focus 4; DuoHive's PATH, not the tmux server's
@@ -1056,13 +1114,14 @@ Mechanics:
   cd <sh_quote(cwd)> || exit 126
   exec <sh_quote(program)> <sh_quote(arg)> …
   ```
-  then `new-window -d -t =duohive: -n <agent> -P -F '#{window_id}' <tmux_quote(sh launch.sh path)>`, then `set-option -w -t <id> @duohive_agent <agent>` → `Started`. Any failure → `StartFailed { reason }`.
-- **stop:** `send-keys -t <id>` each key (`Text` with `-l`), then after `grace`, if the window still exists, `kill-window -t <id>`. `%window-close` → `WindowGone`.
+  then `new-window -d -t =duohive: -n <agent> -P -F '#{window_id}' <tmux_quote(&format!("sh {}", sh_quote(launch.sh path)))?>` (the inner `sh_quote` keeps a data dir with spaces one word; a `QuoteError` → `StartFailed`), then `set-option -w -t <id> @duohive_agent <agent>` (and, with `pause` silencing, `refresh-client -A '%<pane>:pause'` for the new pane) → `Started`. Any failure → `StartFailed { reason }`.
+- **stop:** `send-keys -t <id>` each key (`Text` with `-l`), then after `grace`, if the window still exists, `kill-window -t <id>`. `%window-close` → `WindowGone { agent, window }`.
+- **kill:** `kill-window -t <window>` for exactly the window given, never by agent name, so killing an old window can't touch a relaunched one.
 - **paste:** `tmux -L <socket> load-buffer -b <buffer_name> -` as a separate process with the text on stdin (no command-line length or newline limits), then `paste-buffer -d -p -b <buffer_name> -t <id>`, then the submit keys. Failure → `PasteFailed`.
 - **capture:** `capture-pane -p -J -t <id>` → `Screen { text }` (body lines joined with `\n`).
 - **inventory:** `list-windows -t =duohive -F '#{window_id}\t#{@duohive_agent}\t#{pane_dead}\t#{pane_dead_status}\t#{window_activity}'` → `Inventory`; untagged windows (the keeper) skipped.
 
-- [ ] **Step 1: Write the failing integration tests.** `support::TestServer::new()` picks socket `duohive-test-<random hex>`, uses `tmux` from `PATH`, and on `Drop` runs `kill-server`. Programs are `/bin/sh` one-liners; no CLI needed.
+- [ ] **Step 1: Write the failing integration tests.** `support::TestServer::new()` picks socket `duohive-test-<random hex>` and a temp `run_root`, uses `tmux` from `PATH`, and on `Drop` runs `kill-server`. Programs are `/bin/sh` one-liners; no CLI needed.
 
 ```rust
 #[tokio::test] async fn start_reports_started_and_tags_the_window() { /* Started{window "@N"}; list-windows shows @duohive_agent == agent */ }
@@ -1073,13 +1132,16 @@ Mechanics:
 #[tokio::test] async fn env_carries_token_and_path() { /* env [(DUOHIVE_TOKEN, "tok-1")], program sh -c 'printf "%s|%s" "$DUOHIVE_TOKEN" "$PATH" > "$OUT"' → OUT == "tok-1|" + the test process's PATH */ }
 #[tokio::test] async fn activity_reported_for_window_without_output() { /* loop printing every 100 ms → ≥ 2 Activity events within 4 s; no %output lines read */ }
 #[tokio::test] async fn idle_windows_send_nothing() { /* `cat` windows → no Activity for 3 s after the first */ }
-#[tokio::test] async fn pane_died_reports_exit_status() { /* sh -c 'exit 3' → PaneDied{status: Some(3)} */ }
+#[tokio::test] async fn start_works_with_a_space_in_the_data_dir() { /* run_root "<tmp>/My Data/run" → Started; the program runs (writes its OUT file); launch.sh is under "<tmp>/My Data/run/<agent>/" */ }
+#[tokio::test] async fn pane_died_reports_exit_status() { /* sh -c 'exit 3' → PaneDied{ window: the Started @id, status: Some(3) } */ }
+#[tokio::test] async fn kill_targets_only_the_given_window() { /* agent a started as "@1" (`cat`), killed, started again as "@2"; kill(a, "@1") again → "@2" still listed; WindowGone events name "@1" only */ }
 #[tokio::test] async fn stop_sends_quit_keys() { /* program exits on "q\n" → PaneDied{Some(0)} before grace */ }
 #[tokio::test] async fn stop_kills_after_grace() { /* trap '' INT; sleep 100 → WindowGone after ~grace (1 s in test) */ }
 #[tokio::test] async fn capture_returns_screen_text() { /* window runs `printf 'hello\nworld\n'; cat` → capture → Screen{ text } whose non-empty lines start with ["hello", "world"] */ }
 #[tokio::test] async fn paste_types_multiline_text() { /* `cat > out` window; paste "line one\nline two" + Enter; out has both lines */ }
 #[tokio::test] async fn inventory_lists_tagged_windows_with_dead_status() { /* agents a (`cat`) and b (`exit 2`) → Inventory has a with dead None and b with dead Some(Some(2)); the keeper window is absent */ }
 #[tokio::test] async fn connection_lost_when_server_killed() { /* `tmux -L <socket> kill-server` → ConnectionLost within 2 s */ }
+#[tokio::test] async fn control_client_loss_reattaches() { /* `tmux -L <socket> detach-client -s duohive` drops the control client while the server lives → no ConnectionLost; a noisy window keeps producing Activity within 3 s; an `exit 4` window that died meanwhile → PaneDied{ Some(4) } */ }
 #[tokio::test] async fn reconnect_finds_windows_started_by_a_previous_connection() { /* start a (`cat`), drop the runtime, connect again, inventory → [LiveWindow{ agent: a, window: the same @id, dead: None, .. }] */ }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --test runtime`
@@ -1095,6 +1157,7 @@ Each task builds one adapter in `crates/duohive-cli/src/<cli>.rs` against its sp
 - Task 20 creates: `src/lib.rs` (`pub fn real_adapters() -> Adapters`), `src/detect.rs`, `src/hooks_json.rs`, `src/claude.rs`
 - Task 21 creates: `src/opencode.rs`, `src/assets/opencode-plugin.js`
 - Tests: beside the code, reading `tests/fixtures/<cli>/<version>/`; snapshots in `src/snapshots/`
+- Task 20 modifies `crates/duohive-cli/Cargo.toml`: `[dev-dependencies] insta = { workspace = true, features = ["yaml"] }` (`assert_yaml_snapshot!` needs the `yaml` feature; `LaunchCommand` derives `Serialize`, Task 10)
 
 **Interfaces:**
 - Consumes: `CliAdapter` (including `enrich_hook`), `LaunchSpec`, `LaunchCommand`, `HookSignal`, `ScreenSignal`, `HookCoverage`, `Key`, `sh_quote` (Task 10); spike sections **Sn.1, .2, .3, .4, .7, .8, .9, .10, .11, .13**. MCP (Sn.5) and model listing (Sn.6) are not built here (phases 3 and 4).
@@ -1112,7 +1175,8 @@ Each adapter:
 - `launch`: instructions per **Sn.2** (`spec.agent.prompt`); hook configuration per **Sn.3**, written as a `LaunchFile` under `spec.run_dir`, each hook running `hook_command(spec, <duohive event>)`; model and effort per **Sn.6**'s flags when set; `spec.agent.flags` appended; the task last per **Sn.8**, with a `--` separator before it when the CLI supports one (Review Focus 4); `cwd = expand_home(directory, home)`.
 - `coverage`: exactly the Sn.3 table (a DuoHive event with no hook → `false`); `last_reply` per Sn.4.
 - `parse_hook`: DuoHive event name → `HookSignal` (Sn.3); `turn-end` extracts the reply per Sn.4 (for Claude Code, from the transcript path in the payload: read the last assistant text entry; this is the one adapter call that reads a file — it runs in the hook listener task, not the engine: see Task 22).
-- `read_screen`: the Sn.7 distinguishing strings → `ScreenState`; the last reply line where Sn.4 says there is no hook.
+- `read_screen`: the Sn.7 distinguishing strings → `ScreenState`, matched after the same normalisation as the fake adapter's (Task 27): trailing blank rows dropped, each line's trailing whitespace trimmed, rules read from the last non-empty line upward; the last reply line where Sn.4 says there is no hook.
+- `startup_prompts`: true when Sn.8 lists any start-up prompt (Claude Code's workspace trust is one).
 - `detect`: `probe_version(self.kind())`.
 - `quit_keys` per Sn.9; `submit_keys` per Sn.10.
 - `tested_versions`: the Sn.1 major.minor.
@@ -1131,7 +1195,8 @@ Each adapter:
 #[test] fn hook_config_points_at_duohive_hook() { /* the hooks file names hook_command(spec, e) for each Sn.3 row */ }
 #[test] fn parses_recorded_hooks() { /* every fixture under hooks/ → the HookSignal its Sn.3 row names */ }
 #[test] fn extracts_last_reply_from_fixture() { /* Sn.4 fixture → expected text */ }
-#[test] fn screen_rules_classify_recorded_screens() { /* at-rest → AtRest, working → Busy, approval → NeedsInput, start-up prompt → NeedsInput */ }
+#[test] fn screen_rules_classify_recorded_screens() { /* at-rest → AtRest, working → Busy, approval → NeedsInput, start-up prompt → NeedsInput; each also with three blank rows and trailing spaces appended → the same state */ }
+#[test] fn startup_prompts_match_spike_report() { /* assert_eq!(adapter.startup_prompts(), <Sn.8 lists a start-up prompt>) */ }
 #[test] fn coverage_matches_spike_report() { /* assert_eq!(adapter.coverage(), HookCoverage { .. }) with each of the six fields copied from the Sn.3/Sn.4 table */ }
 #[test] fn version_output_parses() { /* Sn.1 sample → "2.1.288"; garbage → None */ }
 ```
@@ -1144,13 +1209,16 @@ Task 20 adds `#[test] fn hook_command_quotes_paths_with_spaces()` (`hook_exe = "
 ### Task 22: `duohive hook` and the hook listener
 
 **Files:**
-- Create: `crates/duohive/src/{lib.rs, args.rs, hook_cmd.rs, hook_listener.rs}`; Modify: `main.rs`; tests `crates/duohive/tests/hook.rs`
+- Create: `crates/duohive/src/{args.rs, hook_cmd.rs, hook_listener.rs}`; Modify: `lib.rs` (from Task 1), `main.rs`; tests `crates/duohive/tests/hook.rs`
 
 **Interfaces:**
 - Consumes: `Paths`, `open_db`, `insert_pending_hook` (Tasks 16–17); `HookMessage`, `Input`, `Adapters`, `enrich_hook` (Tasks 10, 20).
 - Produces:
 
 ```rust
+// args.rs — Tasks 27 and 28 add variants and their parsing; Task 29 adds App's options and --help
+pub enum Cli { App, Hook { agent: String, event: String } }   // Task 27 adds BenchAgent { hooks: bool }, Task 28 Bench(BenchArgs)
+pub fn parse_args(args: &[String]) -> Result<Cli, String>;     // hand-rolled; args without the program name; [] → App
 // hook_cmd.rs — `duohive hook <agent> <event>`; std only (no tokio), always exit code 0
 pub fn run_hook(args: &[String], stdin: impl Read, stdin_is_terminal: bool, env: &HashMap<String, String>) -> std::process::ExitCode;
 // main.rs passes std::io::IsTerminal::is_terminal(&std::io::stdin()) before handing stdin over
@@ -1163,7 +1231,7 @@ impl HookListener {
 }
 pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agent → its CLI, refreshed by the binary on OrgChanged
 ```
-`run_hook`: token from `DUOHIVE_TOKEN` (missing → exit 0); payload = stdin read to EOF (cap 4 MiB) when `stdin_is_terminal` is false, else `null` (Claude Code hooks and the OpenCode plugin both write JSON to stdin); non-JSON payload → wrapped as `{"raw": "<text>"}`. Connect to `Paths::from_env()?.run_sock()` with a 200 ms connect timeout and a 200 ms write timeout and write one JSON line. If that fails, `open_db(state_db, 300 ms)` and `insert_pending_hook` (Review Focus 1's worst case stays under 1 s). If that fails, append one line to `logs/hook.log` and stop. Nothing is ever written to stdout or stderr; the exit code is always 0.
+`run_hook`: token from `DUOHIVE_TOKEN` in `env` (missing → exit 0); paths from `Paths::from_vars(env)` (never the process environment directly, so tests pass a map). Payload, when `stdin_is_terminal` is false: a helper thread reads stdin to EOF (cap 4 MiB) and sends the bytes over a channel; the main thread waits with `recv_timeout(300 ms)`; on timeout (a CLI that leaves stdin open and silent) it proceeds with the bytes read so far, which the helper shares through an `Arc<Mutex<Vec<u8>>>`, and never joins the blocked thread (the process exits). Empty → `null`; `stdin_is_terminal` → `null` (Claude Code hooks and the OpenCode plugin both write JSON to stdin); non-JSON → wrapped as `{"raw": "<text>"}`. Connect to `run_sock()` with a 200 ms deadline: std's `UnixStream::connect` has no timeout, so a helper thread connects and sends the stream over a channel, and the main thread `recv_timeout(200 ms)`s (std only, no `unsafe`); then `set_write_timeout(150 ms)` and write one JSON line. If that fails, `open_db(state_db, 200 ms)` and `insert_pending_hook`. Worst case 300 + 200 + 150 + 200 = 850 ms plus process start, under 1 s (Review Focus 1). If that fails, append one line to `logs/hook.log` and stop. Nothing is ever written to stdout or stderr; the exit code is always 0.
 
 `bind`: if the socket path exists and a connect succeeds → `AlreadyRunning`; if it exists and connect fails → remove it (stale); bind, then `chmod 0600`. `serve`: per connection, read lines (max 1 MiB; longer lines are dropped with a warning), parse `HookMessage`, look up the agent's CLI, call `enrich_hook`, send `Input::Hook` to the core (and to `tap` when set — the bench uses it).
 
@@ -1173,6 +1241,15 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
 #[tokio::test] async fn hook_forwards_one_line_to_the_socket() { /* listener on a temp run.sock with a tap; run_hook(["hook", "pay-qa", "busy"], b"{\"a\":1}", false, {DUOHIVE_TOKEN: "tok-1", DUOHIVE_DATA_DIR: tmp}) → tap receives HookMessage{ token: "tok-1", agent: "pay-qa", event: "busy", payload: {"a":1} }; pending_hooks empty */ }
 #[test] fn terminal_stdin_is_not_read() { /* stdin_is_terminal = true with a reader that panics if read → payload null, exit 0 */ }
 #[test] fn hook_falls_back_to_the_database_when_no_listener() { /* pending_hooks has the row */ }
+#[test] fn hook_survives_silent_open_stdin() {
+    /* run the built binary with stdin a pipe the test keeps open and never writes; listener on run.sock with a tap →
+       exit 0 in < 1 s, stdout and stderr empty; the tap receives the hook with payload null */
+}
+#[test] fn hook_survives_an_unreachable_socket() {
+    /* bind a UnixListener at run.sock that never accepts and fill its backlog with non-blocking connects until one would block
+       (where the OS refuses at once instead, the test still holds); run the built binary → exit 0 in < 1 s, stdout and stderr empty,
+       pending_hooks has the row */
+}
 #[test] fn hook_never_fails_the_cli() {
     /* run the built binary (env!("CARGO_BIN_EXE_duohive")) with: no token; garbage stdin; data dir unwritable (chmod 0500);
        socket path is a regular file. Each: exit status 0, stdout and stderr empty, finished in < 1 s */
@@ -1183,7 +1260,7 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
 #[tokio::test] async fn oversized_line_dropped() { /* write a 2 MiB line then a valid line → the core channel receives exactly one Input::Hook (the valid one) */ }
 #[tokio::test] async fn listener_enriches_before_forwarding() { /* StubAdapter enrich inserts a field; core receives it */ }
 ```
-The CLI entry for `hook` goes in `main.rs` now (`args.rs` parses `hook <agent> <event>`; `bench-agent` comes in Task 27, `bench` in Task 28, the app in Task 29).
+The CLI entry for `hook` goes in `main.rs` now (`parse_args` returns `Cli::Hook` for `hook <agent> <event>`; `bench-agent` comes in Task 27, `bench` in Task 28, the app in Task 29). Add `#[test] fn args_parse_hook() { assert_eq!(parse_args(&s(["hook", "a", "busy"])), Ok(Cli::Hook { agent: "a".into(), event: "busy".into() })); assert!(parse_args(&s(["frob"])).is_err()); }` to `args.rs`.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test hook`
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, see PASS.**
@@ -1202,10 +1279,10 @@ The CLI entry for `hook` goes in `main.rs` now (`args.rs` parses `hook <agent> <
 pub struct Palette { /* every UI §2.3 token */ }   impl Palette { pub fn dark() -> Self; pub fn light() -> Self; pub fn mono() -> Self; }
 pub fn palette_for(theme: Theme, no_color: bool) -> Palette;          // Auto → dark in phase 1; NO_COLOR → mono
 pub fn format_age(d: Duration) -> String;                             // "<1m" "2m" "4h" "3d" (D13)
-pub fn state_cell(s: &Status, now: Millis, spinner: Option<usize>) -> String;   // 16 cells: "~" or " ", glyph, " ", word padded to 9, age right-aligned in 4
+pub fn state_cell(s: &Status, now: Millis, spinner: Option<usize>) -> String;   // 16 cells: "~" or " ", glyph, " ", word padded to 9 (D23), age right-aligned in 4
 pub fn truncate_middle(name: &str, width: usize) -> String;           // "billing-…-worker"
 pub struct UiModel { pub org: Org, pub agents: BTreeMap<AgentName, AgentView>, pub needs_you: Vec<NeedsYouItem>,
-    pub org_error: Option<OrgFileError>, pub selected: NodeKey, pub footer_note: Option<String>, pub dialog: Option<Dialog>,
+    pub org_error: Option<OrgFileError>, pub settings_error: Option<OrgFileError>, pub selected: NodeKey, pub footer_note: Option<String>, pub dialog: Option<Dialog>,
     pub reconnecting: u32, /* … */ }
 pub enum Dialog { Confirm(Confirm) }   // defined here because UiModel holds it; Task 24 renders it, Task 25 adds Form(Box<Form>) and Chooser(Chooser)
 pub struct Confirm { pub title: String, pub lines: Vec<String>, pub yes_label: String, pub focus_yes: bool, pub on_yes: Command }
@@ -1223,7 +1300,7 @@ Look (exact from the UI spec):
 - **Tree:** UI §2.2 and §4.1 — Duo row `⬢ Duo · your manager agent`, teams `▣`, roles `◇`, connectors `├─ └─ │`, roll-ups per D12, last reply in quotes on the next line (cut at the pane edge with `…`), the selection bar `▌` in the padding cell plus the `selection` background. A row's second line shows, in priority: the error (`status.error` plus a hint: on Duo's row ` · e Edit org` (D17); on other rows ` · s stop` (D16; UI §4.12's ` · space retry · s stop` minus the phase 2 Give work hint), or no hint when the error already carries one, i.e. contains ` · `, as `opencode not found · install it or change its CLI (e)` does), the problem (`✕ … · e to fix`), the notice (`fg.muted`), else the last reply. Empty role: `no agents yet · n to add one` (UI §4.12 minus "or ask Duo"). Empty org: `Your org is empty · n to add a team, role or agent` in the side pane.
 - **Layout** (UI §3, D7): ≥ 100 wide → org pane 50 columns with connectors and replies; 80–99 → 32 columns, compact (no connectors, no replies, `▾` before groups, state cell = glyph + age); below 80×24 → only `Make the window at least 80×24` and `◆ <n> need you`. The org pane has focus (heavy border `┏━┓`); Needs you is pinned at its bottom with `┣━ Needs you (n) ━┫` (UI §4.1.3 row format). Header (UI §4.1) without `? help` (D8): ` DuoHive   6 agents · ● 2 working · ◆ 2 need you`; compact ` DuoHive  ● 2 · ◆ 2`. Footer: ` ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit`, or the footer note when set.
 - **Side pane** (light border, D7): team or role summary (UI §4.1.2, without the `space` hint: `e edit`); stopped agent `○ stopped · s to start`; running agent title `<agent> · <CLI display>` and body `attach: tmux -L <socket> attach -t duohive:<agent>`; empty org message; while `reconnecting > 0` (from `Snapshot`, cleared by `Reconnected`), the side pane shows only UI §4.1.2's start-up state `Reconnecting to <n> agents…` (`agent` when n is 1).
-- **Banner** (UI §4.12): ` ✕ org.toml line 42: unknown CLI "claud" · using your last good org · o open in $EDITOR` (no `line N` part when `line` is `None`).
+- **Banner** (UI §4.12): ` ✕ org.toml line 42: unknown CLI "claud" · using your last good org · o open in $EDITOR` (no `line N` part when `line` is `None`). An invalid `settings.toml` (D29): ` ✕ settings.toml line N: <error> · using default settings`, on the next line when both are set.
 - **Blocking screen:** UI §4.12 "DuoHive needs tmux", `Found: none.` or `Found: 3.1c.`
 
 - [ ] **Step 1: Write the failing tests.** Render with `ratatui::backend::TestBackend` and compare buffers as strings.
@@ -1245,7 +1322,7 @@ Look (exact from the UI spec):
        billing-api "✕ ~/code/billing not found · e to fix"; pay-qa notice "notice: claude 2.3 untested (tested up to 2.1)" */
 }
 #[test] fn reconnecting_state_in_side_pane() { /* Snapshot reconnecting 6 → side pane line "Reconnecting to 6 agents…" (UI §4.1.2); apply(Reconnected) → line gone, returns true */ }
-#[test] fn org_file_banner() { /* org_error Some{ line: Some(42), "unknown CLI \"claud\"" } → top line " ✕ org.toml line 42: unknown CLI \"claud\" · using your last good org · o open in $EDITOR"; line None → no "line 42" part */ }
+#[test] fn org_file_banner() { /* org_error Some{ line: Some(42), "unknown CLI \"claud\"" } → top line " ✕ org.toml line 42: unknown CLI \"claud\" · using your last good org · o open in $EDITOR"; line None → no "line 42" part; settings_error Some{ line: Some(3), "invalid type" } → " ✕ settings.toml line 3: invalid type · using default settings" (D29) */ }
 #[test] fn too_small_screen() { /* 79×24 → "Make the window at least 80×24" and "◆ 2 need you" */ }
 #[test] fn tmux_missing_screen_matches_spec() { /* render_blocking(TmuxMissing{ found: None }) at 80×24 → the UI §4.12 box text with "Found: none."; Some("3.1c") → "Found: 3.1c." */ }
 #[test] fn empty_org_and_empty_role() { /* Org::blank → side pane "Your org is empty · n to add a team, role or agent"; Payments›Frontend with no agents → tree line "no agents yet · n to add one" */ }
@@ -1424,8 +1501,9 @@ pub struct FsDirProbe;    // impl DirProbe: GitRepo when <dir>/.git exists (file
 pub struct FakeCliAdapter { pub kind: CliKind, pub exe: PathBuf, pub hooks: bool }   // impl CliAdapter
 // launch → exe "bench-agent" [--no-hooks]; detect → Found { version: "0.0.0-fake" } with tested_versions ["0.0"] (no notice),
 // so the bench, the e2e tests and CI need no real CLI installed; parse_hook maps the five DuoHive events;
-// read_screen: last line "❯ " → AtRest, "working…" → Busy, "allow? (y/n)" → NeedsInput; quit_keys [Text("/exit"), Enter];
-// submit [Enter]; coverage: all six fields true when hooks, else all false.
+// read_screen on the last non-empty line, trailing whitespace trimmed (capture-pane pads rows and lines): "❯" → AtRest,
+// "working…" → Busy, ends with "allow? (y/n)" → NeedsInput; quit_keys [Text("/exit"), Enter];
+// submit [Enter]; startup_prompts false; coverage: all six fields true when hooks, else all false.
 pub fn fake_adapters(exe: &Path) -> Adapters;   // Claude → FakeCliAdapter { hooks: true }, Opencode → { hooks: false }
 // duohive/src/system.rs — the headless assembly the binary, the bench and the e2e tests share
 pub struct SystemOptions { pub tap: Option<mpsc::UnboundedSender<HookMessage>>,
@@ -1435,21 +1513,21 @@ impl SystemHandle { pub async fn shutdown(self); }
 pub async fn start_system(paths: &Paths, adapters: Arc<Adapters>, opts: SystemOptions) -> Result<SystemHandle, StartError>;
 pub struct EnrichingStore { /* SqliteStore, Arc<Adapters>, AgentClis */ }   // impl Store (D22)
 ```
-`start_system`: `SqliteStore::open` wrapped in `EnrichingStore`, load settings and the org, `HookListener::bind` (→ `StartError::AlreadyRunning` with the message `DuoHive is already running`), `TmuxRuntime::connect`, `Engine::new` with `Ports { SystemClock, RandomIds, Arc::new(FsDirProbe), .. }` and `Arc::clone(&adapters)`, then `start_up`; spawn `run_core`, the listener (with the same `Arc<Adapters>`) and the detection task. It keeps `AgentClis` updated from `OrgChanged`.
-- **CLI detection** lives only here: the detection task waits for `opts.first_frame` when it is `Some` (the app passes the receiver whose sender `run_app` fires after its first frame, Task 24), or runs at once when it is `None` (bench, tests); then it runs `adapters.detect_all()` on `spawn_blocking` and sends `Input::CliInventory`. With `fake_adapters` every kind reports `Found`, so nothing depends on which CLIs the machine has. On first run (no `org.toml`) `start_system` instead calls `detect_all()` once before the core starts, picks the blank org's CLI (`Org::blank`: the first `Found` in `CliKind::ALL` order, else Claude), and sends those results as the `CliInventory`; it never detects twice.
+`start_system`: `SqliteStore::open` wrapped in `EnrichingStore`, load settings and the org (D29: an `org.toml` that doesn't parse → `last_good_org()`, else `Org::blank(CliKind::Claude)`, with `org_error = Some(e)`; an invalid `settings.toml` → `Settings::default()` with `settings_error = Some(e)`), `HookListener::bind` (→ `StartError::AlreadyRunning` with the message `DuoHive is already running`), `TmuxRuntime::connect` with `TmuxConfig { socket: paths.tmux_socket, session: "duohive", run_root: paths.data_dir.join("run"), .. }` (D31), `Engine::new` with `org_error`, `settings_error`, `Ports { SystemClock, RandomIds, Arc::new(FsDirProbe), .. }` and `Arc::clone(&adapters)`, then `start_up`; spawn `run_core`, the listener (with the same `Arc<Adapters>`) and the detection task. It keeps `AgentClis` updated from `OrgChanged`.
+- **CLI detection** lives only here: the detection task waits for `opts.first_frame` when it is `Some` (the app passes the receiver whose sender `run_app` fires after its first frame, Task 24), or runs at once when it is `None` (bench, tests); then it runs `adapters.detect_all()` on `spawn_blocking` and sends `Input::CliInventory`, then probes every resolved agent directory (`expand_home`) with `FsDirProbe` on `spawn_blocking` and sends `Input::DirInventory` (D26). With `fake_adapters` every kind reports `Found`, so nothing depends on which CLIs the machine has. On first run (no `org.toml`) `start_system` instead calls `detect_all()` once before the core starts, picks the blank org's CLI (`Org::blank`: the first `Found` in `CliKind::ALL` order, else Claude), and sends those results as the `CliInventory`; it never detects twice.
 - **`EnrichingStore`** forwards every call to `SqliteStore`, except that `take_pending_hooks` runs the agent's adapter's `enrich_hook` (CLI looked up in `AgentClis`) on each message before returning it, so hooks replayed after a restart carry the Claude Code last reply exactly as live ones do (D22).
 - **`SystemHandle::shutdown`** sends `Command::Shutdown`, awaits the core task, then aborts the listener and detection tasks and awaits them. It never stops or kills an agent: tmux windows keep running, and `run.sock` is left with no listener, so hooks fired afterwards fall back to `pending_hooks` (a later `HookListener::bind` replaces the stale socket). Task 29's restart test uses it.
 
-`bench-agent [--no-hooks]` (hidden subcommand, `fake_agent.rs`): fires `session-start`, prints `❯ `; for each stdin line: fires `busy`, prints `working…` lines every 100 ms for 1–3 s, prints a reply, fires `turn-end` with `{"last_reply": "...", "sent_at_ms": <now>}`, prints `❯ `; on `/exit` fires `session-end` and exits 0. Every hook payload carries `sent_at_ms`. It runs `duohive hook` through `std::process::Command` with `DUOHIVE_TOKEN` from its environment.
+`bench-agent [--no-hooks]` (hidden subcommand, `fake_agent.rs`; `parse_args` gains `Cli::BenchAgent { hooks: bool }`): fires `session-start`, prints `❯ `; for each stdin line: fires `busy`, prints `working…` lines every 100 ms for 1 s, or for 3 s when the line contains `slow` (so tests control the turn length), prints a reply, fires `turn-end` with `{"last_reply": "...", "sent_at_ms": <now>}`, prints `❯ `; on `/exit` fires `session-end` and exits 0. Every hook payload carries `sent_at_ms`. It runs `duohive hook` through `std::process::Command` with `DUOHIVE_TOKEN` from its environment.
 
 - [ ] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn fake_adapter_screen_rules() {
     let a = FakeCliAdapter { kind: CliKind::Opencode, exe: "duohive".into(), hooks: false };
-    assert_eq!(a.read_screen("hello\n❯ ").state, Some(ScreenState::AtRest));
-    assert_eq!(a.read_screen("working…").state, Some(ScreenState::Busy));
-    assert_eq!(a.read_screen("Write file? allow? (y/n)").state, Some(ScreenState::NeedsInput));
+    assert_eq!(a.read_screen("hello\n❯ \n\n\n").state, Some(ScreenState::AtRest));            // trailing blank rows, as capture-pane gives
+    assert_eq!(a.read_screen("working…  \n\n").state, Some(ScreenState::Busy));
+    assert_eq!(a.read_screen("Write file? allow? (y/n)\n\n").state, Some(ScreenState::NeedsInput));
     assert!(!a.coverage().complete());
 }
 #[test] fn fake_adapter_detects_without_a_real_cli() { /* detect() == Found { version: "0.0.0-fake" }; untested_notice("bench-agent", "0.0.0-fake", a.tested_versions()) == None */ }
@@ -1459,8 +1537,15 @@ pub struct EnrichingStore { /* SqliteStore, Arc<Adapters>, AgentClis */ }   // i
 }
 #[tokio::test] async fn detection_waits_for_the_first_frame() {
     /* org.toml present (not first run); adapters wrap the fakes so detect() counts its calls; SystemOptions { first_frame: Some(rx) } →
-       count 0 after 500 ms; tx.send(()) → count == 2 (one per CLI kind) within 2 s and still 2 a second later */
+       count 0 after 500 ms; tx.send(()) → count == 2 (one per CLI kind) within 2 s and still 2 a second later;
+       the events show no directory problem before tx.send and an OrgChanged with the probed problems after it (D26) */
 }
+#[tokio::test] async fn start_system_with_broken_files_uses_last_good_and_defaults() {
+    /* D29: save_org(example_org) (writes org.last-good.toml), then org.toml ← "cli = \"claud\"" garbage and settings.toml ← "quiet_after_minutes = \"x\"";
+       start_system → first Snapshot org == example_org(), org_error Some with a line, settings_error Some;
+       remove org.last-good.toml and start again on fresh dirs → Snapshot org == Org::blank(CliKind::Claude), org_error Some */
+}
+#[tokio::test] async fn bench_agent_slow_turn_takes_three_seconds() { /* fake agent given "a slow task" → turn-end ≥ 3 s after busy; "a task" → < 2 s */ }
 #[tokio::test] async fn replayed_hooks_are_enriched() {
     /* D22: adapter whose enrich_hook inserts "duohive_last_reply": "from transcript"; insert a turn-end into pending_hooks;
        EnrichingStore::take_pending_hooks() → that message's payload["duohive_last_reply"] == "from transcript" */
@@ -1480,7 +1565,7 @@ pub struct EnrichingStore { /* SqliteStore, Arc<Adapters>, AgentClis */ }   // i
 
 **Files:**
 - Create: `crates/duohive/src/bench/{mod.rs, measure.rs}`; tests `crates/duohive/tests/bench.rs`
-- Modify: `crates/duohive/src/{args.rs, main.rs}` (`bench` subcommand)
+- Modify: `crates/duohive/src/{args.rs, main.rs}` (`bench` subcommand: `parse_args` gains `Cli::Bench(BenchArgs)`)
 
 **Interfaces:**
 - Consumes: `start_system`, `SystemOptions`, `fake_adapters` (Task 27); `duohive_tui::render` (Task 23).
@@ -1494,7 +1579,7 @@ pub struct Percentiles { pub p50: f64, pub p95: f64, pub max: f64 }
 pub async fn run_bench(a: BenchArgs) -> Result<BenchReport, BenchError>;
 pub fn percentiles(samples: &mut [f64]) -> Percentiles;
 ```
-`run_bench`: temp config/data dirs, tmux socket `duohive-bench-<pid>`, an org with one root role `Bench` and N agents, `start_system(paths, Arc::new(fake_adapters(current_exe)), SystemOptions { tap: Some(..), first_frame: None })`. Adapters are keyed by CLI kind, so `Claude` maps to `FakeCliAdapter { hooks: true }` and `Opencode` to `FakeCliAdapter { hooks: false }` (a bench-only mapping that says nothing about the real OpenCode adapter's coverage); every fifth agent has `cli = "opencode"`, which exercises the screen-read path. It starts every agent, gives each `turns` tasks, and renders every event batch into a 160×48 `TestBackend` through `duohive_tui::render` (at most 30 fps), recording for each tapped hook the time its resulting state first appears in a rendered frame minus `sent_at_ms`. Then it waits for every agent to be at rest and measures idle CPU over `idle_secs` (`getrusage(RUSAGE_SELF)` user+sys delta ÷ wall time) and peak RSS (`ru_maxrss`, bytes on macOS, KiB on Linux). It stops all agents, calls `SystemHandle::shutdown`, and kills its tmux server. Output (plain, or JSON with `--json`):
+`run_bench`: temp config/data dirs, tmux socket `duohive-bench-<pid>`, an org with one root role `Bench` and N agents, `start_system(paths, Arc::new(fake_adapters(current_exe)), SystemOptions { tap: Some(..), first_frame: None })`. Adapters are keyed by CLI kind, so `Claude` maps to `FakeCliAdapter { hooks: true }` and `Opencode` to `FakeCliAdapter { hooks: false }` (a bench-only mapping that says nothing about the real OpenCode adapter's coverage); every fifth agent has `cli = "opencode"`, which exercises the screen-read path. The runtime silences unselected panes with the method S0.5 chose (D25), so the bench measures that one. It starts every agent, gives each `turns` tasks, and renders every event batch into a 160×48 `TestBackend` through `duohive_tui::render` (at most 30 fps), recording for each tapped hook the time its resulting state first appears in a rendered frame minus `sent_at_ms`. Then it waits for every agent to be at rest and measures idle CPU over `idle_secs` (`getrusage(RUSAGE_SELF)` user+sys delta ÷ wall time) and peak RSS (`ru_maxrss`, bytes on macOS, KiB on Linux). It stops all agents, calls `SystemHandle::shutdown`, and kills its tmux server. Output (plain, or JSON with `--json`):
 
 ```
 duohive bench · 10 agents · tmux 3.7c · macos-aarch64
@@ -1517,7 +1602,7 @@ Targets at 10 agents come from PRD Success Metrics. Phase 1 reports; it never fa
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test bench && cargo test -p duohive --lib bench`
 - [ ] **Step 3: Implement.** `measure.rs` is the one module with `unsafe` (`libc::getrusage`), marked `#[expect(unsafe_code, reason = "getrusage has no safe wrapper in std")]`.
-- [ ] **Step 4: Run, see PASS.** Then `cargo run --release -p duohive -- bench` → the three lines above with real numbers.
+- [ ] **Step 4: Run, see PASS.** Then `cargo run --release -p duohive -- bench` → the four lines above with real numbers.
 - [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: basic bench and its report"`
 
 ### Task 29: Binary wiring — start-up, logging, subcommands and end-to-end tests
@@ -1526,12 +1611,10 @@ Targets at 10 agents come from PRD Success Metrics. Phase 1 reports; it never fa
 - Create: `crates/duohive/src/{logging.rs, startup.rs}`; Modify: `args.rs`, `main.rs`; tests `crates/duohive/tests/e2e.rs`
 
 **Interfaces:**
-- Consumes: `start_system`, `SystemOptions`, `SystemHandle::shutdown`, `fake_adapters` (Task 27), `run_bench` (Task 28), `run_app` (Task 24), `tmux_version` (Task 19), `real_adapters` (Task 20), `FsDirProbe` (Task 26).
-- Produces: `duohive` (the app), `duohive hook …`, `duohive bench …`, hidden `duohive bench-agent …`.
+- Consumes: `Cli`, `parse_args` (Task 22, with the `BenchAgent` and `Bench` variants from Tasks 27–28), `start_system`, `SystemOptions`, `SystemHandle::shutdown`, `fake_adapters` (Task 27), `run_bench` (Task 28), `run_app` (Task 24), `tmux_version` (Task 19), `real_adapters` (Task 20), `FsDirProbe` (Task 26).
+- Produces: `duohive` (the app), `duohive hook …`, `duohive bench …`, hidden `duohive bench-agent …`; `parse_args` gains `--help` (prints usage).
 
 ```rust
-pub enum Cli { App, Hook { agent: String, event: String }, Bench(BenchArgs), BenchAgent { hooks: bool } }
-pub fn parse_args(args: &[String]) -> Result<Cli, String>;   // hand-rolled; `--help` prints usage
 pub fn init_logging(paths: &Paths) -> Result<tracing_appender::non_blocking::WorkerGuard, LogError>;   // daily file in logs/, never the terminal
 pub async fn run_app_main() -> std::process::ExitCode;
 ```
@@ -1543,13 +1626,21 @@ pub async fn run_app_main() -> std::process::ExitCode;
 #[tokio::test] async fn e2e_start_work_finish_view() { /* StartAgent → Starting → Idle; GiveWork → Working → Finished with last reply; ViewAgent → Idle */ }
 #[tokio::test] async fn e2e_stop_is_stopped() { /* StopAgent → Stopped; window gone */ }
 #[tokio::test] async fn e2e_crash_is_errored_in_needs_you() { /* tmux kill the fake's process with SIGKILL → Errored "exited unexpectedly…"; NeedsYouChanged contains it */ }
+#[tokio::test] async fn e2e_crash_then_immediate_restart() {
+    /* SIGKILL the fake → Errored; GiveWork "again" sent at once, before the old window's close arrives → Starting → Working → Finished;
+       no AgentStatusChanged to Errored after the GiveWork although the old window closes meanwhile; the new window's @id differs from the old one */
+}
+#[tokio::test] async fn e2e_duo_cli_change_restarts_duo() {
+    /* Duo on claude (hooked fake) → Idle in window @a; EditOrgDefaults with duo.cli opencode (hookless fake) → Stopped, then Starting,
+       then Idle in a new window @b ≠ @a; @a is gone from list-windows; Duo is never Errored */
+}
 #[tokio::test] async fn e2e_hookless_agent_gets_tilde_states() { /* agent on `opencode` (mapped to the hookless fake) → Working/Finished with from_screen = true within 2 s of settling */ }
 #[tokio::test] async fn e2e_restart_reconnects() {
     /* start agents a and b → both Idle; GiveWork a "slow task" (runs 3 s); handle.shutdown().await (aborts the listener and core tasks,
        stops no agent); a's turn completes while closed, so its busy/turn-end hooks land in pending_hooks; start_system again on the same Paths →
        first Snapshot has reconnecting == 2, then Reconnected; a Finished with its last reply, b still Idle; both windows are the same @ids */
 }
-#[test] fn args_parse() { /* "hook a busy" → Hook; "bench --agents 10 --json" → Bench; "frob" → Err */ }
+#[test] fn args_parse() { /* "hook a busy" → Hook; "bench --agents 10 --json" → Bench; "--help" → usage; "frob" → Err */ }
 #[test] fn logging_writes_to_logs_dir_only() { /* init_logging(temp paths), tracing::info!("hello") then drop the guard → one file under logs/ contains "hello"; nothing else under the data dir changed */ }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test e2e`
@@ -1580,6 +1671,6 @@ pub async fn run_app_main() -> std::process::ExitCode;
 
 ## Self-review notes
 
-- **Spec coverage:** roadmap Phase 0 (workspace, toolchain, licence, CI, S0, S1 Claude Code, S2 OpenCode) → Tasks 1–5; Phase 1 core domain → 6–8, engine (command/event loop, full state machine, Give work by state, quiet, Needs you) → 9–15, store (`org.toml`, `settings.toml`, `state.db`) → 16–17, tmux runtime → 18–19, adapters (Claude Code, OpenCode) and `duohive hook` → 20–22, minimal TUI with live status and forms → 23–25, real ports → 26, fake CLI and headless system → 27, basic `bench` → 28, wiring → 29, done-when → 30. TD §8 rows in scope: CLI missing/untested (11), launch fails (11), crash (12), Duo fails (12, 23), tmux missing (23, 29), `org.toml` invalid (14, 16, 23), directory missing (8, 11, 23), hook silent → `~` then quiet (12–13). Restart and reconnect: 15, 23 (`Reconnecting to N agents…`), 27 (`shutdown`, `EnrichingStore`), 29. Out of scope by phase: worktrees, Give work dialog, agent pane, alerts (2); MCP, inbox, Duo prompt, cards, task to a role (3); templates, model picker, key editor, `?` map, mouse (4). Out of v1: a Codex adapter and its spike (deferred to after v1).
+- **Spec coverage:** roadmap Phase 0 (workspace, toolchain, licence, CI, S0, S1 Claude Code, S2 OpenCode) → Tasks 1–5; Phase 1 core domain → 6–8, engine (command/event loop, full state machine, Give work by state, quiet, Needs you) → 9–15, store (`org.toml`, `settings.toml`, `state.db`) → 16–17, tmux runtime → 18–19, adapters (Claude Code, OpenCode) and `duohive hook` → 20–22, minimal TUI with live status and forms → 23–25, real ports → 26, fake CLI and headless system → 27, basic `bench` → 28, wiring → 29, done-when → 30. TD §8 rows in scope: CLI missing/untested (11), launch fails (11), crash (12), Duo fails (12, 23), tmux missing (23, 29), `org.toml` invalid (14, 16, 23), directory missing (8, 11, 23), hook silent → `~` then quiet (12–13). Restart and reconnect: 15, 23 (`Reconnecting to N agents…`), 27 (`shutdown`, `EnrichingStore`), 29. Out of scope by phase: worktrees, Give work dialog, agent pane, alerts (2); MCP, inbox, Duo prompt, cards, task to a role (3); templates, model picker, key editor, `?` map, mouse, and TD §8's "No agent CLI installed" full-screen message, which belongs to first-run setup (4; D28). Out of v1: a Codex adapter and its spike (deferred to after v1).
 - **Size:** 30 tasks: 5 in Phase 0 (Tasks 1–5) and 25 in Phase 1 (Tasks 6–30).
 - **Proportion:** signatures, rules and tests only; bodies appear only for the launch script and the bench output format, which the specs and signatures don't determine.
