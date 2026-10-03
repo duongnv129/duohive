@@ -67,7 +67,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
-- [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
 - [ ] What should the UI/UX improvement pass change once v1 is in daily use?
 
 ---
@@ -259,7 +258,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | 2 | One screen | Agent pane (watch and type), Needs you, notifications, quick prompt with the worktree option | pending | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents, the benchmark, first-run setup, model and effort picker, key and mouse completeness | pending | 3 |
-| 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done, 30-day daily-use test passed | pending | 4 |
+| 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
 
 - **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status.
 - **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent. Done when a day's work needs no `tmux attach`.
@@ -285,6 +284,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Worktree clean-up | Removed automatically once its branch is merged; never while it holds uncommitted changes | Keep until removed by hand; remove when the agent stops | No pile-up of finished worktrees, and no lost work |
 | Stack | Rust + Ratatui, tmux-backed | Go + Bubble Tea; own terminal service | Smallest footprint; tmux keeps agents alive and attachable |
 | Name | DuoHive (`duohive`, `dh`); Duo for the agent | Hivly, Cohorai, Myrmi | Personal brand and hive metaphor; clean on registries |
+| Branding | Keep DuoHive; lead with "Duo + your Engineer Factory", not "Hive" | Rename (Duocrew, DuoHQ); decide at launch | "Hive" is crowded among agent tools; "Duo" and the factory story set DuoHive apart. No software named DuoHive was found |
 | Distribution | Open source, Apache-2.0, own repo | Proprietary; fork an existing tool | The author owns and drives the product |
 
 ---
@@ -295,6 +295,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 
 - **Session managers** run parallel agents in tmux or a desktop app, mostly with git worktrees: Claude Squad (AGPL, tmux, about 8.4k stars), Conductor (macOS, closed source, paid tiers), Crystal now Nimbalyst (MIT, desktop GUI), Vibe Kanban (Apache-2.0, a web board, community-run since Apr 2026). They do parallel tasks well, but their agents are disposable, and coordination goes through the user ([comparison](https://munderdiffl.in/blog/claude-code-orchestration-tools-compared/), [roundup](https://parallelcode.app/blog/multi-agent-coding-tools-2026/)).
 - **Built-in teams:** Claude Code Agent Teams (experimental) has a lead coordinating teammates in tmux panes, but it covers Claude only and lasts one run. Codex added a desktop app for managing multiple agents and subagents in Feb 2026 ([overview](https://dev.to/bokuwalily/swarming-claude-code-and-codex-in-parallel-running-multiple-agents-at-once-with-tmux-and-git-1fej)).
+- **"Hive" agent tools:** [hive](https://github.com/morapelker/hive), an open-source worktree manager for OpenCode, Claude Code and Codex agents; [Hive](https://www.hivecode.app/), a Rust desktop app whose "Queen" coordinator hands tasks to fixed agent teams (Architect, Coder, Reviewer, Tester), each in a worktree, the closest concept to DuoHive found; [Hive](https://hive-ai.dev/), a command centre with a kanban board. None has a user-defined org of standing agents with a manager agent you approve changes from.
 - **The gap DuoHive targets:** a **standing, cross-CLI org of agents with a manager agent**, light enough for 100 agents. None of the tools above combines these.
 - **A caution:** most comparison articles are written by competing vendors, so their rankings are biased.
 
