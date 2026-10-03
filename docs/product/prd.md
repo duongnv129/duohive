@@ -67,7 +67,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
-- [ ] How much of the org should Duo control? v1 is "talk, plus start and stop"; full control over the structure is undecided.
 - [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
 - [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
 - [ ] What should the UI/UX improvement pass change once v1 is in daily use?
@@ -107,7 +106,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Must** | Org chart: teams → roles → standing agents, edited in-app, saved to a shareable file | The core of the hypothesis |
 | **Must** | Agent definition: name, CLI, flags, directory, prompt, model, effort; inherited from team and role, prompts stack | Instructions written once, not per session |
 | **Must** | One screen: org tree with live status and last reply, the selected agent's live terminal, chat with Duo | See and steer the whole team at a glance |
-| **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them; every action visible | Direct the team in plain language |
+| **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them, and propose org changes you approve; every action visible | Direct the team in plain language |
 | **Must** | Agent-to-agent messages, delivered only when the receiver is at rest | Duo, and agents, can coordinate safely |
 | **Must** | "Needs you" list and desktop notifications | Nobody stuck unnoticed |
 | **Must** | Light at scale: the targets in Success Metrics | A requirement, not a feature: the reason to rebuild |
@@ -171,9 +170,11 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
 | See the org and each agent's screen | "What's blocking the Payments team?" |
 | Message an agent and wait for its answer | "Tell auth-service to rebase and run the tests, then tell me what failed" |
 | Start and stop agents, choosing directory or worktree | "Start pay-qa on the login regression, in a worktree" |
-| **Cannot (v1):** create, edit, move or delete teams, roles or agents | The org's structure stays yours |
+| Propose an org change (add, edit, move or remove a team, role or agent); it happens only after you approve | "No frontend agent in Payments. Add `pay-web` (Frontend, Claude, ~/code/web)? [Approve] [Edit] [Reject]" |
+| **Cannot:** change the org without your approval | The org's structure stays yours |
 
 - **Visible actions:** every action Duo takes appears in the chat as an `→` line.
+- **Approval cards:** a proposed org change shows as a card in the chat with **Approve** (`y`), **Edit** (opens the form pre-filled) and **Reject** (`n`). Nothing changes until you approve, and removing an agent always needs approval, like every other change.
 - **Approvals stay with you:** commit, push, merge, publish and delete still wait for you.
 
 ### One screen
@@ -272,7 +273,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
-| Manager agent | Duo: talk, plus start and stop | Talk only; full control | Useful without the org changing under you |
+| Manager agent | Duo: talk, start and stop agents, and propose org changes you approve | Talk only; start/stop only; full control | A story never stalls on a missing agent, and the org never changes without your say-so |
 | Layout | One screen: tree, agent, chat | Separate views | A manager sees and steers without switching |
 | Scope | Jira, review, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
 | Worktrees | An option per task: the agent's directory or a fresh worktree, with a per-agent default | Always a worktree (market default); never | Standing agents usually own a repo; worktrees when agents share one |
