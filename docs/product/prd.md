@@ -1,0 +1,281 @@
+# DuoHive — Product Requirements
+
+> Run your AI coding agents as a team, not a pile of terminals.
+
+**Status:** Draft v1 · **Owner:** the author · **Last updated:** 2026-10-03
+Living document, updated in place. It says *what* DuoHive must do and *why*; the technical design is a separate, later document.
+
+---
+
+## Problem Statement
+
+Developers and engineering leads now run several AI coding agents at once (Claude Code, OpenCode, Codex), but every tool for that treats agents as a flat list of throwaway terminal sessions. With 5–10 agents it is already hard to see who is working, who is stuck waiting for an approval, and what each one was told to do; with dozens, the tools themselves get heavy and slow. The cost is idle agents nobody noticed, instructions retyped for every session, and a manager who spends their attention babysitting panes instead of directing work.
+
+## Evidence
+
+- The author runs **5–10 agents a day** today and expects to need **10–100** on a capable machine.
+- **Every tool in the market is a session manager.** Claude Squad, Conductor, Crystal (now Nimbalyst), Vibe Kanban and similar tools give each task a fresh session, usually in its own git worktree. Agents don't keep a lasting identity, and coordination is routed through the user ([comparison](https://munderdiffl.in/blog/claude-code-orchestration-tools-compared/), [roundup](https://parallelcode.app/blog/multi-agent-coding-tools-2026/)).
+- **Only one tool lets agents coordinate, and it covers one CLI.** Claude Code Agent Teams has a lead session that coordinates teammate sessions. It is Claude-only, experimental, and its teams last one run.
+- **Plain tmux shows no status:** it neither shows agent status nor notifies when an agent needs input, which is the most-cited reason people adopt a manager ([HN discussion](https://news.ycombinator.com/item?id=49107749)).
+- **The overhead grows with the agent count:** guides recommend 3–5 agents at most because of coordination overhead ([ClawTab](https://clawtab.cc/articles/claude-code-parallel-agents-tmux)), which DuoHive aims to remove rather than accept.
+- *Assumption, needs validation (through the author's own daily use and 5 interviews with other leads running 5+ agents):* the pain grows with the number of agents, and an org structure with standing agents reduces it.
+
+## Proposed Solution
+
+DuoHive is an open-source terminal app that runs your agents as an **org chart**: teams, roles and **standing agents**, each with its own name, instructions, directory and CLI, which you steer from **one screen**. At the root of the tree sits **Duo**, a manager agent you chat with; Duo can see the whole org, message any agent and start or stop them, so you direct the team in plain language instead of hopping between panes. DuoHive stays light enough to forget it is running, from 10 to 100 agents.
+
+We chose standing agents in an org chart over the market's session-per-task model because the problem is not "run tasks in parallel", which existing tools do well. The problem is "manage a team of agents over days": knowing who does what, giving each one standing instructions once, and seeing the whole team at a glance.
+
+## Key Hypothesis
+
+We believe that **an org chart of standing agents, a manager agent you chat with, and one screen showing the whole team** will **cut the effort of running many coding agents** for **engineering leads and developers who run 5+ agents a day**.
+
+We'll know we're right when **the author replaces their current tool with DuoHive for daily work for 30 consecutive days**, and **a new user goes from install to 3 working agents in under 10 minutes**.
+
+## What We're NOT Building (v1)
+
+| Not building | Why |
+|---|---|
+| Agents that delegate to agents (a chain of command) | The tree organises; you direct. Autonomous delegation is a different, riskier product (cost, loops, trust) |
+| Jira or any ticket system | Work is given in plain language, directly or through Duo; integrations come after the core is proven |
+| Reviving or forking an agent's old conversation | A stopped agent starts fresh. Simpler, and enough to test the hypothesis |
+| Diff review inside DuoHive | Agents and git already cover review; not core to "managing a team" |
+| A git worktree per agent | Standing agents own their own directory; worktrees are a later option (see Open Questions) |
+| Shared task lists and file locks | Duo and messaging cover coordination for v1 |
+| Shell terminals nested under agents | Not needed to manage agents |
+| Custom CLIs beyond Claude Code, OpenCode, Codex | Three well-supported CLIs first; pluggable CLIs later |
+| Windows, accounts, cloud sync, telemetry | Local-first and private; Windows lacks tmux (WSL2 best effort) |
+
+## Success Metrics
+
+| Metric | Target | How measured |
+|---|---|---|
+| **Daily use (primary)** | Author uses DuoHive as the only agent tool for 30 consecutive days | Self-report log |
+| Time to first team | Install → 3 working agents in < 10 min, README only | 3 first-time users, timed |
+| Idle CPU | < 1% at 10 agents · < 3% at 100 | Built-in benchmark, Apple M-series, each release |
+| DuoHive memory | < 20 MB at 10 agents · < 60 MB at 100 | Same benchmark (DuoHive only, agents excluded) |
+| Status freshness | Agent state change on screen < 1 s at 10 · < 2 s at 100 | Same benchmark |
+| Start-up | First frame < 100 ms at 10 · < 300 ms at 100 | Same benchmark |
+| Binary size | < 10 MB | Release artifact |
+
+## Open Questions
+
+- [ ] Do standing agents beat the session-per-task model for people other than the author? (validate in interviews)
+- [ ] Is a git worktree per agent needed in v1? Every competitor has it; two agents on one repo may collide.
+- [ ] How much of the org should Duo control? v1 is "talk, plus start and stop"; full control over the structure is undecided.
+- [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
+- [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
+- [ ] What should the UI/UX improvement pass change once v1 is in daily use?
+
+---
+
+## Users & Context
+
+**Primary user**
+
+- **Who:** an engineering manager or tech lead who runs 5–10 AI coding agents across several repos, often for different projects or teams.
+- **Current behaviour:** opens agents in tmux panes or a session-manager TUI, retypes each agent's instructions, and checks panes one by one to find who is stuck.
+- **Trigger:** a new batch of work (a sprint, a set of fixes) to spread across agents, or the moment several agents are waiting at once and it's unclear which.
+- **Success state:** opens one screen, sees the whole team, asks Duo what is blocked, and unblocks it, without opening a single pane unless they want to.
+
+**Job to be done**
+
+When **I have more work than I can do and a team of AI agents to do it**, I want to **organise them like a real team and direct them from one place**, so I can **keep every agent busy on the right thing without babysitting terminals**.
+
+**Non-users (v1)**
+
+- **Someone running one agent at a time:** the CLI alone is enough.
+- **Someone who wants a GUI, a web board or cloud agents:** DuoHive is local and terminal-first.
+- **Someone who wants fully autonomous multi-agent pipelines:** v1 keeps a human in charge.
+- **Windows-native users:** tmux is required.
+
+---
+
+## Solution Detail
+
+### Core capabilities (MoSCoW)
+
+| Priority | Capability | Rationale |
+|---|---|---|
+| **Must** | Org chart: teams → roles → standing agents, edited in-app, saved to a shareable file | The core of the hypothesis |
+| **Must** | Agent definition: name, CLI, flags, directory, prompt, model, effort; inherited from team and role, prompts stack | Instructions written once, not per session |
+| **Must** | One screen: org tree with live status and last reply, the selected agent's live terminal, chat with Duo | See and steer the whole team at a glance |
+| **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them; every action visible | Direct the team in plain language |
+| **Must** | Agent-to-agent messages, delivered only when the receiver is at rest | Duo, and agents, can coordinate safely |
+| **Must** | "Needs you" list and desktop notifications | Nobody stuck unnoticed |
+| **Must** | Light at scale: the targets in Success Metrics | A requirement, not a feature: the reason to rebuild |
+| **Must** | Agents keep running when DuoHive closes; reopening reconnects | Standing agents must outlive the app |
+| **Should** | Quick prompt to one agent; type straight into an agent's pane | Fast steering without the chat |
+| **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
+| **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
+| **Could** | First-run setup that builds a starter org | Speeds up "time to first team" |
+| **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
+| **Won't (v1)** | Delegation chains, Jira, revive or fork, diff review, worktrees, shared tasks and locks, nested terminals, custom CLIs | See *What We're NOT Building* |
+
+### The org model
+
+```
+You (the manager)                ← root; your manager agent, Duo, lives here
+├── Team: Payments               ← optional grouping (team or project)
+│   ├── Role: Backend            ← a role holds one or more agents
+│   │   ├── auth-service         ← agent (standing teammate)
+│   │   └── billing-api
+│   └── Role: QA
+│       └── pay-qa
+└── Team: Growth
+    └── Role: Backend
+        └── web-app
+```
+
+- **Levels:** three fixed levels under you: team → role → agent.
+  - Teams are optional: a role can sit directly under you.
+  - Agents never sit under other agents.
+- **Standing agent:** a named teammate with **at most one live session at a time**. To do more in parallel, add another agent to the role.
+
+| Agent field | Meaning |
+|---|---|
+| Name | Unique; how you address it (`@auth-service`) |
+| CLI | Claude Code, OpenCode or Codex |
+| Flags | Extra options passed to the CLI |
+| Directory | Where it works |
+| Prompt | Its standing instructions |
+| Model, effort | Chosen from what the CLI offers |
+| Status (live) | stopped · starting · working · waiting on you · finished · errored |
+
+- **Inheritance:** a team or role can set any agent field as a default for everything under it.
+  - **Prompts stack:** org, then team, then role, then agent. For example, "API URLs use hyphens" is written once, on the Backend role.
+  - **Everything else:** the nearest value wins.
+- **Lifecycle:**
+  - **Starting:** an agent starts when it is given work, never just because DuoHive opened, so 100 defined agents cost nothing until used.
+  - **Stopping:** it stops when you or Duo stop it, or when its CLI exits. Its next task starts a fresh session.
+  - **Deleting:** only a stopped agent can be deleted.
+- **Where the org lives:** in a readable file you can share or keep in git. DuoHive writes it, and hand edits are picked up on the next start. Live state (sessions, chat history) stays on your machine.
+
+### Duo, the manager agent
+
+Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" is the default name, since you and Duo make the duo in DuoHive; you can rename it.
+
+| Duo can | Example |
+|---|---|
+| Chat about anything | A normal AI chat |
+| See the org and each agent's screen | "What's blocking the Payments team?" |
+| Message an agent and wait for its answer | "Tell auth-service to rebase and run the tests, then tell me what failed" |
+| Start and stop agents | "Start pay-qa on the login regression" |
+| **Cannot (v1):** create, edit, move or delete teams, roles or agents | The org's structure stays yours |
+
+- **Visible actions:** every action Duo takes appears in the chat as an `→` line.
+- **Approvals stay with you:** commit, push, merge, publish and delete still wait for you.
+
+### One screen
+
+```
+ DuoHive · 12 agents · 3 working · 1 waiting on you                           ? keys
+┌ Org ───────────────────────────────────────────┐┌ auth-service · Claude · ~/code/auth-service ────┐
+│ ★ You · manager                        ● idle  ││ ✓ go test ./... (14 passed)                     │
+│ ├─ ▣ Payments                    1 waiting     ││ ● Pushed branch fix/retry-loop                  │
+│ │  ├─ ◇ Backend                                ││                                                 │
+│ │  │  ├─ auth-service          ● working 2m    ││ ❯                                               │
+│ │  │  │   "Running go test ./..."              ││                                                 │
+│ │  │  └─ billing-api           ◆ waiting       ││   (live terminal of the selected agent;         │
+│ │  │      "Allow edit to api.go?"              ││    enter = type into it)                        │
+│ │  └─ ◇ QA                                     ││                                                 │
+│ │     └─ pay-qa                ○ stopped       ││                                                 │
+│ └─ ▣ Growth                                    ││                                                 │
+│    └─ ◇ Backend                                ││                                                 │
+│       └─ web-app               ● working 9m    ││                                                 │
+│           "Reviewing PR #42"                   ││                                                 │
+├ Needs you (1) ─────────────────────────────────┤│                                                 │
+│ ◆ billing-api  "Allow edit…"                   ││                                                 │
+└────────────────────────────────────────────────┘└─────────────────────────────────────────────────┘
+┌ Duo ● idle ───────────────────────────────────────────────────────────────────────────────────────┐
+│ 10:05 you    what's blocking the Payments team?                                                   │
+│ 10:05 Duo    billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
+│              → @auth-service "push when tests pass"                               delivered 10:05 │
+│ ❯ _                                                                                               │
+└───────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab next pane · enter type into agent · space prompt agent · s start/stop · n new · e edit · z zoom
+```
+
+- **Org pane:**
+  - a connector-line tree, with status and how long each agent has been in that state;
+  - the last reply under each agent, which you can hide for a compact view;
+  - roll-ups on folded groups;
+  - a **Needs you** list, so nothing waits unseen.
+- **Agent pane:** the selected agent's live terminal. Type into it directly, `ctrl+q` returns to the tree, and `z` zooms it.
+- **Duo pane:**
+  - **plain text** goes to Duo;
+  - **`@agent text`** goes straight to an agent;
+  - **commands:** `/help` and `/agents`;
+  - **suggestions** on `/` and `@`;
+  - the chat history survives restarts.
+- **Moving and sizing:** `tab` or a click moves between panes. On a small terminal, the agent pane shrinks first.
+
+### MVP scope
+
+The minimum to test the hypothesis is **the Must rows**: an org chart of standing agents on all three CLIs, the one screen, Duo with talk-plus-start-and-stop, agent messaging, "needs you" alerts, and the performance targets. Should and Could items ship if they fit; they don't block the 30-day daily-use test.
+
+### User flow: install to a working team
+
+1. **Install:** `duohive` (one binary; needs tmux and at least one agent CLI).
+2. **First run:** set-up asks your name, creates Duo, then your first team, role and agent (name, CLI, directory, prompt).
+3. **Give work:** select the agent, press `space`, type the task. The agent starts and its status turns to working.
+4. **Watch:** the tree shows status and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
+5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
+6. **Close and come back:** quitting DuoHive leaves every agent running, and reopening shows the team exactly as it is.
+
+---
+
+## Delivery Phases
+
+Product milestones, each usable on its own; the technical plan maps onto these later.
+
+| # | Phase | Delivers | Status | Depends |
+|---|---|---|---|---|
+| 1 | Org and agents | Define the org (in-app and file), start and stop standing agents on the three CLIs, the org tree with live status | pending | – |
+| 2 | One screen | Agent pane (watch and type), Needs you, notifications, quick prompt | pending | 1 |
+| 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions | pending | 2 |
+| 4 | Scale and polish | Performance targets met at 100 agents, the benchmark, first-run setup, model and effort picker, key and mouse completeness | pending | 3 |
+| 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done, 30-day daily-use test passed | pending | 4 |
+
+- **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status.
+- **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent. Done when a day's work needs no `tmux attach`.
+- **Phase 3:** the author directs the team through Duo. Done when a "what's blocked, then fix it" round trip happens entirely in chat.
+- **Phase 4:** DuoHive meets every target in Success Metrics on the release benchmark.
+- **Phase 5:** DuoHive is public, and the key hypothesis is tested (30 days of daily use, under 10 minutes to the first team).
+
+---
+
+## Decisions Log
+
+| Decision | Choice | Alternatives | Rationale |
+|---|---|---|---|
+| Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; delegation deferred |
+| Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
+| Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
+| Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
+| Manager agent | Duo: talk, plus start and stop | Talk only; full control | Useful without the org changing under you |
+| Layout | One screen: tree, agent, chat | Separate views | A manager sees and steers without switching |
+| Scope | Jira, review, worktrees, revive, terminals out of v1 | Keep the full feature set | Focus on the hypothesis; a light core |
+| Stack | Rust + Ratatui, tmux-backed | Go + Bubble Tea; own terminal service | Smallest footprint; tmux keeps agents alive and attachable |
+| Name | DuoHive (`duohive`, `dh`); Duo for the agent | Hivly, Cohorai, Myrmi | Personal brand and hive metaphor; clean on registries |
+| Distribution | Open source, Apache-2.0, own repo | Proprietary; fork an existing tool | The author owns and drives the product |
+
+---
+
+## Research Summary
+
+**Market context**
+
+- **Session managers** run parallel agents in tmux or a desktop app, mostly with git worktrees: Claude Squad (AGPL, tmux, about 8.4k stars), Conductor (macOS, closed source, paid tiers), Crystal now Nimbalyst (MIT, desktop GUI), Vibe Kanban (Apache-2.0, a web board, community-run since Apr 2026). They do parallel tasks well, but their agents are disposable, and coordination goes through the user ([comparison](https://munderdiffl.in/blog/claude-code-orchestration-tools-compared/), [roundup](https://parallelcode.app/blog/multi-agent-coding-tools-2026/)).
+- **Built-in teams:** Claude Code Agent Teams (experimental) has a lead coordinating teammates in tmux panes, but it covers Claude only and lasts one run. Codex added a desktop app for managing multiple agents and subagents in Feb 2026 ([overview](https://dev.to/bokuwalily/swarming-claude-code-and-codex-in-parallel-running-multiple-agents-at-once-with-tmux-and-git-1fej)).
+- **The gap DuoHive targets:** a **standing, cross-CLI org of agents with a manager agent**, light enough for 100 agents. None of the tools above combines these.
+- **A caution:** most comparison articles are written by competing vendors, so their rankings are biased.
+
+**Performance context**
+
+- **The TUI frameworks:** in a benchmark of the same app built three ways, Ratatui and Bubble Tea each used about 0.7 ms of CPU per frame. Ratatui had the smallest footprint (about 8 MB RAM, 0.6 MB binary) against Ink's roughly 160 MB.
+- **What really costs at scale:** watching every agent's output, not drawing the screen. This is why "Status freshness" and "Idle CPU" are Success Metrics.
+
+---
+
+*Status: DRAFT — needs validation (interviews, 30-day daily-use test).*
