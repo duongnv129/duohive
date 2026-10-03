@@ -1,6 +1,8 @@
 # DuoHive — Product Requirements
 
 > Run your AI coding agents as a team, not a pile of terminals.
+>
+> **Vision: an Engineer Factory.** Define your team once, break each story into small, well-specified subtasks, and the right agent picks up each one and gets it done.
 
 **Status:** Draft v1 · **Owner:** the author · **Last updated:** 2026-10-03
 Living document, updated in place. It says *what* DuoHive must do and *why*; the technical design is a separate, later document.
@@ -18,7 +20,12 @@ Developers and engineering leads now run several AI coding agents at once (Claud
 - **Only one tool lets agents coordinate, and it covers one CLI.** Claude Code Agent Teams has a lead session that coordinates teammate sessions. It is Claude-only, experimental, and its teams last one run.
 - **Plain tmux shows no status:** it neither shows agent status nor notifies when an agent needs input, which is the most-cited reason people adopt a manager ([HN discussion](https://news.ycombinator.com/item?id=49107749)).
 - **The overhead grows with the agent count:** guides recommend 3–5 agents at most because of coordination overhead ([ClawTab](https://clawtab.cc/articles/claude-code-parallel-agents-tmux)), which DuoHive aims to remove rather than accept.
-- *Assumption, needs validation (through the author's own daily use and 5 interviews with other leads running 5+ agents):* the pain grows with the number of agents, and an org structure with standing agents reduces it.
+- **The primary user's own answers** (the author, an engineering manager):
+  - **Same work, same agent:** the same kinds of work go to the same kind of agent again and again, for example a backend agent per repo.
+  - **Same instructions:** most tasks reuse the same skill prompt.
+  - **Teammates over tasks:** they would rather pick a teammate than start an anonymous task.
+  - **One task per agent feels natural:** tickets should be small, with clear acceptance criteria and a spec, and a story splits into subtasks (backend, QA, frontend) that a manager assigns to the right agent on the team.
+- *Assumption, needs validation (3–5 conversations with other leads running 5+ agents):* other managers work the same way. Developers who think only in parallel tasks may find the org set-up heavier; see Open Questions.
 
 ## Proposed Solution
 
@@ -59,7 +66,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 
 ## Open Questions
 
-- [ ] Do standing agents beat the session-per-task model for people other than the author? (validate in interviews)
+- [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
 - [ ] How much of the org should Duo control? v1 is "talk, plus start and stop"; full control over the structure is undecided.
 - [ ] How reliably can each CLI report its state? Some report little, which affects "waiting on you" accuracy.
 - [ ] Is "DuoHive" clear of trademark trouble? GitLab Duo and Cisco Duo are in the developer-tools market.
@@ -79,6 +86,8 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 **Job to be done**
 
 When **I have more work than I can do and a team of AI agents to do it**, I want to **organise them like a real team and direct them from one place**, so I can **keep every agent busy on the right thing without babysitting terminals**.
+
+When **a story ticket comes in**, I want to **break it into small subtasks (backend, QA, frontend) with clear acceptance criteria and hand each to the right agent**, so I can **ship the whole story without doing every part myself**.
 
 **Non-users (v1)**
 
@@ -224,6 +233,15 @@ The minimum to test the hypothesis is **the Must rows**: an org chart of standin
 5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
 6. **Close and come back:** quitting DuoHive leaves every agent running, and reopening shows the team exactly as it is.
 
+### User flow: a story through the factory
+
+1. **Bring the story:** paste or describe a story in the Duo pane: "Story: let users retry a failed payment. AC: …".
+2. **Break it down:** ask Duo to split it into subtasks by role. Duo proposes a backend, a QA and a frontend subtask, each small, with its own acceptance criteria.
+3. **Review:** you edit or approve the breakdown in the chat.
+4. **Assign:** Duo gives each subtask to the right agent on the team (`auth-service` for the backend, `pay-qa` for QA), starting each one, in a worktree where needed. Each assignment shows as a `→` line.
+5. **Track:** the org tree shows each agent working on its subtask. Ask Duo "where is the retry story?" for a roll-up.
+6. **Finish:** as each agent finishes, you see its last reply. Duo reports when every subtask of the story is done.
+
 ---
 
 ## Delivery Phases
@@ -250,7 +268,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 
 | Decision | Choice | Alternatives | Rationale |
 |---|---|---|---|
-| Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; delegation deferred |
+| Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; confirmed by the primary user, who assigns story subtasks to teammates by role; delegation deferred |
 | Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |
