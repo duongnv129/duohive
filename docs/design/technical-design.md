@@ -94,10 +94,10 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 | Source | Mechanism | Gives |
 |---|---|---|
 | **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
-| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Every pane except the selected one is paused by flow control, so it sends no `%output`. Activity comes instead from a control-mode format subscription on each agent window's activity time (`refresh-client -B`, tmux ≥ 3.2; one window per agent, so `#{window_activity}` is the agent's), which tmux reports about once a second when it changes | Activity times, which feed "quiet" and trigger settle reads |
+| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Every pane except the selected one is silenced (no-output or paused flow control, chosen by spike S0), so it sends no `%output`. Activity comes instead from a control-mode format subscription on each agent window's activity time (`refresh-client -B`, tmux ≥ 3.2; one window per agent, so `#{window_activity}` is the agent's), which tmux reports about once a second when it changes | Activity times, which feed "quiet" and trigger settle reads |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
-- **Spike S0:** the subscription mechanism (reports keep arriving for paused panes, at the expected rate, at 100 windows) is **verified in spike S0** before `duohive-tmux` is written. Fallback: one `list-windows -F '#{window_id} #{window_activity}'` per second over the same connection, which costs one command for all agents.
+- **Spike S0:** the subscription mechanism (reports keep arriving for silenced panes, at the expected rate, at 100 windows) and the silencing method (no-output or paused flow control) are **verified in spike S0** before `duohive-tmux` is written. Fallback: one `list-windows -F '#{window_id} #{window_activity}'` per second over the same connection, which costs one command for all agents.
 - **Start-up:** git checks (worktree merges, directory checks for git repos) run after the first frame, so they never delay it.
 
 ### 4.2 Status engine
@@ -317,7 +317,7 @@ Errors are shown where they apply, never only in a log.
   - the time from output settling to a screen-read (`~`) status on screen;
   - start-up time;
   - binary size.
-- **Phase 1:** a basic `bench` (10 agents; idle CPU, memory and hook-to-screen time) runs from the start, so the flow-control and settle choices are measured early.
+- **Phase 1:** a basic `bench` (10 agents; idle CPU, memory and hook-to-screen time) runs from the start, so the silencing (no-output or paused flow control, chosen by spike S0) and settle choices are measured early.
 - **Release gate:** CI runs the full benchmark on every release. Results on macOS arm64 (Apple M-series) must meet every PRD target, or the release fails; Linux x86_64 results are reported but don't block.
 
 ## 11. CI and release
@@ -342,8 +342,8 @@ Errors are shown where they apply, never only in a log.
 |---|---|
 | A CLI changes its hooks or flags | Adapters pinned to tested versions, spikes before each adapter, a notice for untested versions, screen reading as fallback |
 | tmux control mode differs across versions | Support 3.2 and newer only; CI on 3.2 and latest |
-| The settle mechanism doesn't work as planned: subscriptions don't report for paused panes, report too slowly, or cost too much at 100 windows | Spike S0 before `duohive-tmux`; fallback: one `list-windows` activity query per second for all agents |
-| Flow control does not quiet busy panes enough at 100 agents | Measured by the basic `bench` in phase 1; fallback: pause unselected panes harder and read on settle only |
+| The settle mechanism doesn't work as planned: subscriptions don't report for silenced panes (no-output or paused flow control, chosen by spike S0), report too slowly, or cost too much at 100 windows | Spike S0 before `duohive-tmux`; fallback: one `list-windows` activity query per second for all agents |
+| Silencing (no-output or paused flow control, chosen by spike S0) does not quiet busy panes enough at 100 agents | Measured by the basic `bench` in phase 1; fallback: pause unselected panes harder and read on settle only |
 | Ratatui pre-1.0 breaking changes | Pinned version, deliberate upgrades |
 | Users whose agents run on Codex can't use DuoHive for them in v1 | Codex is deferred to after v1, not ruled out: it is one more adapter and spike behind the same `CliAdapter` port |
 | Single process: work pauses while DuoHive is closed | Accepted for v1; the command/event boundary makes a background service a later move |
