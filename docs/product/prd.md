@@ -180,32 +180,36 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
 
 ### One screen
 
+The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); this is the main screen.
+
 ```
- DuoHive · 12 agents · 3 working · 1 waiting on you                           ? keys
-┌ Org ───────────────────────────────────────────┐┌ auth-service · Claude · ~/code/auth-service ────┐
-│ ★ You · manager                        ● idle  ││ ✓ go test ./... (14 passed)                     │
-│ ├─ ▣ Payments                    1 waiting     ││ ● Pushed branch fix/retry-loop                  │
-│ │  ├─ ◇ Backend                                ││                                                 │
-│ │  │  ├─ auth-service          ● working 2m    ││ ❯                                               │
-│ │  │  │   "Running go test ./..."              ││                                                 │
-│ │  │  └─ billing-api           ◆ waiting       ││   (live terminal of the selected agent;         │
-│ │  │      "Allow edit to api.go?"              ││    enter = type into it)                        │
-│ │  └─ ◇ QA                                     ││                                                 │
-│ │     └─ pay-qa                ○ stopped       ││                                                 │
-│ └─ ▣ Growth                                    ││                                                 │
-│    └─ ◇ Backend                                ││                                                 │
-│       └─ web-app               ● working 9m    ││                                                 │
-│           "Reviewing PR #42"                   ││                                                 │
-├ Needs you (1) ─────────────────────────────────┤│                                                 │
-│ ◆ billing-api  "Allow edit…"                   ││                                                 │
-└────────────────────────────────────────────────┘└─────────────────────────────────────────────────┘
-┌ Duo ● idle ───────────────────────────────────────────────────────────────────────────────────────┐
-│ 10:05 you    what's blocking the Payments team?                                                   │
-│ 10:05 Duo    billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
-│              → @auth-service "push when tests pass"                               delivered 10:05 │
-│ ❯ _                                                                                               │
-└───────────────────────────────────────────────────────────────────────────────────────────────────┘
- tab next pane · enter type into agent · space prompt agent · s start/stop · n new · e edit · z zoom
+ DuoHive   7 agents · ● 2 working · ◆ 1 needs you · ◷ 1 quiet                               ? keys 
+┌─ Org ──────────────────────────────────────────┐┌─ auth-service · Claude · worktree retry-loop ──┐
+│ ⬢ Duo · your manager agent       ● idle        ││ ✓ go test ./... (14 passed)                    │
+│ ├─ ▣ Payments                    ◆ 1 needs you ││ ● Pushed branch duohive/auth-service/retry-loop│
+│ │  ├─ ◇ Backend                                ││                                                │
+│ │  │  ├─ auth-service          ● working 2m    ││ ❯                                              │
+│ │  │  │   "Running go test ./..."              ││                                                │
+│ │  │  └─ billing-api           ◆ waiting  4m   ││                                                │
+│ │  │      "Allow edit to api.go?"              ││   live terminal of the selected agent          │
+│ │  └─ ◇ QA                                     ││   enter: type into it · z: zoom                │
+│ │     └─ pay-qa                ○ stopped       ││                                                │
+│ └─ ▣ Growth                                    ││                                                │
+│    └─ ◇ Squad (3)              ● 1 ◷ 1         ││                                                │
+│       ├─ squad-1               ~ working 1m    ││                                                │
+│       ├─ squad-2               ✓ finished      ││                                                │
+│       └─ squad-3               ◷ quiet   6m    ││                                                │
+├─ Needs you (2) ────────────────────────────────┤│                                                │
+│ ◆ billing-api   waiting 4m  "Allow edit…"      ││                                                │
+│ ◷ squad-3       quiet 6m                       ││                                                │
+└────────────────────────────────────────────────┘└────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ● idle ─────────────────────────────────────────────────────────────────────────────────┐
+│ 10:05 you   what's blocking the Payments team?                                                   │
+│ 10:05 Duo   billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
+│             → @auth-service "push when tests pass"                       delivered 10:05         │
+│ ❯ _                                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · enter type · space task · s start/stop · n new · e edit · z zoom · ? help
 ```
 
 - **Status you can trust:**
