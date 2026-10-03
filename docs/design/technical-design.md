@@ -1,7 +1,7 @@
 # DuoHive — Technical Design
 
 **Status:** Draft v1 · **Last updated:** 2026-10-03
-Living document, updated in place. It says *how* DuoHive meets the [product requirements](../product/prd.md); read that first.
+Living document, updated in place. It says *how* DuoHive meets the [product requirements](../product/prd.md) and the [UI/UX spec](../ux/ui-spec.md); read those first.
 
 ---
 
