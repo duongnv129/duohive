@@ -1,0 +1,23 @@
+> refresh-client -f no-output,ignore-size
+> refresh-client -A '%0:on'
+> refresh-client -A '%0:continue'
+> refresh-client -f '!no-output'
+> refresh-client -A '%1:pause'
+> display-message -p '#{client_flags}'
+   %begin 1791048327 266 0
+   %session-changed $0 duohive
+   %begin 1791048327 270 1
+   %window-renamed @0 zsh
+   %window-renamed @1 zsh
+   %begin 1791048328 273 1
+   %begin 1791048329 274 1
+   %begin 1791048330 275 1
+   output: {'%0': 8, '%1': 8}
+   %begin 1791048331 276 1
+   %pause %1
+   output: {'%0': 8}
+   %begin 1791048332 277 1
+   attached,focused,control-mode,ignore-size,UTF-8
+   output: {'%0': 8}
+   %sessions-changed
+   %exit

@@ -1,0 +1,17 @@
+# tmux 3.2a exits=@2 external-kill=@3 control-kill=@4 other-session=@5
+%session-changed $0 duohive
+%window-add @2
+%window-renamed @2 tmux
+%window-add @3
+%window-renamed @3 tmux
+%window-add @4
+%window-renamed @4 tmux
+%unlinked-window-add @5
+%unlinked-window-renamed @5 tmux
+%unlinked-window-close @2
+%unlinked-window-close @3
+%unlinked-window-close @4
+%unlinked-window-close @5
+%sessions-changed
+%sessions-changed
+%exit

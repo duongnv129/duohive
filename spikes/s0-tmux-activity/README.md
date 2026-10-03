@@ -8,7 +8,7 @@ Throwaway code for spike S0. Nothing in `crates/` imports or runs it; it can be 
   a third bursty, a third idle) and a `sh -c 'sleep 20; exit 3'` window, then runs one control
   client. `<silence>` is `no-output` or `pause` (subscribe), `poll` (no-output silencing,
   `list-windows` once a second) or `none` (no control client, cost baseline). `MIX=idle` makes
-  every window idle. Logs go to `out/<version>-<silence>[-idle]-*` (not committed).
+  every window idle. Logs go to `out/<version>-<silence>[-idle]-*` (not committed, except `summary.txt` and the `close-*`, `flags-*` and `selected-*` outputs).
 - `reader.py`: the control client. Timestamps every line it reads; opens, pauses and kills a
   late window at t = 60, 70 and 90 s.
 - `flags.sh <tmux-binary>`: which `refresh-client -f` flags a control client accepts.
