@@ -221,7 +221,7 @@ So: not `subscribe`, but `poll`.
 
 This is the fallback the TD already named, now the primary mechanism. No `refresh-client -B` or `-A` commands are needed.
 
-**Separators.** The `-F` separators are free to choose. The spike used spaces. Plan Task 19 uses tabs (`list-windows -t =duohive -F '#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}'`), and tabs are better: a live pane's `#{pane_dead_status}` is empty, so with spaces its line ends in a trailing space that is easy to mis-split. With tabs the last field is simply empty.
+**Separators.** The `-F` separators are free to choose. The spike used spaces. Plan Task 19 uses tabs (`list-windows -t =duohive -F "#{window_id}\t#{window_activity}\t#{pane_dead}\t#{pane_dead_status}"`), and tabs are better: a live pane's `#{pane_dead_status}` is empty, so with spaces its line ends in a trailing space that is easy to mis-split. With tabs the last field is simply empty. Write the format in double quotes: tmux turns `\t` into a real tab only there, and inside single quotes it passes a literal backslash-t. This was checked on 3.2a and 3.7c.
 
 ### S0.6 TD changes
 
