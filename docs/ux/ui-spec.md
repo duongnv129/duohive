@@ -41,7 +41,7 @@ Each state has a glyph and a word, so it reads without colour. Rows use the shor
 
 - **Duo:** goes straight to idle after a turn; it is never shown as finished.
 - **Working spinner:** the `●` cycles `◐◓◑◒` at 4 frames a second, only on rows on screen. The word stays fixed. With **Reduce motion** on (Settings), it stays `●`. Mock-ups draw the static `●`.
-- **State cell:** `~` marker (or a space), glyph, the word padded to 8 cells, then the time right-aligned in 4 cells (`● working    2m`). Times use `2m`, `4h`, `3d`.
+- **State cell:** `~` marker (or a space), glyph, the word padded to 9 cells, then the time right-aligned in 4 cells (`● working    2m`). Times use `2m`, `4h`, `3d`.
 
 ### 2.2 Tree glyphs
 
