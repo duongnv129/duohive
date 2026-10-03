@@ -1,0 +1,53 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: DuoHive version
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+    validations:
+      required: true
+  - type: input
+    id: tmux
+    attributes:
+      label: tmux version
+      description: Output of `tmux -V`
+    validations:
+      required: true
+  - type: input
+    id: cli
+    attributes:
+      label: CLI and version
+      description: Claude Code or OpenCode, with its version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: duohive log excerpt
+      render: text
