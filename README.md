@@ -17,7 +17,7 @@ DuoHive is an open-source terminal app that runs your agents as an org chart, st
 ## Requirements
 
 - tmux 3.2 or later
-- Rust 1.90 to build (`rustup` selects it from `rust-toolchain.toml`)
+- Rust 1.99 to build (`rustup` selects it from `rust-toolchain.toml`)
 
 ## Build
 
