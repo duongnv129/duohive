@@ -67,7 +67,6 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 ## Open Questions
 
 - [ ] Do other leads also work in teammates rather than tasks? It holds for the primary user (see Evidence); 3–5 conversations will check it before the open-source launch.
-- [ ] What should the UI/UX improvement pass change once v1 is in daily use?
 
 ---
 
@@ -224,6 +223,19 @@ Duo is a Claude Code, OpenCode or Codex session at the root of your org. "Duo" i
   - the chat history survives restarts.
 - **Moving and sizing:** `tab` or a click moves between panes. On a small terminal, the agent pane shrinks first.
 
+### UX principles
+
+Every screen is checked against these before it ships.
+
+1. **One glance answers "who needs me?"** The Needs you list and the status column are readable without moving the cursor.
+2. **Colour is never the only signal.** Every state has a glyph and a word, so it works in any theme and for colour-blind users.
+3. **Works at 80×24.** Panes shrink and drop detail in a set order; nothing overlaps or breaks.
+4. **The same key means the same thing everywhere.** `enter`, `esc`, `tab` and `?` behave consistently in every pane and form.
+5. **Nothing important is more than one key or one click away.** Common actions sit in the footer; the rest are in `?`.
+6. **Calm by default.** No flashing or animation except a working spinner; alerts only when an agent needs you or finishes.
+
+**UI/UX improvement pass.** While phase 2 is in daily use, the author keeps a **friction log** (anything slow, confusing or missed). Before phase 3 starts, a pass fixes the top items in the log and re-checks every screen against these principles.
+
 ### MVP scope
 
 The minimum to test the hypothesis is **the Must rows**: an org chart of standing agents on all three CLIs, the one screen, Duo with talk-plus-start-and-stop, agent messaging, "needs you" alerts, and the performance targets. Should and Could items ship if they fit; they don't block the 30-day daily-use test.
@@ -261,7 +273,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | 5 | Open-source launch | README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
 
 - **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status.
-- **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent. Done when a day's work needs no `tmux attach`.
+- **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent; a friction log is kept during use, and the UI/UX improvement pass runs at the end of the phase. Done when a day's work needs no `tmux attach`.
 - **Phase 3:** the author directs the team through Duo. Done when a "what's blocked, then fix it" round trip happens entirely in chat.
 - **Phase 4:** DuoHive meets every target in Success Metrics on the release benchmark.
 - **Phase 5:** DuoHive is public, and the key hypothesis is tested (30 days of daily use, under 10 minutes to the first team).
