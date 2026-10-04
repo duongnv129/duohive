@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -100,12 +101,14 @@ impl Setup {
             settle_after: Duration::from_millis(1_500),
             end_hook_grace: Duration::from_millis(500),
         };
+        let dirs = FakeDirs::new(self.dirs);
+        let dir_probes = Arc::clone(&dirs.1);
         let ports = Ports {
             runtime: Box::new(runtime.clone()),
             store: Box::new(store.clone()),
             clock: Box::new(clock.clone()),
             ids: Box::new(FakeIds::default()),
-            dirs: Arc::new(FakeDirs::new(self.dirs)),
+            dirs: Arc::new(dirs),
         };
         let adapters = Arc::new(Adapters::new(
             [self.claude.clone(), self.opencode.clone()]
@@ -122,6 +125,7 @@ impl Setup {
             clock,
             claude: self.claude,
             opencode: self.opencode,
+            dir_probes,
             t0: self.start,
         };
         if let Some(list) = self.inventory {
@@ -139,6 +143,8 @@ pub(crate) struct Harness {
     pub clock: FakeClock,
     pub claude: StubAdapter,
     pub opencode: StubAdapter,
+    /// How many directory probes the engine made.
+    pub dir_probes: Arc<AtomicUsize>,
     /// When the clock started.
     pub t0: Millis,
 }
