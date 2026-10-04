@@ -74,6 +74,23 @@ impl Engine {
         out
     }
 
+    /// Shutdown (Review Focus 3): hooks taken but not applied (the start-up
+    /// buffer, then `queued`, in arrival order) go to `pending_hooks`, so the
+    /// next start replays them. A failed write is logged; the rest are still tried.
+    pub(super) fn keep_unapplied_hooks(&mut self, queued: Vec<HookMessage>) {
+        let buffered = self
+            .reconnect
+            .as_mut()
+            .map(|r| std::mem::take(&mut r.buffered))
+            .unwrap_or_default();
+        let now = self.ports.clock.now();
+        for message in buffered.into_iter().chain(queued) {
+            if let Err(e) = self.ports.store.queue_pending_hook(&message, now) {
+                tracing::warn!(agent = %message.agent, error = %e, "hook lost at shutdown");
+            }
+        }
+    }
+
     /// A hook: buffered until the start-up replay, else handled now.
     pub(super) fn hook_or_buffer(&mut self, message: HookMessage) -> Vec<Event> {
         if let Some(reconnect) = self.reconnect.as_mut() {
