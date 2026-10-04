@@ -8,6 +8,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitStatus};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -59,6 +60,9 @@ pub struct AppConfig {
     pub dirs: Arc<dyn DirProbe>,
     /// The home directory `~` expands to.
     pub home: PathBuf,
+    /// Set by a panic hook once the terminal has been restored: no frame is drawn
+    /// after it, and the app ends with [`TuiError::Halted`].
+    pub halted: Arc<AtomicBool>,
 }
 
 impl fmt::Debug for AppConfig {
@@ -70,6 +74,7 @@ impl fmt::Debug for AppConfig {
             .field("no_color", &self.no_color)
             .field("editor", &self.editor)
             .field("home", &self.home)
+            .field("halted", &self.halted)
             .finish_non_exhaustive()
     }
 }
@@ -100,6 +105,9 @@ pub enum TuiError {
     /// Terminal input stopped.
     #[error("terminal input closed")]
     InputClosed,
+    /// A panic restored the terminal: nothing more is drawn.
+    #[error("stopped after an internal error")]
+    Halted,
 }
 
 /// Hands the terminal to a program (the editor) and takes it back; blocking.
@@ -152,7 +160,7 @@ pub async fn run_app_on<B: Backend>(
     first_frame: Option<oneshot::Sender<()>>,
 ) -> Result<(), TuiError> {
     let host: Arc<dyn TerminalHost> = Arc::new(PlainHost);
-    let signals = QuitSignals::none();
+    let mut signals = QuitSignals::none();
     run_loop(
         terminal,
         input,
@@ -161,43 +169,73 @@ pub async fn run_app_on<B: Backend>(
         commands,
         first_frame,
         host,
-        signals,
+        &mut signals,
     )
     .await
 }
 
-/// SIGINT and SIGTERM, which quit the app like `q` (agents keep running). Needed
-/// because once tokio has a SIGINT handler (the editor hand-over installs one), the
-/// default action no longer ends the process.
-pub(crate) struct QuitSignals {
+/// SIGINT, SIGTERM and SIGHUP (the terminal window closed): each quits like `q`, and
+/// agents keep running. Explicit because once tokio has a SIGINT handler (the editor
+/// hand-over installs one), the default action no longer ends the process; and so a
+/// closed terminal still gets an orderly shutdown. The bench shares it.
+pub struct QuitSignals {
     int: Option<Signal>,
     term: Option<Signal>,
+    hup: Option<Signal>,
+    hung_up: bool,
+}
+
+impl fmt::Debug for QuitSignals {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuitSignals")
+            .field("int", &self.int.is_some())
+            .field("term", &self.term.is_some())
+            .field("hup", &self.hup.is_some())
+            .field("hung_up", &self.hung_up)
+            .finish()
+    }
 }
 
 impl QuitSignals {
-    /// Listens for both; a handler that can't be installed is left out.
-    pub(crate) fn install() -> Self {
+    /// Listens from now on; a handler that can't be installed is left out.
+    pub fn install() -> Self {
         Self {
             int: signal(SignalKind::interrupt()).ok(),
             term: signal(SignalKind::terminate()).ok(),
+            hup: signal(SignalKind::hangup()).ok(),
+            hung_up: false,
         }
     }
 
-    /// Listens for neither.
-    pub(crate) fn none() -> Self {
+    /// Listens for none.
+    pub fn none() -> Self {
         Self {
             int: None,
             term: None,
+            hup: None,
+            hung_up: false,
         }
     }
 
-    /// Resolves at the next SIGINT or SIGTERM.
-    async fn recv(&mut self) {
-        let Self { int, term } = self;
+    /// Resolves at the next SIGINT, SIGTERM or SIGHUP.
+    pub async fn recv(&mut self) {
+        let Self {
+            int,
+            term,
+            hup,
+            hung_up,
+        } = self;
         tokio::select! {
             () = next(int) => {}
             () = next(term) => {}
+            () = next(hup) => *hung_up = true,
         }
+    }
+
+    /// A SIGHUP has arrived: the terminal is gone, and writing to it (or to stderr)
+    /// fails.
+    pub fn hung_up(&self) -> bool {
+        self.hung_up
     }
 
     /// A ctrl+c typed while the editor had the terminal was meant for the editor:
@@ -312,7 +350,7 @@ pub(crate) async fn run_loop<B: Backend>(
     commands: mpsc::Sender<Command>,
     mut first_frame: Option<oneshot::Sender<()>>,
     host: Arc<dyn TerminalHost>,
-    mut signals: QuitSignals,
+    signals: &mut QuitSignals,
 ) -> Result<(), TuiError> {
     let mut m = UiModel::new(Org::blank(CliKind::Claude));
     m.settings = cfg.settings.clone();
@@ -442,6 +480,9 @@ fn draw<B: Backend>(
     cfg: &AppConfig,
     spinner: usize,
 ) -> Result<(), TuiError> {
+    if cfg.halted.load(Ordering::SeqCst) {
+        return Err(TuiError::Halted);
+    }
     let ctx = RenderCtx {
         now: wall_now(),
         spinner,

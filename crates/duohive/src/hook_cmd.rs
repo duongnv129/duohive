@@ -36,8 +36,8 @@ const CONNECT_DEADLINE: Duration = Duration::from_millis(200);
 const WRITE_DEADLINE: Duration = Duration::from_millis(150);
 const DB_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 const LOG_FILE_MODE: u32 = 0o600;
-/// `hook.log` stops growing at 1 MiB: it only takes hooks that reached neither
-/// the socket nor the database, so a full log already says what is wrong.
+/// At 1 MiB `hook.log` moves to `hook.log.1` (replacing it) and starts over: it only
+/// takes hooks that reached neither the socket nor the database.
 const HOOK_LOG_CAP: u64 = 1024 * 1024;
 /// Payload fields a shrunk payload keeps: enrichment and the engine need them.
 const KEEP_FIELDS: [&str; 3] = ["transcript_path", "session_id", "hook_event_name"];
@@ -245,7 +245,7 @@ fn append_log(dir: &Path, line: &str) -> io::Result<()> {
     ensure_logs_dir(dir)?;
     let path = dir.join("hook.log");
     if fs::metadata(&path).is_ok_and(|m| m.len() >= HOOK_LOG_CAP) {
-        return Ok(());
+        fs::rename(&path, dir.join("hook.log.1"))?;
     }
     OpenOptions::new()
         .create(true)
@@ -305,7 +305,7 @@ mod tests {
     }
 
     #[test]
-    fn hook_log_is_owner_only_and_bounded() {
+    fn hook_log_is_owner_only_and_rotates() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join("logs");
@@ -314,8 +314,9 @@ mod tests {
         assert_eq!(mode & 0o777, 0o700);
         let full = "x".repeat(usize::try_from(HOOK_LOG_CAP).unwrap());
         fs::write(dir.join("hook.log"), &full).unwrap();
-        append_log(&dir, "dropped\n").unwrap();
-        let log = fs::read_to_string(dir.join("hook.log")).unwrap();
-        assert_eq!(log, full, "a full hook.log grew");
+        append_log(&dir, "next\n").unwrap();
+        // A full hook.log moves to hook.log.1 (replacing the older one) and starts over.
+        assert_eq!(fs::read_to_string(dir.join("hook.log.1")).unwrap(), full);
+        assert_eq!(fs::read_to_string(dir.join("hook.log")).unwrap(), "next\n");
     }
 }
