@@ -149,7 +149,7 @@ The same path serves you, Duo, and a task given to a role. Giving work depends o
 |---|---|
 | stopped, errored | A fresh launch, below |
 | finished, idle | The task is typed into the existing session as its next turn (through the same paste path as inbox delivery, §6.3); it runs where the session already runs |
-| working, waiting | Refused; the caller is offered "send as message instead" (§6.3) |
+| starting, working, waiting | Refused; the caller is offered "send as message instead" (§6.3). A starting agent already carries its launch task, and a paste sent before the CLI's input box exists is lost |
 
 A fresh launch:
 
@@ -218,7 +218,7 @@ A fresh launch:
 | `message_status` | every agent | queued · delivered · answered · dropped |
 | `read_agent` | Duo | Another agent's current screen as text |
 | `wait_for_agent` | Duo | Wait for an agent's turn to end, with a timeout |
-| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for working or waiting agents |
+| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for starting, working or waiting agents |
 | `stop_agent` | Duo | Finished or idle: stops it directly. Working or waiting: raises an approval card and returns its result |
 | `assign_to_role` | Duo | Task to a role (§5.4) |
 | `propose_org_change` | Duo | Add, edit, move or remove a team, role or agent as an approval card; returns approved or rejected. The core rejects removing an agent that isn't stopped |
