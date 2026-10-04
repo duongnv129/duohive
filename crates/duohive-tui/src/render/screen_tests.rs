@@ -150,3 +150,87 @@ fn empty_org_and_empty_role() {
     assert!(tree.contains(&"┃ │  └─ ◇ Frontend                               ┃".to_owned()));
     assert!(tree.contains(&"┃ │      no agents yet · n to add one            ┃".to_owned()));
 }
+
+/// The side pane's part of each line (columns 50 onwards).
+fn side_of(lines: &[String]) -> Vec<String> {
+    lines.iter().map(|l| l.chars().skip(50).collect()).collect()
+}
+
+#[test]
+fn attach_hint_is_whole_on_its_own_line() {
+    let side = side_of(&render_lines(&spec_model(), &ctx(), 100, 30));
+    let i = side
+        .iter()
+        .position(|l| l.trim_end_matches([' ', '│']).ends_with("attach:"))
+        .unwrap_or_else(|| panic!("{side:#?}"));
+    assert!(
+        side[i + 1].starts_with("│tmux -L duohive attach -t duohive:auth-service "),
+        "{:?}",
+        side[i + 1]
+    );
+}
+
+#[test]
+fn a_long_attach_command_breaks_inside_without_losing_characters() {
+    let long = "billing-invoice-reconciliation-worker-01";
+    let mut org = example_org();
+    org.roles[0].agents[0].name = duohive_core::testkit::n(long);
+    let mut m = model_for(org);
+    let name = duohive_core::testkit::n(long);
+    m.agents.get_mut(&name).unwrap().status.state = duohive_core::status::AgentState::Working;
+    m.selected = duohive_core::org::NodeKey::Agent(name);
+    // At 80×24 the side pane is 48 wide: 46 cells from the padding cell to the border.
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    let side: Vec<String> = lines.iter().map(|l| l.chars().skip(32).collect()).collect();
+    let i = side
+        .iter()
+        .position(|l| l.trim_end_matches([' ', '│']).ends_with("attach:"))
+        .unwrap();
+    let cmd = format!("tmux -L duohive attach -t duohive:{long}");
+    let row = |k: usize| -> String { side[k].chars().skip(1).take(46).collect() };
+    let first: String = cmd.chars().take(46).collect();
+    let rest: String = cmd.chars().skip(46).collect();
+    assert_eq!(row(i + 1), first);
+    assert!(row(i + 2).starts_with(&rest), "{:?}", row(i + 2));
+}
+
+#[test]
+fn banners_wrap_and_keep_their_hint() {
+    let mut m = spec_model();
+    m.org_error = Some(OrgFileError {
+        line: Some(42),
+        message: "unknown CLI \"claud\"".to_owned(),
+    });
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    assert_eq!(
+        lines[0].trim_end(),
+        " ✕ org.toml line 42: unknown CLI \"claud\" · using your last good org ·"
+    );
+    assert_eq!(lines[1].trim_end(), "   o open in $EDITOR");
+    assert!(lines[2].starts_with(" DuoHive "));
+}
+
+#[test]
+fn needs_you_overflow_shows_how_many_more() {
+    let mut m = spec_model();
+    let item = m.needs_you[1].clone();
+    m.needs_you = vec![item; 12];
+    // 100×30: the org pane is 28 rows, 26 inside, so Needs you gets a third (8 rows):
+    // 7 items and "… 5 more".
+    let lines = render_lines(&m, &ctx(), 100, 30);
+    assert_eq!(
+        cols(&lines[27], 50).trim_end_matches([' ', '┃']),
+        "┃ … 5 more"
+    );
+    assert!(cols(&lines[26], 50).contains("billing-api"));
+}
+
+#[test]
+fn unset_values_read_none_everywhere() {
+    let mut m = spec_model();
+    m.selected = duohive_core::org::NodeKey::Team(NodeName::parse("Payments").unwrap());
+    let side = side_of(&render_lines(&m, &ctx(), 120, 30)).join("\n");
+    assert!(side.contains("model (none)"), "{side}");
+    assert!(side.contains("Prompt    (none)"), "{side}");
+    assert!(!side.contains("inherit: none"));
+}

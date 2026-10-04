@@ -18,14 +18,31 @@ const AGE_CELLS: usize = 4;
 /// Blank cells between the age and the excerpt.
 const EXCERPT_GAP: &str = "  ";
 
-/// Draws the `┣━ Needs you (n) ━┫` separator at `r.y` and up to `r.height - 1` items under it.
+/// Draws the `┣━ Needs you (n) ━┫` separator at `r.y` and up to `r.height - 1` rows under it.
 pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
     let p = &ctx.palette;
     let title = format!("Needs you ({})", m.needs_you.len());
     edge(buf, r, HEAVY.tee, &title, &HEAVY, fg(p.border_focus));
     let content = usize::from(r.width.saturating_sub(4));
     let rows = usize::from(r.height.saturating_sub(1));
-    for (i, item) in m.needs_you.iter().take(rows).enumerate() {
+    let overflow = m.needs_you.len() > rows;
+    // When the items don't fit, the last row says how many are left out.
+    let shown = if overflow {
+        rows.saturating_sub(1)
+    } else {
+        rows
+    };
+    if overflow {
+        let more = format!("… {} more", m.needs_you.len() - shown);
+        let y = r.y + 1 + u16::try_from(shown).unwrap_or(u16::MAX);
+        let at = At {
+            x: r.x + 2,
+            y,
+            room: content,
+        };
+        put_pieces(buf, at, [(more, p.fg_muted)]);
+    }
+    for (i, item) in m.needs_you.iter().take(shown).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
         let (glyph, word) = if item.quiet {
             (QUIET_GLYPH, "quiet")

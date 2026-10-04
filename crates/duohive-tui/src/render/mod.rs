@@ -62,7 +62,7 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
     }
     let compact = area.width < WIDE_FROM;
     let mut y = area.y;
-    for line in header::banners(m) {
+    for line in header::banners(m, usize::from(area.width)) {
         put(buf, area.x, y, &line, usize::from(area.width), fg(p.error));
         y += 1;
     }

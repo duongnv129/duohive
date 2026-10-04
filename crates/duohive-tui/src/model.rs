@@ -76,9 +76,15 @@ impl UiModel {
         match e {
             Event::Snapshot(s) => self.apply_snapshot(*s),
             Event::OrgChanged { org, problems } => self.apply_org(*org, problems),
-            Event::AgentStatusChanged { agent, status } => self.view_mut(&agent).status = status,
-            Event::LastReplyChanged { agent, reply } => self.view_mut(&agent).last_reply = reply,
-            Event::AgentNoticeChanged { agent, notice } => self.view_mut(&agent).notice = notice,
+            Event::AgentStatusChanged { agent, status } => {
+                return self.update_view(&agent, |v| v.status = status);
+            }
+            Event::LastReplyChanged { agent, reply } => {
+                return self.update_view(&agent, |v| v.last_reply = reply);
+            }
+            Event::AgentNoticeChanged { agent, notice } => {
+                return self.update_view(&agent, |v| v.notice = notice);
+            }
             Event::NeedsYouChanged(items) => self.needs_you = items,
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => self.footer_note = Some(reason),
@@ -120,14 +126,12 @@ impl UiModel {
 
     fn apply_org(&mut self, org: Org, mut problems: BTreeMap<AgentName, String>) {
         self.org = org;
-        let names: Vec<AgentName> = std::iter::once(self.org.duo.name.clone())
-            .chain(self.org.agents().iter().map(|a| a.agent.name.clone()))
-            .collect();
+        let names: Vec<AgentName> = self.agent_names().into_iter().cloned().collect();
         let mut old = std::mem::take(&mut self.agents);
         self.agents = names
             .into_iter()
             .map(|name| {
-                let view = old.remove(&name).unwrap_or_else(unknown_view);
+                let view = old.remove(&name).unwrap_or_else(|| UNKNOWN_VIEW.clone());
                 let problem = problems.remove(&name);
                 (name, AgentView { problem, ..view })
             })
@@ -135,10 +139,29 @@ impl UiModel {
         self.keep_selection_valid();
     }
 
-    fn view_mut(&mut self, agent: &AgentName) -> &mut AgentView {
-        self.agents
+    /// The view of `agent`, or a stopped one when the engine hasn't reported it yet.
+    pub fn view(&self, agent: &AgentName) -> &AgentView {
+        self.agents.get(agent).unwrap_or(&UNKNOWN_VIEW)
+    }
+
+    /// Duo, then every agent in tree order.
+    pub fn agent_names(&self) -> Vec<&AgentName> {
+        std::iter::once(&self.org.duo.name)
+            .chain(self.org.agents().into_iter().map(|a| &a.agent.name))
+            .collect()
+    }
+
+    /// Changes a known agent's view; an agent not in the org is ignored (no redraw).
+    fn update_view(&mut self, agent: &AgentName, f: impl FnOnce(&mut AgentView)) -> bool {
+        let known = self.org.is_duo(agent) || self.org.find_agent(agent).is_some();
+        if !known {
+            return false;
+        }
+        f(self
+            .agents
             .entry(agent.clone())
-            .or_insert_with(unknown_view)
+            .or_insert_with(|| UNKNOWN_VIEW.clone()));
+        true
     }
 
     fn keep_selection_valid(&mut self) {
@@ -149,21 +172,19 @@ impl UiModel {
 }
 
 /// A view for an agent the engine has not reported yet: stopped, since an unknown time.
-pub(crate) fn unknown_view() -> AgentView {
-    AgentView {
-        status: Status {
-            state: AgentState::Stopped,
-            quiet: false,
-            quiet_since: None,
-            from_screen: false,
-            since: Millis(0),
-            error: None,
-        },
-        last_reply: None,
-        notice: None,
-        problem: None,
-    }
-}
+pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
+    status: Status {
+        state: AgentState::Stopped,
+        quiet: false,
+        quiet_since: None,
+        from_screen: false,
+        since: Millis(0),
+        error: None,
+    },
+    last_reply: None,
+    notice: None,
+    problem: None,
+};
 
 #[cfg(test)]
 mod tests {
@@ -216,6 +237,25 @@ mod tests {
             reason: "pay-qa is already running".into(),
         }));
         assert_eq!(m.footer_note.as_deref(), Some("pay-qa is already running"));
+    }
+
+    #[test]
+    fn events_for_unknown_agents_are_ignored() {
+        let mut m = spec_model();
+        let before = m.clone();
+        assert!(!m.apply(Event::AgentStatusChanged {
+            agent: n("ghost"),
+            status: status(AgentState::Working, mins(1)),
+        }));
+        assert!(!m.apply(Event::LastReplyChanged {
+            agent: n("ghost"),
+            reply: None,
+        }));
+        assert!(!m.apply(Event::AgentNoticeChanged {
+            agent: n("ghost"),
+            notice: None,
+        }));
+        assert_eq!(m, before);
     }
 
     #[test]

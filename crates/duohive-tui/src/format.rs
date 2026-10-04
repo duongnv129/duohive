@@ -5,6 +5,7 @@ use std::time::Duration;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use ratatui::text::Span;
+use unicode_segmentation::UnicodeSegmentation;
 
 /// The working spinner's frames, 4 a second (UI §2.1).
 pub const SPINNER: [char; 4] = ['◐', '◓', '◑', '◒'];
@@ -21,10 +22,6 @@ const SEP: &str = " · ";
 /// Display width of `s` in terminal cells.
 pub fn width(s: &str) -> usize {
     Span::raw(s).width()
-}
-
-fn char_width(c: char) -> usize {
-    width(c.encode_utf8(&mut [0; 4]))
 }
 
 /// `s` padded with spaces to `cells` (never cut).
@@ -108,12 +105,10 @@ pub fn truncate_middle(name: &str, cells: usize) -> String {
         return String::new();
     }
     let keep = cells - 1;
-    let head = take_cells(name.chars(), keep.div_ceil(2));
-    let tail: String = take_cells(name.chars().rev(), keep / 2)
-        .chars()
-        .rev()
-        .collect();
-    format!("{head}{ELLIPSIS}{tail}")
+    let head = take_cells(name.graphemes(true), keep.div_ceil(2)).concat();
+    let mut tail = take_cells(name.graphemes(true).rev(), keep / 2);
+    tail.reverse();
+    format!("{head}{ELLIPSIS}{}", tail.concat())
 }
 
 /// Cuts `text` at the end with `…` to fit `cells`.
@@ -126,7 +121,9 @@ pub fn truncate_end(text: &str, cells: usize) -> String {
     }
     format!(
         "{}{ELLIPSIS}",
-        take_cells(text.chars(), cells - 1).trim_end()
+        take_cells(text.graphemes(true), cells - 1)
+            .concat()
+            .trim_end()
     )
 }
 
@@ -177,11 +174,44 @@ pub fn wrap_words(text: &str, cells: usize) -> Vec<String> {
     lines.into_iter().map(|l| truncate_end(&l, cells)).collect()
 }
 
-fn take_cells(chars: impl Iterator<Item = char>, cells: usize) -> String {
+/// `text` cut to at most `max` lines of `cells`, the last ending `…` when anything was cut.
+pub fn wrap_capped(text: &str, cells: usize, max: usize) -> Vec<String> {
+    let mut lines = wrap_words(text, cells);
+    if lines.len() > max {
+        lines.truncate(max);
+        if let Some(last) = lines.last_mut() {
+            let kept = take_cells(last.graphemes(true), cells.saturating_sub(1)).concat();
+            *last = format!("{}{ELLIPSIS}", kept.trim_end_matches([' ', ELLIPSIS]));
+        }
+    }
+    lines
+}
+
+/// `text` in pieces of at most `cells`, broken between graphemes; nothing is added or
+/// dropped, so the pieces joined are `text` again.
+pub fn chunk_cells(text: &str, cells: usize) -> Vec<String> {
+    let mut chunks = vec![String::new()];
     let mut used = 0;
-    chars
-        .take_while(|c| {
-            used += char_width(*c);
+    for g in text.graphemes(true) {
+        let w = width(g);
+        if used + w > cells && used > 0 {
+            chunks.push(String::new());
+            used = 0;
+        }
+        if let Some(last) = chunks.last_mut() {
+            last.push_str(g);
+        }
+        used += w;
+    }
+    chunks
+}
+
+/// The leading graphemes of `parts` that fit in `cells`, measured one grapheme at a time.
+fn take_cells<'a>(parts: impl Iterator<Item = &'a str>, cells: usize) -> Vec<&'a str> {
+    let mut used = 0;
+    parts
+        .take_while(|g| {
+            used += width(g);
             used <= cells
         })
         .collect()
@@ -237,6 +267,32 @@ mod tests {
         assert_eq!(truncate_middle("auth-service", 16), "auth-service");
         assert_eq!(truncate_middle("abcdef", 1), "…");
         assert_eq!(truncate_middle("abcdef", 0), "");
+    }
+
+    #[test]
+    fn truncation_keeps_graphemes_whole() {
+        let e = "e\u{301}";
+        let five = e.repeat(5);
+        assert_eq!(truncate_middle(&five, 4), format!("{e}{e}…{e}"));
+        assert_eq!(truncate_end(&five, 3), format!("{e}{e}…"));
+    }
+
+    #[test]
+    fn chunks_keep_every_character() {
+        assert_eq!(chunk_cells("ab cd", 3), ["ab ", "cd"]);
+        assert_eq!(chunk_cells("abc", 3), ["abc"]);
+        assert_eq!(chunk_cells("", 3), [""]);
+        assert_eq!(chunk_cells("a b c d e", 2).concat(), "a b c d e");
+    }
+
+    #[test]
+    fn wrapping_is_capped() {
+        let long = "word ".repeat(40);
+        let lines = wrap_capped(&long, 20, 3);
+        assert_eq!(lines.len(), 3);
+        assert!(lines[2].ends_with('…'));
+        assert!(lines.iter().all(|l| width(l) <= 20));
+        assert_eq!(wrap_capped("short", 20, 3), ["short"]);
     }
 
     #[test]

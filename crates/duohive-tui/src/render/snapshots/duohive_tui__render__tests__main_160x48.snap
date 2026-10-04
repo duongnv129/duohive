@@ -1,13 +1,13 @@
 ---
 source: crates/duohive-tui/src/render/tests.rs
-assertion_line: 410
+assertion_line: 291
 expression: "render_lines(&m, &ctx(), 160, 48).join(\"\\n\")"
 ---
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ───────────────────────────────────────────────────────────────────────────────┐
 ┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   attach: tmux -L duohive attach -t duohive:auth-service                                                   │
-┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   attach:                                                                                                  │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│tmux -L duohive attach -t duohive:auth-service                                                              │
 ┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
 ┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
 ┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
