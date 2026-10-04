@@ -89,6 +89,7 @@ name = "duohive-tmux"
 version = "0.1.0"
 dependencies = [
  "duohive-core",
+ "thiserror",
 ]
 
 [[package]]
