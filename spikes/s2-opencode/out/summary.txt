@@ -1,0 +1,36 @@
+== user config: {}
+  user only:
+    [('*', '*', 'allow')]
+  + static {edit: ask, bash: ask}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]
+  + object {edit: {*: ask}, bash: {*: ask}}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]
+  + plugin config hook (compose):
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]
+== user config: {"permission":{"edit":"deny","bash":{"*":"allow","rm *":"deny","git push*":"ask"},"webfetch":"deny"},"agent":{"build":{"permission":{"bash":{"git commit*":"deny"}}}}}
+  user only:
+    [('*', '*', 'allow'), ('edit', '*', 'deny'), ('bash', '*', 'allow'), ('bash', 'rm *', 'deny'), ('bash', 'git push*', 'ask'), ('bash', 'git commit*', 'deny')]
+  + static {edit: ask, bash: ask}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask'), ('bash', 'git commit*', 'deny')]
+  + object {edit: {*: ask}, bash: {*: ask}}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask'), ('bash', 'rm *', 'deny'), ('bash', 'git push*', 'ask'), ('bash', 'git commit*', 'deny')]
+  + plugin config hook (compose):
+    [('*', '*', 'allow'), ('edit', '*', 'deny'), ('bash', '*', 'ask'), ('bash', 'rm *', 'deny'), ('bash', 'git push*', 'ask'), ('bash', 'git commit*', 'deny')]
+== user config: {"agent":{"build":{"permission":{"edit":"allow","bash":{"git status":"allow"}}}}}
+  user only:
+    [('*', '*', 'allow'), ('edit', '*', 'allow'), ('bash', 'git status', 'allow')]
+  + static {edit: ask, bash: ask}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask'), ('edit', '*', 'allow'), ('bash', 'git status', 'allow')]
+  + object {edit: {*: ask}, bash: {*: ask}}:
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask'), ('edit', '*', 'allow'), ('bash', 'git status', 'allow')]
+  + plugin config hook (compose):
+    [('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask'), ('edit', '*', 'ask'), ('bash', 'git status', 'allow')]
+== user config: {"permission":"allow"}
+  user only:
+    [('*', '*', 'allow'), ('*', '*', 'allow')]
+  + static {edit: ask, bash: ask}:
+    [('*', '*', 'allow'), ('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]
+  + object {edit: {*: ask}, bash: {*: ask}}:
+    [('*', '*', 'allow'), ('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]
+  + plugin config hook (compose):
+    [('*', '*', 'allow'), ('*', '*', 'allow'), ('edit', '*', 'ask'), ('bash', '*', 'ask')]

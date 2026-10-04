@@ -1,0 +1,40 @@
+                                                                                                                        
+     + Thought: 1.6s                                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  # Wrote yes.txt                                                                                                    
+  ┃                                                                                                                     
+  ┃   1 yes                                                                                                             
+  ┃   2                                                                                                                 
+  ┃                                                                                                                     
+                                                                                                                        
+     Created yes.txt                                                                                                    
+                                                                                                                        
+     ▣  Build · Test Model 01 · 32.8s                                                                                   
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file no.txt containing the word no. Do nothing else.                                                      
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 684ms                                                                                                   
+                                                                                                                        
+     ← Write no.txt                                                                                                     
+                                                                                                                        
+     ▣  Build · Test Model 01                                                                                           
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  △ Permission required                                                                                              
+  ┃    → Edit no.txt                                                                                                    
+  ┃                                                                                                                     
+  ┃  1 + no                                                                                                             
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃   Allow once   Allow always   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm     
+  ┃                                                                                                                     
+                                                                                                                        

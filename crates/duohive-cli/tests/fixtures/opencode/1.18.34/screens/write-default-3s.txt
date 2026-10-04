@@ -1,0 +1,40 @@
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  What is the sentinel?                                                                                              
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 539ms                                                                                                   
+                                                                                                                        
+     HIVE-SENTINEL                                                                                                      
+                                                                                                                        
+     ▣  Build · Test Model 01 · 8.5s                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file hello.txt containing the word hi. Do nothing else.                                                   
+  ┃                                                                                                                     
+                                                                                                                        
+     ▣  Build · Test Model 01                                                                                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · Test Model 01 (Example)                                                                                    
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                                                      50.4K  ctrl+p commands  
+                                                                                                                        

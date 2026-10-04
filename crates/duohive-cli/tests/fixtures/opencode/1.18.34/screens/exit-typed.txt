@@ -1,0 +1,40 @@
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  What is the sentinel?                                                                                              
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 539ms                                                                                                   
+                                                                                                                        
+     HIVE-SENTINEL                                                                                                      
+                                                                                                                        
+     ▣  Build · Test Model 01 · 8.5s                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file hello.txt containing the word hi. Do nothing else.                                                   
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 1.1s                                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  # Wrote hello.txt                                                                                                  
+  ┃                                                                                                                     
+  ┃   1 hi                                                                                                              
+  ┃   2                                                                                                                 
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 194ms                                                                                                   
+                                                                                                                        
+     Created hello.txt.                                                                                                 
+                                                                                                                        
+     ▣  Build · Test Model 01 · 24.7s                                                                                   
+                                                                                                                        
+                                                                                                                        
+  ┃ /exit         Exit the app                                                                                       ┃  
+  ┃ /export       Export session transcript                                                                          ┃  
+  ┃                                                                                                                     
+  ┃  /exit                                                                                                              
+  ┃                                                                                                                     
+  ┃  Build · Test Model 01 (Example)                                                                                    
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   /private/tmp/duohive-spike/work-oc                                                           50.5K  ctrl+p commands  
+                                                                                                                        

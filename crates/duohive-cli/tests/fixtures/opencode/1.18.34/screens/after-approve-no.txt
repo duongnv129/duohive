@@ -1,0 +1,40 @@
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file yes.txt containing the word yes. Do nothing else.                                                    
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 1.6s                                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  # Wrote yes.txt                                                                                                    
+  ┃                                                                                                                     
+  ┃   1 yes                                                                                                             
+  ┃   2                                                                                                                 
+  ┃                                                                                                                     
+                                                                                                                        
+     Created yes.txt                                                                                                    
+                                                                                                                        
+     ▣  Build · Test Model 01 · 32.8s                                                                                   
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file no.txt containing the word no. Do nothing else.                                                      
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 684ms                                                                                                   
+                                                                                                                        
+     ← Write no.txt                                                                                                     
+                                                                                                                        
+     ▣  Build · Test Model 01                                                                                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · Test Model 01 (Example)                                                                                    
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   /private/tmp/duohive-spike/work-oc                                                           50.5K  ctrl+p commands  
+                                                                                                                        

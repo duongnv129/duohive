@@ -1,0 +1,40 @@
+     Created yes.txt                                                                                                    
+                                                                                                                        
+     ▣  Build · Test Model 01 · 32.8s                                                                                   
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file no.txt containing the word no. Do nothing else.                                                      
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 684ms                                                                                                   
+                                                                                                                        
+     ← Write no.txt                                                                                                     
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  This is a two-line task.                                                                                           
+  ┃  Reply with the single word OK and use no tools.                                                                    
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 493ms                                                                                                   
+                                                                                                                        
+     OK                                                                                                                 
+                                                                                                                        
+     ▣  Build · Test Model 01 · 5.1s                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Without calling any tool, reply with only the exact name of your tool that comes from the duohive MCP server.      
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 763ms                                                                                                   
+                                                                                                                        
+     duohive_ping                                                                                                       
+                                                                                                                        
+     ▣  Build · Test Model 01 · 5.4s                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · Test Model 01 (Example)                                                                                    
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   /private/tmp/duohive-spike/work-oc                                                           50.6K  ctrl+p commands  
+                                                                                                                        
