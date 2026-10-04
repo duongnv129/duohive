@@ -44,6 +44,7 @@ async fn driver_ticks_at_next_deadline() {
     let mut h = harness_on_tokio_time();
     h.start("auth-service");
     h.input(Input::Hook(HookMessage {
+        sent_at_ms: 0,
         token: "tok-1".into(),
         agent: "auth-service".into(),
         event: "busy".into(),
@@ -154,6 +155,7 @@ async fn driver_ends_when_no_one_listens() {
 
 fn busy_hook(i: usize) -> HookMessage {
     HookMessage {
+        sent_at_ms: 0,
         token: format!("tok-{i}"),
         agent: "auth-service".into(),
         event: "busy".into(),

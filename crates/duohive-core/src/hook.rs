@@ -13,4 +13,8 @@ pub struct HookMessage {
     pub event: String,
     /// The CLI's payload, as received.
     pub payload: serde_json::Value,
+    /// When `duohive hook` built the message (Unix ms, wall clock): replay
+    /// orders by it (Review Focus 3). `0` from a sender that predates it.
+    #[serde(default)]
+    pub sent_at_ms: u64,
 }
