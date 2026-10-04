@@ -53,6 +53,7 @@ pub async fn run_app(
     };
     // Pasted text arrives whole, so a newline in it never reads as enter (forms).
     let _ = execute!(stdout(), EnableBracketedPaste);
+    restore_paste_on_panic();
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
     let (ack_tx, ack_rx) = std_mpsc::channel();
@@ -83,6 +84,16 @@ pub async fn run_app(
     let _ = execute!(stdout(), DisableBracketedPaste);
     let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
+}
+
+/// Wraps the panic hook (ratatui's, which restores raw mode and the screen) so a panic
+/// also turns bracketed paste off; otherwise the shell would get pastes wrapped in escapes.
+fn restore_paste_on_panic() {
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = execute!(stdout(), DisableBracketedPaste);
+        previous(info);
+    }));
 }
 
 /// Forwards key presses and resizes until stopped, the app is gone or the terminal fails.

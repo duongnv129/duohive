@@ -118,6 +118,15 @@ impl Form {
     }
 }
 
+impl Form {
+    /// Takes Duo's state now: whether saving a new CLI asks first is decided at save time.
+    pub fn sync_duo_state(&mut self, state: AgentState) {
+        if let Target::Org { duo_state } = &mut self.target {
+            *duo_state = state;
+        }
+    }
+}
+
 fn cli_at(f: &Form, id: FieldId) -> Option<CliKind> {
     CliKind::ALL.get(f.field(id)?.selected).copied()
 }

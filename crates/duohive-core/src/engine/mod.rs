@@ -11,7 +11,7 @@ mod signals;
 mod timers;
 
 pub use driver::run_core;
-pub use org_edit::apply_edit;
+pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
 use signals::Exit;
 
