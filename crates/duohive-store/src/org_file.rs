@@ -274,10 +274,24 @@ pub(crate) fn write_atomic(
         fs::create_dir_all(dir).map_err(|e| io_err("create", dir, &e))?;
     }
     let tmp = sibling(path, ".tmp");
-    let mut file = fs::File::create(&tmp).map_err(|e| io_err("create", &tmp, &e))?;
+    let result = write_tmp_then_rename(path, &tmp, bytes, backup);
+    if result.is_err() {
+        // Never leave a stale temp file behind; the target is untouched.
+        let _ = fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn write_tmp_then_rename(
+    path: &Path,
+    tmp: &Path,
+    bytes: &[u8],
+    backup: Option<&Path>,
+) -> Result<(), StoreError> {
+    let mut file = fs::File::create(tmp).map_err(|e| io_err("create", tmp, &e))?;
     file.write_all(bytes)
-        .map_err(|e| io_err("write", &tmp, &e))?;
-    file.sync_all().map_err(|e| io_err("sync", &tmp, &e))?;
+        .map_err(|e| io_err("write", tmp, &e))?;
+    file.sync_all().map_err(|e| io_err("sync", tmp, &e))?;
     drop(file);
     if let Some(backup) = backup {
         match fs::copy(path, backup) {
@@ -286,7 +300,7 @@ pub(crate) fn write_atomic(
             Err(e) => return Err(io_err("back up to", backup, &e)),
         }
     }
-    fs::rename(&tmp, path).map_err(|e| io_err("replace", path, &e))
+    fs::rename(tmp, path).map_err(|e| io_err("replace", path, &e))
 }
 
 fn render(org: &Org) -> Result<String, StoreError> {
@@ -295,6 +309,12 @@ fn render(org: &Org) -> Result<String, StoreError> {
 
 /// Saves the org atomically, keeps the previous file as `org.toml.bak` and
 /// refreshes the last-good copy (the engine saves only validated orgs).
+///
+/// Partial failure: `org.toml` is replaced first. If that succeeds but the
+/// last-good write fails, this still returns `Err` though `org.toml` is new on
+/// disk; the message then starts `org.toml was saved, but` so callers can tell
+/// it from a save that changed nothing. Any other `Err` leaves `org.toml` and
+/// `org.toml.bak` as they were, with no `.tmp` file left behind.
 pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError> {
     let text = render(org)?;
     write_atomic(
@@ -302,7 +322,12 @@ pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError> {
         text.as_bytes(),
         Some(&paths.org_backup()),
     )?;
-    write_atomic(&paths.org_last_good(), text.as_bytes(), None)
+    write_atomic(&paths.org_last_good(), text.as_bytes(), None).map_err(|e| {
+        StoreError(format!(
+            "org.toml was saved, but the last-good copy was not refreshed: {}",
+            e.0
+        ))
+    })
 }
 
 /// Records `org` as the last good org, without touching `org.toml`.
