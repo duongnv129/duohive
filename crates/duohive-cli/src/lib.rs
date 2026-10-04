@@ -2,6 +2,7 @@
 
 pub mod claude;
 pub mod detect;
+pub mod fake;
 pub mod hooks_json;
 pub mod opencode;
 
