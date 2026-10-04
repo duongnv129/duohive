@@ -25,8 +25,11 @@
 // that agent's block: the same patterns and decisions, with "*" made "ask"
 // where it allows. Where an agent's built-in rules restrict a key (plan's
 // edit, explore's edit, the hidden agents' everything; `opencode agent list`,
-// 1.18.34), no "*" is added, so the built-in still decides. It never answers
-// a permission prompt itself (TD §2).
+// 1.18.34), no "*" is added, so the built-in still decides. All-digit
+// patterns, which a JS object moves first, are kept by raising the pattern
+// that would otherwise decide for them. Only the agents named here or in the
+// user's config are composed; DuoHive launches `build` (`--agent=build`).
+// It never answers a permission prompt itself (TD §2).
 //
 // It must never disturb OpenCode (plan Review Focus 1): every hook returns at
 // once; deliveries run one at a time on an internal promise chain, in event
@@ -97,8 +100,34 @@ function composeKey(key, rules, restricted) {
     patterns.set(rule.pattern, rule.action);
   }
   if (patterns.get("*") === "allow") patterns.set("*", "ask");
-  if (!patterns.has("*") && !restricted) return { "*": "ask", ...Object.fromEntries(patterns) };
-  return patterns.size > 0 ? Object.fromEntries(patterns) : undefined;
+  const ordered =
+    !patterns.has("*") && !restricted ? [["*", "ask"], ...patterns] : [...patterns];
+  return ordered.length > 0 ? keepIndexPatterns(ordered) : undefined;
+}
+
+const RANK = { allow: 0, ask: 1, deny: 2 };
+
+function lastMatch(entries, target) {
+  let action;
+  for (const [pattern, a] of entries) if (wildcard(pattern, target)) action = a;
+  return action;
+}
+
+// A JS object puts array-index keys ("5", "2024") first, ascending, whatever
+// their place, so a later pattern could decide for one. For each such
+// pattern, the string pattern that would now decide is raised to the
+// decision the intended order gives, so nothing gets less strict.
+function keepIndexPatterns(ordered) {
+  const out = Object.fromEntries(ordered);
+  for (const [pattern] of ordered) {
+    if (!/^(0|[1-9]\d*)$/.test(pattern) || Number(pattern) >= 2 ** 32 - 1) continue;
+    const want = lastMatch(ordered, pattern);
+    const actual = Object.entries(out);
+    if ((RANK[lastMatch(actual, pattern)] ?? 2) >= (RANK[want] ?? 2)) continue;
+    const decider = actual.filter(([p]) => p !== pattern && wildcard(p, pattern)).pop();
+    if (decider) out[decider[0]] = want;
+  }
+  return out;
 }
 
 function composePermissions(cfg) {

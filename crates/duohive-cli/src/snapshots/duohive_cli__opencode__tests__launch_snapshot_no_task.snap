@@ -3,7 +3,8 @@ source: crates/duohive-cli/src/opencode_tests.rs
 expression: for_snapshot(cmd)
 ---
 program: opencode
-args: []
+args:
+  - "--agent=build"
 env:
   - - OPENCODE_CONFIG
     - /data/duohive/run/squad-1/opencode.json
