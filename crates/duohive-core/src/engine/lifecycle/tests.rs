@@ -14,7 +14,7 @@ use crate::inherit::resolve;
 use crate::launch::{Key, Token, WindowId};
 use crate::ports::RuntimeEvent;
 use crate::status::AgentState;
-use crate::testkit::{RuntimeCall, n};
+use crate::testkit::{RuntimeCall, StubAdapter, n};
 use crate::time::Millis;
 use crate::validate::DirStatus;
 
@@ -167,7 +167,7 @@ fn give_work_waiting_is_refused() {
 fn give_work_starting_is_refused() {
     let mut h = Harness::new();
     h.start("pay-qa");
-    h.calls.lock().unwrap().clear();
+    h.call_log.lock().unwrap().clear();
     let events = h.give("pay-qa", "Too early");
     assert_eq!(
         events,
@@ -193,7 +193,107 @@ fn unknown_agent_rejected() {
     let mut h = Harness::new();
     let events = h.start("ghost");
     assert!(rejected(&events, "no agent named ghost"), "{events:?}");
+    let events = h.send(Command::StopAgent { agent: n("ghost") });
+    assert!(rejected(&events, "no agent named ghost"), "{events:?}");
+    let events = h.send(Command::ViewAgent { agent: n("ghost") });
+    assert!(rejected(&events, "no agent named ghost"), "{events:?}");
+    let events = h.give("ghost", "Anything");
+    assert!(rejected(&events, "no agent named ghost"), "{events:?}");
     assert!(h.calls().is_empty());
+}
+
+#[test]
+fn launch_error_errors_through_starting() {
+    let mut h = Setup {
+        claude: StubAdapter::new(CliKind::Claude).with_launch_error("bad model"),
+        ..Setup::default()
+    }
+    .build();
+    let events = h.start("pay-qa");
+    let states: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            Event::AgentStatusChanged { status, .. } => Some((status.state, status.error.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        states,
+        vec![
+            (AgentState::Starting, None),
+            (AgentState::Errored, Some("bad model".into())),
+        ]
+    );
+    assert!(h.calls().is_empty());
+}
+
+#[test]
+fn each_launch_gets_a_fresh_token() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    h.force_errored("pay-qa", "exited unexpectedly (code 1)", None);
+    h.call_log.lock().unwrap().clear();
+    h.give("pay-qa", "Retry");
+    let env = h.only_start().env;
+    assert!(
+        env.contains(&("DUOHIVE_TOKEN".to_owned(), "tok-2".to_owned())),
+        "{env:?}"
+    );
+    assert_eq!(h.rt("pay-qa").token, Some(Token("tok-2".into())));
+    let st = h.store.state.lock().unwrap();
+    assert_eq!(st.sessions[&n("pay-qa")].token, Some(Token("tok-2".into())));
+}
+
+#[test]
+fn failed_relaunch_clears_the_old_token() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    h.force_errored("pay-qa", "exited unexpectedly (code 1)", None);
+    h.input(Input::CliInventory(vec![(
+        CliKind::Claude,
+        CliPresence::Missing,
+    )]));
+    h.give("pay-qa", "Retry");
+    assert_eq!(h.state("pay-qa"), AgentState::Errored);
+    assert_eq!(h.rt("pay-qa").token, None);
+    let st = h.store.state.lock().unwrap();
+    assert_eq!(st.sessions[&n("pay-qa")].token, None);
+}
+
+#[test]
+fn give_work_with_no_adapter_is_rejected() {
+    let mut setup = Setup {
+        without_adapter: Some(CliKind::Opencode),
+        ..Setup::default()
+    };
+    setup.org.roles[0].agents[1].fields.cli = Some(CliKind::Opencode);
+    let mut h = setup.build();
+    h.force("squad-2", AgentState::Finished);
+    let events = h.give("squad-2", "Next");
+    assert!(
+        rejected(
+            &events,
+            "opencode not found · install it or change its CLI (e)"
+        ),
+        "{events:?}"
+    );
+    assert!(h.calls().is_empty());
+    assert_eq!(h.state("squad-2"), AgentState::Finished);
+}
+
+#[test]
+fn blank_task_is_rejected() {
+    let mut h = Harness::new();
+    h.force("squad-1", AgentState::Idle);
+    for task in ["", "   ", "\n\t"] {
+        let events = h.give("squad-1", task);
+        assert!(rejected(&events, "the task is empty"), "{events:?}");
+        let events = h.give("pay-qa", task);
+        assert!(rejected(&events, "the task is empty"), "{events:?}");
+    }
+    assert!(h.calls().is_empty());
+    assert_eq!(h.state("squad-1"), AgentState::Idle);
+    assert_eq!(h.state("pay-qa"), AgentState::Stopped);
 }
 
 #[test]
@@ -249,6 +349,7 @@ fn missing_cli_errors_through_starting() {
         ]
     );
     assert!(h.calls().is_empty());
+    assert!(h.opencode.launches.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -467,6 +568,16 @@ fn stop_running_sends_quit_keys_with_grace() {
 #[test]
 fn stop_errored_goes_stopped() {
     let mut h = Harness::new();
+    h.start("pay-qa");
+    h.call_log.lock().unwrap().clear();
+    assert!(
+        h.store
+            .state
+            .lock()
+            .unwrap()
+            .sessions
+            .contains_key(&n("pay-qa"))
+    );
     h.force_errored("pay-qa", "exited unexpectedly (code 1)", Some("@3"));
     let events = h.send(Command::StopAgent { agent: n("pay-qa") });
     assert!(events.iter().any(|e| matches!(e,
@@ -479,6 +590,12 @@ fn stop_errored_goes_stopped() {
     );
     assert_eq!(h.rt("pay-qa").window, None);
     assert_eq!(h.rt("pay-qa").status.error, None);
+    assert_eq!(h.rt("pay-qa").token, None);
+    {
+        let st = h.store.state.lock().unwrap();
+        assert!(st.deleted_sessions.contains(&n("pay-qa")));
+        assert!(!st.sessions.contains_key(&n("pay-qa")));
+    }
 
     h.force_errored("squad-1", "tmux server exited", None);
     h.send(Command::StopAgent {
