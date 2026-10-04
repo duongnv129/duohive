@@ -47,9 +47,20 @@ impl Engine {
         let was_quiet = rt.status.quiet;
         rt.status.quiet = false;
         rt.status.quiet_since = None;
+        // The listener runs connections concurrently, so a hook can arrive after
+        // a newer one; `0` is an unknown send time and applies as it comes.
+        let sent = message.sent_at_ms;
+        let stale = sent != 0 && sent < rt.last_hook_sent_at;
+        if sent != 0 && !stale {
+            rt.last_hook_sent_at = sent;
+        }
         let mut out = Vec::new();
         let moved = match signal {
             Some(HookSignal::SessionEnded) => self.on_end_hook(&agent, &mut out),
+            Some(signal) if stale => {
+                self.apply_stale_hook(&agent, signal, &mut out);
+                false
+            }
             Some(signal) => self.apply_hook(&agent, signal, &mut out),
             None => false,
         };
@@ -109,6 +120,19 @@ impl Engine {
         }
         out.extend(reply_event);
         true
+    }
+
+    /// A hook older than one already applied: only its reply is kept.
+    fn apply_stale_hook(&mut self, agent: &AgentName, signal: HookSignal, out: &mut Vec<Event>) {
+        tracing::debug!(%agent, ?signal, "hook older than the last applied, state kept");
+        if let HookSignal::TurnEnded {
+            last_reply: Some(reply),
+        } = signal
+            && let Some(event) = self.take_reply(agent, Some(reply))
+        {
+            self.save_row(agent, out);
+            out.push(event);
+        }
     }
 
     /// The end hook: remembered, and it settles a zero exit waiting for it (D21).
@@ -394,6 +418,8 @@ fn same_token(expected: &str, given: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+#[cfg(test)]
+mod order;
 #[cfg(test)]
 mod races;
 #[cfg(test)]
