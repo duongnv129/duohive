@@ -117,7 +117,7 @@ impl Engine {
 
     /// Queues a launch until the first `CliInventory` (D30), else runs it.
     /// The queued command runs through `on_command` again, so its state is re-checked.
-    fn launch_or_queue(&mut self, agent: AgentName, task: Option<String>) -> Vec<Event> {
+    pub(super) fn launch_or_queue(&mut self, agent: AgentName, task: Option<String>) -> Vec<Event> {
         if self.cli.is_none() {
             self.queued_launches.push(match task {
                 None => Command::StartAgent { agent },
@@ -239,7 +239,7 @@ impl Engine {
 
     /// Calls `f` with the adapter of the CLI `agent` runs on: the one it was
     /// launched on, else the one the org resolves to.
-    fn with_running_adapter<T>(
+    pub(super) fn with_running_adapter<T>(
         &self,
         agent: &AgentName,
         f: impl FnOnce(&dyn CliAdapter) -> T,
