@@ -18,6 +18,9 @@ DuoHive is an open-source terminal app that runs your agents as an org chart, st
 
 - tmux 3.2 or later
 - Rust 1.99 to build (`rustup` selects it from `rust-toolchain.toml`)
+- Claude Code or OpenCode, for the agents
+
+`make install` installs tmux (with Homebrew, apt, dnf, yum, pacman, zypper or apk) and Rust (with rustup) when they're missing; `make deps` installs only those. The agent CLIs are yours to install.
 
 ## Install
 
@@ -27,7 +30,7 @@ make install PREFIX=/usr/local    # or another prefix (or: ./install.sh --prefix
 make uninstall                   # remove them; your org and data are kept
 ```
 
-`./install.sh --no-alias` skips `dh`; an existing `dh` that isn't DuoHive's is left alone.
+`./install.sh --no-alias` skips `dh`; an existing `dh` that isn't DuoHive's is left alone. `--no-deps` only checks tmux and Rust instead of installing them.
 
 ## Build
 
