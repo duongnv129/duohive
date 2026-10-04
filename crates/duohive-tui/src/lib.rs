@@ -17,7 +17,10 @@ pub mod tree;
 )]
 mod fixtures;
 
-pub use app::{AppConfig, InputEvent, TerminalHost, TuiError, editor_command, run_app, run_app_on};
+pub use app::{
+    AppConfig, InputEvent, TerminalHost, TuiError, editor_command, quits_blocking,
+    restore_terminal, run_app, run_app_on, show_blocking,
+};
 pub use format::{format_age, state_cell, truncate_middle};
 pub use forms::{Chooser, Field, FieldId, FieldKind, Form, FormOutcome, LineEdit};
 pub use input::{Action, UiEffect, map_key, paste, update};

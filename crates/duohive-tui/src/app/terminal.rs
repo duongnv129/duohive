@@ -20,7 +20,8 @@ use duohive_core::command::Command;
 use duohive_core::event::Event;
 use tokio::sync::{mpsc, oneshot};
 
-use super::{AppConfig, InputEvent, TerminalHost, TuiError, run_loop};
+use super::{AppConfig, InputEvent, QuitSignals, TerminalHost, TuiError, quits_blocking, run_loop};
+use crate::render::{BlockingScreen, render_blocking};
 
 /// How often the reader thread looks for a pause request between reads.
 const POLL: Duration = Duration::from_millis(50);
@@ -36,10 +37,11 @@ enum Gate {
 }
 
 /// The app on the real terminal. The terminal is restored on exit and, through ratatui's
-/// panic hook, on panic.
+/// panic hook, on panic. SIGINT and SIGTERM quit like `q`. `events` is lent, so the
+/// caller keeps its handle (and shuts it down) afterwards.
 pub async fn run_app(
     cfg: AppConfig,
-    events: mpsc::UnboundedReceiver<Event>,
+    events: &mut mpsc::UnboundedReceiver<Event>,
     commands: mpsc::Sender<Command>,
     first_frame: Option<oneshot::Sender<()>>,
 ) -> Result<(), TuiError> {
@@ -74,6 +76,7 @@ pub async fn run_app(
                 commands,
                 first_frame,
                 host,
+                QuitSignals::install(),
             )
             .await
         }
@@ -84,6 +87,51 @@ pub async fn run_app(
     let _ = execute!(stdout(), DisableBracketedPaste);
     let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
+}
+
+/// Puts the terminal back (bracketed paste off, raw mode off, main screen) for a caller
+/// that stopped [`run_app`] without letting it finish. Harmless when already restored.
+pub fn restore_terminal() {
+    let _ = execute!(stdout(), DisableBracketedPaste);
+    let _ = ratatui::try_restore();
+}
+
+/// Shows a blocking screen (tmux missing, Task 23) until `q` or `ctrl+c`, redrawing on
+/// resize; blocking, so run it off the async executor.
+///
+/// # Errors
+/// The terminal cannot be set up, drawn on, read or restored.
+pub fn show_blocking(screen: &BlockingScreen) -> Result<(), TuiError> {
+    let mut terminal = match ratatui::try_init() {
+        Ok(t) => t,
+        Err(e) => {
+            let _ = ratatui::try_restore();
+            return Err(e.into());
+        }
+    };
+    let result = blocking_loop(&mut terminal, screen);
+    let restored = ratatui::try_restore();
+    result.and(restored.map_err(TuiError::from))
+}
+
+fn blocking_loop(
+    terminal: &mut ratatui::DefaultTerminal,
+    screen: &BlockingScreen,
+) -> Result<(), TuiError> {
+    loop {
+        terminal
+            .draw(|f| render_blocking(f, screen))
+            .map_err(|e| TuiError::Terminal(e.to_string()))?;
+        loop {
+            match event::read()? {
+                TermEvent::Key(k) if k.kind != KeyEventKind::Release && quits_blocking(&k) => {
+                    return Ok(());
+                }
+                TermEvent::Resize(..) => break,
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Wraps the panic hook (ratatui's, which restores raw mode and the screen) so a panic

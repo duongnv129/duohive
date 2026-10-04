@@ -1,15 +1,14 @@
 //! DuoHive binary entry point.
 
-use std::collections::HashMap;
-use std::ffi::OsString;
 use std::io::{IsTerminal, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
-use duohive::args::{Cli, parse_args};
+use duohive::args::{Cli, USAGE, parse_args};
 use duohive::bench::{BenchArgs, BenchError, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
+use duohive::startup::{env_vars, run_app_main};
 
 fn main() -> ExitCode {
     // `env::args()` and `env::vars()` panic on non-UTF-8: drop such entries instead.
@@ -22,11 +21,14 @@ fn main() -> ExitCode {
         return hook(&args);
     }
     match parse_args(&args) {
-        // The app arrives in Task 29.
-        Ok(Cli::App | Cli::Hook { .. }) => ExitCode::SUCCESS,
-        Ok(Cli::BenchAgent { hooks, task }) => {
-            run_bench_agent(hooks, task.as_deref(), &utf8_vars(std::env::vars_os()))
+        Ok(Cli::App) => app(),
+        // Handled above.
+        Ok(Cli::Hook { .. }) => ExitCode::SUCCESS,
+        Ok(Cli::Help) => {
+            let _ = std::io::stdout().write_all(USAGE.as_bytes());
+            ExitCode::SUCCESS
         }
+        Ok(Cli::BenchAgent { hooks, task }) => run_bench_agent(hooks, task.as_deref(), &env_vars()),
         Ok(Cli::Bench(args)) => bench(args),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");
@@ -35,18 +37,34 @@ fn main() -> ExitCode {
     }
 }
 
+/// The app, on a multi-thread runtime.
+fn app() -> ExitCode {
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt.block_on(run_app_main()),
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "duohive: cannot start the runtime: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// Runs the bench and prints its report (plain, or JSON with `--json`).
 fn bench(args: BenchArgs) -> ExitCode {
     let json = args.json;
-    let result = tokio::runtime::Builder::new_multi_thread()
+    let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
-        .map_err(|e| e.to_string())
-        .and_then(|rt| {
-            rt.block_on(run_bench_detailed(args))
-                .map_err(|e| e.to_string())
-        });
-    match result {
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    match rt.block_on(run_bench_detailed(args)) {
         Ok(outcome) => {
             let text = if json {
                 format!("{}\n", outcome.to_json())
@@ -58,12 +76,16 @@ fn bench(args: BenchArgs) -> ExitCode {
         }
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
-            if e == BenchError::Interrupted.to_string() {
-                // The conventional exit status of a process ended by SIGINT.
-                return ExitCode::from(130);
-            }
-            ExitCode::FAILURE
+            ExitCode::from(bench_failure_code(&e))
         }
+    }
+}
+
+/// 130, the conventional status of a process ended by SIGINT, when interrupted; else 1.
+fn bench_failure_code(e: &BenchError) -> u8 {
+    match e {
+        BenchError::Interrupted => 130,
+        _ => 1,
     }
 }
 
@@ -72,7 +94,7 @@ fn bench(args: BenchArgs) -> ExitCode {
 fn hook(args: &[String]) -> ExitCode {
     panic::set_hook(Box::new(|_| {}));
     panic::catch_unwind(AssertUnwindSafe(|| {
-        let env = utf8_vars(std::env::vars_os());
+        let env = env_vars();
         let stdin = std::io::stdin();
         let is_terminal = stdin.is_terminal();
         run_hook(args, stdin, is_terminal, &env)
@@ -80,7 +102,13 @@ fn hook(args: &[String]) -> ExitCode {
     .unwrap_or(ExitCode::SUCCESS)
 }
 
-fn utf8_vars(vars: impl Iterator<Item = (OsString, OsString)>) -> HashMap<String, String> {
-    vars.filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
-        .collect()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_interrupted_bench_exits_130() {
+        assert_eq!(bench_failure_code(&BenchError::Interrupted), 130);
+        assert_eq!(bench_failure_code(&BenchError::Timeout("agents")), 1);
+    }
 }

@@ -11,7 +11,7 @@ use duohive_core::launch::{Key, LaunchCommand, WindowId, sh_quote};
 use duohive_core::names::AgentName;
 use duohive_core::ports::{Runtime, RuntimeEvent};
 use tokio::sync::{Mutex, mpsc};
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::activity::{self, Table};
 use crate::connection::{self, CmdError, Conn, Notice};
@@ -61,7 +61,7 @@ impl Shared {
 /// The tmux runtime. Its methods queue requests for its tasks; results come back as events.
 pub struct TmuxRuntime {
     requests: mpsc::UnboundedSender<Req>,
-    tasks: Vec<JoinHandle<()>>,
+    tasks: Vec<AbortHandle>,
 }
 
 impl TmuxRuntime {
@@ -83,11 +83,24 @@ impl TmuxRuntime {
             poll_gate: Mutex::new(()),
         });
         let (requests, rx) = mpsc::unbounded_channel();
+        let events = shared.events.clone();
         let tasks = vec![
-            conn_task,
-            tokio::spawn(poll_loop(shared.clone())),
-            tokio::spawn(notice_loop(shared.clone(), notices)),
-            tokio::spawn(request_loop(shared, rx)),
+            watched("control client", conn_task, events.clone()),
+            watched(
+                "activity poll",
+                tokio::spawn(poll_loop(shared.clone())),
+                events.clone(),
+            ),
+            watched(
+                "notice loop",
+                tokio::spawn(notice_loop(shared.clone(), notices)),
+                events.clone(),
+            ),
+            watched(
+                "request loop",
+                tokio::spawn(request_loop(shared, rx)),
+                events,
+            ),
         ];
         Ok(Self { requests, tasks })
     }
@@ -131,6 +144,25 @@ impl Runtime for TmuxRuntime {
     fn inventory(&mut self) {
         self.send(Req::Inventory);
     }
+}
+
+/// Watches a spawned runtime task: if it panics, the engine hears `ConnectionLost`
+/// (its agents error) instead of DuoHive silently losing tmux. Aborting the returned
+/// handle (on drop) stops the task and reports nothing.
+fn watched(name: &'static str, task: JoinHandle<()>, events: mpsc::Sender<Input>) -> AbortHandle {
+    let abort = task.abort_handle();
+    tokio::spawn(async move {
+        if let Err(e) = task.await
+            && e.is_panic()
+        {
+            tracing::error!(task = name, "tmux runtime task panicked");
+            let reason = format!("tmux {name} stopped");
+            let _ = events
+                .send(Input::Runtime(RuntimeEvent::ConnectionLost { reason }))
+                .await;
+        }
+    });
+    abort
 }
 
 /// Polls once a second until the connection is gone.
@@ -488,6 +520,31 @@ fn write_file(path: &Path, contents: &str, mode: u32) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_task_that_dies_reports_the_connection_lost() {
+        let (tx, mut rx) = mpsc::channel(4);
+        // `resume_unwind` panics without the panic hook: no noise in the output.
+        let _task = watched(
+            "activity poll",
+            tokio::spawn(async { std::panic::resume_unwind(Box::new("boom")) }),
+            tx,
+        );
+        match rx.recv().await {
+            Some(Input::Runtime(RuntimeEvent::ConnectionLost { reason })) => {
+                assert_eq!(reason, "tmux activity poll stopped");
+            }
+            other => panic!("expected ConnectionLost, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn an_aborted_task_reports_nothing() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let task = watched("activity poll", tokio::spawn(std::future::pending()), tx);
+        task.abort();
+        assert!(rx.recv().await.is_none());
+    }
 
     #[test]
     fn launch_script_quotes_every_word() {
