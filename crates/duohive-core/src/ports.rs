@@ -41,7 +41,7 @@ pub trait Runtime: Send {
 }
 
 /// What the runtime reports back.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RuntimeEvent {
     /// A window opened.
     Started {
@@ -104,16 +104,30 @@ pub enum RuntimeEvent {
 }
 
 /// A window found by an inventory.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LiveWindow {
     /// Which agent.
     pub agent: AgentName,
     /// Its window.
     pub window: WindowId,
     /// `Some(status)` when the pane is dead (status `None` = killed by a signal).
+    #[serde(with = "nested_option")]
     pub dead: Option<Option<i32>>,
     /// Unix seconds of the last activity.
     pub activity_secs: u64,
+}
+
+/// `Option<Option<T>>` as `null` or a one-element array, so `Some(None)` survives JSON.
+mod nested_option {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(v: &Option<Option<i32>>, s: S) -> Result<S::Ok, S::Error> {
+        v.map(|inner| [inner]).serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<i32>>, D::Error> {
+        Ok(Option::<[Option<i32>; 1]>::deserialize(d)?.map(|[inner]| inner))
+    }
 }
 
 /// A problem in a hand-edited file.
@@ -126,7 +140,7 @@ pub struct OrgFileError {
 }
 
 /// An agent's persisted session.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionRow {
     /// Which agent.
     pub agent: AgentName,
@@ -204,17 +218,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn fake_store_round_trips_and_can_fail_once() {
-        let mut s = FakeStore::default();
-        assert_eq!(s.load_org(), Ok(None));
-        s.fail_next_save = true;
-        assert!(s.save_org(&example_org()).is_err());
-        assert!(s.save_org(&example_org()).is_ok());
-        let row = SessionRow {
+    fn row() -> SessionRow {
+        SessionRow {
             agent: n("a"),
-            token: None,
-            window: None,
+            token: Some(Token("t".into())),
+            window: Some(WindowId("@1".into())),
             status: crate::status::Status {
                 state: crate::status::AgentState::Stopped,
                 quiet: false,
@@ -227,12 +235,21 @@ mod tests {
             task_at_launch: false,
             saw_end_hook: false,
             last_task: None,
-        };
-        s.save_session(&row).unwrap();
-        assert_eq!(s.load_sessions().unwrap(), vec![row]);
+        }
+    }
+
+    #[test]
+    fn fake_store_round_trips_and_can_fail_once() {
+        let mut s = FakeStore::default();
+        assert_eq!(s.load_org(), Ok(None));
+        s.state.lock().unwrap().fail_next_save = true;
+        assert!(s.save_org(&example_org()).is_err());
+        assert!(s.save_org(&example_org()).is_ok());
+        s.save_session(&row()).unwrap();
+        assert_eq!(s.load_sessions().unwrap(), vec![row()]);
         s.delete_session(&n("a")).unwrap();
         assert!(s.load_sessions().unwrap().is_empty());
-        s.pending.push(HookMessage {
+        s.state.lock().unwrap().pending.push(HookMessage {
             token: "t".into(),
             agent: "a".into(),
             event: "e".into(),
@@ -240,5 +257,37 @@ mod tests {
         });
         assert_eq!(s.take_pending_hooks().unwrap().len(), 1);
         assert!(s.take_pending_hooks().unwrap().is_empty());
+    }
+
+    #[test]
+    fn fake_store_is_observable_and_steerable_once_boxed() {
+        let handle = FakeStore::default();
+        let state = handle.state.clone();
+        let mut boxed: Box<dyn Store> = Box::new(handle.clone());
+        boxed.save_org(&example_org()).unwrap();
+        boxed.save_settings(&Settings::default()).unwrap();
+        boxed.delete_session(&n("a")).unwrap();
+        state.lock().unwrap().fail_next_save = true;
+        assert!(boxed.save_session(&row()).is_err());
+        let st = handle.state.lock().unwrap();
+        assert_eq!(st.saved_orgs.len(), 1);
+        assert_eq!(st.saved_settings.len(), 1);
+        assert_eq!(st.deleted_sessions, vec![n("a")]);
+    }
+
+    #[test]
+    fn port_types_round_trip_json() {
+        let ev = RuntimeEvent::Inventory(vec![LiveWindow {
+            agent: n("a"),
+            window: WindowId("@2".into()),
+            dead: Some(None),
+            activity_secs: 7,
+        }]);
+        let back: RuntimeEvent =
+            serde_json::from_str(&serde_json::to_string(&ev).unwrap()).unwrap();
+        assert_eq!(back, ev);
+        let back: SessionRow =
+            serde_json::from_str(&serde_json::to_string(&row()).unwrap()).unwrap();
+        assert_eq!(back, row());
     }
 }

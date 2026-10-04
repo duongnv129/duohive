@@ -20,7 +20,7 @@ pub enum Theme {
 
 /// Which desktop alerts are on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AlertSettings {
     /// Alert when an agent needs you.
     pub needs_you: bool,
@@ -39,7 +39,7 @@ impl Default for AlertSettings {
 
 /// Everything in `settings.toml`; missing keys take their defaults.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Settings {
     /// What Duo calls the user.
     pub your_name: Option<String>,
@@ -108,5 +108,11 @@ mod tests {
         assert_eq!(s.quiet_after_minutes, 9);
         assert_eq!(s.theme, Theme::Dark);
         assert!(s.show_last_reply);
+    }
+
+    #[test]
+    fn unknown_keys_are_rejected() {
+        assert!(toml::from_str::<Settings>("quiet_after_mins = 3").is_err());
+        assert!(toml::from_str::<Settings>("[alerts]\nnot_a_key = true").is_err());
     }
 }

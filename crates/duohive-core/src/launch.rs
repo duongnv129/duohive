@@ -30,7 +30,7 @@ pub enum Key {
 }
 
 /// Everything an adapter needs to build a launch.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaunchSpec {
     /// The agent, fully resolved.
     pub agent: ResolvedAgent,
@@ -45,7 +45,7 @@ pub struct LaunchSpec {
 }
 
 /// A file to write before launching; always under the run dir, mode 0600.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaunchFile {
     /// Where to write it.
     pub path: PathBuf,
@@ -54,7 +54,7 @@ pub struct LaunchFile {
 }
 
 /// The process to run in the agent's window.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaunchCommand {
     /// The executable.
     pub program: String,
