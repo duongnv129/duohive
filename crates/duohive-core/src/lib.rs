@@ -4,6 +4,7 @@ pub mod cli_kind;
 pub mod inherit;
 pub mod names;
 pub mod org;
+pub mod status;
 pub mod time;
 pub mod validate;
 
