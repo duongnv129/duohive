@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
-- `make install` / `install.sh`: build in release mode and install `duohive` and the `dh` alias to `~/.local/bin` (or `PREFIX`); `make uninstall` removes them.
+Phase 0 and Phase 1 done (2026-10-04).
 
 ### Added
+
+- `make install` / `install.sh`: build in release mode and install `duohive` and the `dh` alias to `~/.local/bin` (or `PREFIX`); `make uninstall` removes them.
 
 - Cargo workspace with seven crates, a pinned toolchain, shared lints and the Apache-2.0 licence.
 - Makefile with `make check` as the local gate, plus cargo-deny and typos configuration.
