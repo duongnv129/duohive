@@ -337,7 +337,20 @@ fn second_instance_refused_by_the_lock_alone() {
         Err(ListenerError::AlreadyRunning)
     ));
     drop(lock);
-    HookListener::bind(&tmp.path().join("run.sock")).unwrap();
+    // A flock belongs to the open file description, not to our fd: a child that
+    // another test thread is spawning right now holds a duplicate of `lock`
+    // between fork and exec (the fd is close-on-exec, but only from the exec),
+    // so the lock frees a moment after the drop. Wait for that real condition.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let sock = tmp.path().join("run.sock");
+    let _listener = loop {
+        match HookListener::bind(&sock) {
+            Err(ListenerError::AlreadyRunning) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            other => break other.unwrap(),
+        }
+    };
 }
 
 #[test]
