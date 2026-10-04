@@ -109,11 +109,15 @@ fn levels<'a>(org: &'a Org, key: &NodeKey) -> Vec<(PromptLevel, &'a Fields)> {
             }
         }
         NodeKey::Role(RoleKey { team: tn, role }) => {
-            let roles = match tn.as_ref().and_then(team) {
-                Some(t) => {
-                    out.push((PromptLevel::Team(t.name.clone()), &t.defaults));
-                    &t.roles[..]
-                }
+            let roles = match tn {
+                // A team that doesn't exist has no roles: yield no levels.
+                Some(name) => match team(name) {
+                    Some(t) => {
+                        out.push((PromptLevel::Team(t.name.clone()), &t.defaults));
+                        &t.roles[..]
+                    }
+                    None => return out,
+                },
                 None => &org.roles[..],
             };
             if let Some(r) = role_in(roles, role) {
@@ -443,6 +447,20 @@ mod tests {
             team.model.map(|m| (m.value, m.from)),
             Some(("sonnet".into(), "Payments".into()))
         );
+    }
+
+    #[test]
+    fn role_in_a_missing_team_has_no_levels() {
+        let mut org = example_org();
+        org.roles[0].name = nn("Backend");
+        org.roles[0].defaults.directory = Some("/root-backend".into());
+        let key = NodeKey::Role(RoleKey {
+            team: Some(nn("Ghost")),
+            role: nn("Backend"),
+        });
+        let got = inherited_for(&org, &key);
+        assert_eq!(got.directory, None);
+        assert_eq!(got.prompts, [("Org".to_string(), None)]);
     }
 
     #[test]
