@@ -1442,7 +1442,7 @@ pub enum Action { Up, Down, StartStop, New, Edit, Delete, ToggleReplies, OpenOrg
 pub fn map_key(m: &UiModel, k: crossterm::event::KeyEvent) -> Option<Action>;
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect>;          // pure; tested without a terminal
 pub enum UiEffect { Send(Command), Quit, OpenEditor(PathBuf) }
-pub struct AppConfig { pub org_toml: PathBuf, pub tmux_socket: String, pub settings: Settings, pub no_color: bool }
+pub struct AppConfig { pub org_toml: PathBuf, pub tmux_socket: String, pub settings: Settings, pub no_color: bool, pub editor: Option<String> }   // editor: the `$EDITOR` value, read by the caller (the TUI reads no environment)
 pub enum InputEvent { Key(crossterm::event::KeyEvent), Resize(u16, u16) }
 pub async fn run_app_on<B: ratatui::backend::Backend>(terminal: &mut ratatui::Terminal<B>, input: mpsc::Receiver<InputEvent>,
                      cfg: AppConfig, events: mpsc::UnboundedReceiver<Event>, commands: mpsc::Sender<Command>,
@@ -1730,7 +1730,7 @@ Targets at 10 agents come from PRD Success Metrics. Phase 1 reports; it never fa
 pub fn init_logging(paths: &Paths) -> Result<tracing_appender::non_blocking::WorkerGuard, LogError>;   // daily file in logs/, never the terminal
 pub async fn run_app_main() -> std::process::ExitCode;
 ```
-`run_app_main` order (TD §4.1 Start-up, §8): `Paths::from_env` → `init_logging` → `tmux_version`: missing or < 3.2 → `render_blocking(TmuxMissing)` until `q`, exit 1 → create the first-frame `oneshot` → `start_system(paths, Arc::new(real_adapters()), SystemOptions { tap: None, first_frame: Some(rx) })` (`AlreadyRunning` → print `DuoHive is already running` to stderr, exit 1) → `run_app(cfg with dirs: Arc::new(FsDirProbe), …, Some(tx))`; CLI detection then follows the first frame through that one signal (Task 27) → on quit, `SystemHandle::shutdown`; agents keep running in tmux. The TUI shows `Reconnecting to N agents…` until the engine's `Reconnected` (Tasks 15, 23).
+`run_app_main` order (TD §4.1 Start-up, §8): `Paths::from_env` → `init_logging` → `tmux_version`: missing or < 3.2 → `render_blocking(TmuxMissing)` until `q`, exit 1 → create the first-frame `oneshot` → `start_system(paths, Arc::new(real_adapters()), SystemOptions { tap: None, first_frame: Some(rx) })` (`AlreadyRunning` → print `DuoHive is already running` to stderr, exit 1) → `run_app(cfg with dirs: Arc::new(FsDirProbe), editor: the `$EDITOR` value (unset or blank → the TUI runs `vi`, Task 24), …, Some(tx))`; CLI detection then follows the first frame through that one signal (Task 27) → on quit, `SystemHandle::shutdown`; agents keep running in tmux. The TUI shows `Reconnecting to N agents…` until the engine's `Reconnected` (Tasks 15, 23).
 
 - [ ] **Step 1: Write the failing end-to-end tests** (real tmux on a throwaway socket, temp dirs, `fake_adapters` (`Opencode` hookless), events read from `SystemHandle`):
 
