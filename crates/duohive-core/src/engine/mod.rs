@@ -308,7 +308,7 @@ impl Engine {
             .collect()
     }
 
-    /// Moves `agent` by `trigger`, saves its session row and reports the change.
+    /// Moves `agent` by `trigger`, saves its session row (stopped deletes it) and reports the change.
     /// Returns whether it moved.
     fn change(
         &mut self,
@@ -333,13 +333,30 @@ impl Engine {
         if to != AgentState::Waiting {
             rt.waiting_prompt = None;
         }
+        if to == AgentState::Stopped {
+            // A stopped agent has no session: its token must match no hook.
+            rt.token = None;
+        }
         let status = rt.status.clone();
         out.push(Event::AgentStatusChanged {
             agent: agent.clone(),
             status,
         });
-        self.save_row(agent, out);
+        if to == AgentState::Stopped {
+            self.delete_row(agent, out);
+        } else {
+            self.save_row(agent, out);
+        }
         true
+    }
+
+    /// Deletes `agent`'s session row (stopped, Task 12); a failure is reported, not fatal.
+    fn delete_row(&mut self, agent: &AgentName, out: &mut Vec<Event>) {
+        if let Err(e) = self.ports.store.delete_session(agent) {
+            out.push(Event::CommandRejected {
+                reason: format!("couldn't save state: {e}"),
+            });
+        }
     }
 
     /// Saves `agent`'s session row; a failure is reported, not fatal.

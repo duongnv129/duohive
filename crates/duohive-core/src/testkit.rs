@@ -278,6 +278,8 @@ pub struct StubAdapter {
     pub launches: Arc<Mutex<Vec<LaunchSpec>>>,
     /// What `enrich_hook` does; `None` leaves the payload alone.
     pub enrich: Option<fn(&str, &mut serde_json::Value)>,
+    /// When set, `launch` fails with this text (after recording the spec).
+    pub launch_error: Option<String>,
 }
 
 impl StubAdapter {
@@ -299,12 +301,19 @@ impl StubAdapter {
             startup_prompts: false,
             launches: Arc::new(Mutex::new(Vec::new())),
             enrich: None,
+            launch_error: None,
         }
     }
 
     /// Sets what `enrich_hook` does.
     pub fn with_enrich(mut self, f: fn(&str, &mut serde_json::Value)) -> Self {
         self.enrich = Some(f);
+        self
+    }
+
+    /// Makes `launch` fail with `reason`.
+    pub fn with_launch_error(mut self, reason: &str) -> Self {
+        self.launch_error = Some(reason.to_owned());
         self
     }
 }
@@ -329,6 +338,9 @@ impl CliAdapter for StubAdapter {
             .flat_map(|t| ["--task".to_owned(), t.clone()])
             .collect();
         self.launches.lock().unwrap().push(spec.clone());
+        if let Some(reason) = &self.launch_error {
+            return Err(LaunchError::Invalid(reason.clone()));
+        }
         let cwd = spec
             .agent
             .directory

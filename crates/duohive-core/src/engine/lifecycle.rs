@@ -31,6 +31,9 @@ impl Engine {
         if !self.knows(&agent) {
             return reject(format!("no agent named {agent}"));
         }
+        if task.trim().is_empty() {
+            return reject("the task is empty");
+        }
         match self.state_of(&agent) {
             AgentState::Stopped | AgentState::Errored => self.launch_or_queue(agent, Some(task)),
             AgentState::Finished | AgentState::Idle => self.type_next_turn(&agent, task),
@@ -43,6 +46,9 @@ impl Engine {
 
     /// `StopAgent`: quit a running agent, or clear an errored one.
     pub(super) fn stop_agent(&mut self, agent: &AgentName) -> Vec<Event> {
+        if !self.knows(agent) {
+            return reject(format!("no agent named {agent}"));
+        }
         let mut out = Vec::new();
         match self.state_of(agent) {
             AgentState::Stopped => {}
@@ -58,9 +64,11 @@ impl Engine {
             | AgentState::Finished
             | AgentState::Idle => {
                 self.rt_mut(agent).stopping = true;
+                // Stopping must always work: with no adapter there are no quit
+                // keys, and the runtime kills the window after the grace.
                 let quit = self
                     .with_running_adapter(agent, |a| a.quit_keys())
-                    .unwrap_or_default();
+                    .unwrap_or_else(|_| Vec::new());
                 let grace = self.cfg.stop_grace;
                 self.ports.runtime.stop(agent, quit, grace);
             }
@@ -70,6 +78,9 @@ impl Engine {
 
     /// `ViewAgent`: finished → idle; anything else is unchanged.
     pub(super) fn view_agent(&mut self, agent: &AgentName) -> Vec<Event> {
+        if !self.knows(agent) {
+            return reject(format!("no agent named {agent}"));
+        }
         let mut out = Vec::new();
         if self.state_of(agent) == AgentState::Finished {
             self.change(agent, &Trigger::Viewed, None, &mut out);
@@ -137,11 +148,7 @@ impl Engine {
         let (adapter, version) = match (presence, adapters.get(cli)) {
             (Some(CliPresence::Found { version }), Some(a)) => (a, version),
             _ => {
-                let reason = format!(
-                    "{} not found · install it or change its CLI (e)",
-                    cli.binary()
-                );
-                return self.launch_fails(agent, task, reason);
+                return self.launch_fails(agent, task, not_found(cli));
             }
         };
         let mut out = Vec::new();
@@ -205,6 +212,8 @@ impl Engine {
     ) -> Vec<Event> {
         let mut out = Vec::new();
         let rt = self.rt_mut(agent);
+        // No window runs this launch, so hooks from an older one must not match.
+        rt.token = None;
         rt.task_at_launch = task.is_some();
         rt.last_task = task;
         self.change(agent, &Trigger::Launch, None, &mut out);
@@ -214,9 +223,10 @@ impl Engine {
 
     /// Give work on finished or idle: the task becomes the next turn.
     fn type_next_turn(&mut self, agent: &AgentName, task: String) -> Vec<Event> {
-        let submit = self
-            .with_running_adapter(agent, |a| a.submit_keys())
-            .unwrap_or_default();
+        let submit = match self.with_running_adapter(agent, |a| a.submit_keys()) {
+            Ok(keys) => keys,
+            Err(reason) => return reject(reason),
+        };
         self.ports.runtime.paste(agent, task.clone(), submit);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
@@ -233,14 +243,23 @@ impl Engine {
         &self,
         agent: &AgentName,
         f: impl FnOnce(&dyn CliAdapter) -> T,
-    ) -> Option<T> {
+    ) -> Result<T, String> {
         let cli: CliKind = self
             .agents
             .get(agent)
             .and_then(|rt| rt.cli)
-            .or_else(|| resolve(&self.org, agent).ok().map(|r| r.cli))?;
-        self.adapters.get(cli).map(f)
+            .or_else(|| resolve(&self.org, agent).ok().map(|r| r.cli))
+            .ok_or_else(|| format!("no agent named {agent}"))?;
+        self.adapters.get(cli).map(f).ok_or_else(|| not_found(cli))
     }
+}
+
+/// D24's row text for a CLI that is not installed.
+fn not_found(cli: CliKind) -> String {
+    format!(
+        "{} not found · install it or change its CLI (e)",
+        cli.binary()
+    )
 }
 
 #[cfg(test)]
