@@ -1,5 +1,7 @@
 # DuoHive Phase 0 and Phase 1 Implementation Plan
 
+**Status:** Done 2026-10-04 · every task built and reviewed (results in [bench-results.md](bench-results.md)); decisions made during execution are folded into the tasks and decision log below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the DuoHive workspace, verify the tmux and CLI mechanisms with spikes, then deliver Phase 1: you can define an org (teams, roles, agents), start and stop standing agents on Claude Code and OpenCode in `tmux -L duohive`, see their status live in a minimal org tree, edit the org through forms, and run a basic `duohive bench` at 10 agents.
@@ -129,7 +131,7 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 **Interfaces:**
 - Produces: the seven crates, empty; workspace dependency versions (Tech Stack) in `[workspace.dependencies]`; `[workspace.lints]` inherited by every crate (`[lints] workspace = true`); `duohive-core` feature `testkit`.
 
-- [ ] **Step 1: Write the failing test** `crates/duohive/tests/dependency_rule.rs`. It reads each `crates/*/Cargo.toml` with `toml` (dev-dependency) and collects `[dependencies]` keys starting with `duohive`.
+- [x] **Step 1: Write the failing test** `crates/duohive/tests/dependency_rule.rs`. It reads each `crates/*/Cargo.toml` with `toml` (dev-dependency) and collects `[dependencies]` keys starting with `duohive`.
 
 ```rust
 #[test]
@@ -145,9 +147,9 @@ fn crates_depend_inward_only() {
 }
 ```
 
-- [ ] **Step 2: Run it and see it fail.** `cargo test -p duohive --test dependency_rule` → FAIL (no workspace yet, or missing crates).
+- [x] **Step 2: Run it and see it fail.** `cargo test -p duohive --test dependency_rule` → FAIL (no workspace yet, or missing crates).
 
-- [ ] **Step 3: Create the workspace.**
+- [x] **Step 3: Create the workspace.**
   - First re-check the MSRVs: `cargo info <crate>@<version>` for each Tech Stack pin shows a `rust-version` ≤ 1.99 (checked when this plan was written; see Tech Stack). Lower a pin only if one fails.
   - `rust-toolchain.toml`: `channel = "1.99.0"`, `components = ["rustfmt", "clippy"]`.
   - Root `Cargo.toml`: `members = ["crates/*"]`, `exclude = ["spikes"]`, `resolver = "3"`, `[workspace.package]` with `edition = "2024"`, `rust-version = "1.99"`, `license = "Apache-2.0"`.
@@ -159,9 +161,9 @@ fn crates_depend_inward_only() {
   - Each crate's `Cargo.toml` declares exactly the `duohive-*` dependencies in the test; `duohive-core` has `[features] testkit = []`.
   - `duohive-store`, `duohive-cli`, `duohive-tui` and `duohive` add `duohive-core = { workspace = true, features = ["testkit"] }` under `[dev-dependencies]` (their tests use `example_org()`, `StubAdapter` and the fake ports); `duohive-tmux` and `duohive-mcp` don't. The dependency-rule test reads `[dependencies]` only, so these don't count.
 
-- [ ] **Step 4: Run the checks.** `cargo test --workspace --all-features` → PASS; `cargo fmt --all --check` → no output; `cargo clippy --workspace --all-targets --all-features -- -D warnings` → no warnings.
+- [x] **Step 4: Run the checks.** `cargo test --workspace --all-features` → PASS; `cargo fmt --all --check` → no output; `cargo clippy --workspace --all-targets --all-features -- -D warnings` → no warnings.
 
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "chore: cargo workspace with seven crates, toolchain and licence"`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "chore: cargo workspace with seven crates, toolchain and licence"`
 
 ### Task 1b: Repo hygiene — Makefile, supply-chain and spelling checks, community files
 
@@ -175,7 +177,7 @@ Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv,
 **Interfaces:**
 - Produces: `make check` = the local gate (`fmt-check`, `lint`, `test`, `deny`, `typos`), running exactly the commands CI runs (Task 2), so a green `make check` predicts a green CI. Later tasks' "run the checks" steps may use `make check`.
 
-- [ ] **Step 1: Makefile and tool configs.**
+- [x] **Step 1: Makefile and tool configs.**
   - `Makefile`: `.DEFAULT_GOAL := help`; every target `.PHONY` and carrying a `## description` that `make help` prints. Targets and their exact commands:
     - `fmt`: `cargo fmt --all`
     - `fmt-check`: `cargo fmt --all --check`
@@ -193,7 +195,7 @@ Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv,
   - `_typos.toml`: excludes `target/`, `*.lock`, `crates/duohive-cli/tests/fixtures/`, `docs/ux/ui-spec.md` mock-ups only if they trip it (add `[default.extend-words]` entries instead where a word is intentional).
   - `.editorconfig`: `root = true`; `*`: `charset = utf-8`, `end_of_line = lf`, `insert_final_newline = true`, `trim_trailing_whitespace = true`, `indent_style = space`, `indent_size = 4`; `*.{yml,yaml,toml,md,json}`: `indent_size = 2`; `Makefile`: `indent_style = tab`; `*.md`: `trim_trailing_whitespace = false`.
 
-- [ ] **Step 2: Community and agent files.**
+- [x] **Step 2: Community and agent files.**
   - `README.md`: name and one-line pitch from the PRD vision; status badge line (CI); "Status: pre-alpha, phase 0" note; what DuoHive is (3–5 bullets from the PRD: org of standing agents, live status at a glance, Duo the manager agent, Claude Code and OpenCode, one lightweight process); requirements (tmux ≥ 3.2, Rust 1.99 to build); build and run (`cargo build --release`, `make check`); links to `docs/README.md`, `CONTRIBUTING.md`, `LICENSE`; licence line "Apache-2.0". No screenshots or install commands that don't exist yet.
   - `CONTRIBUTING.md`: dev setup (`rustup` picks the toolchain from `rust-toolchain.toml`, `make tools`), the workflow (test first, `make check` before every commit), conventional commit types (`feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`), the docs' precedence (PRD → UI spec → TD), the dependency rule (TD §3.4), the Global Constraints that bite contributors (no `unwrap`/`expect` outside tests, no `unsafe`, `duohive-core` does no I/O, no `std::env::set_var` in tests, tmux tests on a throwaway socket).
   - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1, verbatim from `https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md`, with the contact set to `duongnv129@gmail.com`.
@@ -204,9 +206,9 @@ Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv,
   - Issue forms (YAML): `bug_report.yml` (DuoHive version, OS, tmux version, CLI and version, steps, expected, actual, `duohive` log excerpt), `feature_request.yml` (problem, proposal, alternatives), `config.yml` with `blank_issues_enabled: false`.
   - `.github/dependabot.yml`: `version: 2`; ecosystems `cargo` (directory `/`) and `github-actions` (directory `/`), both `interval: weekly`, grouped minor and patch updates. Ratatui and crossterm are ignored for automatic updates (pinned with `=`, upgraded on purpose: Global Constraints).
 
-- [ ] **Step 3: Validate.** `make help` lists every target; `make tools` (once); `make check` passes; `typos` passes over the whole repo, docs included (fix real typos in the docs; whitelist intentional words in `_typos.toml`); `actionlint` has nothing to say about `dependabot.yml` (it isn't a workflow; check it with `yq . .github/dependabot.yml` instead) and the issue forms parse with `yq`.
+- [x] **Step 3: Validate.** `make help` lists every target; `make tools` (once); `make check` passes; `typos` passes over the whole repo, docs included (fix real typos in the docs; whitelist intentional words in `_typos.toml`); `actionlint` has nothing to say about `dependabot.yml` (it isn't a workflow; check it with `yq . .github/dependabot.yml` instead) and the issue forms parse with `yq`.
 
-- [ ] **Step 4: Commit.** `git add -A && git commit -m "chore: makefile, cargo-deny, typos, editorconfig and community files"`
+- [x] **Step 4: Commit.** `git add -A && git commit -m "chore: makefile, cargo-deny, typos, editorconfig and community files"`
 
 ### Task 2: CI on macOS and Linux against tmux 3.2a and latest
 
@@ -216,15 +218,15 @@ Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv,
 **Interfaces:**
 - Produces: `install-tmux.sh <version>` installs tmux `<version>` into `$HOME/.local/tmux-<version>` and prints `tmux -V`; later tasks' tmux integration tests run in this matrix.
 
-- [ ] **Step 1: Write the script.** `install-tmux.sh <version>`: on Linux `sudo apt-get update && sudo apt-get install -y libevent-dev libncurses-dev bison pkg-config`; on macOS `brew install libevent ncurses pkg-config bison`; download `https://github.com/tmux/tmux/releases/download/<version>/tmux-<version>.tar.gz`, `./configure --prefix=$HOME/.local/tmux-<version> && make -j && make install`, append the `bin` dir to `"${GITHUB_PATH:-/dev/null}"` (so a local run, where `GITHUB_PATH` is unset, doesn't fail). Exit non-zero if the resulting `tmux -V` doesn't print `tmux <version>`. `.github/tmux-latest` holds `3.7c`.
+- [x] **Step 1: Write the script.** `install-tmux.sh <version>`: on Linux `sudo apt-get update && sudo apt-get install -y libevent-dev libncurses-dev bison pkg-config`; on macOS `brew install libevent ncurses pkg-config bison`; download `https://github.com/tmux/tmux/releases/download/<version>/tmux-<version>.tar.gz`, `./configure --prefix=$HOME/.local/tmux-<version> && make -j && make install`, append the `bin` dir to `"${GITHUB_PATH:-/dev/null}"` (so a local run, where `GITHUB_PATH` is unset, doesn't fail). Exit non-zero if the resulting `tmux -V` doesn't print `tmux <version>`. `.github/tmux-latest` holds `3.7c`.
 
-- [ ] **Step 2: Check the script locally.** `bash .github/scripts/install-tmux.sh 3.2a && ~/.local/tmux-3.2a/bin/tmux -V` → `tmux 3.2a`.
+- [x] **Step 2: Check the script locally.** `bash .github/scripts/install-tmux.sh 3.2a && ~/.local/tmux-3.2a/bin/tmux -V` → `tmux 3.2a`.
 
-- [ ] **Step 3: Write `ci.yml`.** Triggers: `push`, `pull_request`. Job `lint` (ubuntu-24.04): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. Job `deny` (ubuntu-24.04): `EmbarkStudios/cargo-deny-action@v2` with `command: check`. Job `typos` (ubuntu-24.04): `crate-ci/typos` pinned to a release tag. These run the same checks as `make check` (Task 1b). Job `test`: matrix `os: [ubuntu-24.04, macos-14]` × `tmux: ["3.2a", "latest"]`; resolve `latest` from `.github/tmux-latest`; cache `~/.local/tmux-*` keyed by OS and version; run the script, then `cargo test --workspace --all-features --locked` (the same flags as Task 29's local gate). Use `actions/checkout@v4`, `Swatinem/rust-cache@v2`; the toolchain comes from `rust-toolchain.toml`.
+- [x] **Step 3: Write `ci.yml`.** Triggers: `push`, `pull_request`. Job `lint` (ubuntu-24.04): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. Job `deny` (ubuntu-24.04): `EmbarkStudios/cargo-deny-action@v2` with `command: check`. Job `typos` (ubuntu-24.04): `crate-ci/typos` pinned to a release tag. These run the same checks as `make check` (Task 1b). Job `test`: matrix `os: [ubuntu-24.04, macos-14]` × `tmux: ["3.2a", "latest"]`; resolve `latest` from `.github/tmux-latest`; cache `~/.local/tmux-*` keyed by OS and version; run the script, then `cargo test --workspace --all-features --locked` (the same flags as Task 29's local gate). Use `actions/checkout@v4`, `Swatinem/rust-cache@v2`; the toolchain comes from `rust-toolchain.toml`.
 
-- [ ] **Step 4: Validate the workflow syntax.** `actionlint .github/workflows/ci.yml` (install with `brew install actionlint`) → no output.
+- [x] **Step 4: Validate the workflow syntax.** `actionlint .github/workflows/ci.yml` (install with `brew install actionlint`) → no output.
 
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "ci: fmt, clippy and tests on macOS and Linux with tmux 3.2a and latest"`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "ci: fmt, clippy and tests on macOS and Linux with tmux 3.2a and latest"`
 
 ### Task 3: Spike S0 — tmux activity for silenced panes at 100 windows
 
@@ -238,11 +240,11 @@ Deliverable: `docs/plans/spike-report.md` section **S0** with the headings below
 **Interfaces:**
 - Produces, for Task 18–19: report section **S0.4 Formats** (the exact `%subscription-changed` line for a window subscription and a pane subscription, the `%window-close` and `%exit` lines, the client flags accepted by `refresh-client -f` on 3.2a), and **S0.5 Decision**: `subscribe` or `poll`, and the silencing method `no-output` or `pause` (D25), with the exact commands DuoHive sends.
 
-- [ ] **Step 1: Write `run.sh <tmux-binary> <windows> <seconds> <silence>`** (`<silence>` is `no-output` or `pause`). It starts a throwaway server `-L duohive-s0-$$`, sets `remain-on-exit on`, creates session `duohive` with a keeper window (`tail -f /dev/null`), then `<windows>` windows: one third noisy (`while :; do date; sleep 0.1; done`), one third bursty (10 s of output every 30 s), one third idle (`cat`). It attaches one control client `tmux -L … -C attach -t =duohive` and silences every pane: with `no-output`, `refresh-client -f no-output,ignore-size`; with `pause`, `refresh-client -f pause-after=1,ignore-size` and then `refresh-client -A '%<pane>:pause'` for every pane. It then sends `refresh-client -B 'act:@*:#{window_activity}'`, `refresh-client -B 'dead:%*:#{pane_dead} #{pane_dead_status}'`, and timestamps every line it reads into `out/<version>-<silence>-notifications.log`. It samples `ps -o %cpu=,rss=` for the tmux server and the reader every second into `out/<version>-<silence>-cpu.csv`. It also opens one dedicated window running `sh -c 'sleep 20; exit 3'` (outside the mix), whose pane dies with status 3 at t ≈ 20 s, for the `pane_dead_status` check.
+- [x] **Step 1: Write `run.sh <tmux-binary> <windows> <seconds> <silence>`** (`<silence>` is `no-output` or `pause`). It starts a throwaway server `-L duohive-s0-$$`, sets `remain-on-exit on`, creates session `duohive` with a keeper window (`tail -f /dev/null`), then `<windows>` windows: one third noisy (`while :; do date; sleep 0.1; done`), one third bursty (10 s of output every 30 s), one third idle (`cat`). It attaches one control client `tmux -L … -C attach -t =duohive` and silences every pane: with `no-output`, `refresh-client -f no-output,ignore-size`; with `pause`, `refresh-client -f pause-after=1,ignore-size` and then `refresh-client -A '%<pane>:pause'` for every pane. It then sends `refresh-client -B 'act:@*:#{window_activity}'`, `refresh-client -B 'dead:%*:#{pane_dead} #{pane_dead_status}'`, and timestamps every line it reads into `out/<version>-<silence>-notifications.log`. It samples `ps -o %cpu=,rss=` for the tmux server and the reader every second into `out/<version>-<silence>-cpu.csv`. It also opens one dedicated window running `sh -c 'sleep 20; exit 3'` (outside the mix), whose pane dies with status 3 at t ≈ 20 s, for the `pane_dead_status` check.
 
-- [ ] **Step 2: Run on both versions with both silencing methods.** `bash .github/scripts/install-tmux.sh 3.2a`, then `./run.sh ~/.local/tmux-3.2a/bin/tmux 100 120 no-output`, `… pause`, and the same two with `$(which tmux)` (latest). Also run `poll` mode (the same windows, no subscriptions, `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` once a second) for the cost comparison.
+- [x] **Step 2: Run on both versions with both silencing methods.** `bash .github/scripts/install-tmux.sh 3.2a`, then `./run.sh ~/.local/tmux-3.2a/bin/tmux 100 120 no-output`, `… pause`, and the same two with `$(which tmux)` (latest). Also run `poll` mode (the same windows, no subscriptions, `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` once a second) for the cost comparison.
 
-- [ ] **Step 3: Write the report S0** with these headings and measured values:
+- [x] **Step 3: Write the report S0** with these headings and measured values:
   - **S0.1 Setup:** machine, OS, tmux versions, window mix.
   - **S0.2 Reports for silenced panes:** for each silencing method (`no-output`, `pause`), do `act` reports keep arriving for windows whose output is not sent? Median and p95 delay from a change to its report; reports per window per second (expected ≤ 1). For `pause`, whether panes stay paused (no `%continue` without a request) and whether a new window must be paused explicitly.
   - **S0.3 Cost:** tmux server and reader CPU % and RSS at 100 windows, idle and noisy, for `subscribe` with each silencing method vs `poll`; and with no control client at all (baseline).
@@ -250,9 +252,9 @@ Deliverable: `docs/plans/spike-report.md` section **S0** with the headings below
   - **S0.5 Decision:** `subscribe` if, on both 3.2a and latest, reports arrive for silenced windows with median delay ≤ 1.1 s and the reader's CPU at 100 noisy windows is no more than `poll`'s; else `poll`. Silencing (D25): the method under which reports keep arriving on both versions at the lower tmux server + reader CPU at 100 noisy windows; on a tie, `no-output` (one command, nothing to do per new window). Record the exact commands for the chosen method, including what a new window needs.
   - **S0.6 TD changes:** none, or the exact edit made.
 
-- [ ] **Step 4: Update the TD** only if S0.5 differs from TD §4.1 (fallback chosen, or a different flag): edit §4.1's tmux-activity row and the S0 bullet, and §13's settle-mechanism row. Name the chosen silencing method in §4.1 in place of "chosen by spike S0".
+- [x] **Step 4: Update the TD** only if S0.5 differs from TD §4.1 (fallback chosen, or a different flag): edit §4.1's tmux-activity row and the S0 bullet, and §13's settle-mechanism row. Name the chosen silencing method in §4.1 in place of "chosen by spike S0".
 
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "docs: spike S0 tmux activity subscriptions at 100 windows"`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "docs: spike S0 tmux activity subscriptions at 100 windows"`
 
 ### Tasks 4–5: Spikes S1–S2 — Claude Code, OpenCode
 
@@ -281,15 +283,15 @@ One task per CLI, same procedure and the same report headings, so Tasks 20–21 
 
 For each of Tasks 4 and 5:
 
-- [ ] **Step 1: Write the throwaway launcher** `spikes/sN-<cli>/launch.sh <agent> <task?>` that builds the per-launch files in `/tmp/duohive-spike/run/<agent>/`, starts the CLI in a window of `tmux -L duohive-spike`, and points every hook at `spikes/sN-<cli>/record-hook.sh <agent> <event>`, which writes its stdin and arguments to `fixtures/…/hooks/<event>-<n>.json`. Starting points from the TD §5.2 table: Claude Code `--append-system-prompt`, `--settings <file>` (hooks `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Notification`, `Stop`, `SessionEnd`), `--mcp-config`, `--model`, `--effort`; OpenCode an agent definition and plugin selected via `OPENCODE_CONFIG` (and/or `OPENCODE_CONFIG_DIR`).
+- [x] **Step 1: Write the throwaway launcher** `spikes/sN-<cli>/launch.sh <agent> <task?>` that builds the per-launch files in `/tmp/duohive-spike/run/<agent>/`, starts the CLI in a window of `tmux -L duohive-spike`, and points every hook at `spikes/sN-<cli>/record-hook.sh <agent> <event>`, which writes its stdin and arguments to `fixtures/…/hooks/<event>-<n>.json`. Starting points from the TD §5.2 table: Claude Code `--append-system-prompt`, `--settings <file>` (hooks `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Notification`, `Stop`, `SessionEnd`), `--mcp-config`, `--model`, `--effort`; OpenCode an agent definition and plugin selected via `OPENCODE_CONFIG` (and/or `OPENCODE_CONFIG_DIR`).
 
-- [ ] **Step 2: Run the scenarios** and record fixtures: start with no task; start with a task; a turn that asks for approval (ask it to create a file), answered yes; one answered no; a turn that ends normally; quit with the Sn.9 keys; a crash (`kill -9` the CLI). Save screen captures for Sn.7 into `screens/<name>.txt` and replies into `replies/`.
+- [x] **Step 2: Run the scenarios** and record fixtures: start with no task; start with a task; a turn that asks for approval (ask it to create a file), answered yes; one answered no; a turn that ends normally; quit with the Sn.9 keys; a crash (`kill -9` the CLI). Save screen captures for Sn.7 into `screens/<name>.txt` and replies into `replies/`.
 
-- [ ] **Step 3: Write report section Sn** with all thirteen subsections filled in. Every table row names the fixture file that proves it.
+- [x] **Step 3: Write report section Sn** with all thirteen subsections filled in. Every table row names the fixture file that proves it.
 
-- [ ] **Step 4: Update the TD** §5.2 row for that CLI (and §6.5 if reply extraction differs) wherever a mechanism changed; add the fallback to §5.2's notes if one was needed.
+- [x] **Step 4: Update the TD** §5.2 row for that CLI (and §6.5 if reply extraction differs) wherever a mechanism changed; add the fallback to §5.2's notes if one was needed.
 
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "docs: spike SN <cli> launch, hooks and replies"`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "docs: spike SN <cli> launch, hooks and replies"`
 
 ---
 
@@ -342,7 +344,7 @@ pub struct Millis(pub u64);   // unix ms; Add<Duration>, Sub -> Duration (satura
 ```
 All domain types derive `Clone, Debug, PartialEq, Eq, Serialize, Deserialize`; `CliKind` also derives `Copy, Hash` (it keys `Adapters` and is passed by value). `AgentLoc<'a>` is exempt: it is a borrowed view, never serialised, and derives only `Clone, Debug`.
 
-- [ ] **Step 1: Write the failing tests** (in each module):
+- [x] **Step 1: Write the failing tests** (in each module):
 
 ```rust
 #[test] fn agent_names_follow_d4() {
@@ -364,10 +366,10 @@ All domain types derive `Clone, Debug, PartialEq, Eq, Serialize, Deserialize`; `
 ```
 Put the PRD's example org (Payments with Backend [auth-service, billing-api] and QA [pay-qa]; root role Generalist [squad-1, squad-2, squad-3]) in `testkit::example_org()` (`cfg(test)` or feature `testkit`) — Tasks 7–15 and 23–25 reuse it.
 
-- [ ] **Step 2: Run them and see them fail.** `cargo test -p duohive-core --features testkit` → FAIL (types missing).
-- [ ] **Step 3: Implement the types.**
-- [ ] **Step 4: Run them and see them pass.** Same command → PASS.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org domain, names and CLI kinds"`
+- [x] **Step 2: Run them and see them fail.** `cargo test -p duohive-core --features testkit` → FAIL (types missing).
+- [x] **Step 3: Implement the types.**
+- [x] **Step 4: Run them and see them pass.** Same command → PASS.
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org domain, names and CLI kinds"`
 
 ### Task 7: Core — inheritance and prompt stacking
 
@@ -395,7 +397,7 @@ pub fn expand_home(dir: &str, home: &Path) -> PathBuf;            // "~" and "~/
 ```
 Rules (PRD Inheritance, TD §5.1): prompt stacks org → team → role → agent; cli, flags, directory, model, effort, worktree take the nearest value up the tree, ending at `OrgDefaults` (which has no directory or flags). Duo resolves from `OrgDefaults` plus `duo.cli`, directory `~` (D5), prompt = org level only. Flags split with `shell_words::split`; a split error is a `FieldError` on `<path>.flags`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn prompts_stack_in_order_with_headings() {
@@ -412,10 +414,10 @@ Rules (PRD Inheritance, TD §5.1): prompt stacks org → team → role → agent
 #[test] fn inherited_for_role_in_team_reports_sources() { /* inherited_for(Role Backend) → cli from "Org", prompts [("Org",Some),("Payments",None),("Backend",Some)] */ }
 #[test] fn expand_home_only_leading_tilde() { assert_eq!(expand_home("~/code", Path::new("/h")), PathBuf::from("/h/code")); assert_eq!(expand_home("/a/~b", h), PathBuf::from("/a/~b")); }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit inherit`
-- [ ] **Step 3: Implement** `resolve`, `stack_prompt`, `inherited_for`, `expand_home`.
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): inheritance and prompt stacking"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit inherit`
+- [x] **Step 3: Implement** `resolve`, `stack_prompt`, `inherited_for`, `expand_home`.
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): inheritance and prompt stacking"`
 
 ### Task 8: Core — validation
 
@@ -437,7 +439,7 @@ pub fn next_agent_names(org: &Org, team: Option<&NodeName>, role: &NodeName, cou
 ```
 Blocking rules (TD §7, D4): agent names unique including Duo's name — message `an agent named <x> already exists`; team names unique — `a team named <x> already exists`; role names unique within their parent — `a role named <x> already exists in <parent>`; flags parse (from `resolve`). Three levels and supported CLIs are enforced by the types and the file schema (Task 16). Non-blocking (TD §7 "Missing directory"): no directory resolved → `no directory set · e to fix` (D27; Duo resolves `~`); directory missing → `✕ <dir as written> not found · e to fix` (UI §4.12); directory pending (`dir` None) → no problem (D26).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn duplicate_agent_names_rejected() { /* two "auth-service" → [FieldError{ path: "...agent[auth-service].name", message: "an agent named auth-service already exists" }] */ }
@@ -462,10 +464,10 @@ Blocking rules (TD §7, D4): agent names unique including Duo's name — message
     /* D11: team "+Growth  Ops" (starts with a symbol, two spaces), role "Front - End" → ["growth-ops-front-end-1"] */
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit validate`
-- [ ] **Step 3: Implement.** Add `pub struct FakeDirs(pub HashMap<PathBuf, DirStatus>, pub Arc<AtomicUsize>)` to `testkit`: the statuses (a path not in the map is `Found`) and a count of `probe` calls, which Task 15's `start_up_does_not_probe_directories` reads; `FakeDirs::new(map)` starts the count at 0. This is the one definition; Tasks 10–15 use it as is.
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org validation and per-agent problems"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit validate`
+- [x] **Step 3: Implement.** Add `pub struct FakeDirs(pub HashMap<PathBuf, DirStatus>, pub Arc<AtomicUsize>)` to `testkit`: the statuses (a path not in the map is `Found`) and a count of `probe` calls, which Task 15's `start_up_does_not_probe_directories` reads; `FakeDirs::new(map)` starts the count at 0. This is the one definition; Tasks 10–15 use it as is.
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org validation and per-agent problems"`
 
 ### Task 9: Core — the status state machine
 
@@ -509,7 +511,7 @@ The table (TD §4.2 plus D2, marked †):
 
 (D2's "user typed into the pane" case is `NewWork` from a hook; Task 12 maps it. A missing CLI is `Launch` then `LaunchFailed` (D24, Task 11); there is no stopped → errored edge.)
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 const TABLE: &[(AgentState, Trigger, AgentState)] = &[ /* every row above, expanded per From state */ ];
@@ -529,10 +531,10 @@ const TABLE: &[(AgentState, Trigger, AgentState)] = &[ /* every row above, expan
     assert_eq!(free, [Stopped, Finished, Idle]);
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core status`
-- [ ] **Step 3: Implement** `transition` as one `match` on `(from, trigger)`.
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): agent state machine"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core status`
+- [x] **Step 3: Implement** `transition` as one `match` on `(from, trigger)`.
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): agent state machine"`
 
 ### Task 10: Core — ports, commands, events, settings and the testkit
 
@@ -654,7 +656,7 @@ pub struct StubAdapter { pub kind: CliKind, pub coverage: HookCoverage, pub pres
 // "BUSY" | "ASK" | "REST" to Busy | NeedsInput | AtRest; quit_keys = [Text("/exit"), Enter]; submit = [Enter].
 ```
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn commands_and_events_round_trip_json() { /* one value of every Command and Event variant → serde_json → equal */ }
@@ -677,10 +679,10 @@ pub struct StubAdapter { pub kind: CliKind, pub coverage: HookCoverage, pub pres
     assert_eq!(Adapters::new(vec![Box::new(a)]).detect_all(), vec![(CliKind::Opencode, CliPresence::Missing)]);
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit`
-- [ ] **Step 3: Implement the types and the testkit.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): ports, commands, events and testkit"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit`
+- [x] **Step 3: Implement the types and the testkit.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): ports, commands, events and testkit"`
 
 ### Task 11: Engine — lifecycle, launch path and Give work by state
 
@@ -721,7 +723,7 @@ Behaviour:
 - `StartFailed { reason }` → `LaunchFailed` → errored with `reason`; `last_task` kept for retry.
 - `CliInventory` → record presence, then run the queued launches in order (D30). `DirInventory` → cache the statuses and emit `OrgChanged { org, problems }` with each agent's directory problem (D26).
 
-- [ ] **Step 1: Write the failing tests** in `engine/lifecycle.rs` with `FakeRuntime`, `FakeStore`, `FakeClock`, `FakeIds`, `FakeDirs`, `StubAdapter` (complete coverage) over `example_org()` with directories set. The harness sends `CliInventory` (every kind `Found`) right after `Engine::new` unless a test says otherwise.
+- [x] **Step 1: Write the failing tests** in `engine/lifecycle.rs` with `FakeRuntime`, `FakeStore`, `FakeClock`, `FakeIds`, `FakeDirs`, `StubAdapter` (complete coverage) over `example_org()` with directories set. The harness sends `CliInventory` (every kind `Found`) right after `Engine::new` unless a test says otherwise.
 
 ```rust
 #[test] fn start_stopped_agent_launches_with_no_task() { /* calls == [Start(pay-qa, cmd)], cmd.args has no "--task"; status Starting; session row saved with token "tok-1" */ }
@@ -748,10 +750,10 @@ Behaviour:
 #[test] fn view_finished_goes_idle() { /* squad-2 finished; ViewAgent → AgentStatusChanged{ squad-2, Idle }; ViewAgent on idle squad-1 → no events */ }
 #[test] fn store_failure_is_reported_not_fatal() { /* FakeStore fail_next_save → CommandRejected "couldn't save state: …"; status still Starting */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::lifecycle`
-- [ ] **Step 3: Implement** `Engine::new`, `handle` dispatch and the lifecycle functions.
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): engine lifecycle and give work by state"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::lifecycle`
+- [x] **Step 3: Implement** `Engine::new`, `handle` dispatch and the lifecycle functions.
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): engine lifecycle and give work by state"`
 
 ### Task 12: Engine — hook signals, screen reads and exits
 
@@ -785,7 +787,7 @@ Rules:
   Then `runtime.kill(agent, window)` for a dead pane; stopped deletes the session row; errored keeps it with `window = None`.
 - `Started { window }` records the window. `ConnectionLost { reason }` (sent only after the runtime failed to reattach to the tmux server, Task 19) → every running agent → errored `"tmux server exited"`; their `window` stays recorded, and a relaunch kills it first (Task 11).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn hook_with_wrong_token_is_ignored() { /* token "nope" → no events, state Starting */ }
@@ -837,10 +839,10 @@ Rules:
 }
 #[test] fn connection_lost_errors_running_agents() { /* "tmux server exited"; stopped agents unchanged */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::signals`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): hook signals, screen reads and exit rules"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::signals`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): hook signals, screen reads and exit rules"`
 
 ### Task 13: Engine — quiet, settle reads, start timeout, Needs you
 
@@ -859,7 +861,7 @@ Rules:
 - **Needs you:** waiting, quiet and errored agents; `since` = `quiet_since` for quiet, else `status.since`; sorted by `since`, then name; excerpt = the waiting prompt (`AgentRt.waiting_prompt`, Task 11, set from `NeedsInput { prompt }`) or the error text. `NeedsYouChanged` is emitted only when the list changes.
 - **`next_deadline`:** the earliest of every `settle_due`, `start_deadline`, pending pre-timeout read (`start_deadline − 5 s`), `exit_pending.due` (Task 12), and `last_signal_at + quiet_after` for non-quiet working/starting agents.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn quiet_after_threshold_for_working() { /* advance 4m59s + Tick → not quiet; 5m0s → quiet, quiet_since = start of silence; in needs_you */ }
@@ -882,10 +884,10 @@ Rules:
        Activity on squad-1 at 20 s (settle at 21.5 s) → next_deadline == Millis(21_500); after that settle read → Millis(125_000) */
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::timers`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): quiet, settle reads, start timeout and Needs you"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::timers`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): quiet, settle reads, start timeout and Needs you"`
 
 ### Task 14: Engine — org edits, reload and settings
 
@@ -906,7 +908,7 @@ Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `valid
 - `ReloadOrg`: `store.load_org()`; `Err(e)` → keep the current org, set `org_error`, emit `OrgFileError(Some(e))`; `Ok(Some(org))` and valid → replace, clear error, `OrgChanged` + `OrgFileError(None)`; valid parse but `validate` errors → `OrgFileError(Some({ line: None, message: "<path>: <message>" }))`, keep the current org.
 - `UpdateSettings(s)`: `store.save_settings`, replace settings (the quiet threshold takes effect on the next Tick). While `settings_error` is set (D29), replace settings without saving, so the broken hand edit survives.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn add_agent_saves_org_and_emits_org_changed() { /* AddAgent{ Payments›QA, "pay-qa-2" } → FakeStore saved org has pay-qa-2 under QA; OrgChanged org.find_agent(pay-qa-2).is_some(); problems has no pay-qa-2 entry (FakeDirs Found) */ }
@@ -933,10 +935,10 @@ Rules (PRD Lifecycle, UI §4.4): apply the edit to a copy of the org, run `valid
 #[test] fn update_settings_saves_and_changes_threshold() { /* UpdateSettings{ quiet_after_minutes: 2 } → FakeStore saved settings has 2; auth-service Working silent 2m + Tick → quiet */ }
 #[test] fn update_settings_not_saved_while_settings_file_invalid() { /* D29: settings_error set; UpdateSettings{ quiet_after_minutes: 2 } → save_settings not called; auth-service Working silent 2m + Tick → quiet */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::org_edit`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org edits, reload and settings"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit engine::org_edit`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): org edits, reload and settings"`
 
 ### Task 15: Engine — reconnect at start-up and the driver loop
 
@@ -962,7 +964,7 @@ pub async fn run_core(engine: Engine, commands: tokio::sync::mpsc::Receiver<Comm
 
 `run_core`: `tokio::select!` over `commands.recv()`, `inputs.recv()`, and `sleep_until(next_deadline)` (→ `Tick`); sends every returned `Event`; ends on `Command::Shutdown` or when both channels close. The engine is the only owner of state (TD §3.3).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn reconnect_restores_live_sessions() { /* row working 2m ago + live window → still Working, since unchanged */ }
@@ -990,10 +992,10 @@ pub async fn run_core(engine: Engine, commands: tokio::sync::mpsc::Receiver<Comm
 #[tokio::test] async fn driver_stops_on_shutdown() { /* spawn run_core; send Command::Shutdown → the JoinHandle completes within 1 s; FakeRuntime got no Stop or Kill call (agents keep running) */ }
 ```
 For the paused-time test, the driver's `FakeClock` follows `tokio::time::Instant` (add `TokioClock` to the testkit). `start_paused` needs tokio's `test-util` feature: add `tokio = { workspace = true, features = ["macros", "rt", "test-util"] }` to `duohive-core`'s `[dev-dependencies]`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit -- engine::reconnect engine::driver`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** Then the core gate: `cargo test -p duohive-core --features testkit && cargo clippy -p duohive-core --all-targets --features testkit -- -D warnings`.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(core): reconnect at start-up and the core driver loop"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --features testkit -- engine::reconnect engine::driver`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** Then the core gate: `cargo test -p duohive-core --features testkit && cargo clippy -p duohive-core --all-targets --features testkit -- -D warnings`.
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(core): reconnect at start-up and the core driver loop"`
 
 ### Task 16: Store — paths, `org.toml` and `settings.toml`
 
@@ -1050,7 +1052,7 @@ name = "squad-1"
 ```
 Atomic save: write `org.toml.tmp` in the same directory, `fsync`, copy the current file to `org.toml.bak`, `rename` the tmp over `org.toml`, then copy to `org.last-good.toml`. Parse errors map the `toml` error span to a 1-based line; the message is the error's own text (for a bad CLI, `unknown CLI "claud"` from `CliKind::from_str`).
 
-- [ ] **Step 1: Write the failing tests** (`tests/org_file.rs`, `tests/settings_file.rs`, unit tests in `paths.rs`).
+- [x] **Step 1: Write the failing tests** (`tests/org_file.rs`, `tests/settings_file.rs`, unit tests in `paths.rs`).
 
 ```rust
 #[test] fn parses_prd_example_org() { assert_eq!(load_org(&fixture("org-example.toml")).unwrap().unwrap(), example_org()); }
@@ -1065,10 +1067,10 @@ Atomic save: write `org.toml.tmp` in the same directory, `fsync`, copy the curre
 #[test] fn paths_follow_xdg_then_home() { /* Paths::from_vars only, never std::env::set_var: {HOME: /h, XDG_CONFIG_HOME: /x} → /x/duohive; {HOME: /h} → /h/.config/duohive; DUOHIVE_DATA_DIR wins; DUOHIVE_TMUX_SOCKET sets tmux_socket, else "duohive" */ }
 ```
 (`org-bad-cli.toml` is a valid example org padded so that `cli = "claud"` sits on line 42.)
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
-- [ ] **Step 3: Implement**, with serde "file" structs mapped to the core types (core types stay format-free). Add the schema above to TD §7.
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(store): org.toml and settings.toml with atomic saves"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
+- [x] **Step 3: Implement**, with serde "file" structs mapped to the core types (core types stay format-free). Add the schema above to TD §7.
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(store): org.toml and settings.toml with atomic saves"`
 
 ### Task 17: Store — `state.db` and the `Store` implementation
 
@@ -1096,7 +1098,7 @@ CREATE TABLE pending_hooks (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT
 ```
 The database file and its directory are created owner-only (0600 / 0700); tokens live here (TD §6.1).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn migrations_apply_once_and_set_user_version() { /* open twice → user_version 1, no error */ }
@@ -1109,10 +1111,10 @@ The database file and its directory are created owner-only (0600 / 0700); tokens
 #[test] fn store_load_org_uses_org_file_and_last_good() { /* save_org(example_org) → load_org() == Ok(Some(example_org())); then write "cli = \"claud\"" garbage to org.toml → load_org() Err with a line; last_good_org() == Some(example_org()) */ }
 #[test] fn mark_last_good_writes_last_good_and_load_does_not() { /* hand-write a valid org.toml → load_org() leaves org.last-good.toml absent; mark_last_good(&org) → last_good_org() == Some(org) (D10) */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(store): state.db sessions and pending hooks"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(store): state.db sessions and pending hooks"`
 
 ### Task 18: tmux — control-mode protocol, quoting and version
 
@@ -1135,7 +1137,7 @@ pub struct TmuxVersion { pub major: u32, pub minor: u32, pub raw: String }
 pub fn parse_version(out: &str) -> Option<TmuxVersion>;   // "tmux 3.2a" "tmux 3.7c" "tmux next-3.6" "tmux master"→None
 impl TmuxVersion { pub fn supported(&self) -> bool; }     // ≥ 3.2
 ```
-- [ ] **Step 1: Write the failing tests** using the S0.4 lines verbatim.
+- [x] **Step 1: Write the failing tests** using the S0.4 lines verbatim.
 
 ```rust
 #[test] fn parses_begin_body_end() {
@@ -1152,10 +1154,10 @@ impl TmuxVersion { pub fn supported(&self) -> bool; }     // ≥ 3.2
 #[test] fn tmux_quote_rejects_newlines() { assert_eq!(tmux_quote("a\nb"), Err(QuoteError::Newline)); }
 #[test] fn versions_parse() { assert_eq!(parse_version("tmux 3.2a").map(|v| (v.major, v.minor)), Some((3, 2))); assert!(!parse_version("tmux 3.1c").unwrap().supported()); assert_eq!(parse_version("tmux next-3.6").map(|v| v.minor), Some(6)); }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --lib`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(tmux): control-mode parser, quoting and version check"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --lib`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(tmux): control-mode parser, quoting and version check"`
 
 ### Task 19: tmux — the runtime
 
@@ -1195,7 +1197,7 @@ Mechanics:
 - **capture:** `capture-pane -p -J -t <id>` → `Screen { text }` (body lines joined with `\n`).
 - **inventory:** `list-windows -t =duohive -F "#{window_id}\t#{@duohive_agent}\t#{pane_dead}\t#{pane_dead_status}\t#{window_activity}"` (double-quoted so `\t` is a real tab, as in Activity) → `Inventory`; untagged windows (the keeper) skipped.
 
-- [ ] **Step 1: Write the failing integration tests.** `support::TestServer::new()` picks socket `duohive-test-<random hex>` and a temp `run_root`, uses `tmux` from `PATH`, and on `Drop` runs `kill-server`. Programs are `/bin/sh` one-liners; no CLI needed.
+- [x] **Step 1: Write the failing integration tests.** `support::TestServer::new()` picks socket `duohive-test-<random hex>` and a temp `run_root`, uses `tmux` from `PATH`, and on `Drop` runs `kill-server`. Programs are `/bin/sh` one-liners; no CLI needed.
 
 ```rust
 #[tokio::test] async fn start_reports_started_and_tags_the_window() { /* Started{window "@N"}; list-windows shows @duohive_agent == agent */ }
@@ -1218,10 +1220,10 @@ Mechanics:
 #[tokio::test] async fn control_client_loss_reattaches() { /* `tmux -L <socket> detach-client -s duohive` drops the control client while the server lives → no ConnectionLost; a noisy window keeps producing Activity within 3 s; an `exit 4` window that died meanwhile → PaneDied{ Some(4) } */ }
 #[tokio::test] async fn reconnect_finds_windows_started_by_a_previous_connection() { /* start a (`cat`), drop the runtime, connect again, inventory → [LiveWindow{ agent: a, window: the same @id, dead: None, .. }] */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --test runtime`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS** on the local tmux and on 3.2a: `PATH=$HOME/.local/tmux-3.2a/bin:$PATH cargo test -p duohive-tmux --test runtime`.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(tmux): runtime over tmux control mode"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --test runtime`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS** on the local tmux and on 3.2a: `PATH=$HOME/.local/tmux-3.2a/bin:$PATH cargo test -p duohive-tmux --test runtime`.
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(tmux): runtime over tmux control mode"`
 
 ### Tasks 20–21: CLI adapters — Claude Code, OpenCode
 
@@ -1261,7 +1263,7 @@ Each adapter:
 
 > Reading a transcript is file I/O, so `parse_hook` stays pure: the adapter's `enrich_hook` (Task 10 trait, default no-op) runs in the hook listener before forwarding; where Sn.4 says the reply lives in a file, it reads it and inserts `"duohive_last_reply"` into the payload, and `parse_hook` reads that field. For Claude Code the reply is in the payload (S1.4), so `enrich_hook` reads the transcript (S1.4's extraction rule) only for a `turn-end` payload with no `last_assistant_message`; this fallback is the one adapter call that reads a file, and it runs in the hook listener task, not the engine (Task 22).
 
-- [ ] **Step 1: Write the failing tests** for the adapter:
+- [x] **Step 1: Write the failing tests** for the adapter:
 
 ```rust
 #[test] fn launch_snapshot_no_task() { insta::assert_yaml_snapshot!(adapter.launch(&spec(None)).unwrap()); /* OpenCode: the config LaunchFile has no "permission" key, and the plugin LaunchFile's config hook composes it (S2.11, S2.13) */ }
@@ -1292,10 +1294,10 @@ Each adapter:
     the sample config's edit/bash come back composed per the launch rules above (a deny and a pattern kept, an allow made ask); and with the hook exe missing, nothing throws */ }
 ```
 Task 20 adds `#[test] fn hook_command_quotes_paths_with_spaces()` (`hook_exe = "/Applications/My Tools/duohive"`).
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-cli <cli>`
-- [ ] **Step 3: Implement** the adapter (and in Task 20, `probe_version`, `hook_command`, `real_adapters`). Review the new snapshots with `cargo insta review`; accept only after checking each argument against the spike section.
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-cli`
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(cli): <cli> adapter"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-cli <cli>`
+- [x] **Step 3: Implement** the adapter (and in Task 20, `probe_version`, `hook_command`, `real_adapters`). Review the new snapshots with `cargo insta review`; accept only after checking each argument against the spike section.
+- [x] **Step 4: Run, see PASS.** `cargo test -p duohive-cli`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(cli): <cli> adapter"`
 
 ### Task 22: `duohive hook` and the hook listener
 
@@ -1326,7 +1328,7 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
 
 `bind`: if the socket path exists and a connect succeeds → `AlreadyRunning`; if it exists and connect fails → remove it (stale); bind, then `chmod 0600`. `serve`: per connection, read lines (max 1 MiB; longer lines are dropped with a warning), parse `HookMessage`, look up the agent's CLI, call `enrich_hook`, send `Input::Hook` to the core (and to `tap` when set — the bench uses it).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[tokio::test] async fn hook_forwards_one_line_to_the_socket() { /* listener on a temp run.sock with a tap; run_hook(["hook", "pay-qa", "busy"], b"{\"a\":1}", false, {DUOHIVE_TOKEN: "tok-1", DUOHIVE_DATA_DIR: tmp}) → tap receives HookMessage{ token: "tok-1", agent: "pay-qa", event: "busy", payload: {"a":1} }; pending_hooks empty */ }
@@ -1352,10 +1354,10 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
 #[tokio::test] async fn listener_enriches_before_forwarding() { /* StubAdapter enrich inserts a field; core receives it */ }
 ```
 The CLI entry for `hook` goes in `main.rs` now (`parse_args` returns `Cli::Hook` for `hook <agent> <event>`; `bench-agent` comes in Task 27, `bench` in Task 28, the app in Task 29). Add `#[test] fn args_parse_hook() { assert_eq!(parse_args(&s(["hook", "a", "busy"])), Ok(Cli::Hook { agent: "a".into(), event: "busy".into() })); assert!(parse_args(&s(["frob"])).is_err()); }` to `args.rs`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test hook && cargo test -p duohive --lib args`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: duohive hook subcommand and hook listener"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --test hook && cargo test -p duohive --lib args`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat: duohive hook subcommand and hook listener"`
 
 ### Task 23: TUI — theme, tree rows and the main screen
 
@@ -1394,7 +1396,7 @@ Look (exact from the UI spec):
 - **Banner** (UI §4.12): ` ✕ org.toml line 42: unknown CLI "claud" · using your last good org · o open in $EDITOR` (no `line N` part when `line` is `None`). An invalid `settings.toml` (D29): ` ✕ settings.toml line N: <error> · using default settings`, on the next line when both are set.
 - **Blocking screen:** UI §4.12 "DuoHive needs tmux", `Found: none.` or `Found: 3.1c.`
 
-- [ ] **Step 1: Write the failing tests.** Render with `ratatui::backend::TestBackend` and compare buffers as strings.
+- [x] **Step 1: Write the failing tests.** Render with `ratatui::backend::TestBackend` and compare buffers as strings.
 
 ```rust
 #[test] fn state_cells() { assert_eq!(state_cell(&working(2m), now, None), " ● working    2m"); assert_eq!(state_cell(&working_screen(1m), ..), "~● working    1m"); assert_eq!(state_cell(&quiet(6m), ..), " ◷ quiet      6m"); }
@@ -1423,10 +1425,10 @@ Look (exact from the UI spec):
 #[test] fn main_screen_snapshots() { insta::assert_snapshot!(render_to_string(80, 24)); insta::assert_snapshot!(render_to_string(160, 48)); }
 #[test] fn apply_events_update_model() { /* AgentStatusChanged → agents[x].status; NeedsYouChanged → needs_you; returns true */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** Review snapshots with `cargo insta review`.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): theme, org tree and main screen"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** Review snapshots with `cargo insta review`.
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): theme, org tree and main screen"`
 
 ### Task 24: TUI — app loop, navigation, start/stop and delete
 
@@ -1463,7 +1465,7 @@ Behaviour (UI §4.11, §4.8, D8):
 - `CommandRejected { reason }` and `GiveWorkRefused` set the footer note until the next key.
 - **Drawing** (TD §3.3): redraw only when `apply` or `update` returns a change, capped at 30 fps; the 250 ms spinner tick runs only while a working row is on screen and Reduce motion is off; a once-a-minute tick redraws while any age (state cell or Needs you row) is on screen, so ages stay current; otherwise nothing is drawn while idle. The terminal is restored on exit and on panic (panic hook).
 
-- [ ] **Step 1: Write the failing tests** (pure `update` and `map_key`; dialogs rendered with `TestBackend`).
+- [x] **Step 1: Write the failing tests** (pure `update` and `map_key`; dialogs rendered with `TestBackend`).
 
 ```rust
 #[test] fn down_up_skip_reply_lines() { /* UI §4.1 model, selected auth-service; Down → selected Agent(billing-api) (its "Running go test" reply line skipped); Up → Agent(auth-service) */ }
@@ -1484,10 +1486,10 @@ Behaviour (UI §4.11, §4.8, D8):
 ```
 The test harness's `CountingBackend` wraps `TestBackend` and counts `flush` calls (ratatui flushes once per `Terminal::draw`); the tests drive `run_app_on` with it and an `mpsc` input channel, never a real terminal.
 `start_paused` needs tokio's `test-util` feature: add `tokio = { workspace = true, features = ["macros", "rt", "test-util"] }` to `duohive-tui`'s `[dev-dependencies]`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): app loop, navigation, start/stop and delete"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): app loop, navigation, start/stop and delete"`
 
 ### Task 25: TUI — team, role, agent and Edit org forms
 
@@ -1525,7 +1527,7 @@ Look and rules (UI §4.4.1–4.4.2, D11, D14):
 - Keys: `tab`/`shift+tab` move fields, `ctrl+s` saves, `esc` cancels, `enter` on the last field moves to Save.
 - Chooser (`n`): on Duo → `Team`, `Role`; on a team → `Role in <team>`, `Team next to <team>`, `Agent: select a role first` (disabled); on a role or an agent → `Agent in <role>`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn edit_agent_form_matches_spec_4_4_1() { /* billing-api running; snapshot equals UI §4.4.1 "Edit agent" box with Model/Effort as text placeholders */ }
@@ -1546,10 +1548,10 @@ Look and rules (UI §4.4.1–4.4.2, D11, D14):
 #[test] fn esc_cancels_without_command() { /* edit_agent with the model changed; Esc → FormOutcome::Cancel; no UiEffect::Send */ }
 #[test] fn line_edit_basics() { /* type "abc", ←, backspace → "ac" cursor 1; home, delete → "c"; end, type "d" → "cd" */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui forms`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): team, role, agent and Edit org forms"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui forms`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat(tui): team, role, agent and Edit org forms"`
 
 ### Task 26: Real ports — system clock, random tokens and the directory probe
 
@@ -1567,7 +1569,7 @@ pub struct FsDirProbe;    // impl DirProbe: GitRepo when <dir>/.git exists (file
 ```
 `getrandom` failing means the OS has no entropy source; a guessable token would break hook authentication, so `RandomIds::new_token` logs the error and calls `std::process::abort()` rather than return a weak token (no `unwrap`/`expect`).
 
-- [ ] **Step 1: Write the failing tests** (unit tests in `real_ports.rs`).
+- [x] **Step 1: Write the failing tests** (unit tests in `real_ports.rs`).
 
 ```rust
 #[test] fn random_ids_are_64_lowercase_hex() {
@@ -1585,10 +1587,10 @@ pub struct FsDirProbe;    // impl DirProbe: GitRepo when <dir>/.git exists (file
        tmp/plain (a directory) → Found; tmp/file.txt (a file) → Missing; tmp/none → Missing */
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --lib real_ports`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: real clock, token and directory ports"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --lib real_ports`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat: real clock, token and directory ports"`
 
 ### Task 27: Fake CLI adapter, `bench-agent` and the headless system
 
@@ -1635,7 +1637,7 @@ pub struct EnrichingStore { /* SqliteStore, Arc<Adapters>, AgentClis */ }   // i
 
 `bench-agent [--no-hooks] [--task <text>]` (hidden subcommand, `fake_agent.rs`; `parse_args` gains `Cli::BenchAgent { hooks: bool, task: Option<String> }`): fires `session-start`, prints `❯ `; with `--task`, runs that text as its first turn (exactly as a stdin line, below) before reading stdin, so a launch with a task goes starting → working → finished; then for each stdin line: fires `busy`, prints `working…` lines every 100 ms for 1 s, or for 3 s when the line contains `slow` (so tests control the turn length), prints a reply, fires `turn-end` with `{"last_reply": "...", "sent_at_ms": <now>}`, prints `❯ `; on `/exit` fires `session-end` and exits 0. Every hook payload carries `sent_at_ms`. It runs `duohive hook` through `std::process::Command` with `DUOHIVE_TOKEN` from its environment.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn fake_adapter_screen_rules() {
@@ -1679,10 +1681,10 @@ pub struct EnrichingStore { /* SqliteStore, Arc<Adapters>, AgentClis */ }   // i
     assert_eq!(parse_args(&s(["bench-agent", "--task", "-rf a b"])), Ok(Cli::BenchAgent { hooks: true, task: Some("-rf a b".into()) }));
 }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test system && cargo test -p duohive-cli fake && cargo test -p duohive --lib args`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.**
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: fake CLI adapter, bench-agent and the headless system"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --test system && cargo test -p duohive-cli fake && cargo test -p duohive --lib args`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.**
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat: fake CLI adapter, bench-agent and the headless system"`
 
 ### Task 28: The basic `bench` and its report
 
@@ -1712,7 +1714,7 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
 ```
 Targets at 10 agents come from PRD Success Metrics. Phase 1 reports; it never fails on a missed target (the release gate is phase 4–5).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
 
 ```rust
 #[test] fn percentiles_of_known_samples() { /* [1..=100] → p50 50.5, p95 95.05, max 100 (linear interpolation) */ }
@@ -1723,10 +1725,10 @@ Targets at 10 agents come from PRD Success Metrics. Phase 1 reports; it never fa
 }
 #[test] fn args_parse_bench() { assert_eq!(parse_args(&s(["bench", "--agents", "10", "--json"])), Ok(Cli::Bench(BenchArgs { agents: 10, json: true, ..Default::default() }))); }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test bench && cargo test -p duohive --lib bench && cargo test -p duohive --lib args`
-- [ ] **Step 3: Implement.** `measure.rs` is the one module with `unsafe` (`libc::getrusage`), marked `#[expect(unsafe_code, reason = "getrusage has no safe wrapper in std")]`.
-- [ ] **Step 4: Run, see PASS.** Then `cargo run --release -p duohive -- bench` → the four lines above with real numbers.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: basic bench and its report"`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --test bench && cargo test -p duohive --lib bench && cargo test -p duohive --lib args`
+- [x] **Step 3: Implement.** `measure.rs` is the one module with `unsafe` (`libc::getrusage`), marked `#[expect(unsafe_code, reason = "getrusage has no safe wrapper in std")]`.
+- [x] **Step 4: Run, see PASS.** Then `cargo run --release -p duohive -- bench` → the four lines above with real numbers.
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat: basic bench and its report"`
 
 ### Task 29: Binary wiring — start-up, logging, subcommands and end-to-end tests
 
@@ -1743,7 +1745,7 @@ pub async fn run_app_main() -> std::process::ExitCode;
 ```
 `run_app_main` order (TD §4.1 Start-up, §8): `Paths::from_env` → `init_logging` → `tmux_version`: missing or < 3.2 → `render_blocking(TmuxMissing)` until `q`, exit 1 → create the first-frame `oneshot` → `start_system(paths, Arc::new(real_adapters()), SystemOptions { tap: None, first_frame: Some(rx) })` (`AlreadyRunning` → print `DuoHive is already running` to stderr, exit 1) → `run_app(cfg with dirs: Arc::new(FsDirProbe), editor: the `$EDITOR` value (unset or blank → the TUI runs `vi`, Task 24), …, Some(tx))`; CLI detection then follows the first frame through that one signal (Task 27) → on quit, `SystemHandle::shutdown`; agents keep running in tmux. The TUI shows `Reconnecting to N agents…` until the engine's `Reconnected` (Tasks 15, 23).
 
-- [ ] **Step 1: Write the failing end-to-end tests** (real tmux on a throwaway socket, temp dirs, `fake_adapters` (`Opencode` hookless), events read from `SystemHandle`):
+- [x] **Step 1: Write the failing end-to-end tests** (real tmux on a throwaway socket, temp dirs, `fake_adapters` (`Opencode` hookless), events read from `SystemHandle`):
 
 ```rust
 #[tokio::test] async fn e2e_start_work_finish_view() { /* StartAgent → Starting → Idle; GiveWork → Working → Finished with last reply; ViewAgent → Idle */ }
@@ -1767,15 +1769,15 @@ pub async fn run_app_main() -> std::process::ExitCode;
 #[test] fn args_parse() { /* "hook a busy" → Hook; "bench --agents 10 --json" → Bench; "--help" → usage; "frob" → Err */ }
 #[test] fn logging_writes_to_logs_dir_only() { /* init_logging(temp paths), tracing::info!("hello") then drop the guard → one file under logs/ contains "hello"; nothing else under the data dir changed */ }
 ```
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test e2e`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run the full gate.**
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --test e2e`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run the full gate.**
   - `cargo fmt --all --check` → no output
   - `cargo clippy --workspace --all-targets --all-features -- -D warnings` → no warnings
   - `cargo test --workspace --all-features` → PASS
   - `PATH=$HOME/.local/tmux-3.2a/bin:$PATH cargo test -p duohive-tmux -p duohive --all-features` → PASS on tmux 3.2a
   - Manual smoke: `DUOHIVE_CONFIG_DIR=$(mktemp -d) DUOHIVE_DATA_DIR=$(mktemp -d) DUOHIVE_TMUX_SOCKET=duohive-smoke cargo run -p duohive` → empty org screen; `n` adds a role and an agent; `s` starts it; `q` quits; `tmux -L duohive-smoke ls` shows the session still running; reopening shows `Reconnecting to 1 agent…`, then the same state.
-- [ ] **Step 5: Commit.** `git add -A && git commit -m "feat: wire start-up, subcommands and end-to-end tests"`
+- [x] **Step 5: Commit.** `git add -A && git commit -m "feat: wire start-up, subcommands and end-to-end tests"`
 
 ### Task 30: Phase 1 acceptance — the done-when signal
 
@@ -1786,10 +1788,10 @@ pub async fn run_app_main() -> std::process::ExitCode;
 **Interfaces:**
 - Consumes: the built binary.
 
-- [ ] **Step 1: Run the bench on the target machine.** `cargo build --release -p duohive && ./target/release/duohive bench --agents 10` on Apple M-series; record the output, the machine, macOS and tmux versions, and the commit hash in `docs/plans/bench-results.md` under "Phase 1". Record a Linux run if one is available (reported, not gating).
-- [ ] **Step 2: Run the author's daily org.** Move the author's daily agents into `org.toml` (by form or by hand), run them for a working day, and check each against the state table: starting → working → finished/idle, waiting on an approval, `~` only on screen-read transitions, quiet after 5 minutes of silence, errored on a crash, stopped on `s`, and correct state after closing and reopening DuoHive. Log every wrong status as an issue with the agent's CLI version and the hook fixture that reproduces it; fix those before marking the phase done.
-- [ ] **Step 3: Mark the phase.** Update the roadmap's Phase 1 row and the TD where needed.
-- [ ] **Step 4: Commit.** `git add -A && git commit -m "docs: phase 1 bench results and acceptance"`
+- [x] **Step 1: Run the bench on the target machine.** `cargo build --release -p duohive && ./target/release/duohive bench --agents 10` on Apple M-series; record the output, the machine, macOS and tmux versions, and the commit hash in `docs/plans/bench-results.md` under "Phase 1". Record a Linux run if one is available (reported, not gating).
+- [x] **Step 2: Run the author's daily org.** Move the author's daily agents into `org.toml` (by form or by hand), run them for a working day, and check each against the state table: starting → working → finished/idle, waiting on an approval, `~` only on screen-read transitions, quiet after 5 minutes of silence, errored on a crash, stopped on `s`, and correct state after closing and reopening DuoHive. Log every wrong status as an issue with the agent's CLI version and the hook fixture that reproduces it; fix those before marking the phase done.
+- [x] **Step 3: Mark the phase.** Update the roadmap's Phase 1 row and the TD where needed.
+- [x] **Step 4: Commit.** `git add -A && git commit -m "docs: phase 1 bench results and acceptance"`
 
 ---
 

@@ -96,18 +96,25 @@ exit 0
 
 Targets at 10 agents: idle CPU under 1 %, memory under 20 MB, hook to screen under 1 s. The bench does not measure screen-read (`~`) freshness or start-up first frame; those are not covered by this run.
 
-## Phase 1 acceptance: pending
+## Phase 1 acceptance: done 2026-10-04
 
-The bench above is Step 1 of Task 30. Phase 1 is not done until the author completes Step 2 and the roadmap row is updated.
+The bench above is Step 1 of Task 30. The author ran the daily org (22 agents in 7 teams) in DuoHive and accepted Phase 1 on 2026-10-04.
 
 Author's checklist: move the daily agents into `org.toml` (by form or by hand), run them for a working day, and check each against the state table (technical design 4.2):
 
-- [ ] starting, then working, then finished or idle
-- [ ] waiting on an approval
-- [ ] `~` appears only on screen-read transitions
-- [ ] quiet after 5 minutes of silence
-- [ ] errored on a crash
-- [ ] stopped on `s`
-- [ ] correct state after closing and reopening DuoHive
+- [x] starting, then working, then finished or idle
+- [x] waiting on an approval
+- [x] `~` appears only on screen-read transitions
+- [x] quiet after 5 minutes of silence
+- [x] errored on a crash
+- [x] stopped on `s`
+- [x] correct state after closing and reopening DuoHive
 
-Log every wrong status as an issue with the agent's CLI version and the hook fixture that reproduces it, and fix those before marking the phase done.
+Any wrong status found later is logged as an issue with the agent's CLI version and the hook fixture that reproduces it.
+
+### Carried to Phase 2
+
+- Give work: count a pasted task as taken only when the CLI's prompt-submit hook arrives (OpenCode can drop keys sent soon after launch); task text starting with `/` untested on OpenCode.
+- Long agent names are cut in the middle in the 50-column org pane; part of the UI/UX pass.
+- A Claude turn that doesn't stop within 150 ms of Escape can restore its prompt before `/exit` (the 5 s grace kill covers it).
+- Live check still worth doing: a newline or non-ASCII text in OpenCode's `--prompt=`, and `--effort=` on a real turn.
