@@ -4,6 +4,7 @@
 #[cfg(test)]
 mod harness;
 mod lifecycle;
+mod org_edit;
 mod signals;
 mod timers;
 
@@ -253,11 +254,11 @@ impl Engine {
             Command::StopAgent { agent } => self.stop_agent(&agent),
             Command::GiveWork { agent, task } => self.give_work(agent, task),
             Command::ViewAgent { agent } => self.view_agent(&agent),
-            // Org edits and settings: Task 14; shutdown: the driver (Task 15).
-            Command::EditOrg(_)
-            | Command::ReloadOrg
-            | Command::UpdateSettings(_)
-            | Command::Shutdown => Vec::new(),
+            Command::EditOrg(edit) => self.edit_org(edit),
+            Command::ReloadOrg => self.reload_org(),
+            Command::UpdateSettings(s) => self.update_settings(s),
+            // Shutdown: the driver (Task 15).
+            Command::Shutdown => Vec::new(),
         }
     }
 
