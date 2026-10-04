@@ -54,10 +54,15 @@ impl LineEdit {
     /// Types `s` at the cursor; the cursor ends after it.
     pub fn insert_str(&mut self, s: &str) {
         let at = self.byte_at(self.cursor);
-        let after = self.text[at..].graphemes(true).count();
         self.text.insert_str(at, s);
-        // A combining mark may join the grapheme before it, so count from the end.
-        self.cursor = self.len() - after;
+        // The insert may join graphemes on either side (a combining mark, a ZWJ), so the
+        // cursor goes after the grapheme holding the inserted text's last byte.
+        let end = at + s.len();
+        self.cursor = self
+            .text
+            .grapheme_indices(true)
+            .take_while(|(b, _)| *b < end)
+            .count();
     }
 
     /// Deletes the grapheme before the cursor.

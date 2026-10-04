@@ -87,6 +87,8 @@ pub struct Field {
     pub suffix: Option<String>,
     /// The chosen entry of a choice.
     pub selected: usize,
+    /// The entry chosen when the form opened.
+    pub initial: usize,
     /// Choice entries that can't be picked now.
     pub disabled: Vec<usize>,
     /// Changed by the user (an empty required name is an error only once touched).
@@ -107,6 +109,7 @@ impl Field {
             placeholder: None,
             suffix: None,
             selected: 0,
+            initial: 0,
             disabled: Vec::new(),
             touched: false,
             look,
@@ -147,6 +150,7 @@ impl Field {
     ) -> Self {
         Self {
             selected,
+            initial: selected,
             ..Self::new(id, label, FieldKind::Choice(options), look)
         }
     }
