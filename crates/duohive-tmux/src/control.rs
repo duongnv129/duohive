@@ -19,10 +19,11 @@ pub enum ControlLine {
     Other(String),
 }
 
-/// Tracks whether the next line is inside a `%begin` block.
+/// Tracks the open `%begin` block; it closes only on `%end`/`%error` with its number.
 #[derive(Debug, Default)]
 pub struct ControlParser {
-    in_block: bool,
+    /// Command number of the open `%begin` block.
+    open_cmd: Option<u64>,
 }
 
 /// Parses the command number (second argument) of `%begin`/`%end`/`%error`.
@@ -33,24 +34,23 @@ fn cmd_number(rest: &str) -> Option<u64> {
 impl ControlParser {
     /// Classifies one line (without its line terminator).
     pub fn feed(&mut self, line: &str) -> ControlLine {
-        if self.in_block {
-            return self.feed_in_block(line);
+        if let Some(open) = self.open_cmd {
+            return self.feed_in_block(open, line);
         }
         let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
         match word {
             "%begin" => match cmd_number(rest) {
                 Some(cmd) => {
-                    self.in_block = true;
+                    self.open_cmd = Some(cmd);
                     ControlLine::Begin { cmd }
                 }
                 None => ControlLine::Other(line.to_owned()),
             },
-            "%unlinked-window-close" | "%window-close" => ControlLine::WindowClose {
-                window: rest
-                    .split_whitespace()
-                    .next()
-                    .unwrap_or_default()
-                    .to_owned(),
+            "%unlinked-window-close" | "%window-close" => match rest.split_whitespace().next() {
+                Some(window) => ControlLine::WindowClose {
+                    window: window.to_owned(),
+                },
+                None => ControlLine::Other(line.to_owned()),
             },
             "%exit" => ControlLine::Exit {
                 reason: Some(rest.trim())
@@ -61,16 +61,20 @@ impl ControlParser {
         }
     }
 
-    fn feed_in_block(&mut self, line: &str) -> ControlLine {
+    fn feed_in_block(&mut self, open: u64, line: &str) -> ControlLine {
         let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
         let end = match word {
-            "%end" => cmd_number(rest).map(|cmd| ControlLine::End { cmd }),
-            "%error" => cmd_number(rest).map(|cmd| ControlLine::Error { cmd }),
+            "%end" => cmd_number(rest)
+                .filter(|&c| c == open)
+                .map(|cmd| ControlLine::End { cmd }),
+            "%error" => cmd_number(rest)
+                .filter(|&c| c == open)
+                .map(|cmd| ControlLine::Error { cmd }),
             _ => None,
         };
         match end {
             Some(done) => {
-                self.in_block = false;
+                self.open_cmd = None;
                 done
             }
             None => ControlLine::Body(line.to_owned()),
@@ -170,6 +174,31 @@ mod tests {
         assert_eq!(
             ControlParser::default().feed("%sessions-changed"),
             ControlLine::Other("%sessions-changed".into())
+        );
+    }
+
+    #[test]
+    fn block_closes_only_on_matching_command_number() {
+        let mut p = ControlParser::default();
+        p.feed("%begin 1 7 1");
+        assert_eq!(p.feed("%end 1 2 0"), ControlLine::Body("%end 1 2 0".into()));
+        assert_eq!(
+            p.feed("%error 1 8 1"),
+            ControlLine::Body("%error 1 8 1".into())
+        );
+        assert_eq!(p.feed("%end 1 7 1"), ControlLine::End { cmd: 7 });
+    }
+
+    #[test]
+    fn window_close_without_id_is_other() {
+        let mut p = ControlParser::default();
+        assert_eq!(
+            p.feed("%window-close"),
+            ControlLine::Other("%window-close".into())
+        );
+        assert_eq!(
+            p.feed("%unlinked-window-close "),
+            ControlLine::Other("%unlinked-window-close ".into())
         );
     }
 
