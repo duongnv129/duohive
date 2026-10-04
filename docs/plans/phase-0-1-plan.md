@@ -91,7 +91,7 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 | D7 | **Phase 1 layout:** header, org pane at the UI §3 widths (50 columns at ≥ 100 wide, 32 in the compact layout), and a side pane with the selected node's summary. No chat pane (phase 3), no live terminal (phase 2). A running agent's side pane shows how to attach: `tmux -L duohive attach -t duohive:<agent>`. Needs you is shown but is not a `tab` stop until phase 2. Phase-1 text adaptations (no Give work dialog until phase 2, no Duo tools until phase 3): a stopped agent's side pane reads `○ stopped · s to start` (UI §4.1.2: `space to give work`); the empty org reads `Your org is empty · n to add a team, role or agent` without `, or ask Duo to set one up`; an empty role reads `no agents yet · n to add one` without ` or ask Duo` (UI §4.12). Task 23. |
 | D8 | **Phase 1 keys:** `↑↓` move, `s` start/stop (on an errored agent, stop: D16), `n` new, `e` edit, `d` delete, `v` last reply on/off, `o` open `org.toml` in `$EDITOR` (then reload), `q`/`ctrl+c` quit. `space` (Give work dialog), `?`, `m`, `f`, `w`, `z`, `,` (Settings), folding and the mouse arrive in phases 2–4. Give work exists as an engine command now. |
 | D9 | **Agent windows vanished while DuoHive was closed** (reboot) → stopped, without an error. tmux windows with no session row are left running and logged, never killed. |
-| D10 | **`org.toml` is rewritten from the model** on in-app edits, so hand-written comments are lost; the previous file is kept as `org.toml.bak`. Hand edits are re-read at start and after `o`. The last good org is copied to `<data_dir>/org.last-good.toml` after every successful load or save. |
+| D10 | **`org.toml` is rewritten from the model** on in-app edits, so hand-written comments are lost; the previous file is kept as `org.toml.bak`. Hand edits are re-read at start and after `o`. The last good org is copied to `<data_dir>/org.last-good.toml` after every save and every load the engine accepts (`Store::mark_last_good`: at start-up when no running agent is dropped, and on an accepted reload; never for a broken file). |
 | D11 | **Role form "Agents [n]"** names new agents `<team-slug>-<role-slug>-<k>` for a role in a team, or `<role-slug>-<k>` for a role directly under Duo, so names stay unique across teams (`payments-frontend-1`, `growth-frontend-1`). A slug is the name lowercased, spaces → `-`, other characters dropped, runs of `-` collapsed to one, and leading and trailing `-` stripped (`+Growth  Ops` → `growth-ops`); when the name would pass D4's 40 characters, each slug is cut to its first 16 and stripped of a trailing `-` again. A slug that ends up empty is left out with its separator. `k` counts from 1, skipping names that exist. UI §4.4.1's New role mock was edited to match (`payments-frontend-1 …`). Team and role forms carry CLI, Directory, Model, Effort, Flags, Worktrees and Prompt (the PRD lets any field be a default; UI §4.4.1 draws only some). |
 | D12 | **Roll-ups** list `● working`, `◆ waiting`, `◷ quiet`, `✕ errored` in that order, non-zero only, with a leading `~` when any counted agent's state was read from the screen. Errored counts as an attention state; UI §4.1's roll-up rule was edited to name it. |
 | D13 | **Quiet time** shown on a row is the time since the silence began (last activity or hook), which is also the Needs you ordering key. Ages under a minute show `<1m`. |
@@ -611,7 +611,8 @@ pub struct SessionRow { pub agent: AgentName, pub token: Option<Token>, pub wind
 pub trait Store: Send {
     fn load_org(&mut self) -> Result<Option<Org>, OrgFileError>;   // None = no file yet
     fn last_good_org(&mut self) -> Option<Org>;
-    fn save_org(&mut self, org: &Org) -> Result<(), StoreError>;
+    fn save_org(&mut self, org: &Org) -> Result<(), StoreError>;   // also refreshes last-good (the engine saves only validated orgs)
+    fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError>;   // D10: an org the engine accepted at start-up or on reload
     fn save_settings(&mut self, s: &Settings) -> Result<(), StoreError>;
     fn load_sessions(&mut self) -> Result<Vec<SessionRow>, StoreError>;
     fn save_session(&mut self, row: &SessionRow) -> Result<(), StoreError>;
@@ -1013,7 +1014,7 @@ impl Paths {
     pub fn run_sock(&self) -> PathBuf; pub fn run_dir(&self, agent: &AgentName) -> PathBuf; pub fn logs_dir(&self) -> PathBuf;
 }
 pub fn load_org(path: &Path) -> Result<Option<Org>, OrgFileError>;
-pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError>;   // atomic, keeps .bak, refreshes last-good
+pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError>;   // atomic, keeps .bak, refreshes last-good (the engine saves only validated orgs; loads never copy, D10)
 pub fn load_settings(path: &Path) -> Result<Settings, OrgFileError>;   // missing file → defaults
 pub fn save_settings(path: &Path, s: &Settings) -> Result<(), StoreError>;
 ```
@@ -1105,6 +1106,7 @@ The database file and its directory are created owner-only (0600 / 0700); tokens
 #[test] fn a_second_connection_can_insert_while_store_is_open() { /* insert_pending_hook from another Connection → take_pending_hooks sees it */ }
 #[test] fn db_file_is_owner_only() { /* mode & 0o077 == 0 */ }
 #[test] fn store_load_org_uses_org_file_and_last_good() { /* save_org(example_org) → load_org() == Ok(Some(example_org())); then write "cli = \"claud\"" garbage to org.toml → load_org() Err with a line; last_good_org() == Some(example_org()) */ }
+#[test] fn mark_last_good_writes_last_good_and_load_does_not() { /* hand-write a valid org.toml → load_org() leaves org.last-good.toml absent; mark_last_good(&org) → last_good_org() == Some(org) (D10) */ }
 ```
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-store`
 - [ ] **Step 3: Implement.**

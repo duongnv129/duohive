@@ -49,7 +49,8 @@ impl Engine {
         out
     }
 
-    /// `ReloadOrg`: re-read `org.toml`; a broken file keeps the current org.
+    /// `ReloadOrg`: re-read `org.toml`; a broken file keeps the current org, and
+    /// an accepted one becomes the last good org (D10).
     pub(super) fn reload_org(&mut self) -> Vec<Event> {
         let org = match self.ports.store.load_org() {
             Err(e) => return self.org_file_broken(e),
@@ -68,6 +69,7 @@ impl Engine {
         let old = std::mem::replace(&mut self.org, org);
         self.sync_agents();
         let mut out = vec![self.org_changed(&old)];
+        self.mark_last_good(&mut out);
         out.extend(self.org_file_fine());
         out
     }
@@ -177,22 +179,12 @@ impl Engine {
         self.agent_names()
             .into_iter()
             .filter(|a| !keeps(a))
-            .find_map(|a| {
-                let how = match self.state_of(&a) {
-                    AgentState::Stopped => return None,
-                    AgentState::Errored => "errored",
-                    _ => "running",
-                };
-                Some(OrgFileError {
-                    line: None,
-                    message: format!("{a} is {how} · stop it, then press o to reload"),
-                })
-            })
+            .find_map(|a| drop_refusal(&a, self.state_of(&a)))
     }
 
     /// Gives every agent in the org a runtime entry and drops entries the org no
     /// longer names (only stopped agents ever leave the org).
-    fn sync_agents(&mut self) {
+    pub(super) fn sync_agents(&mut self) {
         let now = self.ports.clock.now();
         let names: BTreeSet<AgentName> = self.agent_names().into_iter().collect();
         self.agents.retain(|a, _| names.contains(a));
@@ -205,7 +197,7 @@ impl Engine {
 
     /// `OrgChanged` for the current org. Once directories are known (D26), each
     /// directory whose agent's setting changed since `old` is probed first.
-    fn org_changed(&mut self, old: &Org) -> Event {
+    pub(super) fn org_changed(&mut self, old: &Org) -> Event {
         if self.dirs.is_some() {
             let before = self.directories(old);
             let changed: BTreeSet<PathBuf> = self
@@ -242,6 +234,19 @@ impl Engine {
             })
             .collect()
     }
+}
+
+/// Why an org that drops `agent` in `state` can't be accepted; `None` when stopped.
+pub(super) fn drop_refusal(agent: &AgentName, state: AgentState) -> Option<OrgFileError> {
+    let how = match state {
+        AgentState::Stopped => return None,
+        AgentState::Errored => "errored",
+        _ => "running",
+    };
+    Some(OrgFileError {
+        line: None,
+        message: format!("{agent} is {how} · stop it, then press o to reload"),
+    })
 }
 
 /// Reports a session row that couldn't be written.

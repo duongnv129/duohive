@@ -171,8 +171,10 @@ pub trait Store: Send {
     fn load_org(&mut self) -> Result<Option<Org>, OrgFileError>;
     /// The last org that parsed and validated.
     fn last_good_org(&mut self) -> Option<Org>;
-    /// Saves the org.
+    /// Saves the org; it becomes the last good org too (the engine saves only validated orgs).
     fn save_org(&mut self, org: &Org) -> Result<(), StoreError>;
+    /// Records `org` as the last good org: one the engine accepted at start-up or on reload (D10).
+    fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError>;
     /// Saves the settings.
     fn save_settings(&mut self, s: &Settings) -> Result<(), StoreError>;
     /// All session rows.
