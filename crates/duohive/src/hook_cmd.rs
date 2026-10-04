@@ -245,7 +245,9 @@ fn append_log(dir: &Path, line: &str) -> io::Result<()> {
     ensure_logs_dir(dir)?;
     let path = dir.join("hook.log");
     if fs::metadata(&path).is_ok_and(|m| m.len() >= HOOK_LOG_CAP) {
-        fs::rename(&path, dir.join("hook.log.1"))?;
+        // Another hook may have rotated it first (NotFound), or the rename may fail:
+        // either way the line still goes in.
+        let _ = fs::rename(&path, dir.join("hook.log.1"));
     }
     OpenOptions::new()
         .create(true)
@@ -318,5 +320,19 @@ mod tests {
         // A full hook.log moves to hook.log.1 (replacing the older one) and starts over.
         assert_eq!(fs::read_to_string(dir.join("hook.log.1")).unwrap(), full);
         assert_eq!(fs::read_to_string(dir.join("hook.log")).unwrap(), "next\n");
+    }
+
+    #[test]
+    fn a_failed_rotation_still_logs_the_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("logs");
+        ensure_logs_dir(&dir).unwrap();
+        let full = "x".repeat(usize::try_from(HOOK_LOG_CAP).unwrap());
+        fs::write(dir.join("hook.log"), &full).unwrap();
+        // hook.log.1 is a non-empty directory: the rename fails.
+        fs::create_dir_all(dir.join("hook.log.1/x")).unwrap();
+        append_log(&dir, "kept\n").unwrap();
+        let log = fs::read_to_string(dir.join("hook.log")).unwrap();
+        assert!(log.ends_with("kept\n"), "the hook's line was dropped");
     }
 }
