@@ -212,6 +212,9 @@ impl Engine {
                 && rt.exit_pending.is_none()
         });
         if current.is_none() {
+            if let Some(out) = self.held_exit(agent, window, exit) {
+                return out;
+            }
             tracing::debug!(%agent, window = %window.0, ?exit, "exit of a window not current, ignored");
             return Vec::new();
         }
