@@ -328,7 +328,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 
 | # | Phase | Delivers | Status | Depends |
 |---|---|---|---|---|
-| 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | pending | – |
+| 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | done 2026-10-04 | – |
 | 2 | One screen | Agent pane (watch and type), Needs you, notifications, Give work with the worktree option; the UI/UX improvement pass at the end | pending | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents on the release benchmark, first-run setup with templates (Agent Squad needs task to a role, phase 3), model and effort picker, key and mouse completeness, the key-binding editor | pending | 3 |
