@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                          ▄                                             
+                                         █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█                                        
+                                         █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀                                        
+                                         ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀                                        
+                                                                                                                        
+                                                                                                                        
+                       ┃                                                                                                
+                       ┃  Ask anything… "Fix a TODO in the codebase"                                                    
+                       ┃                                                                                                
+                       ┃  Build · Test Model 01 (Example)                                                               
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                      
+                                                                       tab agents  ctrl+p commands                      
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                           ● Tip Tool definitions can invoke scripts written in Python, Go, etc                         
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  /private/tmp/duohive-spike/work-oc  ⊙ 1 MCP /status                                                          1.18.34  
+                                                                                                                        

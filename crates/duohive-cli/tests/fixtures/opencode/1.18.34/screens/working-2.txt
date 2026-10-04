@@ -1,0 +1,40 @@
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  -rf $(id) `x` it's reply with the single word OK                                                                   
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 2.2s                                                                                                    
+                                                                                                                        
+     OK                                                                                                                 
+                                                                                                                        
+     ▣  Build · Test Model 01 · 7.0s                                                                                    
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Count from 1 to 30, one number per line.                                                                           
+  ┃                                                                                                                     
+                                                                                                                        
+     ▣  Build · Test Model 01                                                                                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃  Build · Test Model 01 (Example)                                                                                    
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀  
+   ⬝⬝⬝⬝⬝⬝⬝⬝  esc interrupt                                                                      50.5K  ctrl+p commands  
+                                                                                                                        

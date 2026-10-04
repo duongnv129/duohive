@@ -1,0 +1,40 @@
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  Create a file yes.txt containing the word yes. Do nothing else.                                                    
+  ┃                                                                                                                     
+                                                                                                                        
+     + Thought: 1.6s                                                                                                    
+                                                                                                                        
+     ← Write yes.txt                                                                                                    
+                                                                                                                        
+     ▣  Build · Test Model 01                                                                                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  ┃                                                                                                                     
+  ┃  △ Permission required                                                                                              
+  ┃    → Edit yes.txt                                                                                                   
+  ┃                                                                                                                     
+  ┃  1 + yes                                                                                                            
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃                                                                                                                     
+  ┃   Allow once   Allow always   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm     
+  ┃                                                                                                                     
+                                                                                                                        
