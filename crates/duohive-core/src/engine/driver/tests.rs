@@ -151,3 +151,38 @@ async fn driver_ends_when_no_one_listens() {
         .expect("the core ends within 1 s")
         .unwrap();
 }
+
+fn busy_hook(i: usize) -> HookMessage {
+    HookMessage {
+        token: format!("tok-{i}"),
+        agent: "auth-service".into(),
+        event: "busy".into(),
+        payload: serde_json::json!({ "i": i }),
+    }
+}
+
+#[tokio::test]
+async fn shutdown_keeps_unapplied_hooks_for_the_next_start() {
+    // Reconnecting (no inventory yet): a hook the core takes before `Shutdown`
+    // is buffered in the engine, one it doesn't is still queued. Either way it
+    // must reach `pending_hooks`, in arrival order (Review Focus 3).
+    let mut h = Harness::new();
+    h.engine.start_up();
+    let store = h.store.clone();
+    let (commands, command_rx) = mpsc::channel(8);
+    let (inputs, input_rx) = mpsc::channel(8);
+    let (event_tx, _events) = mpsc::unbounded_channel();
+    let hooks: Vec<HookMessage> = (1..=3).map(busy_hook).collect();
+    for hook in &hooks {
+        inputs.send(Input::Hook(hook.clone())).await.unwrap();
+    }
+    commands.send(Command::Shutdown).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        run_core(h.engine, command_rx, input_rx, event_tx),
+    )
+    .await
+    .expect("the core ends within 1 s");
+    assert_eq!(store.state.lock().unwrap().pending, hooks);
+    assert!(inputs.is_closed(), "the core still takes inputs");
+}

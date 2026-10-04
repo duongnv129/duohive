@@ -185,6 +185,9 @@ pub trait Store: Send {
     fn delete_session(&mut self, agent: &AgentName) -> Result<(), StoreError>;
     /// Hooks queued while DuoHive was closed, oldest first; deletes them.
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError>;
+    /// Queues a hook DuoHive took but did not apply before shutting down, after
+    /// any already queued, for the next start to replay (Review Focus 3).
+    fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError>;
 }
 
 #[cfg(test)]

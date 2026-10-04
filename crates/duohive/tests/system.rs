@@ -320,9 +320,19 @@ fn tap_listener(
     (tap, core)
 }
 
+/// A child process killed and reaped on drop, so a failing test leaves none behind.
+struct KillOnDrop(Child);
+
+impl Drop for KillOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
 /// `duohive bench-agent --task <task>` with stdin open and silent.
-fn bench_agent(tmp: &Path, task: &str) -> Child {
-    StdCommand::new(BIN)
+fn bench_agent(tmp: &Path, task: &str) -> KillOnDrop {
+    let child = StdCommand::new(BIN)
         .args(["bench-agent", "--task", task])
         .env_clear()
         .env("HOME", tmp)
@@ -334,7 +344,8 @@ fn bench_agent(tmp: &Path, task: &str) -> Child {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .unwrap()
+        .unwrap();
+    KillOnDrop(child)
 }
 
 async fn next_hook(tap: &mut mpsc::UnboundedReceiver<HookMessage>) -> HookMessage {
@@ -352,14 +363,12 @@ fn sent_at(m: &HookMessage) -> u64 {
 async fn first_turn_ms(task: &str) -> u64 {
     let tmp = tempfile::tempdir().unwrap();
     let (mut tap, _core) = tap_listener(&tmp.path().join("data"));
-    let mut child = bench_agent(tmp.path(), task);
+    let _child = bench_agent(tmp.path(), task);
     let events: Vec<HookMessage> = vec![
         next_hook(&mut tap).await,
         next_hook(&mut tap).await,
         next_hook(&mut tap).await,
     ];
-    let _ = child.kill();
-    let _ = child.wait();
     let names: Vec<&str> = events.iter().map(|m| m.event.as_str()).collect();
     assert_eq!(names, ["session-start", "busy", "turn-end"]);
     sent_at(&events[2]) - sent_at(&events[1])
@@ -392,16 +401,19 @@ async fn bench_agent_runs_its_task_first() {
             .is_some_and(|r| !r.is_empty())
     );
 
-    let mut stdin = child.stdin.take().unwrap();
+    let mut stdin = child.0.stdin.take().unwrap();
     stdin.write_all(b"next\n").unwrap();
     assert_eq!(next_hook(&mut tap).await.event, "busy");
     assert_eq!(next_hook(&mut tap).await.event, "turn-end");
     stdin.write_all(b"/exit\n").unwrap();
     assert_eq!(next_hook(&mut tap).await.event, "session-end");
-    let status = tokio::task::spawn_blocking(move || child.wait())
-        .await
-        .unwrap()
-        .unwrap();
+    let status = tokio::task::spawn_blocking(move || {
+        let mut child = child;
+        child.0.wait()
+    })
+    .await
+    .unwrap()
+    .unwrap();
     assert!(status.success(), "{status:?}");
 }
 
@@ -462,8 +474,104 @@ async fn shutdown_leaves_agents_running() {
     h.shutdown().await;
     let windows = env.tmux(&["list-windows", "-a", "-F", "#{window_name}"]);
     assert!(windows.lines().any(|w| w == "bench-1"), "{windows:?}");
+    // run.sock is gone, so a hook fired now cannot connect and queues in pending_hooks.
     let sock = env.paths.run_sock();
-    assert!(sock.exists());
+    assert!(!sock.exists());
     let refused = UnixStream::connect(&sock);
     assert!(refused.is_err(), "run.sock still answers after shutdown");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bench_agent_task_is_handled_like_a_line() {
+    // `--task` is trimmed and `/exit` quits, exactly as on stdin.
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut tap, _core) = tap_listener(&tmp.path().join("data"));
+    let child = bench_agent(tmp.path(), "  /exit  ");
+    assert_eq!(next_hook(&mut tap).await.event, "session-start");
+    assert_eq!(next_hook(&mut tap).await.event, "session-end");
+    let status = tokio::task::spawn_blocking(move || {
+        let mut child = child;
+        child.0.wait()
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(status.success(), "{status:?}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn first_run_detects_exactly_once() {
+    let env = Env::new();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut h = start_system(&env.paths, counting(&calls), opts())
+        .await
+        .unwrap();
+    assert_eq!(
+        first_snapshot(&mut h).await.org,
+        Org::blank(CliKind::Claude)
+    );
+    // The detection task still probes the directories: its OrgChanged ends it.
+    let probed = wait_for(&mut h, Duration::from_secs(5), |e| {
+        matches!(e, Event::OrgChanged { .. })
+    })
+    .await;
+    assert!(probed.is_some(), "the directories were never probed");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(calls.load(Ordering::SeqCst), 2, "one detect per CLI kind");
+    h.shutdown().await;
+}
+
+/// The launch token the engine gave `agent`, from its `launch.sh`.
+fn launch_token(paths: &Paths, agent: &str) -> String {
+    let script =
+        std::fs::read_to_string(paths.data_dir.join("run").join(agent).join("launch.sh")).unwrap();
+    let line = script
+        .lines()
+        .find_map(|l| l.strip_prefix("export DUOHIVE_TOKEN="))
+        .expect("a token in launch.sh");
+    line.trim_matches('\'').to_owned()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_hook_lost_at_shutdown() {
+    // Review Focus 3: a hook delivered just before shutdown is applied (the
+    // row says working) or queued for the next start, never dropped.
+    let env = Env::new();
+    let dir = env.tmp.path().join("work");
+    std::fs::create_dir_all(&dir).unwrap();
+    env.write_org(&bench_org("bench-1", &dir.display().to_string()));
+    let mut h = start_system(&env.paths, fakes(), opts()).await.unwrap();
+    let agent = n("bench-1");
+    h.commands
+        .send(Command::StartAgent {
+            agent: agent.clone(),
+        })
+        .await
+        .unwrap();
+    let idle = wait_for(&mut h, Duration::from_secs(20), |e| {
+        matches!(e, Event::AgentStatusChanged { agent: a, status } if *a == agent && status.state == AgentState::Idle)
+    })
+    .await;
+    assert!(idle.is_some(), "the fake agent never went idle");
+    let hook = HookMessage {
+        token: launch_token(&env.paths, "bench-1"),
+        agent: "bench-1".to_owned(),
+        event: "busy".to_owned(),
+        payload: json!({"sent_at_ms": 1}),
+    };
+    let mut line = serde_json::to_vec(&hook).unwrap();
+    line.push(b'\n');
+    let mut stream = UnixStream::connect(env.paths.run_sock()).unwrap();
+    stream.write_all(&line).unwrap();
+    drop(stream);
+    h.shutdown().await;
+
+    let mut store = SqliteStore::open(&env.paths).unwrap();
+    let applied = store
+        .load_sessions()
+        .unwrap()
+        .iter()
+        .any(|r| r.agent == agent && r.status.state == AgentState::Working);
+    let queued = store.take_pending_hooks().unwrap().contains(&hook);
+    assert!(applied || queued, "the hook was lost");
 }

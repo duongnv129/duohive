@@ -35,7 +35,7 @@ use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
 
-use crate::hook_listener::{AgentClis, HookListener, ListenerError};
+use crate::hook_listener::{AgentClis, HookListener, InstanceLock, ListenerError};
 use crate::real_ports::{FsDirProbe, RandomIds, SystemClock};
 use detection::{detect_all, first_found, run_detection};
 
@@ -85,26 +85,43 @@ pub enum StartError {
     Core(io::Error),
 }
 
-/// A running system. Dropping it without [`SystemHandle::shutdown`] leaves the
-/// core running until its channels close.
+/// A running system. Dropping it without [`SystemHandle::shutdown`] still asks
+/// the listener and the core to stop, but waits for neither.
 pub struct SystemHandle {
     /// Commands to the engine.
     pub commands: mpsc::Sender<Command>,
     /// The engine's events, starting with the start-up `Snapshot`.
     pub events: mpsc::UnboundedReceiver<Event>,
     core: Option<thread::JoinHandle<()>>,
-    /// The listener, detection and event-forwarding tasks.
+    /// Stops the hook listener (also when dropped).
+    listener_stop: Option<oneshot::Sender<()>>,
+    /// The listener's supervisor: ends once the listener has stopped.
+    listener: Option<JoinHandle<()>>,
+    /// The detection and event-forwarding tasks.
     tasks: Vec<AbortHandle>,
     /// One supervisor per task: each ends when its task does.
     supervisors: Vec<JoinHandle<()>>,
+    /// The single-instance lock, released last.
+    lock: Option<InstanceLock>,
 }
 
 impl SystemHandle {
-    /// Stops DuoHive, never an agent: sends `Command::Shutdown`, awaits the core,
-    /// then aborts and awaits the other tasks. tmux windows keep running and
-    /// `run.sock` is left with no listener, so later hooks queue in
-    /// `pending_hooks` (the next `HookListener::bind` replaces the stale socket).
+    /// Stops DuoHive, never an agent, losing no hook (Review Focus 3):
+    /// 1. the listener stops: `run.sock` goes, so a new hook queues in
+    ///    `pending_hooks`, and hooks already sent reach the core;
+    /// 2. `Command::Shutdown`: the core stores every hook it has not applied as
+    ///    a pending hook, then ends (awaited);
+    /// 3. detection and event forwarding are aborted and awaited;
+    /// 4. the instance lock goes last, so no second instance starts meanwhile.
+    ///
+    /// tmux windows keep running; the next start replays the queued hooks.
     pub async fn shutdown(mut self) {
+        if let Some(stop) = self.listener_stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(listener) = self.listener.take() {
+            let _ = listener.await;
+        }
         let _ = self.commands.send(Command::Shutdown).await;
         if let Some(core) = self.core.take() {
             match tokio::task::spawn_blocking(move || core.join()).await {
@@ -118,6 +135,19 @@ impl SystemHandle {
         }
         for supervisor in self.supervisors.drain(..) {
             let _ = supervisor.await;
+        }
+        drop(self.lock.take());
+    }
+}
+
+impl Drop for SystemHandle {
+    /// Without `shutdown`: stop the listener and the core, without waiting.
+    fn drop(&mut self) {
+        if let Some(stop) = self.listener_stop.take() {
+            let _ = stop.send(());
+        }
+        if self.core.is_some() {
+            let _ = self.commands.try_send(Command::Shutdown);
         }
     }
 }
@@ -150,19 +180,21 @@ pub async fn start_system(
     // ORDER MATTERS: bind before anything spawns a process (tmux below, CLI
     // `--version` detection). On macOS std marks the socket close-on-exec only
     // after creating it, so a process spawned meanwhile would inherit the listener.
-    let listener = HookListener::bind(&paths.run_sock()).map_err(|e| match e {
+    let mut listener = HookListener::bind(&paths.run_sock()).map_err(|e| match e {
         ListenerError::AlreadyRunning => StartError::AlreadyRunning,
         ListenerError::Io(e) => StartError::Listener(e),
     })?;
+    let lock = listener.take_lock();
 
     // From here on processes may be spawned.
     let (org, org_error, first_run_inventory) = match loaded {
         Ok(Some(org)) => (org, None, None),
-        // First run: detect once, now, to pick the blank org's CLI.
-        Ok(None) => {
-            let list = detect_all(Arc::clone(&adapters)).await.unwrap_or_default();
-            (Org::blank(first_found(&list)), None, Some(list))
-        }
+        // First run: detect once, now, to pick the blank org's CLI. If that is
+        // cancelled, the detection task detects instead (never an empty inventory).
+        Ok(None) => match detect_all(Arc::clone(&adapters)).await {
+            Some(list) => (Org::blank(first_found(&list)), None, Some(list)),
+            None => (Org::blank(CliKind::Claude), None, None),
+        },
         // D29: a broken org.toml runs on the last good org, with the banner.
         Err(e) => {
             let org = store
@@ -205,6 +237,7 @@ pub async fn start_system(
         Arc::clone(&adapters),
     );
     let mut first_events = engine.start_up();
+    // The detection task detects unless this first run already did.
     let first_run = first_run_inventory.is_some();
     if let Some(list) = first_run_inventory {
         first_events.extend(engine.handle(Input::CliInventory(list)));
@@ -225,12 +258,16 @@ pub async fn start_system(
         home,
         inputs_tx.clone(),
     );
-    let serve = listener.serve(agents, adapters, inputs_tx, opts.tap);
+    let (listener_stop, stop) = oneshot::channel::<()>();
+    let serve = listener.serve_until(agents, adapters, inputs_tx, opts.tap, async {
+        // Sent or dropped: either way, stop.
+        let _ = stop.await;
+    });
+    let (_, listener) = supervise("hook listener", boxed(serve), commands.clone());
     let forward = forward_events(core_rx, events_tx, tracker);
     let mut tasks = Vec::new();
     let mut supervisors = Vec::new();
     for (name, task) in [
-        ("hook listener", boxed(serve)),
         ("detection", boxed(detection)),
         ("event forwarding", boxed(forward)),
     ] {
@@ -242,8 +279,11 @@ pub async fn start_system(
         commands,
         events,
         core: Some(core),
+        listener_stop: Some(listener_stop),
+        listener: Some(listener),
         tasks,
         supervisors,
+        lock,
     })
 }
 

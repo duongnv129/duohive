@@ -7,10 +7,11 @@
 
 use std::collections::HashMap;
 use std::fs::{self, DirBuilder, File, OpenOptions, TryLockError};
+use std::future::Future;
 use std::io;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::UnixListener as StdUnixListener;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock};
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ use duohive_core::hook::HookMessage;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use crate::MAX_HOOK_LINE as MAX_LINE;
 
@@ -29,6 +31,9 @@ const FILE_MODE: u32 = 0o600;
 const LOCK_FILE: &str = "run.lock";
 /// A pause after a failed accept (e.g. out of file descriptors), so the loop never spins.
 const ACCEPT_RETRY: Duration = Duration::from_millis(100);
+/// How long a stopping listener waits for open connections; `duohive hook`
+/// writes within 150 ms, so this only cuts off a stuck client.
+pub const DRAIN_DEADLINE: Duration = Duration::from_secs(1);
 
 /// Each agent's CLI, refreshed by the binary on `OrgChanged`.
 pub type AgentClis = Arc<RwLock<HashMap<String, CliKind>>>;
@@ -48,9 +53,14 @@ pub enum ListenerError {
 #[derive(Debug)]
 pub struct HookListener {
     listener: StdUnixListener,
-    /// Held (locked) until the listener is dropped.
-    lock: File,
+    sock: PathBuf,
+    /// Held until dropped: by the listener, or by whoever took it with [`HookListener::take_lock`].
+    lock: Option<InstanceLock>,
 }
+
+/// The exclusive lock on `run.lock`: DuoHive's single-instance guard, released on drop.
+#[derive(Debug)]
+pub struct InstanceLock(#[allow(dead_code, reason = "held only for its drop")] File);
 
 impl HookListener {
     /// Takes the instance lock (`run.lock` beside `sock`), then binds `sock`,
@@ -79,7 +89,17 @@ impl HookListener {
         let listener = StdUnixListener::bind(sock)?;
         fs::set_permissions(sock, fs::Permissions::from_mode(FILE_MODE))?;
         listener.set_nonblocking(true)?;
-        Ok(HookListener { listener, lock })
+        Ok(HookListener {
+            listener,
+            sock: sock.to_path_buf(),
+            lock: Some(InstanceLock(lock)),
+        })
+    }
+
+    /// Takes the instance lock out, so its holder decides when the next
+    /// instance may start (the system releases it last, after the core).
+    pub fn take_lock(&mut self) -> Option<InstanceLock> {
+        self.lock.take()
     }
 
     /// Accepts connections until the core's channel closes. Each line is parsed,
@@ -92,7 +112,24 @@ impl HookListener {
         to_core: mpsc::Sender<Input>,
         tap: Option<mpsc::UnboundedSender<HookMessage>>,
     ) {
-        let _lock = self.lock; // held while serving
+        self.serve_until(agents, adapters, to_core, tap, std::future::pending())
+            .await;
+    }
+
+    /// [`HookListener::serve`] until `stop` completes, then stops without
+    /// losing a hook (Review Focus 3): `run.sock` is removed, so a hook sent
+    /// from then on cannot connect and queues in `pending_hooks`; connections
+    /// already made are accepted, and every connection is read to its end
+    /// (up to [`DRAIN_DEADLINE`]) and forwarded before this returns.
+    pub async fn serve_until(
+        mut self,
+        agents: AgentClis,
+        adapters: Arc<Adapters>,
+        to_core: mpsc::Sender<Input>,
+        tap: Option<mpsc::UnboundedSender<HookMessage>>,
+        stop: impl Future<Output = ()>,
+    ) {
+        let _lock = self.lock.take(); // held while serving, unless taken out
         let listener = match UnixListener::from_std(self.listener) {
             Ok(l) => l,
             Err(e) => {
@@ -106,18 +143,64 @@ impl HookListener {
             to_core,
             tap,
         };
+        let mut connections = JoinSet::new();
+        tokio::pin!(stop);
         loop {
             tokio::select! {
+                () = &mut stop => break,
                 () = route.to_core.closed() => return,
+                Some(_) = connections.join_next(), if !connections.is_empty() => {}
                 accepted = listener.accept() => match accepted {
                     Ok((stream, _)) => {
-                        tokio::spawn(route.clone().connection(stream));
+                        connections.spawn(route.clone().connection(stream));
                     }
                     Err(e) => {
                         tracing::warn!(error = %e, "hook listener: accept failed");
                         tokio::time::sleep(ACCEPT_RETRY).await;
                     }
                 },
+            }
+        }
+        if let Err(e) = fs::remove_file(&self.sock) {
+            tracing::warn!(error = %e, "cannot remove run.sock");
+        }
+        match listener.into_std() {
+            Ok(listener) => accept_backlog(&listener, &route, &mut connections),
+            Err(e) => tracing::warn!(error = %e, "hook listener: backlog not drained"),
+        }
+        let drained = tokio::time::timeout(DRAIN_DEADLINE, async {
+            while connections.join_next().await.is_some() {}
+        })
+        .await;
+        if drained.is_err() {
+            tracing::warn!(
+                left = connections.len(),
+                "hook connections still open at shutdown dropped"
+            );
+        }
+    }
+}
+
+/// Accepts every connection already waiting (made before `run.sock` went).
+fn accept_backlog(listener: &StdUnixListener, route: &Route, connections: &mut JoinSet<()>) {
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                let stream = stream
+                    .set_nonblocking(true)
+                    .and_then(|()| UnixStream::from_std(stream));
+                match stream {
+                    Ok(stream) => {
+                        connections.spawn(route.clone().connection(stream));
+                    }
+                    Err(e) => tracing::warn!(error = %e, "hook connection dropped at shutdown"),
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => {}
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => return,
+            Err(e) => {
+                tracing::warn!(error = %e, "hook listener: backlog accept failed");
+                return;
             }
         }
     }
@@ -211,14 +294,17 @@ impl Route {
         self.to_core.send(Input::Hook(msg)).await.is_ok()
     }
 
-    /// Runs the agent's adapter `enrich_hook` on the blocking pool (it may read a transcript).
+    /// Runs the agent's adapter `enrich_hook` on the blocking pool (it may read
+    /// a transcript); an agent with no known CLI skips it.
     async fn enrich(&self, msg: HookMessage) -> HookMessage {
-        let agents = Arc::clone(&self.agents);
+        let Some(kind) = agent_cli(&self.agents, &msg.agent) else {
+            return msg;
+        };
         let adapters = Arc::clone(&self.adapters);
         let fallback = msg.clone();
         let enriched = tokio::task::spawn_blocking(move || {
             let mut msg = msg;
-            enrich_message(&agents, &adapters, &mut msg);
+            enrich_with(&adapters, kind, &mut msg);
             msg
         })
         .await;
@@ -233,12 +319,21 @@ impl Route {
 /// `agents`; an agent with no known CLI is left as is. Blocking: it may read a
 /// transcript. Live hooks (the listener) and replayed ones (D22) share it.
 pub fn enrich_message(agents: &AgentClis, adapters: &Adapters, msg: &mut HookMessage) {
-    let kind = agents
+    if let Some(kind) = agent_cli(agents, &msg.agent) {
+        enrich_with(adapters, kind, msg);
+    }
+}
+
+fn agent_cli(agents: &AgentClis, agent: &str) -> Option<CliKind> {
+    agents
         .read()
         .unwrap_or_else(PoisonError::into_inner)
-        .get(&msg.agent)
-        .copied();
-    if let Some(adapter) = kind.and_then(|k| adapters.get(k)) {
+        .get(agent)
+        .copied()
+}
+
+fn enrich_with(adapters: &Adapters, kind: CliKind, msg: &mut HookMessage) {
+    if let Some(adapter) = adapters.get(kind) {
         adapter.enrich_hook(&msg.event, &mut msg.payload);
     }
 }
