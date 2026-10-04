@@ -1,9 +1,16 @@
 //! Domain core: pure types and ports with no I/O dependencies.
 
+pub mod adapter;
 pub mod cli_kind;
+pub mod command;
+pub mod event;
+pub mod hook;
 pub mod inherit;
+pub mod launch;
 pub mod names;
 pub mod org;
+pub mod ports;
+pub mod settings;
 pub mod status;
 pub mod time;
 pub mod validate;
