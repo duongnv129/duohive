@@ -105,6 +105,8 @@ impl Observer {
             return;
         };
         let sent_ms = msg.sent_at_ms as f64;
+        // A newer hook supersedes an older one: the next change is the newer one's.
+        self.pending.retain(|p| p.agent != agent);
         match self.shown.get(&agent) {
             // The screen already showed this state: something else caused it (a
             // Give work, a screen read), so the hook's own latency is unknown.
@@ -148,30 +150,38 @@ impl Observer {
         let wall = now_ms();
         self.dirty = false;
         self.last_frame = Some(Instant::now());
+        let mut changed = Vec::new();
         for (agent, view) in &self.model.agents {
             let state = view.status.state;
             if self.shown.get(agent).is_none_or(|(old, _)| *old != state) {
                 self.shown.insert(agent.clone(), (state, wall));
+                changed.push((agent.clone(), state));
             }
         }
-        self.resolve();
+        self.resolve(&changed, wall);
     }
 
-    /// Records every pending hook whose state a frame has just drawn: a pending
-    /// hook's state was not on screen when it arrived, so a frame showing it now
-    /// is the change the hook caused.
-    fn resolve(&mut self) {
-        let shown = &self.shown;
+    /// Settles pending hooks against the frame that just changed their agents'
+    /// states. A pending hook's state was not on screen when it arrived, so the
+    /// first change after it is its own: it counts when it is the state the hook
+    /// leads to, and is dropped either way (only the first change is the hook's).
+    fn resolve(&mut self, changed: &[(AgentName, AgentState)], at: f64) {
         let samples = &mut self.samples;
         self.pending.retain(|p| {
-            let hit = shown
-                .get(&p.agent)
-                .filter(|(state, at)| p.wants.holds(*state) && *at >= p.sent_ms);
-            if let Some((_, at)) = hit {
+            let Some((_, state)) = changed.iter().find(|(a, _)| *a == p.agent) else {
+                return true;
+            };
+            if p.wants.holds(*state) && at >= p.sent_ms {
                 samples.push(at - p.sent_ms);
             }
-            hit.is_none()
+            false
         });
+    }
+
+    /// Hooks still waiting for their agent's next change (tests).
+    #[cfg(test)]
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
     }
 
     /// The model as last applied.
