@@ -192,6 +192,10 @@ export const DuohivePlugin = async () => {
   // mistake for a lost session-end.
   const endLimit = Number(process.env.DUOHIVE_SESSION_END_LIMIT_MS);
   const endLimitMs = Number.isFinite(endLimit) && endLimit > 0 ? endLimit : SESSION_END_LIMIT_MS;
+  // Test hook, same reason: under a fully loaded machine a first exec of a
+  // fresh fake exe can take over 2 s, which would drop session-start.
+  const limit = Number(process.env.DUOHIVE_DELIVERY_LIMIT_MS);
+  const deliveryLimitMs = Number.isFinite(limit) && limit > 0 ? limit : DELIVERY_LIMIT_MS;
   const enabled = exe !== "" && agent !== "";
 
   let chain = Promise.resolve();
@@ -219,7 +223,7 @@ export const DuohivePlugin = async () => {
           child.kill("SIGKILL");
         } catch {}
         resolve();
-      }, DELIVERY_LIMIT_MS);
+      }, deliveryLimitMs);
       inFlight = child;
       const done = () => {
         clearTimeout(timer);
