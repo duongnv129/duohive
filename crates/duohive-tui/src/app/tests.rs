@@ -124,6 +124,8 @@ fn cfg(reduce_motion: bool) -> AppConfig {
         },
         no_color: false,
         editor: Some("nano -w".to_owned()),
+        dirs: std::sync::Arc::new(duohive_core::testkit::FakeDirs::new(Default::default())),
+        home: PathBuf::from("/home/me"),
     }
 }
 

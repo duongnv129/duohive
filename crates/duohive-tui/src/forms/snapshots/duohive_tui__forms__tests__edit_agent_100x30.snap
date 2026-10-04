@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/forms/tests.rs
+expression: screen_text(&m)
+---
+ DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude Code ────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                 ● 1              ┃│   attach:                                      │
+┃ │  ├─ ◇ Backend               ● 1              ┃│tmux -L duohive attach -t duohive:billing-api   │
+┃ │  │  ├─┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────────┐         │
+┃▌│  │  └─│                                                                              │         │
+┃ │  └─ ◇ │  Name        [ billing-api_________ ]                                        │         │
+┃ │     └─│              rename only while stopped with no worktrees                     │         │
+┃ └─ ◇ Gen│  CLI        ▌[ inherit: Claude Code ▾ ]                                      │         │
+┃    ├─ sq│  Directory   [ ~/code/billing______________ ]  ✓ git repo                    │         │
+┃    ├─ sq│  Model       [ inherit: sonnet___ ]         Effort  [ inherit: high_____ ]   │         │
+┃    └─ sq│  Flags       [ ______________________________ ]                              │         │
+┃         │  Worktrees   [ inherit: off ▾ ]                                              │         │
+┃         │                                                                              │         │
+┃         │  Prompt  (stacks under: Org › Payments › Backend)                            │         │
+┃         │  ┊ Org       Ask before you delete anything.                                 │         │
+┃         │  ┊ Payments  (none)                                                          │         │
+┃         │  ┊ Backend   API URLs use hyphens. Run make test before done.                │         │
+┃         │  [ Own: Owns the billing service; invoices and retries.        ]             │         │
+┃         │                                                                              │         │
+┃         │  billing-api is running: changes apply on next start                         │         │
+┃         │  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │         │
+┃         └──────────────────────────────────────────────────────────────────────────────┘         │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+ ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit

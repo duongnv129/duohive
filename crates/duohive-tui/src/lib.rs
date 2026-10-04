@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod format;
+pub mod forms;
 pub mod input;
 pub mod model;
 pub mod render;
@@ -18,8 +19,9 @@ mod fixtures;
 
 pub use app::{AppConfig, InputEvent, TerminalHost, TuiError, editor_command, run_app, run_app_on};
 pub use format::{format_age, state_cell, truncate_middle};
-pub use input::{Action, UiEffect, map_key, update};
-pub use model::{Confirm, Dialog, UiModel};
+pub use forms::{Chooser, Field, FieldId, FieldKind, Form, FormOutcome, LineEdit};
+pub use input::{Action, UiEffect, map_key, paste, update};
+pub use model::{Confirm, Dialog, SharedDirs, UiModel};
 pub use render::{BlockingScreen, RenderCtx, render, render_blocking};
 pub use theme::{Palette, palette_for};
 pub use tree::{TreeRow, TreeRowKind, tree_rows};

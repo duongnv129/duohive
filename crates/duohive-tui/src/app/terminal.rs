@@ -9,7 +9,9 @@ use std::thread;
 use std::time::Duration;
 
 use crossterm::cursor::{Hide, Show};
-use crossterm::event::{self, Event as TermEvent, KeyEventKind};
+use crossterm::event::{
+    self, DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -49,6 +51,8 @@ pub async fn run_app(
             return Err(e.into());
         }
     };
+    // Pasted text arrives whole, so a newline in it never reads as enter (forms).
+    let _ = execute!(stdout(), EnableBracketedPaste);
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
     let (ack_tx, ack_rx) = std_mpsc::channel();
@@ -76,6 +80,7 @@ pub async fn run_app(
     };
     // The reader may already be gone; it ends within one poll either way.
     let _ = gate_tx.send(Gate::Stop);
+    let _ = execute!(stdout(), DisableBracketedPaste);
     let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
 }
@@ -105,6 +110,7 @@ fn read_input(
         let input = match event::read() {
             Ok(TermEvent::Key(k)) if k.kind != KeyEventKind::Release => InputEvent::Key(k),
             Ok(TermEvent::Resize(w, h)) => InputEvent::Resize(w, h),
+            Ok(TermEvent::Paste(text)) => InputEvent::Paste(text),
             Ok(_) => continue,
             Err(_) => return,
         };
@@ -166,10 +172,10 @@ impl TerminalHost for CrosstermHost {
 
 fn suspend() -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(stdout(), LeaveAlternateScreen, Show)
+    execute!(stdout(), DisableBracketedPaste, LeaveAlternateScreen, Show)
 }
 
 fn resume() -> io::Result<()> {
-    execute!(stdout(), EnterAlternateScreen, Hide)?;
+    execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste, Hide)?;
     enable_raw_mode()
 }
