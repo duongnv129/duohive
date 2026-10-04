@@ -24,6 +24,10 @@ CREATE TABLE sessions (agent TEXT PRIMARY KEY, token TEXT, window TEXT, state TE
   error TEXT, last_reply TEXT, task_at_launch INTEGER NOT NULL, saw_end_hook INTEGER NOT NULL, last_task TEXT);
 CREATE TABLE pending_hooks (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, agent TEXT NOT NULL,
   event TEXT NOT NULL, payload TEXT NOT NULL, received_at INTEGER NOT NULL);
+", "
+-- Replay order is firing order (Review Focus 3); older rows fired about when they arrived.
+ALTER TABLE pending_hooks ADD COLUMN sent_at_ms INTEGER NOT NULL DEFAULT 0;
+UPDATE pending_hooks SET sent_at_ms = received_at;
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {
@@ -152,14 +156,25 @@ pub fn insert_pending_hook(
 ) -> Result<(), StoreError> {
     let payload = serde_json::to_string(&m.payload).map_err(|e| db_err("bad payload", &e))?;
     conn.execute(
-        "INSERT INTO pending_hooks (token, agent, event, payload, received_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![m.token, m.agent, m.event, payload, to_i64(received_at.0)],
+        "INSERT INTO pending_hooks (token, agent, event, payload, received_at, sent_at_ms) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            m.token,
+            m.agent,
+            m.event,
+            payload,
+            to_i64(received_at.0),
+            to_i64(m.sent_at_ms)
+        ],
     )
     .map(drop)
     .map_err(|e| db_err("cannot queue hook", &e))
 }
 
-/// Takes the queued hooks, oldest first, and clears the queue in one transaction.
+/// Takes the queued hooks in the order they fired (`sent_at_ms`, then arrival)
+/// and clears the queue in one transaction. A hook the app stored at shutdown
+/// can land after a later one that fell back here meanwhile; firing time puts
+/// it back first (Review Focus 3).
 pub(crate) fn take_pending(conn: &mut Connection) -> Result<Vec<HookMessage>, StoreError> {
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -167,21 +182,32 @@ pub(crate) fn take_pending(conn: &mut Connection) -> Result<Vec<HookMessage>, St
     let mut hooks = Vec::new();
     {
         let mut stmt = tx
-            .prepare("SELECT token, agent, event, payload FROM pending_hooks ORDER BY id")
+            .prepare(
+                "SELECT token, agent, event, payload, sent_at_ms FROM pending_hooks \
+                 ORDER BY sent_at_ms, id",
+            )
             .map_err(|e| db_err("cannot read hooks", &e))?;
         let rows = stmt
             .query_map([], |r| {
-                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get::<_, String>(3)?))
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, i64>(4)?,
+                ))
             })
             .map_err(|e| db_err("cannot read hooks", &e))?;
         for row in rows {
-            let (token, agent, event, payload) = row.map_err(|e| db_err("cannot read hook", &e))?;
+            let (token, agent, event, payload, sent_at_ms) =
+                row.map_err(|e| db_err("cannot read hook", &e))?;
             // A payload that no longer parses must not wedge the queue: replay it as null.
             let payload = serde_json::from_str(&payload).unwrap_or_else(|e| {
                 tracing::debug!(%agent, %event, error = %e, "queued hook payload unreadable; replaying as null");
                 serde_json::Value::Null
             });
             hooks.push(HookMessage {
+                sent_at_ms: u64::try_from(sent_at_ms).unwrap_or(0),
                 token,
                 agent,
                 event,

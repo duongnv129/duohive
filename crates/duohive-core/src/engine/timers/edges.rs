@@ -21,6 +21,7 @@ fn secs(s: u64) -> Duration {
 
 fn hook(agent: &str, token: &str, event: &str) -> Input {
     Input::Hook(HookMessage {
+        sent_at_ms: 0,
         token: token.into(),
         agent: agent.into(),
         event: event.into(),
