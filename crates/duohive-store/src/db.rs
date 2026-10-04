@@ -3,8 +3,9 @@
 //! SQLite in WAL mode so `duohive hook` can insert while the app holds the
 //! file open. Tokens live here, so the file and its directory are owner-only.
 
-use std::fs::{DirBuilder, OpenOptions};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+use std::fs::{self, DirBuilder, OpenOptions};
+use std::io::ErrorKind;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::time::Duration;
 
@@ -29,13 +30,33 @@ pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {
     StoreError(format!("state.db: {what}: {e}"))
 }
 
+fn tighten(path: &Path, mode: u32) -> Result<(), StoreError> {
+    let current = fs::metadata(path)
+        .map_err(|e| db_err("cannot stat", &e))?
+        .permissions()
+        .mode()
+        & 0o777;
+    if current == mode {
+        return Ok(());
+    }
+    fs::set_permissions(path, fs::Permissions::from_mode(mode))
+        .map_err(|e| db_err("cannot restrict permissions", &e))
+}
+
+/// Creates the data dir (leaf 0700, parents default) and the file (0600), and
+/// tightens both when they already existed with looser modes.
 fn create_private(path: &Path) -> Result<(), StoreError> {
     if let Some(dir) = path.parent() {
-        DirBuilder::new()
-            .recursive(true)
-            .mode(DIR_MODE)
-            .create(dir)
-            .map_err(|e| db_err("cannot create the data directory", &e))?;
+        if let Some(grand) = dir.parent() {
+            fs::create_dir_all(grand)
+                .map_err(|e| db_err("cannot create the data directory", &e))?;
+        }
+        match DirBuilder::new().mode(DIR_MODE).create(dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(db_err("cannot create the data directory", &e)),
+        }
+        tighten(dir, DIR_MODE)?;
     }
     OpenOptions::new()
         .write(true)
@@ -43,8 +64,8 @@ fn create_private(path: &Path) -> Result<(), StoreError> {
         .truncate(false)
         .mode(FILE_MODE)
         .open(path)
-        .map(drop)
-        .map_err(|e| db_err("cannot create the file", &e))
+        .map_err(|e| db_err("cannot create the file", &e))?;
+    tighten(path, FILE_MODE)
 }
 
 /// Opens (creating, owner-only) the database in WAL mode and applies the migrations.
@@ -60,28 +81,42 @@ pub fn open_db(path: &Path, busy_timeout: Duration) -> Result<Connection, StoreE
     Ok(conn)
 }
 
+fn read_version(conn: &Connection) -> Result<usize, StoreError> {
+    let v: i64 = conn
+        .query_row("PRAGMA user_version", [], |r| r.get(0))
+        .map_err(|e| db_err("cannot read schema version", &e))?;
+    usize::try_from(v).map_err(|_| StoreError(format!("state.db: invalid schema version {v}")))
+}
+
 fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
+    let target = MIGRATIONS.len();
+    // The hook opens this inside a 1 s budget: take the write lock only when behind.
+    let seen = read_version(conn)?;
+    if seen > target {
+        return Err(newer_error(seen, target));
+    }
+    if seen == target {
+        return Ok(());
+    }
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|e| db_err("cannot start migration", &e))?;
-    let applied: i64 = tx
-        .query_row("PRAGMA user_version", [], |r| r.get(0))
-        .map_err(|e| db_err("cannot read schema version", &e))?;
-    let applied = usize::try_from(applied).unwrap_or(0);
-    if applied > MIGRATIONS.len() {
-        return Err(StoreError(format!(
-            "state.db is from a newer DuoHive (schema {applied}, this build knows {})",
-            MIGRATIONS.len()
-        )));
-    }
-    for sql in &MIGRATIONS[applied..] {
+    let applied = read_version(&tx)?; // another process may have migrated meanwhile
+    for sql in MIGRATIONS.iter().skip(applied) {
         tx.execute_batch(sql)
             .map_err(|e| db_err("migration failed", &e))?;
     }
-    tx.pragma_update(None, "user_version", to_i64(MIGRATIONS.len() as u64))
+    let version = i64::try_from(target).map_err(|e| db_err("bad schema version", &e))?;
+    tx.pragma_update(None, "user_version", version)
         .map_err(|e| db_err("cannot record schema version", &e))?;
     tx.commit()
         .map_err(|e| db_err("cannot commit migration", &e))
+}
+
+fn newer_error(seen: usize, known: usize) -> StoreError {
+    StoreError(format!(
+        "state.db is from a newer DuoHive (schema {seen}, this build knows {known})"
+    ))
 }
 
 pub(crate) fn to_i64(v: u64) -> i64 {
@@ -121,7 +156,10 @@ pub(crate) fn take_pending(conn: &mut Connection) -> Result<Vec<HookMessage>, St
         for row in rows {
             let (token, agent, event, payload) = row.map_err(|e| db_err("cannot read hook", &e))?;
             // A payload that no longer parses must not wedge the queue: replay it as null.
-            let payload = serde_json::from_str(&payload).unwrap_or(serde_json::Value::Null);
+            let payload = serde_json::from_str(&payload).unwrap_or_else(|e| {
+                tracing::debug!(%agent, %event, error = %e, "queued hook payload unreadable; replaying as null");
+                serde_json::Value::Null
+            });
             hooks.push(HookMessage {
                 token,
                 agent,
