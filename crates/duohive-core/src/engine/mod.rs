@@ -4,6 +4,9 @@
 #[cfg(test)]
 mod harness;
 mod lifecycle;
+mod signals;
+
+use signals::Exit;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -75,9 +78,8 @@ pub enum Input {
     Tick,
 }
 
-/// A zero exit waiting briefly for its end hook (Task 12).
+/// A zero exit waiting briefly for its end hook (D21).
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[allow(dead_code, reason = "read by the exit rules (Task 12)")]
 struct ExitPending {
     window: WindowId,
     status: Option<i32>,
@@ -93,7 +95,6 @@ struct AgentRt {
     /// The current window: set by `Started`, cleared on a relaunch until the next `Started`.
     window: Option<WindowId>,
     task_at_launch: bool,
-    #[allow(dead_code, reason = "read by the exit rules (Task 12)")]
     stopping: bool,
     saw_end_hook: bool,
     #[allow(dead_code, reason = "read by quiet (Task 13)")]
@@ -106,14 +107,12 @@ struct AgentRt {
     last_reply: Option<String>,
     notice: Option<String>,
     last_task: Option<String>,
-    #[allow(dead_code, reason = "read by the exit rules (Tasks 12, 14)")]
     restart_after_stop: bool,
     /// The `NeedsInput { prompt }` text while waiting (Task 13's excerpt).
     #[allow(dead_code, reason = "read by Needs you (Task 13)")]
     waiting_prompt: Option<String>,
     #[allow(dead_code, reason = "read by the pre-timeout read (Task 13)")]
     pre_read_done: bool,
-    #[allow(dead_code, reason = "read by the exit rules (Task 12)")]
     exit_pending: Option<ExitPending>,
     /// The CLI the current session was launched on (org edits apply on the next start).
     cli: Option<CliKind>,
@@ -210,10 +209,31 @@ impl Engine {
             Input::Runtime(RuntimeEvent::StartFailed { agent, reason }) => {
                 self.on_start_failed(&agent, reason)
             }
+            Input::Runtime(RuntimeEvent::Started { agent, window }) => {
+                self.on_started(&agent, window)
+            }
+            Input::Runtime(RuntimeEvent::Screen { agent, text }) => self.on_screen(&agent, &text),
+            Input::Runtime(RuntimeEvent::PaneDied {
+                agent,
+                window,
+                status,
+            }) => self.on_exit(&agent, &window, Exit::PaneDied(status)),
+            Input::Runtime(RuntimeEvent::WindowGone { agent, window }) => {
+                self.on_exit(&agent, &window, Exit::WindowGone)
+            }
+            Input::Runtime(RuntimeEvent::ConnectionLost { reason }) => {
+                self.on_connection_lost(&reason)
+            }
+            Input::Hook(message) => self.on_hook(&message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::DirInventory(list) => self.on_dir_inventory(list),
-            // Hooks, the other runtime events and timers: Tasks 12 and 13.
-            Input::Runtime(_) | Input::Hook(_) | Input::Tick => Vec::new(),
+            Input::Tick => self.on_tick(),
+            // Activity, pastes and inventories: Tasks 13 and 15.
+            Input::Runtime(
+                RuntimeEvent::Activity { .. }
+                | RuntimeEvent::PasteFailed { .. }
+                | RuntimeEvent::Inventory(_),
+            ) => Vec::new(),
         }
     }
 
@@ -260,13 +280,19 @@ impl Engine {
         }
     }
 
-    /// When the next timer is due (Task 13 adds settle, quiet and exit timers).
+    /// When the next timer is due: start timeouts and zero exits waiting for
+    /// their end hook (Task 13 adds settle and quiet timers).
     pub fn next_deadline(&self) -> Option<Millis> {
-        self.agents
+        let starts = self
+            .agents
             .values()
             .filter(|rt| rt.status.state == AgentState::Starting)
-            .filter_map(|rt| rt.start_deadline)
-            .min()
+            .filter_map(|rt| rt.start_deadline);
+        let exits = self
+            .agents
+            .values()
+            .filter_map(|rt| rt.exit_pending.as_ref().map(|p| p.due));
+        starts.chain(exits).min()
     }
 
     /// Duo, then every agent in tree order.
@@ -317,6 +343,18 @@ impl Engine {
         error: Option<String>,
         out: &mut Vec<Event>,
     ) -> bool {
+        self.change_with(agent, trigger, error, false, out)
+    }
+
+    /// [`Engine::change`], marking the new state as read from the screen (`~`) when `from_screen`.
+    fn change_with(
+        &mut self,
+        agent: &AgentName,
+        trigger: &Trigger,
+        error: Option<String>,
+        from_screen: bool,
+        out: &mut Vec<Event>,
+    ) -> bool {
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
         let Some(to) = transition(rt.status.state, trigger) else {
@@ -326,7 +364,7 @@ impl Engine {
             state: to,
             quiet: false,
             quiet_since: None,
-            from_screen: false,
+            from_screen,
             since: now,
             error,
         };
