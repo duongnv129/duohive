@@ -22,6 +22,9 @@ pub use crate::server::{TmuxConfig, TmuxError, tmux_version};
 /// The activity poll period (S0.5).
 const POLL_EVERY: Duration = Duration::from_secs(1);
 
+/// The wait between two keys sent in a row (see `key_steps`).
+const KEY_PAUSE: Duration = Duration::from_millis(150);
+
 /// One request from the engine, served in order.
 enum Req {
     Start(AgentName, LaunchCommand),
@@ -316,13 +319,42 @@ fn key_command(window: &WindowId, key: &Key) -> Result<String, String> {
     })
 }
 
-async fn send_keys(shared: &Shared, window: &WindowId, keys: &[Key]) -> Result<(), String> {
-    for key in keys {
-        if matches!(key, Key::Text(t) if t.is_empty()) {
-            continue;
+/// One step of sending keys: a tmux command, or a wait before the next one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Step {
+    Cmd(String),
+    Pause(Duration),
+}
+
+/// The steps for `keys`, empty text skipped, with `pause` between two keys. Sent back
+/// to back, a TUI reads them as one burst (checked live with Claude Code 2.1.289 and
+/// OpenCode 1.18.34, TD §5.5): OpenCode takes ESC and `/` as one Alt-key, so `Escape`
+/// misses an open approval prompt and `Enter` answers it, and drops an `Enter` that
+/// arrives with the `/exit` it follows. Every command is built first, so a key tmux
+/// can't carry fails before anything is sent.
+fn key_steps(window: &WindowId, keys: &[Key], pause: Duration) -> Result<Vec<Step>, String> {
+    let keys: Vec<&Key> = keys
+        .iter()
+        .filter(|k| !matches!(k, Key::Text(t) if t.is_empty()))
+        .collect();
+    let mut steps = Vec::with_capacity(keys.len() + 1);
+    for (i, key) in keys.iter().enumerate() {
+        steps.push(Step::Cmd(key_command(window, key)?));
+        if i + 1 < keys.len() {
+            steps.push(Step::Pause(pause));
         }
-        let line = key_command(window, key)?;
-        shared.conn.cmd(line).await.map_err(|e| e.to_string())?;
+    }
+    Ok(steps)
+}
+
+async fn send_keys(shared: &Shared, window: &WindowId, keys: &[Key]) -> Result<(), String> {
+    for step in key_steps(window, keys, KEY_PAUSE)? {
+        match step {
+            Step::Cmd(line) => {
+                shared.conn.cmd(line).await.map_err(|e| e.to_string())?;
+            }
+            Step::Pause(d) => tokio::time::sleep(d).await,
+        }
     }
     Ok(())
 }
@@ -615,5 +647,56 @@ mod tests {
             r"send-keys -t '@3' -l -- '-x it'\''s'"
         );
         assert!(key_command(&w, &Key::Text("a\nb".into())).is_err());
+    }
+
+    fn plan(keys: &[Key]) -> Vec<Step> {
+        key_steps(&WindowId("@3".into()), keys, Duration::from_millis(7)).unwrap()
+    }
+
+    #[test]
+    fn every_key_that_more_keys_follow_gets_the_pause() {
+        let pause = Step::Pause(Duration::from_millis(7));
+        assert_eq!(
+            plan(&[
+                Key::Escape,
+                Key::CtrlC,
+                Key::Text("/exit".into()),
+                Key::Enter
+            ]),
+            vec![
+                Step::Cmd("send-keys -t '@3' Escape".into()),
+                pause.clone(),
+                Step::Cmd("send-keys -t '@3' C-c".into()),
+                pause.clone(),
+                Step::Cmd("send-keys -t '@3' -l -- '/exit'".into()),
+                pause,
+                Step::Cmd("send-keys -t '@3' Enter".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_last_key_has_no_pause_and_empty_text_is_skipped() {
+        assert_eq!(
+            plan(&[Key::Enter]),
+            vec![Step::Cmd("send-keys -t '@3' Enter".into())]
+        );
+        assert_eq!(
+            plan(&[Key::Escape, Key::Text(String::new())]),
+            vec![Step::Cmd("send-keys -t '@3' Escape".into())]
+        );
+        assert_eq!(plan(&[]), vec![]);
+    }
+
+    #[test]
+    fn a_bad_key_fails_before_anything_is_sent() {
+        assert!(
+            key_steps(
+                &WindowId("@3".into()),
+                &[Key::Escape, Key::Text("a\nb".into())],
+                Duration::ZERO
+            )
+            .is_err()
+        );
     }
 }
