@@ -7,7 +7,7 @@ CARGO_LLVM_COV_VERSION := 0.9.1
 TYPOS_BIN := $(CARGO_HOME)/bin/typos
 PREFIX ?= $(HOME)/.local
 
-.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean release install uninstall
+.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean release deps install uninstall
 
 help: ## List the available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -51,7 +51,10 @@ tools: ## Install cargo-deny, typos and cargo-llvm-cov
 release: ## Build the release binary (target/release/duohive)
 	cargo build --release --locked -p duohive
 
-install: ## Build and install duohive (+ dh alias) to PREFIX/bin (default ~/.local)
+deps: ## Install what duohive needs to build and run: tmux 3.2+ and Rust
+	./install.sh --deps-only
+
+install: ## Install deps, then build and install duohive (+ dh alias) to PREFIX/bin (default ~/.local)
 	./install.sh --prefix "$(PREFIX)"
 
 uninstall: ## Remove duohive and its dh alias from PREFIX/bin
