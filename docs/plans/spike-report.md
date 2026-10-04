@@ -336,6 +336,8 @@ Other screens: a slash-command menu while `/exit` is typed (`screens/exit-typed.
 
 `/exit` typed (`send-keys -l /exit`), then `Enter`: exit status 0 (`#{pane_dead_status}` 0) and `SessionEnd` with `reason: "prompt_input_exit"` (`hooks/SessionEnd-1.json`, `screens/after-exit.txt`). The slash-command menu that opens while typing does not change what `Enter` runs (`screens/exit-typed.txt`). Quit keys: `Text("/exit")`, `Enter`. Killed with `kill -9`: `#{pane_dead}` 1 and `#{pane_dead_status}` empty, so a signal death has no exit status (the spike ran tmux 3.7c, where `#{pane_dead_signal}` also gave `kill`; that format exists only from tmux 3.3, and DuoHive supports 3.2, so it is not relied on); no `SessionEnd` (`screens/after-kill9.txt`, `hooks/index.log`), and Claude Code records `lastGracefulShutdown: false` for the project.
 
+**Stop check (2026-10-04, 2.1.289):** `/exit` `Enter` after DuoHive's `Escape`, keys back to back, exited in every case but one race: a turn interrupted before any output puts its prompt back in the input box, and with a pause after `Escape` `/exit` lands after it and is sent as part of a new prompt. So the quit keys are `C-c` (clears the box) `/exit` `Enter`, sent with 150 ms between keys; this exited at rest, with an approval open (declined, no file) and while working (TD §5.5).
+
 ### S1.10 Paste
 
 `load-buffer` of a two-line task, `paste-buffer -p` (bracketed paste), then `Enter`: both lines land in the input box without submitting (`screens/paste-before-enter.txt`), and `Enter` submits them as one turn: one `UserPromptSubmit` whose `prompt` is `"This is a two-line task.\nReply with the single word OK and use no tools."` (`hooks/UserPromptSubmit-4.json`), reply `OK` (`replies/Stop-3.last_assistant_message.txt`). Submit key: `Enter`.
@@ -484,6 +486,8 @@ These three rules (approval first, then the border and its footer) classified al
 ### S2.9 Quit
 
 `/exit` typed (`send-keys -l /exit`), then `Enter`: exit status 0 (`#{pane_dead_status}` 0), the plugin's `dispose` fires (`hooks/hook.dispose-1.json`), and the screen keeps `Continue  opencode -s ses_…` (`screens/after-exit.txt`); the slash-command menu that opens while typing does not change what `Enter` runs (`screens/exit-typed.txt`). Quit keys: `Text("/exit")`, `Enter`. A single `C-c` at the empty prompt also exits 0 at once and fires `dispose` (`hooks/hook.dispose-2.json`, `screens/after-ctrl-c.txt`); DuoHive does not use it (with text in the box or a turn running it may do something else; not tested). `/exit` while an approval prompt is shown was not tested; the stop path's kill after the grace period covers it. Killed with `kill -9`: `#{pane_dead}` 1, `#{pane_dead_status}` empty (`#{pane_dead_signal}` `kill` on tmux 3.7c), no `dispose` (`screens/after-kill9.txt`, `hooks/index.log`), the same as Claude Code (S1.9).
+
+**Stop check (2026-10-04):** keys sent back to back fail. `/exit` and `Enter` with no gap left `/exit` in the box (3 of 3 at rest; 20 ms or more was enough). DuoHive's `Escape` sent with them was read with `/` as one Alt-key: with a write approval open, `Escape` `/exit` `Enter` answered `Allow once` (the external-directory prompt, then the edit prompt opened; 2 of 2). With 150 ms between keys (`Escape`, `/exit`, `Enter`) OpenCode declined the approval (no file) and exited 0, also at rest and while working; `Escape` alone declines the prompt (TD §5.5).
 
 ### S2.10 Paste
 
