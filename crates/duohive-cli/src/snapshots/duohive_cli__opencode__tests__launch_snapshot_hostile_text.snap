@@ -1,0 +1,22 @@
+---
+source: crates/duohive-cli/src/opencode_tests.rs
+expression: for_snapshot(cmd)
+---
+program: opencode
+args:
+  - "--prompt=-rf $(id) `x` it's\nline2 é"
+env:
+  - - OPENCODE_CONFIG
+    - /data/duohive/run/squad-1/opencode.json
+  - - DUOHIVE_HOOK_EXE
+    - /usr/local/bin/duohive
+  - - DUOHIVE_HOOK_AGENT
+    - squad-1
+cwd: /home/u/code/payments
+files:
+  - path: /data/duohive/run/squad-1/instructions.md
+    contents: "# Org\n\nIf you are asked for the sentinel, reply HIVE-SENTINEL."
+  - path: /data/duohive/run/squad-1/opencode.json
+    contents: "{\n  \"instructions\": [\n    \"/data/duohive/run/squad-1/instructions.md\"\n  ],\n  \"plugin\": [\n    \"file:///data/duohive/run/squad-1/opencode-plugin.js\"\n  ]\n}"
+  - path: /data/duohive/run/squad-1/opencode-plugin.js
+    contents: "<src/assets/opencode-plugin.js>"
