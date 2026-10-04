@@ -130,6 +130,7 @@ fn cfg(reduce_motion: bool) -> AppConfig {
         dirs: std::sync::Arc::new(duohive_core::testkit::FakeDirs::new(Default::default())),
         home: PathBuf::from("/home/me"),
         halted: Arc::new(AtomicBool::new(false)),
+        running: Arc::new(AtomicUsize::new(0)),
     }
 }
 
@@ -198,6 +199,38 @@ async fn first_frame_signal_fires_once_after_drawing() {
     let (result, ()) = tokio::join!(app, driver);
     result.unwrap();
     assert_eq!(count(&h), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn running_agents_are_counted_for_the_quit_line() {
+    let (mut h, mut p) = harness();
+    // Duo and auth-service idle, billing-api finished, squad-1 waiting.
+    h.events.send(snapshot(&resting_model())).unwrap();
+    let cfg = cfg(true);
+    let running = Arc::clone(&cfg.running);
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg,
+        &mut p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        assert_eq!(running.load(Ordering::SeqCst), 4);
+        h.events
+            .send(Event::AgentStatusChanged {
+                agent: n("auth-service"),
+                status: status(AgentState::Stopped, mins(0)),
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+    assert_eq!(running.load(Ordering::SeqCst), 3);
 }
 
 #[tokio::test(start_paused = true)]

@@ -8,7 +8,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitStatus};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -63,6 +63,9 @@ pub struct AppConfig {
     /// Set by a panic hook once the terminal has been restored: no frame is drawn
     /// after it, and the app ends with [`TuiError::Halted`].
     pub halted: Arc<AtomicBool>,
+    /// How many agents are running, Duo included, kept current by the app so the
+    /// caller can say so after a quit (they keep running in tmux).
+    pub running: Arc<AtomicUsize>,
 }
 
 impl fmt::Debug for AppConfig {
@@ -75,6 +78,7 @@ impl fmt::Debug for AppConfig {
             .field("editor", &self.editor)
             .field("home", &self.home)
             .field("halted", &self.halted)
+            .field("running", &self.running)
             .finish_non_exhaustive()
     }
 }
@@ -337,6 +341,14 @@ fn wall_now() -> Millis {
     Millis(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
 }
 
+/// The agents whose CLI is running, Duo included.
+fn running_agents(m: &UiModel) -> usize {
+    m.agents
+        .values()
+        .filter(|v| v.status.state.is_running())
+        .count()
+}
+
 /// The loop, with the terminal hand-over for `o` and the quit signals injected.
 #[expect(
     clippy::too_many_arguments,
@@ -373,6 +385,7 @@ pub(crate) async fn run_loop<B: Backend>(
                 let snapshot = matches!(event, Event::Snapshot(_));
                 clock.dirty |= m.apply(event);
                 clock.ready |= snapshot;
+                cfg.running.store(running_agents(&m), Ordering::Relaxed);
             }
             got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
                 InputEvent::Resize(..) => clock.dirty = true,
