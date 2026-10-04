@@ -1,9 +1,11 @@
 //! Domain core: pure types and ports with no I/O dependencies.
 
 pub mod cli_kind;
+pub mod inherit;
 pub mod names;
 pub mod org;
 pub mod time;
+pub mod validate;
 
 #[cfg(any(test, feature = "testkit"))]
 #[allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")]
