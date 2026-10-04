@@ -5,6 +5,7 @@ use crate::adapter::{
 };
 use crate::cli_kind::CliKind;
 use crate::hook::HookMessage;
+use crate::inherit::expand_home;
 use crate::launch::{Key, LaunchCommand, LaunchSpec, Token, WindowId};
 use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, Fields, Org, Role, Team};
@@ -161,9 +162,9 @@ impl Runtime for FakeRuntime {
     }
 }
 
-/// An in-memory [`Store`].
+/// What a [`FakeStore`] holds; read and steer it through [`FakeStore::state`].
 #[derive(Debug)]
-pub struct FakeStore {
+pub struct FakeStoreState {
     /// What `load_org` returns.
     pub org_result: Result<Option<Org>, OrgFileError>,
     /// What `last_good_org` returns.
@@ -176,11 +177,13 @@ pub struct FakeStore {
     pub saved_settings: Vec<Settings>,
     /// Session rows by agent.
     pub sessions: BTreeMap<AgentName, SessionRow>,
+    /// Every `delete_session` call, oldest first.
+    pub deleted_sessions: Vec<AgentName>,
     /// Queued hooks, oldest first.
     pub pending: Vec<HookMessage>,
 }
 
-impl Default for FakeStore {
+impl Default for FakeStoreState {
     fn default() -> Self {
         Self {
             org_result: Ok(None),
@@ -189,14 +192,23 @@ impl Default for FakeStore {
             saved_orgs: Vec::new(),
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
+            deleted_sessions: Vec::new(),
             pending: Vec::new(),
         }
     }
 }
 
+/// An in-memory [`Store`]; clones share one state, so a test keeps a handle
+/// after boxing the store into the engine.
+#[derive(Clone, Debug, Default)]
+pub struct FakeStore {
+    /// The shared state.
+    pub state: Arc<Mutex<FakeStoreState>>,
+}
+
 impl FakeStore {
-    fn check_save(&mut self) -> Result<(), StoreError> {
-        if std::mem::take(&mut self.fail_next_save) {
+    fn check_save(st: &mut FakeStoreState) -> Result<(), StoreError> {
+        if std::mem::take(&mut st.fail_next_save) {
             return Err(StoreError("disk full".to_owned()));
         }
         Ok(())
@@ -205,37 +217,49 @@ impl FakeStore {
 
 impl Store for FakeStore {
     fn load_org(&mut self) -> Result<Option<Org>, OrgFileError> {
-        self.org_result.clone()
+        self.state.lock().unwrap().org_result.clone()
     }
     fn last_good_org(&mut self) -> Option<Org> {
-        self.last_good.clone()
+        self.state.lock().unwrap().last_good.clone()
     }
     fn save_org(&mut self, org: &Org) -> Result<(), StoreError> {
-        self.check_save()?;
-        self.saved_orgs.push(org.clone());
-        self.last_good = Some(org.clone());
-        self.org_result = Ok(Some(org.clone()));
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.saved_orgs.push(org.clone());
+        st.last_good = Some(org.clone());
+        st.org_result = Ok(Some(org.clone()));
         Ok(())
     }
     fn save_settings(&mut self, s: &Settings) -> Result<(), StoreError> {
-        self.check_save()?;
-        self.saved_settings.push(s.clone());
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.saved_settings.push(s.clone());
         Ok(())
     }
     fn load_sessions(&mut self) -> Result<Vec<SessionRow>, StoreError> {
-        Ok(self.sessions.values().cloned().collect())
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .sessions
+            .values()
+            .cloned()
+            .collect())
     }
     fn save_session(&mut self, row: &SessionRow) -> Result<(), StoreError> {
-        self.check_save()?;
-        self.sessions.insert(row.agent.clone(), row.clone());
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.sessions.insert(row.agent.clone(), row.clone());
         Ok(())
     }
     fn delete_session(&mut self, agent: &AgentName) -> Result<(), StoreError> {
-        self.sessions.remove(agent);
+        let mut st = self.state.lock().unwrap();
+        st.sessions.remove(agent);
+        st.deleted_sessions.push(agent.clone());
         Ok(())
     }
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
-        Ok(std::mem::take(&mut self.pending))
+        Ok(std::mem::take(&mut self.state.lock().unwrap().pending))
     }
 }
 
@@ -250,6 +274,10 @@ pub struct StubAdapter {
     pub presence: CliPresence,
     /// What `startup_prompts()` returns.
     pub startup_prompts: bool,
+    /// Every spec `launch` received, oldest first; shared by clones.
+    pub launches: Arc<Mutex<Vec<LaunchSpec>>>,
+    /// What `enrich_hook` does; `None` leaves the payload alone.
+    pub enrich: Option<fn(&str, &mut serde_json::Value)>,
 }
 
 impl StubAdapter {
@@ -269,7 +297,15 @@ impl StubAdapter {
                 version: "2.1.0".to_owned(),
             },
             startup_prompts: false,
+            launches: Arc::new(Mutex::new(Vec::new())),
+            enrich: None,
         }
+    }
+
+    /// Sets what `enrich_hook` does.
+    pub fn with_enrich(mut self, f: fn(&str, &mut serde_json::Value)) -> Self {
+        self.enrich = Some(f);
+        self
     }
 }
 
@@ -292,11 +328,17 @@ impl CliAdapter for StubAdapter {
             .iter()
             .flat_map(|t| ["--task".to_owned(), t.clone()])
             .collect();
+        self.launches.lock().unwrap().push(spec.clone());
+        let cwd = spec
+            .agent
+            .directory
+            .as_deref()
+            .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home));
         Ok(LaunchCommand {
             program: self.kind.binary().to_owned(),
             args,
             env: Vec::new(),
-            cwd: spec.home.clone(),
+            cwd,
             files: Vec::new(),
         })
     }
@@ -333,5 +375,10 @@ impl CliAdapter for StubAdapter {
     }
     fn startup_prompts(&self) -> bool {
         self.startup_prompts
+    }
+    fn enrich_hook(&self, event: &str, payload: &mut serde_json::Value) {
+        if let Some(f) = self.enrich {
+            f(event, payload);
+        }
     }
 }
