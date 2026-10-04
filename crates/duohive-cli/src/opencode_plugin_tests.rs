@@ -147,36 +147,79 @@ fn delivered(log_dir: &Path, agent: &str) -> Vec<(String, HookSignal)> {
         .collect()
 }
 
-/// The decision OpenCode reaches (last match wins) for each of the driver's
-/// queries, per sample user config, once the plugin's `config` hook has run.
-/// Queries: build edit a.txt, build edit src/x.ts, build bash ls,
-/// build bash `rm -rf x`, build bash `git push`, build bash `git commit -m x`,
-/// build webfetch, plan edit, plan bash `rm -rf x`, docs edit a.txt,
-/// docs edit docs/a.md.
+/// The decision OpenCode reaches (last match wins, built-in agent rules
+/// before the user's) for each of the driver's queries, per sample user
+/// config, once the plugin's `config` hook has run. Queries, in order:
+/// build: edit a.txt, edit src/x.ts, bash ls, bash `rm -rf x`, bash
+/// `git push`, bash `git commit -m x`, webfetch; plan: edit a.txt, edit
+/// .opencode/plans/p.md, bash `rm -rf x`; docs (a user agent in one sample,
+/// unknown otherwise): edit a.txt, edit docs/a.md; explore: edit a.txt, bash
+/// ls; general: edit a.txt; title: bash ls.
 fn expected_decisions() -> Value {
     fn row(s: &str) -> Vec<&str> {
-        s.split(" ").collect()
+        s.split_whitespace().collect()
     }
     json!([
-        // {}
-        row("ask ask ask ask ask ask allow ask ask ask ask"),
-        // "permission": "allow"
-        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        // {}: plan keeps its built-in edit deny (and plan files), explore and
+        // title keep theirs; an agent DuoHive does not know (docs) is untouched.
+        row("ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
+        // "permission": "allow" (overrides the built-ins, so everything asks)
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
         // "permission": "deny" stays deny everywhere
-        row("deny deny deny deny deny deny deny deny deny deny deny"),
+        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
         // {"*": "ask", "edit": "allow"}
-        row("ask ask ask ask ask ask ask ask ask ask ask"),
+        row("ask ask ask ask ask ask ask  ask ask ask  allow allow  ask ask  ask  ask"),
         // the user's deny and patterns kept, their allows made ask
-        row("ask ask ask deny ask deny allow ask ask ask allow"),
+        row("ask ask ask deny ask deny allow  ask ask ask  ask allow  deny ask  deny  ask"),
         // {"edit": "allow", "*": "allow"}: "*" last must not win
-        row("ask ask ask ask ask ask allow ask ask ask ask"),
-        // {"bash": {"git *": "allow"}, "*": "allow"}: the user's pattern still allows
-        row("ask ask ask ask allow allow allow ask ask ask ask"),
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
+        // {"bash": {"git *": "allow"}, "*": "allow"}: the later "*" overrode
+        // the user's pattern, so it asks too
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
         // agent build {"bash": "allow", "*": "allow"}
-        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        row("ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
         // {"edit": {"src/**": "deny"}}: the added "*" does not override it
-        row("ask deny ask ask ask ask allow ask ask ask ask"),
+        row("ask deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
+        // {"edit": "ask", "*": "deny"}: the later deny still decides
+        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        // {"bash": "allow", "*": "deny"}
+        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        // agent plan {"edit": "allow", "*": "deny"}
+        row("ask ask ask ask ask ask allow  deny deny deny  allow allow  deny ask  ask  deny"),
+        // {"edit": {"*": "ask"}, "*": "deny"}
+        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        // {"edit": "allow"}: the user's allow overrode plan's deny; now it asks
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  deny"),
     ])
+}
+
+/// The composition only ever tightens: for every sample and every edit or
+/// bash query, the decision after is at least as strict as before.
+fn assert_only_tightens(summary: &Value) {
+    let rank = |d: &Value| match d.as_str() {
+        Some("allow") => 0,
+        Some("ask") => 1,
+        Some("deny") => 2,
+        other => panic!("decision {other:?}"),
+    };
+    let queries = summary["queries"].as_array().unwrap();
+    let before = summary["before"].as_array().unwrap();
+    let after = summary["decisions"].as_array().unwrap();
+    assert_eq!(before.len(), after.len());
+    for (sample, (b, a)) in before.iter().zip(after).enumerate() {
+        for (q, query) in queries.iter().enumerate() {
+            if !matches!(query[1].as_str(), Some("edit" | "bash")) {
+                assert_eq!(a[q], b[q], "sample {sample} {query} changed");
+                continue;
+            }
+            assert!(
+                rank(&a[q]) >= rank(&b[q]),
+                "sample {sample} {query}: {} -> {}",
+                b[q],
+                a[q]
+            );
+        }
+    }
 }
 
 /// Each delivery the fake hook exe logged for `agent`: (event, payload).
@@ -304,6 +347,7 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     let summary: Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(summary["errors"], json!([]), "{}", runtime.display());
+    assert_only_tightens(&summary);
     assert_eq!(
         summary["decisions"],
         expected_decisions(),
