@@ -60,6 +60,8 @@ pub(crate) struct Setup {
     pub dirs: HashMap<PathBuf, DirStatus>,
     pub claude: StubAdapter,
     pub opencode: StubAdapter,
+    /// A CLI whose adapter is left out of `Adapters`.
+    pub without_adapter: Option<CliKind>,
     /// Sent right after `Engine::new`; `None` sends nothing (D30).
     pub inventory: Option<Vec<(CliKind, CliPresence)>>,
 }
@@ -71,6 +73,7 @@ impl Default for Setup {
             dirs: HashMap::new(),
             claude: StubAdapter::new(CliKind::Claude),
             opencode: StubAdapter::new(CliKind::Opencode),
+            without_adapter: None,
             inventory: Some(all_found()),
         }
     }
@@ -97,10 +100,13 @@ impl Setup {
             ids: Box::new(FakeIds::default()),
             dirs: Arc::new(FakeDirs::new(self.dirs)),
         };
-        let adapters = Arc::new(Adapters::new(vec![
-            Box::new(self.claude.clone()),
-            Box::new(self.opencode.clone()),
-        ]));
+        let adapters = Arc::new(Adapters::new(
+            [self.claude.clone(), self.opencode.clone()]
+                .into_iter()
+                .filter(|a| Some(a.kind) != self.without_adapter)
+                .map(|a| Box::new(a) as Box<dyn crate::adapter::CliAdapter>)
+                .collect(),
+        ));
         let engine = Engine::new(
             self.org,
             None,
@@ -112,10 +118,11 @@ impl Setup {
         );
         let mut h = Harness {
             engine,
-            calls: runtime.calls,
+            call_log: runtime.calls,
             store,
             clock,
             claude: self.claude,
+            opencode: self.opencode,
         };
         if let Some(list) = self.inventory {
             h.input(Input::CliInventory(list));
@@ -127,10 +134,11 @@ impl Setup {
 /// An engine with handles on every fake.
 pub(crate) struct Harness {
     pub engine: Engine,
-    pub calls: Arc<Mutex<Vec<RuntimeCall>>>,
+    pub call_log: Arc<Mutex<Vec<RuntimeCall>>>,
     pub store: FakeStore,
     pub clock: FakeClock,
     pub claude: StubAdapter,
+    pub opencode: StubAdapter,
 }
 
 impl Harness {
@@ -160,7 +168,7 @@ impl Harness {
 
     /// Runtime calls so far.
     pub(crate) fn calls(&self) -> Vec<RuntimeCall> {
-        self.calls.lock().unwrap().clone()
+        self.call_log.lock().unwrap().clone()
     }
 
     /// The single `Start` call's command; panics otherwise.
