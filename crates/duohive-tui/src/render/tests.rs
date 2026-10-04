@@ -265,7 +265,8 @@ fn side_pane_for_agents_and_groups() {
     let mut m = spec_model();
     let s = side(&m);
     assert!(s.contains("┌─ auth-service · Claude Code ─"), "{s}");
-    assert!(s.contains("attach: tmux -L duohive attach -t duohive:auth-service"));
+    assert!(s.contains("│   attach:"));
+    assert!(s.contains("│tmux -L duohive attach -t duohive:auth-service"));
     m.selected = NodeKey::Agent(n("pay-qa"));
     let s = side(&m);
     assert!(s.contains("○ stopped · s to start"), "{s}");
@@ -288,4 +289,49 @@ fn main_screen_snapshots() {
     let m = spec_model();
     insta::assert_snapshot!("main_80x24", render_lines(&m, &ctx(), 80, 24).join("\n"));
     insta::assert_snapshot!("main_160x48", render_lines(&m, &ctx(), 160, 48).join("\n"));
+}
+
+#[test]
+fn long_errors_wrap_to_three_lines_and_stay_in_view() {
+    let mut org = example_org();
+    let names: Vec<String> = (1..=30).map(|i| format!("extra-{i}")).collect();
+    for name in &names {
+        org.roles[0].agents.push(AgentDef {
+            name: n(name),
+            fields: Fields::default(),
+        });
+    }
+    let mut m = crate::fixtures::model_for(org);
+    let long = "exited unexpectedly ".repeat(10) + "(code 1)";
+    let last = n("extra-30");
+    m.agents.get_mut(&last).unwrap().status = Status {
+        error: Some(long),
+        ..status(AgentState::Errored, mins(2))
+    };
+    m.selected = NodeKey::Agent(last);
+    let lines = render_lines(&m, &ctx(), 100, 30);
+    let i = lines
+        .iter()
+        .position(|l| cols(l, 50).contains("extra-30"))
+        .expect("selected row on screen");
+    let detail: Vec<String> = lines[i + 1..=i + 3]
+        .iter()
+        .map(|l| cols(l, 49).trim_end().to_owned())
+        .collect();
+    assert!(detail.iter().all(|l| l.contains("exited")), "{detail:#?}");
+    assert!(detail[2].ends_with('…'), "{detail:#?}");
+    assert!(!cols(&lines[i + 4], 50).contains("exited"));
+}
+
+#[test]
+fn header_counts_only_org_agents() {
+    let mut m = spec_model();
+    let stray = m.agents[&n("auth-service")].clone();
+    m.agents.insert(n("ghost"), stray);
+    let lines = render_lines(&m, &ctx(), 100, 30);
+    assert!(
+        lines[0].starts_with(" DuoHive   6 agents · ● 2 working"),
+        "{}",
+        lines[0]
+    );
 }

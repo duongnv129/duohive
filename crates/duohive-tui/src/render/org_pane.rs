@@ -9,8 +9,8 @@ use ratatui::style::Style;
 use super::{
     At, HEAVY, RenderCtx, draw_box, fg, glyph_color, needs_you, put, put_pieces, state_color,
 };
-use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_words};
-use crate::model::{UiModel, unknown_view};
+use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_capped};
+use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::{TreeRow, TreeRowKind, agent_right, tree_rows};
 
@@ -19,6 +19,8 @@ const WIDE_RIGHT: usize = 17;
 const COMPACT_RIGHT: usize = 8;
 /// Needs you takes at most a third of the pane's inside, and always shows one row.
 const NEEDS_YOU_SHARE: u16 = 3;
+/// An error or problem wraps onto at most this many lines.
+const MAX_PROBLEM_LINES: usize = 3;
 /// The age's cells at the end of a state cell.
 const AGE_CELLS: usize = 4;
 
@@ -92,7 +94,7 @@ fn wrap_problems(rows: Vec<TreeRow>, content: usize) -> Vec<TreeRow> {
                 return vec![row];
             }
             let room = content.saturating_sub(width(&row.prefix));
-            wrap_words(&row.label, room)
+            wrap_capped(&row.label, room, MAX_PROBLEM_LINES)
                 .into_iter()
                 .map(|label| TreeRow {
                     label,
@@ -103,13 +105,18 @@ fn wrap_problems(rows: Vec<TreeRow>, content: usize) -> Vec<TreeRow> {
         .collect()
 }
 
-/// The first row to show, so the selected row and its detail line stay on screen.
+/// The first row to show, so the selected row and all its detail lines stay on screen.
 fn scroll(rows: &[TreeRow], selected: &NodeKey, height: usize) -> usize {
     let at = rows
         .iter()
         .position(|r| r.key.as_ref() == Some(selected))
         .unwrap_or(0);
-    (at + 2).saturating_sub(height)
+    let details = rows
+        .iter()
+        .skip(at + 1)
+        .take_while(|r| r.key.is_none())
+        .count();
+    (at + 1 + details).saturating_sub(height).min(at)
 }
 
 fn draw_row(
@@ -132,7 +139,8 @@ fn draw_row(
             let head = format!("⬢ {name}");
             let x = put(buf, x, s.y, &head, label_room, fg(p.accent_duo));
             let rest = label_room.saturating_sub(width(&head));
-            put(buf, x, s.y, &row.label[head.len()..], rest, fg(p.fg_muted));
+            let tail = row.label.strip_prefix(head.as_str()).unwrap_or_default();
+            put(buf, x, s.y, tail, rest, fg(p.fg_muted));
         }
         TreeRowKind::Team | TreeRowKind::Role => {
             let (glyph, name) = row.label.split_at(row.label.find(' ').map_or(0, |i| i + 1));
@@ -205,11 +213,8 @@ fn draw_state(
     compact: bool,
 ) {
     let p = &ctx.palette;
-    let status = m
-        .agents
-        .get(agent)
-        .map_or_else(|| unknown_view().status, |v| v.status.clone());
-    let cell: Vec<char> = agent_right(&status, ctx.now, compact, ctx.spinner())
+    let status = &m.view(agent).status;
+    let cell: Vec<char> = agent_right(status, ctx.now, compact, ctx.spinner())
         .chars()
         .collect();
     let (marker, rest) = cell.split_at(1.min(cell.len()));
@@ -217,7 +222,7 @@ fn draw_state(
     let text = |chars: &[char]| chars.iter().collect::<String>();
     let parts = [
         (text(marker), p.fg),
-        (text(state), state_color(p, &status)),
+        (text(state), state_color(p, status)),
         (text(age), p.fg_muted),
     ];
     put_pieces(buf, at, parts);

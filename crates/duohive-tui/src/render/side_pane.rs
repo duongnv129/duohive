@@ -12,7 +12,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
 use super::{LIGHT, RenderCtx, draw_box, fg};
-use crate::format::{one_line, truncate_end, width};
+use crate::format::{chunk_cells, one_line, truncate_end, width};
 use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
@@ -20,15 +20,18 @@ use crate::tree::roll_up_counts;
 const EMPTY_ORG: &str = "Your org is empty · n to add a team, role or agent";
 const STOPPED: &str = "○ stopped · s to start";
 const ERRORED: &str = "✕ errored · s to stop";
-/// Indent of a one-line message inside the pane, after the padding cell.
+/// The padding cell inside the border (UI §3).
+const PAD: &str = " ";
+/// Indent of a one-line message, after the padding cell.
 const MESSAGE_INDENT: &str = "  ";
+const NONE: &str = "(none)";
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
 
 pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
     let p = &ctx.palette;
-    let (title, lines) = content(m, ctx, usize::from(r.width.saturating_sub(4)));
+    let (title, lines) = content(m, ctx, usize::from(r.width.saturating_sub(2)));
     draw_box(
         buf,
         r,
@@ -40,10 +43,12 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
     if r.width < 5 || r.height < 3 {
         return;
     }
+    // From the padding cell, so the attach command can use every cell; other lines start
+    // with `PAD` themselves.
     let inner = Rect {
-        x: r.x + 2,
+        x: r.x + 1,
         y: r.y + 1,
-        width: r.width - 4,
+        width: r.width - 2,
         height: r.height - 2,
     };
     Paragraph::new(lines)
@@ -67,8 +72,8 @@ fn content(m: &UiModel, ctx: &RenderCtx, cells: usize) -> (String, Vec<Line<'sta
         return (String::new(), message(EMPTY_ORG, p.fg));
     }
     match &m.selected {
-        NodeKey::Duo => agent(m, ctx, &m.org.duo.name),
-        NodeKey::Agent(a) => agent(m, ctx, a),
+        NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
+        NodeKey::Agent(a) => agent(m, ctx, a, cells),
         NodeKey::Team(t) => {
             let Some(team) = m.org.teams.iter().find(|x| &x.name == t) else {
                 return (String::new(), Vec::new());
@@ -120,29 +125,38 @@ fn role(m: &UiModel, p: &Palette, key: &RoleKey, cells: usize) -> (String, Vec<L
 fn message(text: &str, color: ratatui::style::Color) -> Vec<Line<'static>> {
     vec![
         Line::default(),
-        Line::from(Span::styled(format!("{MESSAGE_INDENT}{text}"), fg(color))),
+        Line::from(Span::styled(
+            format!("{PAD}{MESSAGE_INDENT}{text}"),
+            fg(color),
+        )),
     ]
 }
 
 /// Title `<agent> · <CLI>`; body: how to attach while it runs, else how to start or stop it.
-fn agent(m: &UiModel, ctx: &RenderCtx, name: &AgentName) -> (String, Vec<Line<'static>>) {
+fn agent(
+    m: &UiModel,
+    ctx: &RenderCtx,
+    name: &AgentName,
+    cells: usize,
+) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
     let cli = resolve(&m.org, name).map_or(m.org.defaults.cli, |r| r.cli);
     let title = format!("{name} · {}", cli.display());
-    let state = m
-        .agents
-        .get(name)
-        .map_or(AgentState::Stopped, |v| v.status.state);
+    let state = m.view(name).status.state;
     let body = match state {
         AgentState::Stopped => message(STOPPED, p.fg_muted),
         AgentState::Errored => message(ERRORED, p.error),
-        _ => message(
-            &format!(
-                "attach: tmux -L {} attach -t duohive:{name}",
-                ctx.tmux_socket
-            ),
-            p.fg,
-        ),
+        _ => {
+            // The command is never split at a space: copied, it must still be one command.
+            let command = format!("tmux -L {} attach -t duohive:{name}", ctx.tmux_socket);
+            let mut lines = message("attach:", p.fg_muted);
+            lines.extend(
+                chunk_cells(&command, cells)
+                    .into_iter()
+                    .map(|c| Line::from(Span::styled(c, fg(p.fg)))),
+            );
+            lines
+        }
     };
     (title, body)
 }
@@ -158,7 +172,10 @@ fn summary(
 ) -> Vec<Line<'static>> {
     let views: Vec<_> = names.iter().filter_map(|n| m.agents.get(*n)).collect();
     let noun = if names.len() == 1 { "agent" } else { "agents" };
-    let mut counts = vec![Span::styled(format!("{} {noun}", names.len()), fg(p.fg))];
+    let mut counts = vec![Span::styled(
+        format!("{PAD}{} {noun}", names.len()),
+        fg(p.fg),
+    )];
     for ((glyph, n), word) in roll_up_counts(&views).into_iter().zip(STATE_WORDS) {
         if n > 0 {
             counts.push(Span::styled(" · ", fg(p.fg_muted)));
@@ -171,40 +188,44 @@ fn summary(
     let from_above = inherited_for(&m.org, parent);
     let cli = setting(
         own.cli.map(CliKind::display),
-        from_above.cli.value.display(),
+        Some(from_above.cli.value.display()),
     );
     let model = setting(
         own.model.as_deref(),
-        from_above.model.as_ref().map_or("none", |v| &v.value),
+        from_above.model.as_ref().map(|v| v.value.as_str()),
     );
-    let worktrees = setting(own.worktree.map(on_off), on_off(from_above.worktree.value));
+    let worktrees = setting(
+        own.worktree.map(on_off),
+        Some(on_off(from_above.worktree.value)),
+    );
     let prompt = own
         .prompt
         .as_deref()
         .map(one_line)
         .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| "(none)".to_owned());
-    let pad = " ".repeat(LABEL_CELLS);
+        .unwrap_or_else(|| NONE.to_owned());
+    let pad = format!("{PAD}{}", " ".repeat(LABEL_CELLS));
     let mut defaults = vec![label("Defaults", p), Span::styled("CLI ", fg(p.fg))];
     defaults.push(cli.styled(p));
     defaults.push(Span::styled(" · model ", fg(p.fg)));
     defaults.push(model.styled(p));
     let mut wt = vec![Span::raw(pad), Span::styled("worktrees ", fg(p.fg))];
     wt.push(worktrees.styled(p));
-    let prompt = truncate_end(&prompt, cells.saturating_sub(LABEL_CELLS));
+    // Room after the padding cell and the label, leaving the right padding cell.
+    let prompt = truncate_end(&prompt, cells.saturating_sub(LABEL_CELLS + 2));
     vec![
         Line::from(counts),
         Line::from(defaults),
         Line::from(wt),
         Line::from(vec![label("Prompt", p), Span::styled(prompt, fg(p.fg))]),
         Line::default(),
-        Line::from(Span::styled("e edit", fg(p.fg_muted))),
+        Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted))),
     ]
 }
 
 fn label(text: &str, p: &Palette) -> Span<'static> {
     let pad = LABEL_CELLS.saturating_sub(width(text));
-    Span::styled(format!("{text}{}", " ".repeat(pad)), fg(p.fg_muted))
+    Span::styled(format!("{PAD}{text}{}", " ".repeat(pad)), fg(p.fg_muted))
 }
 
 fn on_off(b: bool) -> &'static str {
@@ -215,12 +236,15 @@ fn on_off(b: bool) -> &'static str {
 enum Setting {
     Own(String),
     Inherited(String),
+    /// Set nowhere above: nothing to inherit.
+    Unset,
 }
 
-fn setting(own: Option<&str>, inherited: &str) -> Setting {
-    match own {
-        Some(v) => Setting::Own(v.to_owned()),
-        None => Setting::Inherited(inherited.to_owned()),
+fn setting(own: Option<&str>, inherited: Option<&str>) -> Setting {
+    match (own, inherited) {
+        (Some(v), _) => Setting::Own(v.to_owned()),
+        (None, Some(v)) => Setting::Inherited(v.to_owned()),
+        (None, None) => Setting::Unset,
     }
 }
 
@@ -229,6 +253,7 @@ impl Setting {
         match self {
             Setting::Own(v) => Span::styled(v, fg(p.fg)),
             Setting::Inherited(v) => Span::styled(format!("inherit: {v}"), fg(p.fg_muted)),
+            Setting::Unset => Span::styled(NONE, fg(p.fg_muted)),
         }
     }
 }

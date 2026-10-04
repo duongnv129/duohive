@@ -6,7 +6,7 @@ use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 
 use crate::format::{compact_cell, one_line, state_cell};
-use crate::model::{UiModel, unknown_view};
+use crate::model::UiModel;
 
 const TEE: &str = "├─ ";
 const ELBOW: &str = "└─ ";
@@ -166,13 +166,9 @@ impl Ctx<'_> {
     }
 
     fn duo(&mut self) {
-        let duo = &self.m.org.duo;
-        let view = self
-            .m
-            .agents
-            .get(&duo.name)
-            .cloned()
-            .unwrap_or_else(unknown_view);
+        let m = self.m;
+        let duo = &m.org.duo;
+        let view = m.view(&duo.name);
         let label = if self.compact {
             format!("⬢ {}", duo.name)
         } else {
@@ -186,7 +182,7 @@ impl Ctx<'_> {
             label,
             right,
         ));
-        self.detail(&view, true, "    ".to_owned());
+        self.detail(view, true, "    ".to_owned());
     }
 
     fn role(&mut self, role: &Role, key: RoleKey, parent: &str, last: bool, indent: &str) {
@@ -208,12 +204,8 @@ impl Ctx<'_> {
         for (k, agent) in role.agents.iter().enumerate() {
             let last = k + 1 == role.agents.len();
             let (prefix, _) = self.branch(&cont, last, "    ");
-            let view = self
-                .m
-                .agents
-                .get(&agent.name)
-                .cloned()
-                .unwrap_or_else(unknown_view);
+            let m = self.m;
+            let view = m.view(&agent.name);
             let right = agent_right(&view.status, self.now, self.compact, None);
             self.rows.push(TreeRow::node(
                 TreeRowKind::Agent,
@@ -223,7 +215,7 @@ impl Ctx<'_> {
                 right,
             ));
             let detail = self.detail_prefix(&cont, last, "      ");
-            self.detail(&view, false, detail);
+            self.detail(view, false, detail);
         }
     }
 
