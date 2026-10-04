@@ -12,7 +12,7 @@ use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use rusqlite::{Connection, Row};
 
-use crate::db::{db_err, open_db, take_pending, to_i64};
+use crate::db::{db_err, insert_pending_hook, open_db, take_pending, to_i64};
 use crate::paths::Paths;
 use crate::{org_file, settings_file};
 
@@ -169,5 +169,9 @@ impl Store for SqliteStore {
 
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
         take_pending(&mut self.conn)
+    }
+
+    fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError> {
+        insert_pending_hook(&self.conn, msg, at)
     }
 }
