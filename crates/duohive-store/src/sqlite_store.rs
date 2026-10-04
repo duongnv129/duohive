@@ -54,16 +54,14 @@ fn millis(v: i64) -> Millis {
     Millis(u64::try_from(v).unwrap_or(0))
 }
 
-fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, StoreError>> {
+fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, String>> {
     let agent: String = r.get("agent")?;
     let state: String = r.get("state")?;
     let token: Option<String> = r.get("token")?;
     let window: Option<String> = r.get("window")?;
     let quiet_since: Option<i64> = r.get("quiet_since")?;
     let (Ok(agent_name), Some(state)) = (AgentName::parse(&agent), parse_state(&state)) else {
-        return Ok(Err(StoreError(format!(
-            "state.db: unreadable session row for {agent:?}"
-        ))));
+        return Ok(Err(agent));
     };
     Ok(Ok(SessionRow {
         agent: agent_name,
@@ -112,11 +110,26 @@ impl Store for SqliteStore {
             .conn
             .prepare("SELECT * FROM sessions ORDER BY agent")
             .map_err(|e| db_err("cannot read sessions", &e))?;
-        let rows = stmt
+        let parsed = stmt
             .query_map([], read_row)
-            .map_err(|e| db_err("cannot read sessions", &e))?;
-        rows.map(|r| r.map_err(|e| db_err("cannot read session", &e))?)
-            .collect()
+            .map_err(|e| db_err("cannot read sessions", &e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| db_err("cannot read session", &e))?;
+        drop(stmt);
+        let mut good = Vec::with_capacity(parsed.len());
+        for item in parsed {
+            match item {
+                Ok(row) => good.push(row),
+                Err(bad_agent) => {
+                    // One unreadable row must not hide the healthy ones: drop it and say so.
+                    tracing::warn!(agent = %bad_agent, "dropping unreadable session row");
+                    self.conn
+                        .execute("DELETE FROM sessions WHERE agent = ?1", [&bad_agent])
+                        .map_err(|e| db_err("cannot drop bad session", &e))?;
+                }
+            }
+        }
+        Ok(good)
     }
 
     fn save_session(&mut self, row: &SessionRow) -> Result<(), StoreError> {
