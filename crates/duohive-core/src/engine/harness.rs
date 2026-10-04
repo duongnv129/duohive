@@ -12,6 +12,7 @@ use crate::command::Command;
 use crate::event::Event;
 use crate::launch::{LaunchCommand, WindowId};
 use crate::org::Org;
+use crate::ports::Clock;
 use crate::settings::Settings;
 use crate::status::AgentState;
 use crate::testkit::{
@@ -64,6 +65,10 @@ pub(crate) struct Setup {
     pub without_adapter: Option<CliKind>,
     /// Sent right after `Engine::new`; `None` sends nothing (D30).
     pub inventory: Option<Vec<(CliKind, CliPresence)>>,
+    /// The engine's settings.
+    pub settings: Settings,
+    /// When the clock starts.
+    pub start: Millis,
 }
 
 impl Default for Setup {
@@ -75,6 +80,8 @@ impl Default for Setup {
             opencode: StubAdapter::new(CliKind::Opencode),
             without_adapter: None,
             inventory: Some(all_found()),
+            settings: Settings::default(),
+            start: T0,
         }
     }
 }
@@ -83,7 +90,7 @@ impl Setup {
     pub(crate) fn build(self) -> Harness {
         let runtime = FakeRuntime::default();
         let store = FakeStore::default();
-        let clock = FakeClock::new(T0);
+        let clock = FakeClock::new(self.start);
         let cfg = EngineConfig {
             home: HOME.into(),
             data_dir: DATA_DIR.into(),
@@ -107,15 +114,7 @@ impl Setup {
                 .map(|a| Box::new(a) as Box<dyn crate::adapter::CliAdapter>)
                 .collect(),
         ));
-        let engine = Engine::new(
-            self.org,
-            None,
-            Settings::default(),
-            None,
-            cfg,
-            ports,
-            adapters,
-        );
+        let engine = Engine::new(self.org, None, self.settings, None, cfg, ports, adapters);
         let mut h = Harness {
             engine,
             call_log: runtime.calls,
@@ -123,6 +122,7 @@ impl Setup {
             clock,
             claude: self.claude,
             opencode: self.opencode,
+            t0: self.start,
         };
         if let Some(list) = self.inventory {
             h.input(Input::CliInventory(list));
@@ -139,12 +139,28 @@ pub(crate) struct Harness {
     pub clock: FakeClock,
     pub claude: StubAdapter,
     pub opencode: StubAdapter,
+    /// When the clock started.
+    pub t0: Millis,
 }
 
 impl Harness {
     /// The default setup.
     pub(crate) fn new() -> Self {
         Setup::default().build()
+    }
+
+    /// Moves the clock to `t0 + at`; panics when that is in the past.
+    pub(crate) fn at(&mut self, at: Duration) {
+        let target = self.t0 + at;
+        let now = self.clock.now();
+        assert!(target >= now, "the clock can't go back");
+        self.clock.advance(target - now);
+    }
+
+    /// Moves the clock to `t0 + at`, then ticks.
+    pub(crate) fn tick_at(&mut self, at: Duration) -> Vec<Event> {
+        self.at(at);
+        self.input(Input::Tick)
     }
 
     pub(crate) fn input(&mut self, input: Input) -> Vec<Event> {
