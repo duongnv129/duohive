@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+- `make install` / `install.sh`: build in release mode and install `duohive` and the `dh` alias to `~/.local/bin` (or `PREFIX`); `make uninstall` removes them.
+
 ### Added
 
 - Cargo workspace with seven crates, a pinned toolchain, shared lints and the Apache-2.0 licence.
