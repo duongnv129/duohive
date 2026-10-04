@@ -94,7 +94,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 | Source | Mechanism | Gives |
 |---|---|---|
 | **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
-| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0; it covers new windows with no per-window command, and silences every pane on the connection, so a live view of the selected pane in phase 2 needs its own path), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status} #{pane_dead_signal}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty and names the signal in `#{pane_dead_signal}` (spike S1) | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status or signal |
+| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0; it covers new windows with no per-window command, and silences every pane on the connection, so a live view of the selected pane in phase 2 needs its own path), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty (spike S1): it has no exit status, and is errored "exited unexpectedly" | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status, or none for a signal death |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
 - **Spike S0** (`docs/plans/spike-report.md` S0): format subscriptions (`refresh-client -B`) did report for silenced panes at 100 windows, about once a second, with the same delay as polling (median 0.47–0.57 s), but their reader cost more CPU than the one-a-second `list-windows` at 100 noisy windows on both tmux 3.2a and latest, so the poll is the mechanism. `no-output` beat paused flow control on tmux server + reader CPU and needs nothing per new window. A closed window is reported as `%unlinked-window-close @N` (not `%window-close`), and is also absent from the next reply.
@@ -102,7 +102,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 
 ### 4.2 Status engine
 
-A state machine per agent. A hook event moves it exactly; a settled screen read can move it only where the adapter has no hook for that transition, and marks the result `~`.
+A state machine per agent. A hook event moves it exactly; a settled screen read can move it only where the adapter has no hook for that transition, and marks the result `~`. One exception: while an agent is waiting, a settled screen read applies whatever the hook coverage (at rest → finished or idle, busy → working), because no CLI hooks the user's answer to an approval prompt (spike S1: a declined prompt fires no hook, and an accepted long-running tool fires its next hook only when it ends).
 
 | From | Event | To |
 |---|---|---|
@@ -117,7 +117,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | working | Turn ends (Duo) | idle |
 | finished | The user selects the agent (`ViewAgent`) | idle |
 | finished, idle | New work: a task as the next turn, or a delivered message | working |
-| any running state | Unexpected exit (non-zero status, or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
+| any running state | Unexpected exit (non-zero status or no status (killed by a signal), or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
 | errored | Stopped (`s`, or by Duo) | stopped |
 
@@ -168,12 +168,12 @@ A fresh launch:
 
 | | Standing instructions | Hooks | MCP | Model, effort | Duo's chat replies (§6.5) |
 |---|---|---|---|---|---|
-| Claude Code | `--append-system-prompt` | per-launch `--settings` file (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Notification`, `Stop`, `StopFailure`, `SessionEnd`) | `--mcp-config` | `--model`; `--effort` | `last_assistant_message` in the `Stop` payload; the transcript at `transcript_path` as fallback |
+| Claude Code | `--append-system-prompt` | per-launch `--settings` file (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `StopFailure`, `SessionEnd`) | `--mcp-config` | `--model`; `--effort` | `last_assistant_message` in the `Stop` payload; the transcript at `transcript_path` as fallback |
 | OpenCode | DuoHive-owned agent definition, selected through an environment variable | DuoHive plugin | same config | provider and model config | the plugin's events |
 
 - **v1 CLIs:** Claude Code and OpenCode only. Codex is deferred to after v1; it would be a third adapter with its own spike.
 - **Spike first:** each mechanism is verified by a short spike against the pinned CLI version before its adapter is written (S1 Claude Code, S2 OpenCode). Where a mechanism is missing, the fallback is a temporary instructions file in the run directory, never the user's global configuration.
-- **Spike S1 (Claude Code 2.1.288):** every mechanism above is a per-launch flag, so no fallback file is needed. Three gaps are covered by other sources: an approval answered "No" ends the turn with no hook (a screen read on settle finds the agent at rest); the workspace-trust dialog in a directory Claude Code has not seen appears before `SessionStart` (a screen rule marks the agent waiting `~`, and the user answers it); a crash fires no `SessionEnd` (the pane death, which tmux reports as a signal, not an exit status). Claude Code has no non-interactive model listing (its `/model` picker saves the pick as the user's default, so DuoHive never drives it).
+- **Spike S1 (Claude Code 2.1.288):** every mechanism above is a per-launch flag, so no fallback file is needed. Three gaps are covered by other sources: an approval answered "No" ends the turn with no hook (a screen read on settle finds the agent at rest; while waiting, screen reads apply whatever the hook coverage, §4.2); the workspace-trust dialog in a directory Claude Code has not seen appears before `SessionStart` (a screen rule marks the agent waiting `~`, and the user answers it); a crash fires no `SessionEnd` (the pane death, with no exit status for a signal death). Claude Code has no non-interactive model listing (its `/model` picker saves the pick as the user's default, so DuoHive never drives it).
 - **Model and effort lists:** read from each CLI at runtime, never hard-coded. While loading, the form shows "loading models…"; on failure, the user can type a name. Claude Code (S1): the model aliases and the `--effort` choices are read from `claude --help`, and any other model is typed.
 - **Version check:** each adapter declares the CLI versions it was tested on. An untested version still runs, with a notice on the agent's row.
 
@@ -198,7 +198,7 @@ A fresh launch:
 
 - **Stopping:** DuoHive sends the CLI's own quit, then kills the window after a grace period. The agent becomes `stopped`.
 - **Normal exit:** a CLI that exits on its own with its end hook and a zero status leaves its agent `stopped`; the next task starts a fresh session.
-- **Failed launch or crash:** the agent becomes `errored`, with the reason (from the launch error, or the exit status or signal kept by tmux's `remain-on-exit`) on its row. It stays in Needs you until the user gives it work (a fresh launch) or stops it.
+- **Failed launch or crash:** the agent becomes `errored`, with the reason (from the launch error, or the exit status kept by tmux's `remain-on-exit`; a CLI killed by a signal has no exit status and shows "exited unexpectedly", naming the signal only where tmux 3.3 or later provides `#{pane_dead_signal}`) on its row. It stays in Needs you until the user gives it work (a fresh launch) or stops it.
 
 ## 6. Messaging, Duo and MCP
 
