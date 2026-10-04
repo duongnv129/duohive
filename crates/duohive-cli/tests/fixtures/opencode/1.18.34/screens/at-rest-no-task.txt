@@ -1,0 +1,40 @@
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                          ▄                                             
+                                         █▀▀█ █▀▀█ █▀▀█ █▀▀▄ █▀▀▀ █▀▀█ █▀▀█ █▀▀█                                        
+                                         █  █ █  █ █▀▀▀ █  █ █    █  █ █  █ █▀▀▀                                        
+                                         ▀▀▀▀ █▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀ ▀▀▀▀                                        
+                                                                                                                        
+                                                                                                                        
+                       ┃                                                                                                
+                       ┃  Ask anything… "What is the tech stack of this project?"                                       
+                       ┃                                                                                                
+                       ┃  Build · Test Model 01 (Example)                                                               
+                       ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀                      
+                                                                       tab agents  ctrl+p commands                      
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                             ● Tip Use @agent-name in prompts to invoke specialized subagents                           
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+                                                                                                                        
+  /private/tmp/duohive-spike/work-oc                                                                           1.18.34  
+                                                                                                                        
