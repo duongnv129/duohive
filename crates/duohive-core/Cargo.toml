@@ -13,3 +13,8 @@ workspace = true
 testkit = []
 
 [dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+toml = { workspace = true }
