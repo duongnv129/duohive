@@ -137,3 +137,17 @@ async fn driver_ends_when_both_channels_close() {
         .expect("the core ends within 1 s")
         .unwrap();
 }
+
+#[tokio::test]
+async fn driver_ends_when_no_one_listens() {
+    let core = spawn(Harness::new());
+    drop(core.events);
+    core.commands
+        .send(Command::StartAgent { agent: n("pay-qa") })
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), core.task)
+        .await
+        .expect("the core ends within 1 s")
+        .unwrap();
+}
