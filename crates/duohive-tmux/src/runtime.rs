@@ -40,6 +40,8 @@ struct Shared {
     conn: Conn,
     events: mpsc::Sender<Input>,
     table: Mutex<Table>,
+    /// Polls run one at a time, so replies are diffed in the order they were asked for.
+    poll_gate: Mutex<()>,
 }
 
 impl Shared {
@@ -78,6 +80,7 @@ impl TmuxRuntime {
             conn,
             events,
             table: Mutex::new(Table::default()),
+            poll_gate: Mutex::new(()),
         });
         let (requests, rx) = mpsc::unbounded_channel();
         let tasks = vec![
@@ -143,9 +146,11 @@ async fn poll_loop(shared: Arc<Shared>) {
     }
 }
 
-/// One poll: `list-windows`, diffed against the table, events sent, all under the lock.
+/// One poll: `list-windows` (no lock held while tmux answers), then the diff and its
+/// events under the table lock. Entries added after the mark wait for the next reply.
 async fn poll(shared: &Shared) -> Result<(), CmdError> {
-    let mut table = shared.table.lock().await;
+    let _one_at_a_time = shared.poll_gate.lock().await;
+    let mark = shared.table.lock().await.mark();
     let reply = shared
         .conn
         .cmd(activity::poll_command(&shared.cfg.session))
@@ -155,7 +160,8 @@ async fn poll(shared: &Shared) -> Result<(), CmdError> {
         .iter()
         .filter_map(|l| activity::parse_poll_line(l))
         .collect();
-    let evs = table.diff(&rows);
+    let mut table = shared.table.lock().await;
+    let evs = table.diff(&rows, mark);
     shared.emit_all(evs).await;
     drop(table);
     Ok(())
@@ -365,22 +371,33 @@ async fn capture(shared: &Shared, agent: AgentName) {
 
 /// Lists tagged windows; they join the table already reported, so the poll only
 /// reports what changes after this `Inventory`.
+///
+/// A reply lost to a reattach (`Closed` while the connection lives) is asked for once
+/// more. Any other failure is only logged: the port has no failed-inventory event, and an
+/// empty `Inventory` would read as "every window vanished". If the server is gone,
+/// `ConnectionLost` follows instead.
 async fn inventory(shared: &Shared) {
-    let mut table = shared.table.lock().await;
     let line = activity::inventory_command(&shared.cfg.session);
-    match shared.conn.cmd(line).await {
-        Ok(reply) => {
-            let list: Vec<_> = reply
-                .iter()
-                .filter_map(|l| activity::parse_inventory_line(l))
-                .collect();
-            for live in &list {
-                table.insert_restored(live);
-            }
-            shared.emit(RuntimeEvent::Inventory(list)).await;
-        }
-        Err(e) => tracing::warn!(%e, "inventory failed"),
+    let mut reply = shared.conn.cmd(line.clone()).await;
+    if reply == Err(CmdError::Closed) && !shared.conn.is_closed() {
+        reply = shared.conn.cmd(line).await;
     }
+    let reply = match reply {
+        Ok(reply) => reply,
+        Err(e) => {
+            tracing::warn!(%e, "inventory failed");
+            return;
+        }
+    };
+    let list: Vec<_> = reply
+        .iter()
+        .filter_map(|l| activity::parse_inventory_line(l))
+        .collect();
+    let mut table = shared.table.lock().await;
+    for live in &list {
+        table.insert_restored(live);
+    }
+    shared.emit(RuntimeEvent::Inventory(list)).await;
 }
 
 /// `launch.sh`: DuoHive's PATH (Review Focus 4), the env, the cwd, then `exec` with
@@ -461,6 +478,8 @@ fn write_file(path: &Path, contents: &str, mode: u32) -> std::io::Result<()> {
         .create(true)
         .truncate(true)
         .mode(mode)
+        // A symlink planted at the path is refused, never followed.
+        .custom_flags(libc::O_NOFOLLOW)
         .open(path)?;
     f.set_permissions(std::fs::Permissions::from_mode(mode))?;
     f.write_all(contents.as_bytes())
