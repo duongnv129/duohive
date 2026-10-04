@@ -220,8 +220,19 @@ fn save_org_failure_leaves_files_unchanged_and_no_tmp() {
     other.defaults.prompt = Some("changed".into());
     let ro = std::fs::Permissions::from_mode(0o500);
     std::fs::set_permissions(&paths.config_dir, ro).unwrap();
-    let result = store.save_org(&other);
+    let probe = paths.config_dir.join("probe");
+    let is_root = std::fs::write(&probe, b"x").is_ok(); // root ignores directory modes
+    let result = if is_root {
+        None
+    } else {
+        Some(store.save_org(&other))
+    };
+    let _ = std::fs::remove_file(&probe);
     std::fs::set_permissions(&paths.config_dir, std::fs::Permissions::from_mode(0o700)).unwrap();
+    if is_root {
+        return;
+    }
+    let result = result.unwrap();
 
     assert!(result.is_err());
     assert_eq!(std::fs::read(paths.org_toml()).unwrap(), toml_before);
@@ -254,4 +265,59 @@ fn save_org_reports_a_last_good_failure_as_saved() {
     assert!(err.0.contains("org.toml was saved"), "{}", err.0);
     assert_eq!(store.load_org(), Ok(Some(example_org())));
     assert!(!paths.data_dir.join("org.last-good.toml.tmp").exists());
+}
+
+#[test]
+fn a_bad_session_row_is_skipped_and_removed() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    store.save_session(&row(AgentState::Working)).unwrap();
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    for (agent, state) in [("ghost", "bogus"), ("bad name!", "idle")] {
+        conn.execute(
+            "INSERT INTO sessions (agent, state, quiet, from_screen, since, task_at_launch, saw_end_hook) \
+             VALUES (?1, ?2, 0, 0, 0, 0, 0)",
+            [agent, state],
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        store.load_sessions().unwrap(),
+        vec![row(AgentState::Working)]
+    );
+    let left: i64 = conn
+        .query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(left, 1);
+}
+
+#[test]
+fn existing_loose_modes_are_tightened() {
+    let (_t, paths) = temp_paths();
+    std::fs::create_dir_all(&paths.data_dir).unwrap();
+    std::fs::set_permissions(&paths.data_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::write(paths.state_db(), b"").unwrap();
+    std::fs::set_permissions(paths.state_db(), std::fs::Permissions::from_mode(0o644)).unwrap();
+    let _store = SqliteStore::open(&paths).unwrap();
+    let file = std::fs::metadata(paths.state_db())
+        .unwrap()
+        .permissions()
+        .mode();
+    let dir = std::fs::metadata(&paths.data_dir)
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(file & 0o777, 0o600);
+    assert_eq!(dir & 0o777, 0o700);
+}
+
+#[test]
+fn negative_user_version_is_a_clear_error() {
+    let (_t, paths) = temp_paths();
+    drop(open_db(&paths.state_db(), BUSY).unwrap());
+    let conn = rusqlite::Connection::open(paths.state_db()).unwrap();
+    conn.pragma_update(None, "user_version", -1).unwrap();
+    drop(conn);
+    let err = open_db(&paths.state_db(), BUSY).unwrap_err();
+    assert!(err.0.contains("schema version"), "{}", err.0);
 }
