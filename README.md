@@ -12,17 +12,27 @@ DuoHive is an open-source terminal app that runs your agents as an org chart, st
 - **Live status at a glance.** See who is working, who is waiting on you and who has finished, across the whole team.
 - **Duo, the manager agent.** Chat with Duo in plain language; Duo can see the whole org, message any agent and start or stop them.
 - **Claude Code and OpenCode.** Both are supported in v1.
-- **One lightweight process.** Light enough to forget it is running, from 10 to 100 agents. The command is `duohive` (a short `dh` alias is planned for packaging).
+- **One lightweight process.** Light enough to forget it is running, from 10 to 100 agents. The command is `duohive`, with the short alias `dh`.
 
 ## Requirements
 
 - tmux 3.2 or later
 - Rust 1.99 to build (`rustup` selects it from `rust-toolchain.toml`)
 
+## Install
+
+```sh
+make install                     # build in release mode, install duohive + dh to ~/.local/bin
+make install PREFIX=/usr/local    # or another prefix (or: ./install.sh --prefix DIR)
+make uninstall                   # remove them; your org and data are kept
+```
+
+`./install.sh --no-alias` skips `dh`; an existing `dh` that isn't DuoHive's is left alone.
+
 ## Build
 
 ```sh
-cargo build --release
+make release  # target/release/duohive
 make tools   # once: install the pinned dev tools
 make check   # format, lint, test, dependency and spelling checks
 ```

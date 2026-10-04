@@ -5,8 +5,9 @@ TYPOS_VERSION := 1.50.3
 CARGO_DENY_VERSION := 0.20.2
 CARGO_LLVM_COV_VERSION := 0.9.1
 TYPOS_BIN := $(CARGO_HOME)/bin/typos
+PREFIX ?= $(HOME)/.local
 
-.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean
+.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean release install uninstall
 
 help: ## List the available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -46,6 +47,15 @@ doc: ## Build the API docs
 tools: ## Install cargo-deny, typos and cargo-llvm-cov
 	cargo install --locked cargo-deny@$(CARGO_DENY_VERSION) typos-cli@$(TYPOS_VERSION) cargo-llvm-cov@$(CARGO_LLVM_COV_VERSION)
 	rustup component add llvm-tools-preview
+
+release: ## Build the release binary (target/release/duohive)
+	cargo build --release --locked -p duohive
+
+install: ## Build and install duohive (+ dh alias) to PREFIX/bin (default ~/.local)
+	./install.sh --prefix "$(PREFIX)"
+
+uninstall: ## Remove duohive and its dh alias from PREFIX/bin
+	./install.sh --prefix "$(PREFIX)" --uninstall
 
 clean: ## Remove build artifacts
 	cargo clean
