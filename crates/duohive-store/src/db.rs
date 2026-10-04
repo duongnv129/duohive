@@ -12,7 +12,7 @@ use std::time::Duration;
 use duohive_core::hook::HookMessage;
 use duohive_core::ports::StoreError;
 use duohive_core::time::Millis;
-use rusqlite::{Connection, TransactionBehavior};
+use rusqlite::{Connection, OpenFlags, TransactionBehavior};
 
 const DIR_MODE: u32 = 0o700;
 const FILE_MODE: u32 = 0o600;
@@ -78,6 +78,27 @@ pub fn open_db(path: &Path, busy_timeout: Duration) -> Result<Connection, StoreE
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|e| db_err("cannot enable WAL", &e))?;
     migrate(&mut conn)?;
+    Ok(conn)
+}
+
+/// Opens an existing, current database for `duohive hook`, which only inserts:
+/// it never creates the file, sets WAL (the app did, and it persists) or
+/// migrates, so the hook stays within its single `busy_timeout` budget.
+pub fn open_db_for_hook(path: &Path, busy_timeout: Duration) -> Result<Connection, StoreError> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )
+    .map_err(|e| db_err("cannot open", &e))?;
+    conn.busy_timeout(busy_timeout)
+        .map_err(|e| db_err("cannot set busy timeout", &e))?;
+    let seen = read_version(&conn)?;
+    if seen != MIGRATIONS.len() {
+        return Err(StoreError(format!(
+            "state.db schema {seen} is not the {} this build writes",
+            MIGRATIONS.len()
+        )));
+    }
     Ok(conn)
 }
 

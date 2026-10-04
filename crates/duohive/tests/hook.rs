@@ -6,8 +6,10 @@
 )]
 
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{Read, Write};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -58,6 +60,11 @@ fn pending(data: &Path) -> Vec<HookMessage> {
         .unwrap()
         .take_pending_hooks()
         .unwrap()
+}
+
+/// What a DuoHive run leaves behind: a current `state.db` (the hook never creates one).
+fn init_db(data: &Path) {
+    assert!(pending(data).is_empty());
 }
 
 fn hook(token: &str, agent: &str, event: &str, payload: serde_json::Value) -> HookMessage {
@@ -173,6 +180,7 @@ impl Read for PanicReader {
 #[test]
 fn terminal_stdin_is_not_read() {
     let tmp = tempfile::tempdir().unwrap();
+    init_db(tmp.path());
     let touched = Arc::new(AtomicBool::new(false));
     let code = run_hook(
         &s(&["hook", "pay-qa", "busy"]),
@@ -191,6 +199,7 @@ fn terminal_stdin_is_not_read() {
 #[test]
 fn hook_falls_back_to_the_database_when_no_listener() {
     let tmp = tempfile::tempdir().unwrap();
+    init_db(tmp.path());
     let code = run_hook(
         &s(&["hook", "pay-qa", "turn-end"]),
         &b"{\"x\":2}"[..],
@@ -254,6 +263,7 @@ fn hook_survives_an_unreachable_socket() {
     let tmp = tempfile::tempdir().unwrap();
     let data = tmp.path().to_path_buf();
     let sock = data.join("run.sock");
+    init_db(&data);
     let _never_accepts = UnixListener::bind(&sock).unwrap();
     let _held = fill_backlog(&sock);
     let (out, took) = run_bin(hook_cmd(&data, Some("tok-4")), Some(b"{\"b\":2}"));
@@ -273,6 +283,7 @@ fn hook_never_fails_the_cli() {
 
     // Garbage stdin (no listener: lands in the database, wrapped).
     let tmp = tempfile::tempdir().unwrap();
+    init_db(tmp.path());
     let (out, took) = run_bin(
         hook_cmd(tmp.path(), Some("tok-5")),
         Some(b"\xff\xfe not json {"),
@@ -293,6 +304,7 @@ fn hook_never_fails_the_cli() {
 
     // The socket path is a regular file.
     let tmp = tempfile::tempdir().unwrap();
+    init_db(tmp.path());
     fs::write(tmp.path().join("run.sock"), b"not a socket").unwrap();
     let (out, took) = run_bin(hook_cmd(tmp.path(), Some("tok-7")), Some(b"{}"));
     assert_quiet_success(&out, took, "socket is a regular file");
@@ -310,8 +322,81 @@ fn second_instance_refused() {
     ));
     assert_eq!(
         ListenerError::AlreadyRunning.to_string(),
-        "another DuoHive is already running (run.sock answers)"
+        "another DuoHive is already running (run.lock is held)"
     );
+}
+
+#[test]
+fn second_instance_refused_by_the_lock_alone() {
+    // Liveness is the lock, not the socket: a holder with no socket still wins.
+    let tmp = tempfile::tempdir().unwrap();
+    let lock = fs::File::create(tmp.path().join("run.lock")).unwrap();
+    lock.try_lock().unwrap();
+    assert!(matches!(
+        HookListener::bind(&tmp.path().join("run.sock")),
+        Err(ListenerError::AlreadyRunning)
+    ));
+    drop(lock);
+    HookListener::bind(&tmp.path().join("run.sock")).unwrap();
+}
+
+#[test]
+fn lock_file_is_owner_only() {
+    let tmp = tempfile::tempdir().unwrap();
+    let _listener = HookListener::bind(&tmp.path().join("run.sock")).unwrap();
+    let mode = fs::metadata(tmp.path().join("run.lock"))
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(mode, 0o600);
+}
+
+#[test]
+fn stale_socket_answering_without_the_lock_is_replaced() {
+    // A listener fd leaked into a child (macOS sets close-on-exec after socket())
+    // keeps a dead instance's socket answering; with no lock holder it is stale.
+    let tmp = tempfile::tempdir().unwrap();
+    let sock = tmp.path().join("run.sock");
+    let leaked = UnixListener::bind(&sock).unwrap();
+    let listener = HookListener::bind(&sock).unwrap();
+    drop(leaked);
+    let rt = multi_thread_rt();
+    let (to_core, mut core) = mpsc::channel(4);
+    rt.spawn(listener.serve(no_agents(), Arc::new(Adapters::new(vec![])), to_core, None));
+    let mut c = UnixStream::connect(&sock).unwrap();
+    c.write_all(&line(&hook("t", "a", "busy", json!(null))))
+        .unwrap();
+    let got = rt.block_on(async { tokio::time::timeout(BUDGET, core.recv()).await });
+    assert!(matches!(got, Ok(Some(Input::Hook(_)))), "{got:?}");
+}
+
+#[test]
+fn bind_never_removes_a_non_socket() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sock = tmp.path().join("run.sock");
+    fs::write(&sock, b"user data").unwrap();
+    assert!(matches!(
+        HookListener::bind(&sock),
+        Err(ListenerError::Io(_))
+    ));
+    assert_eq!(fs::read(&sock).unwrap(), b"user data");
+}
+
+#[test]
+fn bind_creates_an_owner_only_parent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("data");
+    let _listener = HookListener::bind(&dir.join("run.sock")).unwrap();
+    let mode = fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
+    // An existing, looser directory is tightened.
+    let loose = tmp.path().join("loose");
+    fs::create_dir(&loose).unwrap();
+    fs::set_permissions(&loose, fs::Permissions::from_mode(0o755)).unwrap();
+    let _other = HookListener::bind(&loose.join("run.sock")).unwrap();
+    let mode = fs::metadata(&loose).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700);
 }
 
 #[test]
@@ -320,12 +405,6 @@ fn stale_socket_replaced() {
     let sock = tmp.path().join("run.sock");
     drop(UnixListener::bind(&sock).unwrap()); // a crash leaves the file behind
     assert!(sock.exists());
-    // On macOS a child spawned by a parallel test can inherit the listener in the
-    // window before std marks it close-on-exec; wait until nothing answers.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while UnixStream::connect(&sock).is_ok() && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(20));
-    }
     let _listener = HookListener::bind(&sock).unwrap();
     UnixStream::connect(&sock).unwrap();
 }
@@ -400,4 +479,99 @@ async fn listener_enriches_before_forwarding() {
         )))
     );
     drop(served.tap);
+}
+
+#[tokio::test]
+async fn unterminated_last_line_is_not_delivered() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sock = tmp.path().join("run.sock");
+    let mut served = serve(&sock, no_agents(), Adapters::new(vec![]));
+    let mut stream = tokio::net::UnixStream::connect(&sock).await.unwrap();
+    let mut partial = line(&hook("tok-10", "pay-qa", "busy", json!({})));
+    partial.pop(); // the writer timed out before the newline: it queued the hook instead
+    stream.write_all(&partial).await.unwrap();
+    stream.shutdown().await.unwrap();
+    let got = tokio::time::timeout(Duration::from_millis(300), served.core.recv()).await;
+    assert!(!matches!(got, Ok(Some(_))), "{got:?}");
+    drop(served.tap);
+}
+
+#[tokio::test]
+async fn large_payload_still_arrives() {
+    let tmp = tempfile::tempdir().unwrap();
+    let data = tmp.path().to_path_buf();
+    let mut served = serve(&data.join("run.sock"), no_agents(), Adapters::new(vec![]));
+    let big = "a".repeat(2 * 1024 * 1024);
+    let cases = [
+        (
+            serde_json::to_vec(&json!({
+                "transcript_path": "/t.jsonl",
+                "session_id": "s-1",
+                "last_assistant_message": big,
+            }))
+            .unwrap(),
+            json!({"transcript_path": "/t.jsonl", "session_id": "s-1", "duohive_truncated": true}),
+        ),
+        (big.clone().into_bytes(), json!({"duohive_truncated": true})),
+    ];
+    for (stdin, want) in cases {
+        let env = vars(Some("tok-11"), &data);
+        tokio::task::spawn_blocking(move || {
+            run_hook(
+                &s(&["hook", "pay-qa", "turn-end"]),
+                std::io::Cursor::new(stdin),
+                false,
+                &env,
+            )
+        })
+        .await
+        .unwrap();
+        let got = tokio::time::timeout(BUDGET, served.tap.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(got, hook("tok-11", "pay-qa", "turn-end", want));
+    }
+    drop(served.core);
+}
+
+#[test]
+fn hook_without_a_database_creates_none() {
+    // DuoHive never ran here: no listener, no state.db. One log line, nothing created.
+    let tmp = tempfile::tempdir().unwrap();
+    let code = run_hook(
+        &s(&["hook", "pay-qa", "busy"]),
+        &b"{}"[..],
+        false,
+        &vars(Some("tok-12"), tmp.path()),
+    );
+    assert_eq!(code, ExitCode::SUCCESS);
+    assert!(!tmp.path().join("state.db").exists());
+    let log = fs::read_to_string(tmp.path().join("logs/hook.log")).unwrap();
+    assert_eq!(log.lines().count(), 1, "{log}");
+}
+
+#[test]
+fn hook_survives_non_utf8_environment_and_arguments() {
+    let tmp = tempfile::tempdir().unwrap();
+    init_db(tmp.path());
+    let mut cmd = hook_cmd(tmp.path(), Some("tok-13"));
+    cmd.env("WEIRD", OsStr::from_bytes(b"\xff\xfe"));
+    cmd.env(OsStr::from_bytes(b"K\xff"), "v");
+    let (out, took) = run_bin(cmd, Some(b"{}"));
+    assert_quiet_success(&out, took, "non-UTF-8 environment");
+    assert_eq!(
+        pending(tmp.path()),
+        vec![hook("tok-13", "pay-qa", "busy", json!({}))]
+    );
+
+    let mut cmd = bin();
+    cmd.arg("hook")
+        .arg(OsStr::from_bytes(b"pay\xffqa"))
+        .arg("busy");
+    for (k, v) in vars(Some("tok-14"), tmp.path()) {
+        cmd.env(k, v);
+    }
+    let (out, took) = run_bin(cmd, Some(b"{}"));
+    assert_quiet_success(&out, took, "non-UTF-8 argument");
 }
