@@ -124,8 +124,11 @@ impl CliAdapter for ClaudeAdapter {
         }
     }
 
+    /// `C-c` first clears the input box: a turn interrupted by the stop's `Escape`
+    /// before any output puts its prompt back there, and `/exit` typed after it would
+    /// be sent as a new prompt (checked live, TD §5.5).
     fn quit_keys(&self) -> Vec<Key> {
-        vec![Key::Text("/exit".into()), Key::Enter]
+        vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
     }
 
     fn submit_keys(&self) -> Vec<Key> {
@@ -780,7 +783,10 @@ mod tests {
     fn keys_versions_and_kind_match_spike_report() {
         let a = ClaudeAdapter;
         assert_eq!(a.kind(), CliKind::Claude);
-        assert_eq!(a.quit_keys(), vec![Key::Text("/exit".into()), Key::Enter]);
+        assert_eq!(
+            a.quit_keys(),
+            vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
+        );
         assert_eq!(a.submit_keys(), vec![Key::Enter]);
         assert_eq!(a.tested_versions(), &["2.1"]);
     }
