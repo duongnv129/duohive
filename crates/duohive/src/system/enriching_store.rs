@@ -8,6 +8,7 @@ use duohive_core::names::AgentName;
 use duohive_core::org::Org;
 use duohive_core::ports::{OrgFileError, SessionRow, Store, StoreError};
 use duohive_core::settings::Settings;
+use duohive_core::time::Millis;
 use duohive_store::SqliteStore;
 
 use crate::hook_listener::{AgentClis, enrich_message};
@@ -71,5 +72,9 @@ impl Store for EnrichingStore {
             enrich_message(&self.agents, &self.adapters, msg);
         }
         Ok(hooks)
+    }
+
+    fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError> {
+        self.inner.queue_pending_hook(msg, at)
     }
 }
