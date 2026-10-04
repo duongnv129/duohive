@@ -110,6 +110,8 @@ struct AgentRt {
     waiting_prompt: Option<String>,
     pre_read_done: bool,
     exit_pending: Option<ExitPending>,
+    /// The window the start timeout killed, so a late `Started` for it is ignored.
+    killed_window: Option<WindowId>,
     /// The CLI the current session was launched on (org edits apply on the next start).
     cli: Option<CliKind>,
 }
@@ -141,6 +143,7 @@ impl AgentRt {
             waiting_prompt: None,
             pre_read_done: false,
             exit_pending: None,
+            killed_window: None,
             cli: None,
         }
     }
