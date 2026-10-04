@@ -44,7 +44,7 @@ fn send(c: Command) -> Vec<UiEffect> {
 fn confirm(m: &UiModel) -> &Confirm {
     match &m.dialog {
         Some(Dialog::Confirm(c)) => c,
-        None => panic!("no dialog open"),
+        _ => panic!("no confirmation open"),
     }
 }
 

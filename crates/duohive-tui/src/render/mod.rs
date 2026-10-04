@@ -1,6 +1,7 @@
 //! Drawing the main screen (UI §3, §4.1) and the full-screen messages (UI §4.12).
 
 mod dialog;
+mod form;
 mod header;
 mod needs_you;
 mod org_pane;
@@ -107,8 +108,12 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
     };
     org_pane::draw(buf, org, m, ctx, compact);
     side_pane::draw(buf, side, m, ctx);
-    if let Some(d) = &m.dialog {
-        dialog::draw(buf, area, d, p);
+    let cursor = m
+        .dialog
+        .as_ref()
+        .and_then(|d| dialog::draw(buf, area, d, p));
+    if let Some(at) = cursor {
+        frame.set_cursor_position(at);
     }
 }
 
