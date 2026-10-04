@@ -14,7 +14,8 @@ DuoHive is a Rust/Ratatui terminal app that manages standing AI coding agents as
 ## Constraints
 
 - Toolchain 1.99.0, edition 2024, licence Apache-2.0.
-- No `unwrap`/`expect` outside tests; no `unsafe`.
+- No `unwrap`/`expect` outside tests; no `unsafe`, except `crates/duohive/src/bench/measure.rs` (`getrusage`, `getloadavg`), each block under `#[expect(unsafe_code, reason = "…")]`.
+- Single instance is per data directory (`run.lock`); two instances with different `XDG_DATA_HOME` still share the `tmux -L duohive` server.
 - `duohive-core` does no I/O.
 - Ratatui and crossterm are pinned with `=`.
 - No `std::env::set_var` in tests; tmux tests use a throwaway socket, never `duohive`.
