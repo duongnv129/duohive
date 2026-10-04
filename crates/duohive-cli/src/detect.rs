@@ -79,11 +79,11 @@ pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPre
 /// How long to wait for the output once the process group is killed.
 const REAP_GRACE: Duration = Duration::from_millis(500);
 
-/// `kill -KILL -<pgid>`: the probe's whole process group (its leader's pid).
+/// `kill -s KILL -- -<pgid>`: the probe's whole process group (its leader's pid).
 /// Best effort; the group may already be gone.
 fn kill_group(pgid: u32) {
     let _ = Command::new("kill")
-        .args(["-KILL", &format!("-{pgid}")])
+        .args(["-s", "KILL", "--", &format!("-{pgid}")])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
