@@ -69,8 +69,12 @@ impl Engine {
         let old = std::mem::replace(&mut self.org, org);
         self.sync_agents();
         let mut out = vec![self.org_changed(&old)];
-        self.mark_last_good(&mut out);
-        out.extend(self.org_file_fine());
+        let fine = self.org_file_fine();
+        // Not accepted while a running agent it doesn't name is held (ruling B).
+        if !self.holds_rows() {
+            self.mark_last_good(&mut out);
+        }
+        out.extend(fine);
         out
     }
 
@@ -86,14 +90,19 @@ impl Engine {
     }
 
     fn org_file_broken(&mut self, e: OrgFileError) -> Vec<Event> {
+        self.disown_banner();
         self.org_error = Some(e.clone());
         vec![Event::OrgFileError(Some(e))]
     }
 
-    /// Clears the banner. With no file yet, the current org stays.
+    /// Clears the banner, unless a held agent still needs it (ruling B); held
+    /// agents the org names now are adopted. With no file yet, the current org stays.
     fn org_file_fine(&mut self) -> Vec<Event> {
-        self.org_error = None;
-        vec![Event::OrgFileError(None)]
+        let mut out = Vec::new();
+        let banner = self.adopt_held(&mut out);
+        self.org_error.clone_from(&banner);
+        out.push(Event::OrgFileError(banner));
+        out
     }
 
     /// The runtime checks an edit needs: deletes and renames only while stopped.

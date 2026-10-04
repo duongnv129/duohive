@@ -415,13 +415,63 @@ fn hooks_for_a_dropped_agent_are_dropped() {
 }
 
 #[test]
-fn restored_stopped_row_matches_no_hook() {
+fn restored_stopped_rows_are_deleted() {
+    // Stopped means no row: a stale one goes at start-up, token and all.
     let mut h = Harness::new();
     put(&h, row("pay-qa", AgentState::Stopped, None, T0));
+    put(&h, row("gone-agent", AgentState::Stopped, None, T0));
     h.engine.start_up();
-    inventory(&mut h, vec![]);
+    assert!(!has_row(&h, "pay-qa"));
+    assert!(!has_row(&h, "gone-agent"));
     assert_eq!(h.rt("pay-qa").token, None);
-    assert_eq!(h.rt("pay-qa").last_reply.as_deref(), Some("earlier reply"));
+    inventory(&mut h, vec![live("pay-qa", "@6", 900)]);
+    assert!(
+        !has_row(&h, "pay-qa"),
+        "a stopped agent's row is never saved"
+    );
+    assert_eq!(h.state("pay-qa"), AgentState::Stopped);
+}
+
+#[test]
+fn connection_lost_before_the_inventory_ends_the_reconnect() {
+    let mut h = Harness::new();
+    put(&h, row("auth-service", AgentState::Working, Some("@1"), T0));
+    put(&h, row("gone-agent", AgentState::Working, Some("@5"), T0));
+    queue(&h, "auth-service", "turn-end", serde_json::json!({}));
+    h.engine.start_up();
+    let early = h.input(Input::Hook(message(
+        "auth-service",
+        "busy",
+        serde_json::json!({}),
+    )));
+    assert_eq!(early, vec![]);
+    let ev = h.input(Input::Runtime(RuntimeEvent::ConnectionLost {
+        reason: "server exited".into(),
+    }));
+    // Queued hooks, then the buffered live one, then the loss.
+    assert_eq!(
+        moves(&ev, "auth-service"),
+        vec![
+            AgentState::Finished,
+            AgentState::Working,
+            AgentState::Errored
+        ]
+    );
+    assert_eq!(
+        h.rt("auth-service").status.error.as_deref(),
+        Some("tmux server exited")
+    );
+    assert_eq!(ev.last(), Some(&Event::Reconnected));
+    assert_eq!(h.engine.snapshot().reconnecting, 0);
+    // The server took every window with it: the orphan's row goes.
+    assert_eq!(deleted(&h), vec!["gone-agent".to_owned()]);
+    assert_eq!(marked(&h), vec![test_org()]);
+    // Reconnect is over: a late inventory is ignored.
+    assert_eq!(
+        inventory(&mut h, vec![live("auth-service", "@1", 900)]),
+        vec![]
+    );
+    assert_eq!(h.state("auth-service"), AgentState::Errored);
 }
 
 mod org_switch;
