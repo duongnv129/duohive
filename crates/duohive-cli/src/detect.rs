@@ -2,6 +2,7 @@
 
 use std::ffi::OsStr;
 use std::io::Read;
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -42,6 +43,8 @@ pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPre
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        // Its own process group, so a timeout can stop everything it started.
+        .process_group(0)
         .spawn()
     else {
         return CliPresence::Missing;
@@ -57,7 +60,12 @@ pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPre
             let _ = tx.send(out);
         });
     }
-    let out = rx.recv_timeout(timeout).unwrap_or_default();
+    let out = rx.recv_timeout(timeout).unwrap_or_else(|_| {
+        // Still running, or a leftover process holds stdout: stop the whole
+        // group, which closes the pipe, and keep what was already printed.
+        kill_group(child.id());
+        rx.recv_timeout(REAP_GRACE).unwrap_or_default()
+    });
     if !matches!(child.try_wait(), Ok(Some(_))) {
         // Best effort: the child may exit between the check and the kill.
         let _ = child.kill();
@@ -66,6 +74,20 @@ pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPre
     CliPresence::Found {
         version: parse_cli_version(kind, &out).unwrap_or_default(),
     }
+}
+
+/// How long to wait for the output once the process group is killed.
+const REAP_GRACE: Duration = Duration::from_millis(500);
+
+/// `kill -KILL -<pgid>`: the probe's whole process group (its leader's pid).
+/// Best effort; the group may already be gone.
+fn kill_group(pgid: u32) {
+    let _ = Command::new("kill")
+        .args(["-KILL", &format!("-{pgid}")])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 #[cfg(test)]
@@ -162,6 +184,49 @@ mod tests {
                 version: String::new()
             }
         );
+    }
+
+    #[test]
+    fn probe_reads_the_version_when_a_grandchild_holds_stdout_and_kills_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("grandchild.pid");
+        let exe = script(
+            dir.path(),
+            &format!(
+                "echo '1.18.34'; sleep 10 & echo $! > '{}'",
+                pid_file.display()
+            ),
+        );
+        let started = Instant::now();
+        // The real limit: a freshly written script can take a few hundred
+        // milliseconds to start on macOS, so a shorter one could kill it first.
+        let got = probe(CliKind::Opencode, exe.as_os_str(), PROBE_TIMEOUT);
+        assert!(
+            started.elapsed() < PROBE_TIMEOUT + Duration::from_secs(1),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(
+            got,
+            CliPresence::Found {
+                version: "1.18.34".into()
+            }
+        );
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        let alive = || {
+            std::process::Command::new("kill")
+                .args(["-0", pid.trim()])
+                .stderr(std::process::Stdio::null())
+                .status()
+                .unwrap()
+                .success()
+        };
+        // The killed grandchild may stay a zombie until init reaps it.
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while alive() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(!alive(), "grandchild {} still running", pid.trim());
     }
 
     #[test]
