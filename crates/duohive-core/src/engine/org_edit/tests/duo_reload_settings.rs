@@ -72,7 +72,11 @@ fn reload_valid_clears_banner() {
     h.store.state.lock().unwrap().org_result = Ok(Some(example_org()));
     let ev = h.send(Command::ReloadOrg);
     assert_eq!(org_changed(&ev).0, example_org());
-    assert!(ev.contains(&Event::OrgFileError(None)));
+    let pos = |want: fn(&Event) -> bool| ev.iter().position(want).unwrap();
+    assert!(
+        pos(|e| matches!(e, Event::OrgChanged { .. })) < pos(|e| *e == Event::OrgFileError(None)),
+        "{ev:?}"
+    );
     assert_eq!(h.engine.snapshot().org_error, None);
     assert_eq!(h.engine.org, example_org());
 }
@@ -148,4 +152,101 @@ fn update_settings_not_saved_while_settings_file_invalid() {
     assert!(h.engine.snapshot().settings_error.is_some());
     h.tick_at(Duration::from_secs(120));
     assert!(h.rt("auth-service").status.quiet);
+}
+
+fn refused(agent: &str, how: &str) -> Vec<Event> {
+    vec![Event::OrgFileError(Some(OrgFileError {
+        line: None,
+        message: format!("{agent} is {how} · stop it, then press o to reload"),
+    }))]
+}
+
+fn reload(h: &mut Harness, org: &Org) -> Vec<Event> {
+    h.store.state.lock().unwrap().org_result = Ok(Some(org.clone()));
+    h.send(Command::ReloadOrg)
+}
+
+#[test]
+fn reload_removing_running_agent_refused() {
+    let mut without_auth = test_org();
+    without_auth.teams[0].roles[0].agents.remove(0);
+    let mut h = Harness::new();
+    h.force("auth-service", AgentState::Working);
+    let ev = reload(&mut h, &without_auth);
+    assert_eq!(ev, refused("auth-service", "running"));
+    assert_eq!(h.engine.org, test_org());
+    assert_eq!(
+        h.engine.snapshot().org_error,
+        Some(OrgFileError {
+            line: None,
+            message: "auth-service is running · stop it, then press o to reload".into(),
+        })
+    );
+    let team = TeamDraft {
+        name: nn("Growth"),
+        defaults: Fields::default(),
+    };
+    assert_eq!(
+        rejected(&edit(&mut h, OrgEdit::AddTeam(team))),
+        vec![BROKEN]
+    );
+    assert!(h.engine.agents.contains_key(&n("auth-service")));
+
+    // Stopped now: the same file is accepted.
+    h.force("auth-service", AgentState::Stopped);
+    let ev = reload(&mut h, &without_auth);
+    assert_eq!(org_changed(&ev).0, without_auth);
+    assert!(ev.contains(&Event::OrgFileError(None)));
+    assert_eq!(h.engine.org, without_auth);
+    assert!(!h.engine.agents.contains_key(&n("auth-service")));
+
+    let mut without_billing = test_org();
+    without_billing.teams[0].roles[0].agents.remove(1);
+    let mut h = Harness::new();
+    h.force_errored("billing-api", "claude exited at start (code 1)", None);
+    // Forcing errored skipped NeedsYouChanged, so this reload carries it too.
+    let ev = reload(&mut h, &without_billing);
+    assert_eq!(ev[..1], refused("billing-api", "errored"));
+    assert_eq!(h.engine.org, test_org());
+
+    let mut boss = test_org();
+    boss.duo.name = n("Boss");
+    let mut h = Harness::new();
+    h.force("Duo", AgentState::Idle);
+    assert_eq!(reload(&mut h, &boss), refused("Duo", "running"));
+    assert_eq!(h.engine.org.duo.name, n("Duo"));
+}
+
+#[test]
+fn change_duo_cli_while_stopping_does_not_restart() {
+    let mut h = Harness::new();
+    h.start("Duo");
+    h.input(started("Duo", "@2"));
+    h.send(Command::StopAgent { agent: n("Duo") });
+    let org = h.engine.org.clone();
+    org_changed(&edit(&mut h, defaults_edit(&org, "Duo", CliKind::Opencode)));
+    let stops = h
+        .calls()
+        .iter()
+        .filter(|c| matches!(c, RuntimeCall::Stop(..)))
+        .count();
+    assert_eq!(stops, 1, "the user's stop only");
+    h.input(gone("Duo", "@2"));
+    assert_eq!(h.state("Duo"), AgentState::Stopped);
+    assert_eq!(starts(&h).len(), 1);
+}
+
+#[test]
+fn settings_save_failure_changes_nothing() {
+    let mut h = Harness::new();
+    h.store.state.lock().unwrap().fail_next_save = true;
+    let ev = h.send(Command::UpdateSettings(Settings {
+        quiet_after_minutes: 2,
+        ..Settings::default()
+    }));
+    assert_eq!(
+        rejected(&ev),
+        vec!["couldn't save settings.toml: disk full"]
+    );
+    assert_eq!(h.engine.settings, Settings::default());
 }
