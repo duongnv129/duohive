@@ -12,7 +12,17 @@ import { pathToFileURL } from "node:url";
 
 const [pluginPath, hookExe, hangExe, logDir, ...eventFiles] = process.argv.slice(2);
 const FALLBACK_MS = 100;
-const RETURNS_AT_ONCE_MS = 200;
+// A hook must return without waiting for its child: the hanging exe sleeps
+// 10 s and a delivery is cut at 2 s, so a hook that did wait would take 2 s or
+// more. 1 s keeps that meaning while tolerating this process being descheduled
+// for a few hundred ms in a fully loaded workspace test run.
+const RETURNS_AT_ONCE_MS = 1000;
+// Dispose is bounded by a 1 s chain wait plus a 1 s session-end spawn (2 s),
+// plus slack for the same scheduling noise; far below the 10 s a hung exe runs.
+const DISPOSE_LIMIT_MS = 4500;
+// Session-end spawn limit for instances whose deliveries must complete: the
+// 1 s product default is for hung exes (the `hang` instance keeps it).
+const SESSION_END_LIMIT_MS = 10000;
 
 const errors = [];
 process.on("uncaughtException", (e) => errors.push(`uncaught: ${e}`));
@@ -33,7 +43,8 @@ const ctx = {
   serverUrl: new URL("http://localhost:4096/"),
 };
 
-async function instance(agent, exe) {
+async function instance(agent, exe, endLimitMs = SESSION_END_LIMIT_MS) {
+  process.env.DUOHIVE_SESSION_END_LIMIT_MS = String(endLimitMs);
   process.env.DUOHIVE_HOOK_EXE = exe;
   process.env.DUOHIVE_HOOK_AGENT = agent;
   process.env.DUOHIVE_START_FALLBACK_MS = String(FALLBACK_MS);
@@ -55,8 +66,13 @@ async function timed(label, limitMs, fn) {
 
 // Waits until an agent's delivery log has not grown for 250 ms (at most 5 s),
 // so dispose's own 1 s wait is not what keeps the order in a slow test run.
-async function quiet(agent) {
+// `minLines` first waits for that many deliveries to be logged (a readiness
+// signal, so a delivery slow to start is not mistaken for a quiet log).
+async function quiet(agent, minLines = 0) {
   const file = `${logDir}/${agent}.jsonl`;
+  const lines = () => (existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).length : 0);
+  const ready = Date.now() + 10000;
+  while (lines() < minLines && Date.now() < ready) await sleep(25);
   const end = Date.now() + 5000;
   let size = -1;
   let stableSince = Date.now();
@@ -72,13 +88,24 @@ async function quiet(agent) {
   }
 }
 
+// Waits (at most 10 s) for the fake exe to record its pid: proof that the
+// delivery is really running, however long a loaded machine took to start it.
+async function running(agent) {
+  const file = `${logDir}/${agent}.pid`;
+  const end = Date.now() + 10000;
+  while (!existsSync(file) && Date.now() < end) await sleep(25);
+}
+
 const feed = [];
 
 async function finish(inst) {
   await sleep(FALLBACK_MS * 3);
-  await quiet(inst.agent);
+  // Every instance has started by now (an event or the fallback timer), so
+  // session-start is on its way: wait until it is logged, not for a quiet
+  // moment that a slow spawn could fake.
+  await quiet(inst.agent, 1);
   feed.push({ agent: inst.agent, type: "dispose" });
-  await timed(`${inst.agent} dispose`, 2500, () => inst.hooks.dispose());
+  await timed(`${inst.agent} dispose`, DISPOSE_LIMIT_MS, () => inst.hooks.dispose());
 }
 
 // Replay. A `{"plugin":"init"}` line starts an instance; a `{"plugin":"dispose"}`
@@ -222,7 +249,7 @@ for (const sample of samples) {
   await timed("config", RETURNS_AT_ONCE_MS, () => composer.hooks.config(cfg));
   decisions.push(decideAll(cfg));
 }
-await timed("config dispose", 2500, () => composer.hooks.dispose());
+await timed("config dispose", DISPOSE_LIMIT_MS, () => composer.hooks.dispose());
 
 // A missing hook exe: nothing throws, nothing is rejected.
 const missing = await instance("missing", `${logDir}/no-such-duohive`);
@@ -243,18 +270,18 @@ const calls = [
 ];
 for (const [i, call] of calls.entries()) await timed(`missing exe call ${i}`, RETURNS_AT_ONCE_MS, call);
 await sleep(300);
-await timed("missing exe dispose", 2500, () => h.dispose());
+await timed("missing exe dispose", DISPOSE_LIMIT_MS, () => h.dispose());
 
 // A hook exe that hangs: hooks still return at once, and dispose is bounded
 // (1 s for the chain, then a session-end spawn bounded at 1 s).
-const hang = await instance("hang", hangExe);
+const hang = await instance("hang", hangExe, 1000);
 await timed("hang event", RETURNS_AT_ONCE_MS, () =>
   hang.hooks.event(sample("catalog.updated", {})),
 );
 await timed("hang busy", RETURNS_AT_ONCE_MS, () =>
   hang.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
 );
-const hangDispose = await timed("hang dispose", 2600, () => hang.hooks.dispose());
+const hangDispose = await timed("hang dispose", DISPOSE_LIMIT_MS, () => hang.hooks.dispose());
 
 // Dispose kills a delivery still running, so session-end is the last one
 // (its session-start would be logged 1.5 s in, after session-end, if it lived).
@@ -262,8 +289,8 @@ const inflight = await instance("inflight", hookExe);
 await timed("inflight event", RETURNS_AT_ONCE_MS, () =>
   inflight.hooks.event(sample("catalog.updated", {})),
 );
-await sleep(100);
-await timed("inflight dispose", 2600, () => inflight.hooks.dispose());
+await running("inflight");
+await timed("inflight dispose", DISPOSE_LIMIT_MS, () => inflight.hooks.dispose());
 
 // A delivery that hangs is killed at 2 s and the chain goes on.
 const slow = await instance("slow", hookExe);
@@ -271,9 +298,10 @@ await timed("slow event", RETURNS_AT_ONCE_MS, () => slow.hooks.event(sample("cat
 await timed("slow busy", RETURNS_AT_ONCE_MS, () =>
   slow.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
 );
+await running("slow");
 await sleep(2600);
-await quiet("slow");
-await timed("slow dispose", 2600, () => slow.hooks.dispose());
+await quiet("slow", 1);
+await timed("slow dispose", DISPOSE_LIMIT_MS, () => slow.hooks.dispose());
 
 // Subagent sessions (with a parentID) neither busy nor end the agent's turn.
 const sub = await instance("subagent", hookExe);
@@ -288,8 +316,8 @@ const subEvents = [
   sample("session.idle", { sessionID: "p" }),
 ];
 for (const e of subEvents) await timed("subagent event", RETURNS_AT_ONCE_MS, () => sub.hooks.event(e));
-await quiet("subagent");
-await timed("subagent dispose", 2600, () => sub.hooks.dispose());
+await quiet("subagent", 3);
+await timed("subagent dispose", DISPOSE_LIMIT_MS, () => sub.hooks.dispose());
 
 // Busy payloads carry only what DuoHive reads, never a tool's full output.
 const trim = await instance("trim", hookExe);
@@ -315,8 +343,8 @@ await timed("trim asked", RETURNS_AT_ONCE_MS, () =>
 await timed("trim chat", RETURNS_AT_ONCE_MS, () =>
   trim.hooks["chat.message"]({ sessionID: "s", agent: "build" }, { parts: [{ type: "text", text: big }] }),
 );
-await quiet("trim");
-await timed("trim dispose", 2600, () => trim.hooks.dispose());
+await quiet("trim", 4);
+await timed("trim dispose", DISPOSE_LIMIT_MS, () => trim.hooks.dispose());
 
 await sleep(200);
 process.stdout.write(JSON.stringify({ feed, decisions, before, queries, errors, hangDispose }));

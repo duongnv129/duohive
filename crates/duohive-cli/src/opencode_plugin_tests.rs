@@ -340,7 +340,7 @@ fn replay_under(runtime: &Path) {
     // would still log) or hangs.
     script(
         &hook,
-        r#"payload=$(cat)
+        r#"IFS= read -r payload || true
 if [ "$3" = session-start ]; then
   case "$2" in
     inflight) echo $$ > "$FAKE_HOOK_LOG_DIR/inflight.pid"; sleep 1.5 ;;
