@@ -4,7 +4,7 @@ Run your AI coding agents as a team, not a pile of terminals.
 
 [![CI](https://github.com/duongnv129/duohive/actions/workflows/ci.yml/badge.svg)](https://github.com/duongnv129/duohive/actions/workflows/ci.yml)
 
-> **Status: pre-alpha, phase 0.** The workspace and tooling are in place; there is nothing to install or run yet.
+> **Status: pre-alpha, phase 1 (core loop works; daily-use acceptance pending).** Build from source; there are no releases yet.
 
 DuoHive is an open-source terminal app that runs your agents as an org chart, steered from one screen.
 
@@ -12,7 +12,7 @@ DuoHive is an open-source terminal app that runs your agents as an org chart, st
 - **Live status at a glance.** See who is working, who is waiting on you and who has finished, across the whole team.
 - **Duo, the manager agent.** Chat with Duo in plain language; Duo can see the whole org, message any agent and start or stop them.
 - **Claude Code and OpenCode.** Both are supported in v1.
-- **One lightweight process.** Light enough to forget it is running, from 10 to 100 agents. The command is `duohive` (alias `dh`).
+- **One lightweight process.** Light enough to forget it is running, from 10 to 100 agents. The command is `duohive` (a short `dh` alias is planned for packaging).
 
 ## Requirements
 
@@ -26,6 +26,18 @@ cargo build --release
 make tools   # once: install the pinned dev tools
 make check   # format, lint, test, dependency and spelling checks
 ```
+
+## Usage
+
+```sh
+duohive          # open the org: ↑↓ move, s start/stop, n new, e edit, o open org.toml, q quit
+duohive bench    # measure CPU, memory and hook latency with fake agents
+duohive --help
+```
+
+- Each agent runs in its own window on DuoHive's tmux server. `q` quits DuoHive and leaves your agents running; the next `duohive` reconnects to them. On quit, DuoHive says how many are still running and how to list them (`tmux -L duohive ls`).
+- To watch or type into an agent directly, attach to its window: the side pane shows the command, `tmux -L duohive attach -t duohive:<agent>`.
+- One DuoHive runs per data directory (`~/.local/share/duohive`, or `$XDG_DATA_HOME/duohive`): a second one there is refused. Two DuoHives with different data directories still share the `tmux -L duohive` server, so don't run them side by side.
 
 ## Documentation
 
