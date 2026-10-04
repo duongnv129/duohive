@@ -8,7 +8,7 @@ use duohive::args::{Cli, USAGE, parse_args};
 use duohive::bench::{BenchArgs, BenchError, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
-use duohive::startup::{env_vars, run_app_main};
+use duohive::startup::{EXIT_GRACE, block_on_then_exit, env_vars, run_app_main};
 
 fn main() -> ExitCode {
     // `env::args()` and `env::vars()` panic on non-UTF-8: drop such entries instead.
@@ -43,7 +43,7 @@ fn app() -> ExitCode {
         .enable_all()
         .build()
     {
-        Ok(rt) => rt.block_on(run_app_main()),
+        Ok(rt) => block_on_then_exit(rt, run_app_main(), EXIT_GRACE),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: cannot start the runtime: {e}");
             ExitCode::FAILURE
@@ -64,7 +64,7 @@ fn bench(args: BenchArgs) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match rt.block_on(run_bench_detailed(args)) {
+    match block_on_then_exit(rt, run_bench_detailed(args), EXIT_GRACE) {
         Ok(outcome) => {
             let text = if json {
                 format!("{}\n", outcome.to_json())

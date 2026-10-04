@@ -164,6 +164,24 @@ pub async fn run_app_main() -> ExitCode {
     }
 }
 
+/// Runs `f` on `rt`, then shuts the runtime down waiting at most `grace` for blocking
+/// work. A plain drop would wait without limit for every `spawn_blocking` job, such as
+/// a core thread join left behind by a shutdown that hit [`SHUTDOWN_LIMIT`], and so
+/// undo the bound. Anything `f` owned (the log guard included) is dropped, and so
+/// flushed, before this returns.
+pub fn block_on_then_exit<T>(
+    rt: tokio::runtime::Runtime,
+    f: impl Future<Output = T>,
+    grace: Duration,
+) -> T {
+    let out = rt.block_on(f);
+    rt.shutdown_timeout(grace);
+    out
+}
+
+/// How long the runtime may wait for blocking work once the app has returned.
+pub const EXIT_GRACE: Duration = Duration::from_millis(500);
+
 /// `start`'s result, and whether `quit` fired meanwhile: a quit never abandons a
 /// half-started system (the listener may already hold hooks), it waits for it.
 pub(crate) async fn finish_start<T>(
@@ -382,5 +400,28 @@ mod tests {
         assert_eq!(bounded(async {}, limit, never()).await, Bounded::Done);
         assert_eq!(bounded(never(), limit, never()).await, Bounded::TimedOut);
         assert_eq!(bounded(never(), limit, async {}).await, Bounded::Quit);
+    }
+
+    #[test]
+    fn stalled_blocking_work_does_not_hold_the_exit() {
+        // A core thread join that never ends, as a timed-out shutdown leaves behind.
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let out = block_on_then_exit(
+            rt,
+            async {
+                drop(tokio::task::spawn_blocking(|| {
+                    std::thread::sleep(Duration::from_secs(5));
+                }));
+                7
+            },
+            Duration::from_millis(100),
+        );
+        assert_eq!(out, 7);
+        let took = started.elapsed();
+        assert!(took < Duration::from_secs(2), "exit waited {took:?}");
     }
 }
