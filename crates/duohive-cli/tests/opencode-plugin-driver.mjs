@@ -149,6 +149,9 @@ const samples = [
   { permission: { edit: { "*": "ask" }, "*": "deny" } },
   // The user's own top-level allow overrides plan's built-in deny: it asks.
   { permission: { edit: "allow" } },
+  // All-digit pattern keys come first in a JS object, whatever their place.
+  { permission: { edit: { 5: "deny" } } },
+  { permission: { edit: { "?": "allow" } }, agent: { build: { permission: { edit: { 5: "deny" } } } } },
 ];
 const queries = [
   ["build", "edit", "a.txt"],
@@ -167,6 +170,8 @@ const queries = [
   ["explore", "bash", "ls"],
   ["general", "edit", "a.txt"],
   ["title", "bash", "ls"],
+  ["build", "edit", "5"],
+  ["plan", "edit", "5"],
 ];
 
 const DENY_ALL = [{ permission: "*", pattern: "*", action: "deny" }];
