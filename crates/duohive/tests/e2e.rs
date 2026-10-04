@@ -540,6 +540,22 @@ impl Board {
     }
 }
 
+/// `agent`'s queued hook events in replay order, read without taking them.
+fn pending_events(paths: &Paths, agent: &str) -> Vec<String> {
+    let db = rusqlite::Connection::open_with_flags(
+        paths.state_db(),
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .unwrap();
+    let mut rows = db
+        .prepare("SELECT event FROM pending_hooks WHERE agent = ?1 ORDER BY sent_at_ms, id")
+        .unwrap();
+    rows.query_map([agent], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn e2e_restart_reconnects() {
     let env = Env::new();
@@ -585,8 +601,19 @@ async fn e2e_restart_reconnects() {
             .contains("done: slow task")
     })
     .await;
-    // The turn-end hook runs on the fake's helper thread just after the reply.
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    // Its hooks fell back to state.db while DuoHive was closed: the replay path.
+    eventually(
+        Duration::from_secs(10),
+        "the turn-end in pending_hooks",
+        || {
+            pending_events(&env.paths, "e2e-a")
+                .last()
+                .map(String::as_str)
+                == Some("turn-end")
+        },
+    )
+    .await;
+    assert_eq!(pending_events(&env.paths, "e2e-b"), Vec::<String>::new());
 
     let mut h = env.start().await;
     let snap = first_snapshot(&mut h).await;
@@ -680,6 +707,11 @@ fn logging_writes_to_logs_dir_only() {
     assert!(log.starts_with("logs"), "{log:?}");
     let text = std::fs::read_to_string(env.paths.data_dir.join(log)).unwrap();
     assert!(text.contains("hello from the logging test"), "{text}");
+    let file_mode = std::fs::metadata(env.paths.data_dir.join(log))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(file_mode & 0o777, 0o600);
     let mode = std::fs::metadata(env.paths.logs_dir())
         .unwrap()
         .permissions()
