@@ -275,6 +275,38 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 - **Validation:** agent names must be unique; the tree has up to three levels (team → role → agent), and teams are optional; every CLI must be supported. Each error names the field.
 - **Missing directory:** makes only that agent invalid, with the error on its row; the rest of the org loads and runs.
 
+**`org.toml` schema.** Nested arrays of tables; every table rejects unknown keys, so a fourth level (an agent under an agent) fails to parse with its line.
+
+```toml
+[org]                       # org defaults
+cli = "claude"              # required; "claude" | "opencode"
+model = "sonnet"            # optional
+effort = "high"             # optional
+worktree = false            # default false
+prompt = "Ask before you delete anything."
+
+[duo]
+name = "Duo"
+cli = "opencode"
+
+[[team]]
+name = "Payments"
+# optional defaults: cli, flags, directory, model, effort, worktree, prompt
+[[team.role]]
+name = "Backend"
+prompt = "API URLs use hyphens."
+[[team.role.agent]]
+name = "auth-service"
+directory = "~/code/auth"
+
+[[role]]                    # roles directly under Duo
+name = "Generalist"
+[[role.agent]]
+name = "squad-1"
+```
+
+A save writes `org.toml.tmp`, syncs it, copies the current file to `org.toml.bak`, renames the tmp over `org.toml`, then refreshes `<data_dir>/org.last-good.toml`. Loading never writes the last-good copy; the engine records an org it accepted through `Store::mark_last_good`. A parse error reports the 1-based line and the error's own text (for a bad CLI, `unknown CLI "claud"`).
+
 ## 8. Errors
 
 Errors are shown where they apply, never only in a log.
