@@ -15,9 +15,9 @@ const TEXT_X: u16 = 2;
 /// Cells between a control and the next one on its line.
 const ROW_GAP: u16 = 3;
 const FOCUS: &str = "▌";
-const HINT: &str = "tab next field · ctrl+s save · esc cancel";
+pub(super) const HINT: &str = "tab next field · ctrl+s save · esc cancel";
 const CHOOSER_WIDTH: u16 = 40;
-const CHOOSER_HINT: &str = "↑↓ choose · enter open form · esc";
+pub(super) const CHOOSER_HINT: &str = "↑↓ choose · enter open form · esc";
 const INHERIT: &str = "inherit: ";
 
 /// One line inside a form.

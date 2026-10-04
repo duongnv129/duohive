@@ -469,3 +469,33 @@ fn org_save_failure_changes_nothing() {
 }
 
 mod duo_reload_settings;
+
+#[test]
+fn preview_edit_applies_and_validates() {
+    let org = example_org();
+    let growth = OrgEdit::AddTeam(TeamDraft {
+        name: nn("Growth"),
+        defaults: Fields::default(),
+    });
+    let after = super::super::preview_edit(&org, &growth).unwrap();
+    assert_eq!(after.teams.len(), 2);
+    assert_eq!(org.teams.len(), 1, "the org itself is untouched");
+    let dup = OrgEdit::AddTeam(TeamDraft {
+        name: nn("Payments"),
+        defaults: Fields::default(),
+    });
+    let errs = super::super::preview_edit(&org, &dup).unwrap_err();
+    assert_eq!(errs[0].path, "team[Payments].name");
+    assert_eq!(errs[0].message, "a team named Payments already exists");
+    let missing = OrgEdit::EditTeam {
+        key: nn("Nope"),
+        draft: TeamDraft {
+            name: nn("Nope"),
+            defaults: Fields::default(),
+        },
+    };
+    let errs = super::super::preview_edit(&org, &missing).unwrap_err();
+    assert_eq!(errs.len(), 1);
+    assert_eq!(errs[0].path, "");
+    assert!(errs[0].message.contains("Nope"), "{}", errs[0].message);
+}

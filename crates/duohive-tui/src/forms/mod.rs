@@ -16,12 +16,12 @@ use std::path::Path;
 
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::{Command, OrgEdit};
-use duohive_core::engine::apply_edit;
+use duohive_core::engine::preview_edit;
 use duohive_core::inherit::{Inherited, expand_home};
 use duohive_core::names::{AgentName, NameError, NodeName};
 use duohive_core::org::{Fields, Org, RoleKey};
 use duohive_core::status::AgentState;
-use duohive_core::validate::{DirProbe, DirStatus, validate};
+use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
 pub use field::{Field, FieldId, FieldKind, Look};
@@ -32,8 +32,6 @@ use crate::model::Confirm;
 
 /// Under a name that can't change now (Task 14's rule).
 pub(crate) const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees";
-/// The most agents a new role creates at once.
-const MAX_NEW_AGENTS: u8 = 20;
 const INHERIT: &str = "inherit: ";
 /// Worktree choices where the field inherits.
 const WT_ON: usize = 1;
@@ -149,10 +147,10 @@ impl Form {
         self.focus == self.fields.len() + 1
     }
 
-    /// Errors left to fix before Save works.
+    /// Errors left to fix before Save works. A refusal no field owns isn't one: Save
+    /// stays available to retry it.
     pub fn error_count(&self) -> usize {
         self.fields.iter().filter(|f| f.error.is_some()).count()
-            + usize::from(self.rejected.is_some())
     }
 
     /// Applies a key. Tab order skips read-only fields and ends on Save, then Cancel.
@@ -244,7 +242,10 @@ impl Form {
         };
         match org::restart_confirm(self, org, &edit) {
             Some(c) => FormOutcome::Confirm(c),
-            None => FormOutcome::Edit(edit),
+            None => {
+                self.rejected = None;
+                FormOutcome::Edit(edit)
+            }
         }
     }
 
@@ -340,12 +341,15 @@ impl Form {
         let Some(node) = node_path(org, edit) else {
             return;
         };
-        let mut after = org.clone();
-        if let Err(reason) = apply_edit(&mut after, edit) {
-            self.rejected = Some(reason);
+        let Err(errors) = preview_edit(org, edit) else {
             return;
-        }
-        for e in validate(&after) {
+        };
+        for e in errors {
+            if e.path.is_empty() {
+                // The node is gone (an org reload while the form was open).
+                self.rejected = Some(e.message);
+                continue;
+            }
             let id = match e.path.strip_prefix(node.as_str()) {
                 Some(".name") => FieldId::Name,
                 Some(".flags") => FieldId::Flags,
@@ -409,7 +413,8 @@ impl Form {
         } else {
             Vec::new()
         };
-        if f.selected == WT_ON && reason.is_some() {
+        // Blocks only when turned on in this form; `on` already saved stays, with the note.
+        if f.selected == WT_ON && f.initial != WT_ON && reason.is_some() {
             f.error = reason;
             f.note = None;
         } else {
