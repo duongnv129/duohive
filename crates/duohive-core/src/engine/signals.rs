@@ -183,6 +183,10 @@ impl Engine {
         }
         let state = self.state_of(agent);
         let rt = self.rt_mut(agent);
+        if rt.killed_window.as_ref() == Some(&window) {
+            tracing::debug!(%agent, window = %window.0, "window already killed, ignored");
+            return Vec::new();
+        }
         let keep = state.is_running() || (state == AgentState::Errored && rt.window.is_none());
         if !keep {
             tracing::debug!(%agent, window = %window.0, ?state, "late window killed");
