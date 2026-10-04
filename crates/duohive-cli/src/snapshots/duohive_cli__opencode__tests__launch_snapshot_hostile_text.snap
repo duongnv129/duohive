@@ -4,6 +4,7 @@ expression: for_snapshot(cmd)
 ---
 program: opencode
 args:
+  - "--agent=build"
   - "--prompt=-rf $(id) `x` it's\nline2 é"
 env:
   - - OPENCODE_CONFIG

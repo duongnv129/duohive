@@ -62,8 +62,8 @@ impl CliAdapter for OpencodeAdapter {
         }
     }
 
-    /// `OPENCODE_CONFIG=<run>/opencode.json opencode [--model=m] [flags…]
-    /// [--prompt=<task>]` (S2.6, S2.8, S2.11). Effort is the build agent's
+    /// `OPENCODE_CONFIG=<run>/opencode.json opencode [--model=m]
+    /// [--agent=build] [flags…] [--prompt=<task>]` (S2.6, S2.8, S2.11). Effort is the build agent's
     /// `variant` in the config; there is no `--` (the positional argument is
     /// the project directory), and `--prompt=` keeps a task starting with `-`.
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
@@ -105,6 +105,15 @@ impl CliAdapter for OpencodeAdapter {
         let mut args = Vec::new();
         if let Some(model) = &agent.model {
             args.push(format!("--model={model}"));
+        }
+        // The plugin composes approvals for the agents it knows; pin `build`
+        // unless the user's flags choose an agent themselves.
+        if !agent
+            .flags
+            .iter()
+            .any(|f| f == "--agent" || f.starts_with("--agent="))
+        {
+            args.push("--agent=build".to_owned());
         }
         args.extend(agent.flags.iter().cloned());
         if let Some(task) = &spec.task {

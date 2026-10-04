@@ -159,6 +159,21 @@ fn launch_without_model_effort_or_directory() {
 }
 
 #[test]
+fn launch_pins_the_build_agent_unless_the_flags_choose_one() {
+    // The plugin composes approvals for the agents it knows; `build` is the
+    // one DuoHive launches (the TUI otherwise starts the last agent used).
+    let args = launch(&spec(Some("t"))).args;
+    assert!(args.contains(&"--agent=build".to_owned()), "{args:?}");
+    for flags in [vec!["--agent", "plan"], vec!["--agent=plan"]] {
+        let mut s = spec(None);
+        s.agent.flags = flags.iter().map(|f| (*f).to_owned()).collect();
+        let args = launch(&s).args;
+        assert!(!args.contains(&"--agent=build".to_owned()), "{args:?}");
+        assert!(args.ends_with(&s.agent.flags), "{args:?}");
+    }
+}
+
+#[test]
 fn launch_keeps_a_model_that_starts_with_a_dash() {
     let mut s = spec(None);
     s.agent.model = Some("-x".into());
