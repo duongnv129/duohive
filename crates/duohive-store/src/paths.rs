@@ -67,11 +67,6 @@ impl Paths {
         })
     }
 
-    /// Works the paths out from the process environment.
-    pub fn from_env() -> Result<Paths, PathsError> {
-        Paths::from_vars(&std::env::vars().collect())
-    }
-
     /// The org file.
     pub fn org_toml(&self) -> PathBuf {
         self.config_dir.join("org.toml")

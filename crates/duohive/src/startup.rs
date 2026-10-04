@@ -4,9 +4,10 @@
 //! shutdown, bounded by [`SHUTDOWN_LIMIT`]. Agents keep running in tmux.
 //!
 //! How the app ends:
-//! - `q`, `ctrl+c`, SIGINT, SIGTERM or SIGHUP: quit, exit 0. A signal during
-//!   start-up lets the start finish, then shuts down what started. A second signal
-//!   during shutdown exits at once.
+//! - `q`, `ctrl+c`, SIGINT, SIGTERM or SIGHUP: quit, exit 0, with one stderr line
+//!   when agents are still running (how to list them). A signal during start-up
+//!   lets the start finish, then shuts down what started. A second signal during
+//!   shutdown exits at once.
 //! - Panics (ruling): any panic, on any thread or task, quits the app with exit 101
 //!   through the same orderly shutdown. Ratatui's hook has restored the terminal by
 //!   then, so the TUI draws nothing more (`AppConfig::halted`). A panicking tmux
@@ -22,7 +23,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::task::Poll;
 use std::time::Duration;
 
@@ -61,6 +62,12 @@ fn var<'a>(env: &'a HashMap<String, String>, key: &str) -> Option<&'a str> {
 /// Says `msg` on stderr (the terminal is ours again by then).
 fn say(msg: &str) {
     let _ = writeln!(std::io::stderr(), "{msg}");
+}
+
+/// The line said after a quit while `n` agents keep running in tmux, if any.
+fn still_running(n: usize, socket: &str) -> Option<String> {
+    let agents = if n == 1 { "agent" } else { "agents" };
+    (n > 0).then(|| format!("{n} {agents} still running · tmux -L {socket} ls"))
 }
 
 /// Runs the app; see the module docs.
@@ -109,6 +116,7 @@ pub async fn run_app_main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let running = Arc::new(AtomicUsize::new(0));
     let ended = if quit_early {
         tracing::info!("quit during start-up");
         Ended::Quit
@@ -122,6 +130,7 @@ pub async fn run_app_main() -> ExitCode {
             dirs: Arc::new(FsDirProbe),
             home,
             halted: Arc::new(AtomicBool::new(false)),
+            running: Arc::clone(&running),
         };
         let panicked = watch_panics();
         let commands = handle.commands.clone();
@@ -152,7 +161,12 @@ pub async fn run_app_main() -> ExitCode {
         }
     }
     match ended {
-        Ended::Quit => ExitCode::SUCCESS,
+        Ended::Quit => {
+            if let Some(line) = still_running(running.load(Ordering::Relaxed), &paths.tmux_socket) {
+                say(&line);
+            }
+            ExitCode::SUCCESS
+        }
         Ended::Failed(e) => {
             say(&format!("duohive: {e}"));
             ExitCode::FAILURE
@@ -279,7 +293,7 @@ pub(crate) fn tmux_gate(probe: Result<Option<TmuxVersion>, TmuxError>) -> TmuxGa
 /// How the app ended.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Ended {
-    /// `q`, `ctrl+c`, SIGINT or SIGTERM.
+    /// `q`, `ctrl+c`, SIGINT, SIGTERM or SIGHUP.
     Quit,
     /// The terminal or the core failed.
     Failed(String),
@@ -341,6 +355,19 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::*;
+
+    #[test]
+    fn still_running_line_names_the_count_and_socket() {
+        assert_eq!(still_running(0, "duohive"), None);
+        assert_eq!(
+            still_running(1, "duohive").as_deref(),
+            Some("1 agent still running · tmux -L duohive ls")
+        );
+        assert_eq!(
+            still_running(3, "duohive-test-x").as_deref(),
+            Some("3 agents still running · tmux -L duohive-test-x ls")
+        );
+    }
 
     #[test]
     fn tmux_gate_blocks_missing_and_old_tmux() {
