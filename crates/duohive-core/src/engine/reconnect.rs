@@ -86,13 +86,21 @@ impl Engine {
     /// The start-up inventory, in D9's order. A later one only settles held rows.
     pub(super) fn on_inventory(&mut self, windows: &[LiveWindow]) -> Vec<Event> {
         let Some(reconnect) = self.reconnect.take() else {
-            return self.settle_held(windows);
+            let mut out = self.check_adopted(windows);
+            out.extend(self.settle_held(windows));
+            return out;
         };
         let mut out = Vec::new();
         let mut restored = reconnect.restored;
         let adopted = self.settle_orphans(reconnect.orphans, &restored, windows, &mut out);
         restored.extend(adopted);
         let dead = self.match_windows(&restored, windows, &mut out);
+        let unknown = windows
+            .iter()
+            .filter(|w| !restored.contains(&w.agent) && !self.is_held(&w.agent));
+        for w in unknown {
+            tracing::info!(agent = %w.agent, window = %w.window.0, "window with no session row left running");
+        }
         self.replay(reconnect.buffered, &mut out);
         for (agent, window, status) in dead {
             out.extend(self.on_exit(&agent, &window, Exit::PaneDied(status)));
@@ -149,9 +157,9 @@ impl Engine {
     }
 
     /// Step 1: live windows keep their state, dead panes wait for step 3, and a
-    /// running agent with no window is stopped without an error (D9). Windows
-    /// with no row, and those of agents no org names, are left running.
-    fn match_windows(
+    /// running agent with no window is stopped without an error (D9). Other
+    /// windows are never touched.
+    pub(super) fn match_windows(
         &mut self,
         restored: &[AgentName],
         windows: &[LiveWindow],
@@ -178,9 +186,6 @@ impl Engine {
                 }
                 None => self.set_window(agent, None, out),
             }
-        }
-        for w in windows.iter().filter(|w| !restored.contains(&w.agent)) {
-            tracing::info!(agent = %w.agent, window = %w.window.0, "window with no session row left running");
         }
         dead
     }

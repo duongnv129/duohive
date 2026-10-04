@@ -278,3 +278,69 @@ fn missing_errored_agent_with_a_live_window_says_errored() {
     );
     assert_eq!(h.state("gone-agent"), AgentState::Errored);
 }
+
+/// Holds gone-agent (Working on @5): start-up with a live window no org names.
+fn held_gone_agent() -> Harness {
+    let mut h = Harness::new();
+    put(&h, row("gone-agent", AgentState::Working, Some("@5"), T0));
+    h.engine.start_up();
+    inventory(&mut h, vec![live("gone-agent", "@5", 900)]);
+    assert_eq!(h.engine.org_error, Some(missing_refusal("gone-agent")));
+    h
+}
+
+#[test]
+fn held_agent_whose_pane_died_gets_the_exit_rules_on_adoption() {
+    let mut h = held_gone_agent();
+    let ev = h.input(Input::Runtime(RuntimeEvent::PaneDied {
+        agent: n("gone-agent"),
+        window: WindowId("@5".into()),
+        status: Some(1),
+    }));
+    assert_eq!(ev, vec![]);
+    reload(&mut h, &org_naming_gone_agent());
+    let status = &h.rt("gone-agent").status;
+    assert_eq!(status.state, AgentState::Errored);
+    assert_eq!(
+        status.error.as_deref(),
+        Some("exited unexpectedly (code 1)")
+    );
+    assert!(kills(&h).contains(&RuntimeCall::Kill(n("gone-agent"), WindowId("@5".into()))));
+}
+
+#[test]
+fn held_agent_whose_window_went_is_dropped() {
+    let mut h = held_gone_agent();
+    let ev = h.input(Input::Runtime(RuntimeEvent::WindowGone {
+        agent: n("gone-agent"),
+        window: WindowId("@5".into()),
+    }));
+    assert!(ev.contains(&Event::OrgFileError(None)), "{ev:?}");
+    assert!(!has_row(&h, "gone-agent"));
+    assert_eq!(h.engine.org_error, None);
+    assert_eq!(marked(&h), vec![test_org()]);
+}
+
+#[test]
+fn adopted_agent_gets_its_window_checked() {
+    let mut h = held_gone_agent();
+    let inventories = |h: &Harness| {
+        h.calls()
+            .iter()
+            .filter(|c| **c == RuntimeCall::Inventory)
+            .count()
+    };
+    let before = inventories(&h);
+    reload(&mut h, &org_naming_gone_agent());
+    assert_eq!(h.state("gone-agent"), AgentState::Working);
+    assert_eq!(inventories(&h), before + 1);
+    // Its window vanished meanwhile (D9): stopped, no error, row deleted.
+    let ev = inventory(&mut h, vec![]);
+    assert_eq!(moves(&ev, "gone-agent"), vec![AgentState::Stopped]);
+    assert_eq!(h.rt("gone-agent").status.error, None);
+    assert!(!has_row(&h, "gone-agent"));
+    // Checked once: a later inventory changes nothing.
+    h.start("gone-agent");
+    assert_eq!(inventory(&mut h, vec![]), vec![]);
+    assert_eq!(h.state("gone-agent"), AgentState::Starting);
+}
