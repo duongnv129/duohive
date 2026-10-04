@@ -1,4 +1,4 @@
-//! Command-line parsing (hand-rolled; Tasks 27–29 add the rest).
+//! Command-line parsing (hand-rolled).
 
 use crate::bench::BenchArgs;
 
@@ -23,12 +23,25 @@ pub enum Cli {
     },
     /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--json]`.
     Bench(BenchArgs),
+    /// `duohive --help` (or `-h`): print [`USAGE`].
+    Help,
 }
+
+/// What `--help` prints (`bench-agent` is internal and left out).
+pub const USAGE: &str = "\
+usage: duohive                 run DuoHive (your agents keep running in tmux after you quit)
+       duohive hook <agent> <event>
+                               forward one CLI hook (agent CLIs call this; prints nothing)
+       duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--json]
+                               measure CPU, memory and hook latency with fake agents
+       duohive --help          show this
+";
 
 /// Parses the arguments (without the program name); `[]` is the app.
 pub fn parse_args(args: &[String]) -> Result<Cli, String> {
     match args {
         [] => Ok(Cli::App),
+        [flag] if flag == "--help" || flag == "-h" => Ok(Cli::Help),
         [cmd, agent, event] if cmd == "hook" => Ok(Cli::Hook {
             agent: agent.clone(),
             event: event.clone(),

@@ -20,7 +20,7 @@ use std::sync::{Arc, PoisonError, RwLock};
 use std::thread;
 use std::time::Duration;
 
-use duohive_core::adapter::Adapters;
+use duohive_core::adapter::{Adapters, CliPresence};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::engine::{Engine, EngineConfig, Input, Ports, run_core};
@@ -28,7 +28,7 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
-use duohive_core::ports::{Store, StoreError};
+use duohive_core::ports::{OrgFileError, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
@@ -50,13 +50,16 @@ const SETTLE_AFTER: Duration = Duration::from_millis(1500);
 const END_HOOK_GRACE: Duration = Duration::from_millis(500);
 
 /// What the caller adds to the system.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SystemOptions {
     /// Receives a copy of every live hook (bench, tests).
     pub tap: Option<mpsc::UnboundedSender<HookMessage>>,
     /// Fired by `run_app` after its first frame; detection waits for it.
     /// `None` detects at once (bench, tests).
     pub first_frame: Option<oneshot::Receiver<()>>,
+    /// The home directory `~` expands to and Duo works in (D5), read from the
+    /// environment by the caller; empty is [`StartError::NoHome`].
+    pub home: PathBuf,
 }
 
 /// The system could not start.
@@ -65,9 +68,12 @@ pub enum StartError {
     /// Another DuoHive holds the instance lock (Review Focus 5).
     #[error("DuoHive is already running")]
     AlreadyRunning,
-    /// No `HOME`.
+    /// No home directory given.
     #[error("cannot find your home directory: HOME is not set")]
     NoHome,
+    /// The start-up work off the async executor failed to run.
+    #[error("start-up failed: {0}")]
+    Blocking(String),
     /// The running executable, which hooks call, cannot be found.
     #[error("cannot find the duohive executable: {0}")]
     Exe(io::Error),
@@ -92,6 +98,8 @@ pub struct SystemHandle {
     pub commands: mpsc::Sender<Command>,
     /// The engine's events, starting with the start-up `Snapshot`.
     pub events: mpsc::UnboundedReceiver<Event>,
+    /// The settings at start-up (the defaults when `settings.toml` is invalid, D29).
+    pub settings: Settings,
     core: Option<thread::JoinHandle<()>>,
     /// Stops the hook listener (also when dropped).
     listener_stop: Option<oneshot::Sender<()>>,
@@ -171,20 +179,26 @@ pub async fn start_system(
     adapters: Arc<Adapters>,
     opts: SystemOptions,
 ) -> Result<SystemHandle, StartError> {
-    let home = std::env::var_os("HOME")
-        .filter(|h| !h.is_empty())
-        .map(PathBuf::from)
-        .ok_or(StartError::NoHome)?;
+    if opts.home.as_os_str().is_empty() {
+        return Err(StartError::NoHome);
+    }
+    let home = opts.home;
     let hook_exe = std::env::current_exe().map_err(StartError::Exe)?;
     let agents = AgentClis::default();
-    let sqlite = SqliteStore::open(paths).map_err(StartError::Store)?;
-    let mut store = EnrichingStore::new(sqlite, Arc::clone(&adapters), Arc::clone(&agents));
-    // D29: an invalid settings.toml starts on the defaults, with the banner.
-    let (settings, settings_error) = match load_settings(&paths.settings_toml()) {
-        Ok(s) => (s, None),
-        Err(e) => (Settings::default(), Some(e)),
+    let files = {
+        let paths = paths.clone();
+        let (adapters, agents) = (Arc::clone(&adapters), Arc::clone(&agents));
+        // SQLite and file reads block: keep them off the caller's executor.
+        tokio::task::spawn_blocking(move || read_files(&paths, adapters, agents))
+            .await
+            .map_err(|e| StartError::Blocking(e.to_string()))??
     };
-    let loaded = store.load_org();
+    let Files {
+        store,
+        settings,
+        settings_error,
+        loaded,
+    } = files;
 
     // ORDER MATTERS: bind before anything spawns a process (tmux below, CLI
     // `--version` detection). On macOS std marks the socket close-on-exec only
@@ -197,20 +211,19 @@ pub async fn start_system(
 
     // From here on processes may be spawned.
     let (org, org_error, first_run_inventory) = match loaded {
-        Ok(Some(org)) => (org, None, None),
+        Loaded::Org(org) => (org, None, None),
         // First run: detect once, now, to pick the blank org's CLI. If that is
         // cancelled, the detection task detects instead (never an empty inventory).
-        Ok(None) => match detect_all(Arc::clone(&adapters)).await {
+        Loaded::FirstRun => match detect_all(Arc::clone(&adapters)).await {
             Some(list) => (Org::blank(first_found(&list)), None, Some(list)),
             None => (Org::blank(CliKind::Claude), None, None),
         },
         // D29: a broken org.toml runs on the last good org, with the banner.
-        Err(e) => {
-            let org = store
-                .last_good_org()
-                .unwrap_or_else(|| Org::blank(CliKind::Claude));
-            (org, Some(e), None)
-        }
+        Loaded::Broken { error, last_good } => (
+            last_good.unwrap_or_else(|| Org::blank(CliKind::Claude)),
+            Some(error),
+            None,
+        ),
     };
     let tracker = Tracker {
         agents: Arc::clone(&agents),
@@ -236,30 +249,21 @@ pub async fn start_system(
         settle_after: SETTLE_AFTER,
         end_hook_grace: END_HOOK_GRACE,
     };
-    let mut engine = Engine::new(
+    let engine = Engine::new(
         org,
         org_error,
-        settings,
+        settings.clone(),
         settings_error,
         cfg,
         ports,
         Arc::clone(&adapters),
     );
-    let mut first_events = engine.start_up();
     // The detection task detects unless this first run already did.
     let first_run = first_run_inventory.is_some();
-    if let Some(list) = first_run_inventory {
-        first_events.extend(engine.handle(Input::CliInventory(list)));
-    }
     let (events_tx, events) = mpsc::unbounded_channel();
-    for event in first_events {
-        tracker.track(&event);
-        let _ = events_tx.send(event);
-    }
-
     let (commands, commands_rx) = mpsc::channel(COMMAND_QUEUE);
     let (core_tx, core_rx) = mpsc::unbounded_channel();
-    let core = spawn_core(engine, commands_rx, inputs_rx, core_tx)?;
+    let core = spawn_core(engine, first_run_inventory, commands_rx, inputs_rx, core_tx)?;
     let detection = run_detection(
         opts.first_frame,
         (!first_run).then(|| Arc::clone(&adapters)),
@@ -287,6 +291,7 @@ pub async fn start_system(
     Ok(SystemHandle {
         commands,
         events,
+        settings,
         core: Some(core),
         listener_stop: Some(listener_stop),
         listener: Some(listener),
@@ -296,13 +301,63 @@ pub async fn start_system(
     })
 }
 
+/// What start-up reads from disk.
+struct Files {
+    store: EnrichingStore,
+    settings: Settings,
+    settings_error: Option<OrgFileError>,
+    loaded: Loaded,
+}
+
+/// `org.toml` at start-up.
+enum Loaded {
+    Org(Org),
+    /// No `org.toml` yet.
+    FirstRun,
+    /// D29: it doesn't parse; the last good org, if any, stands in.
+    Broken {
+        error: OrgFileError,
+        last_good: Option<Org>,
+    },
+}
+
+/// Opens `state.db` and reads `settings.toml` and `org.toml` (blocking).
+fn read_files(
+    paths: &Paths,
+    adapters: Arc<Adapters>,
+    agents: AgentClis,
+) -> Result<Files, StartError> {
+    let sqlite = SqliteStore::open(paths).map_err(StartError::Store)?;
+    let mut store = EnrichingStore::new(sqlite, adapters, agents);
+    // D29: an invalid settings.toml starts on the defaults, with the banner.
+    let (settings, settings_error) = match load_settings(&paths.settings_toml()) {
+        Ok(s) => (s, None),
+        Err(e) => (Settings::default(), Some(e)),
+    };
+    let loaded = match store.load_org() {
+        Ok(Some(org)) => Loaded::Org(org),
+        Ok(None) => Loaded::FirstRun,
+        Err(error) => Loaded::Broken {
+            error,
+            last_good: store.last_good_org(),
+        },
+    };
+    Ok(Files {
+        store,
+        settings,
+        settings_error,
+        loaded,
+    })
+}
+
 type Task = std::pin::Pin<Box<dyn Future<Output = ()> + Send>>;
 
 fn boxed(f: impl Future<Output = ()> + Send + 'static) -> Task {
     Box::pin(f)
 }
 
-fn tmux_config(paths: &Paths) -> TmuxConfig {
+/// DuoHive's tmux server for `paths` (D31).
+pub(crate) fn tmux_config(paths: &Paths) -> TmuxConfig {
     TmuxConfig {
         tmux_bin: PathBuf::from("tmux"),
         socket: paths.tmux_socket.clone(),
@@ -312,9 +367,12 @@ fn tmux_config(paths: &Paths) -> TmuxConfig {
     }
 }
 
-/// Runs the core on its own thread and current-thread runtime (it blocks on the store).
+/// Runs the core on its own thread and current-thread runtime (it blocks on the
+/// store): first the engine's start-up (its `Snapshot`, then the first run's
+/// inventory), then the driver loop.
 fn spawn_core(
-    engine: Engine,
+    mut engine: Engine,
+    first_run_inventory: Option<Vec<(CliKind, CliPresence)>>,
     commands: mpsc::Receiver<Command>,
     inputs: mpsc::Receiver<Input>,
     events: mpsc::UnboundedSender<Event>,
@@ -325,11 +383,19 @@ fn spawn_core(
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_time()
                 .build();
-            match runtime {
-                Ok(rt) => rt.block_on(run_core(engine, commands, inputs, events)),
+            let rt = match runtime {
+                Ok(rt) => rt,
                 // Dropping the event sender tells the app the core is gone.
-                Err(e) => tracing::error!(error = %e, "cannot build the core runtime"),
+                Err(e) => return tracing::error!(error = %e, "cannot build the core runtime"),
+            };
+            let mut first = engine.start_up();
+            if let Some(list) = first_run_inventory {
+                first.extend(engine.handle(Input::CliInventory(list)));
             }
+            for event in first {
+                let _ = events.send(event);
+            }
+            rt.block_on(run_core(engine, commands, inputs, events));
         })
         .map_err(StartError::Core)
 }

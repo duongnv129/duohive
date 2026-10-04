@@ -101,6 +101,7 @@ fn opts() -> SystemOptions {
     SystemOptions {
         tap: None,
         first_frame: None,
+        home: std::env::temp_dir(),
     }
 }
 
@@ -249,8 +250,8 @@ async fn detection_waits_for_the_first_frame() {
         &env.paths,
         counting(&calls),
         SystemOptions {
-            tap: None,
             first_frame: Some(rx),
+            ..opts()
         },
     )
     .await
