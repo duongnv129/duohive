@@ -16,7 +16,7 @@ use crate::org::{AgentDef, Fields, NodeKey, Org, Role, RoleKey, Team};
 use crate::ports::{OrgFileError, StoreError};
 use crate::settings::Settings;
 use crate::status::AgentState;
-use crate::validate::{next_agent_names, validate};
+use crate::validate::{FieldError, next_agent_names, validate};
 
 /// Why every edit is refused while `org.toml` doesn't parse.
 const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
@@ -32,13 +32,13 @@ impl Engine {
         if let Err(reason) = self.check_edit(&edit) {
             return reject(reason);
         }
-        let mut org = self.org.clone();
-        if let Err(reason) = apply_edit(&mut org, &edit) {
-            return reject(reason);
-        }
-        if let Some(e) = validate(&org).into_iter().next() {
-            return reject(e.message);
-        }
+        let org = match preview_edit(&self.org, &edit) {
+            Ok(org) => org,
+            Err(errors) => {
+                let reason = errors.into_iter().next().map(|e| e.message);
+                return reject(reason.unwrap_or_default());
+            }
+        };
         if let Err(e) = self.ports.store.save_org(&org) {
             return reject(format!("couldn't save org.toml: {e}"));
         }
@@ -289,9 +289,27 @@ fn agents_under(org: &Org, key: &NodeKey) -> Vec<AgentName> {
     }
 }
 
-/// Applies `edit` to `org`; fails only when its target doesn't exist. Pure: forms use it to
-/// validate a draft against the org it would produce.
-pub fn apply_edit(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
+/// The org `edit` would produce, or why it can't be made: the blocking problems `validate`
+/// finds in it, or (with an empty path) the edit's target doesn't exist. Pure: the engine
+/// checks every edit with it, and forms check their draft as the user types.
+pub fn preview_edit(org: &Org, edit: &OrgEdit) -> Result<Org, Vec<FieldError>> {
+    let mut after = org.clone();
+    apply(&mut after, edit).map_err(|message| {
+        vec![FieldError {
+            path: String::new(),
+            message,
+        }]
+    })?;
+    let errors = validate(&after);
+    if errors.is_empty() {
+        Ok(after)
+    } else {
+        Err(errors)
+    }
+}
+
+/// Applies `edit` to `org`; fails only when its target doesn't exist.
+fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
     match edit {
         OrgEdit::AddTeam(d) => org.teams.push(Team {
             name: d.name.clone(),

@@ -233,6 +233,7 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
 
 /// A key in a form: a save sends the edit and leaves the form waiting for the engine.
 fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
+    f.sync_duo_state(m.view(&m.org.duo.name).status.state);
     let out = f.handle(a, &m.org);
     match out {
         FormOutcome::Continue => {
