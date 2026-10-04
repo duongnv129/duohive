@@ -1,0 +1,266 @@
+//! The UI's copy of engine state, updated from events.
+
+use std::collections::BTreeMap;
+
+use duohive_core::command::Command;
+use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
+use duohive_core::names::AgentName;
+use duohive_core::org::{NodeKey, Org, RoleKey};
+use duohive_core::ports::OrgFileError;
+use duohive_core::status::{AgentState, Status};
+use duohive_core::time::Millis;
+
+/// A dialog over the main screen (Task 24 renders it; Task 25 adds forms and the chooser).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Dialog {
+    /// A yes/cancel question.
+    Confirm(Confirm),
+}
+
+/// A confirmation dialog (UI §4.8).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Confirm {
+    /// The question.
+    pub title: String,
+    /// Body lines.
+    pub lines: Vec<String>,
+    /// The yes button's label.
+    pub yes_label: String,
+    /// Whether the yes button has focus (dialogs open on Cancel).
+    pub focus_yes: bool,
+    /// What yes sends.
+    pub on_yes: Command,
+}
+
+/// Everything the main screen draws.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UiModel {
+    /// The org in use.
+    pub org: Org,
+    /// Per-agent views, Duo included.
+    pub agents: BTreeMap<AgentName, AgentView>,
+    /// Needs you, oldest first.
+    pub needs_you: Vec<NeedsYouItem>,
+    /// `org.toml` doesn't parse: the banner.
+    pub org_error: Option<OrgFileError>,
+    /// `settings.toml` is invalid (D29): the banner.
+    pub settings_error: Option<OrgFileError>,
+    /// The selected node.
+    pub selected: NodeKey,
+    /// A one-off message that replaces the footer's keys.
+    pub footer_note: Option<String>,
+    /// The open dialog.
+    pub dialog: Option<Dialog>,
+    /// Agents still being reattached at start-up; 0 = none.
+    pub reconnecting: u32,
+}
+
+impl UiModel {
+    /// A model over `org` with no agent views yet, Duo selected.
+    pub fn new(org: Org) -> Self {
+        Self {
+            org,
+            agents: BTreeMap::new(),
+            needs_you: Vec::new(),
+            org_error: None,
+            settings_error: None,
+            selected: NodeKey::Duo,
+            footer_note: None,
+            dialog: None,
+            reconnecting: 0,
+        }
+    }
+
+    /// Applies an engine event; `true` when the screen needs a redraw.
+    pub fn apply(&mut self, e: Event) -> bool {
+        match e {
+            Event::Snapshot(s) => self.apply_snapshot(*s),
+            Event::OrgChanged { org, problems } => self.apply_org(*org, problems),
+            Event::AgentStatusChanged { agent, status } => self.view_mut(&agent).status = status,
+            Event::LastReplyChanged { agent, reply } => self.view_mut(&agent).last_reply = reply,
+            Event::AgentNoticeChanged { agent, notice } => self.view_mut(&agent).notice = notice,
+            Event::NeedsYouChanged(items) => self.needs_you = items,
+            Event::OrgFileError(e) => self.org_error = e,
+            Event::CommandRejected { reason } => self.footer_note = Some(reason),
+            // Give work has no dialog until phase 2, so nothing can be refused yet.
+            Event::GiveWorkRefused { .. } => return false,
+            Event::Reconnected => self.reconnecting = 0,
+        }
+        true
+    }
+
+    /// Whether `key` names a node of the current org.
+    pub fn has_node(&self, key: &NodeKey) -> bool {
+        match key {
+            NodeKey::Duo => true,
+            NodeKey::Team(t) => self.org.teams.iter().any(|x| &x.name == t),
+            NodeKey::Role(RoleKey { team, role }) => {
+                let roles = match team {
+                    Some(t) => match self.org.teams.iter().find(|x| &x.name == t) {
+                        Some(x) => &x.roles,
+                        None => return false,
+                    },
+                    None => &self.org.roles,
+                };
+                roles.iter().any(|r| &r.name == role)
+            }
+            NodeKey::Agent(a) => self.org.is_duo(a) || self.org.find_agent(a).is_some(),
+        }
+    }
+
+    fn apply_snapshot(&mut self, s: Snapshot) {
+        self.org = s.org;
+        self.agents = s.agents;
+        self.needs_you = s.needs_you;
+        self.org_error = s.org_error;
+        self.settings_error = s.settings_error;
+        self.reconnecting = s.reconnecting;
+        self.keep_selection_valid();
+    }
+
+    fn apply_org(&mut self, org: Org, mut problems: BTreeMap<AgentName, String>) {
+        self.org = org;
+        let names: Vec<AgentName> = std::iter::once(self.org.duo.name.clone())
+            .chain(self.org.agents().iter().map(|a| a.agent.name.clone()))
+            .collect();
+        let mut old = std::mem::take(&mut self.agents);
+        self.agents = names
+            .into_iter()
+            .map(|name| {
+                let view = old.remove(&name).unwrap_or_else(unknown_view);
+                let problem = problems.remove(&name);
+                (name, AgentView { problem, ..view })
+            })
+            .collect();
+        self.keep_selection_valid();
+    }
+
+    fn view_mut(&mut self, agent: &AgentName) -> &mut AgentView {
+        self.agents
+            .entry(agent.clone())
+            .or_insert_with(unknown_view)
+    }
+
+    fn keep_selection_valid(&mut self) {
+        if !self.has_node(&self.selected) {
+            self.selected = NodeKey::Duo;
+        }
+    }
+}
+
+/// A view for an agent the engine has not reported yet: stopped, since an unknown time.
+pub(crate) fn unknown_view() -> AgentView {
+    AgentView {
+        status: Status {
+            state: AgentState::Stopped,
+            quiet: false,
+            quiet_since: None,
+            from_screen: false,
+            since: Millis(0),
+            error: None,
+        },
+        last_reply: None,
+        notice: None,
+        problem: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use duohive_core::event::{Event, NeedsYouItem};
+    use duohive_core::org::NodeKey;
+    use duohive_core::ports::OrgFileError;
+    use duohive_core::status::AgentState;
+    use duohive_core::testkit::{example_org, n};
+
+    use super::*;
+    use crate::fixtures::{NOW, mins, spec_model, status};
+
+    #[test]
+    fn apply_events_update_model() {
+        let mut m = spec_model();
+        let s = status(AgentState::Waiting, mins(0));
+        assert!(m.apply(Event::AgentStatusChanged {
+            agent: n("squad-2"),
+            status: s.clone(),
+        }));
+        assert_eq!(m.agents[&n("squad-2")].status, s);
+        let item = NeedsYouItem {
+            agent: n("squad-2"),
+            state: AgentState::Waiting,
+            quiet: false,
+            since: NOW,
+            excerpt: None,
+        };
+        assert!(m.apply(Event::NeedsYouChanged(vec![item.clone()])));
+        assert_eq!(m.needs_you, [item]);
+        assert!(m.apply(Event::LastReplyChanged {
+            agent: n("squad-2"),
+            reply: Some("done".into()),
+        }));
+        assert_eq!(m.agents[&n("squad-2")].last_reply.as_deref(), Some("done"));
+        assert!(m.apply(Event::AgentNoticeChanged {
+            agent: n("squad-2"),
+            notice: Some("notice: x".into()),
+        }));
+        assert_eq!(m.agents[&n("squad-2")].notice.as_deref(), Some("notice: x"));
+        let err = OrgFileError {
+            line: Some(1),
+            message: "bad".into(),
+        };
+        assert!(m.apply(Event::OrgFileError(Some(err.clone()))));
+        assert_eq!(m.org_error, Some(err));
+        assert!(m.apply(Event::CommandRejected {
+            reason: "pay-qa is already running".into(),
+        }));
+        assert_eq!(m.footer_note.as_deref(), Some("pay-qa is already running"));
+    }
+
+    #[test]
+    fn org_changed_sets_problems_and_keeps_a_valid_selection() {
+        let mut m = spec_model();
+        let mut org = example_org();
+        org.roles.clear();
+        m.selected = NodeKey::Agent(n("squad-1"));
+        let problems = BTreeMap::from([(n("pay-qa"), "no directory set · e to fix".to_owned())]);
+        assert!(m.apply(Event::OrgChanged {
+            org: Box::new(org),
+            problems,
+        }));
+        assert_eq!(
+            m.agents[&n("pay-qa")].problem.as_deref(),
+            Some("no directory set · e to fix")
+        );
+        assert_eq!(m.agents[&n("auth-service")].problem, None);
+        assert!(!m.agents.contains_key(&n("squad-1")));
+        assert!(m.agents.contains_key(&n("Duo")));
+        assert_eq!(m.selected, NodeKey::Duo);
+    }
+
+    #[test]
+    fn snapshot_replaces_everything_and_reconnected_clears() {
+        let mut m = UiModel::new(example_org());
+        assert_eq!(m.selected, NodeKey::Duo);
+        let spec = spec_model();
+        let snap = duohive_core::event::Snapshot {
+            org: spec.org.clone(),
+            agents: spec.agents.clone(),
+            needs_you: spec.needs_you.clone(),
+            org_error: None,
+            settings_error: Some(OrgFileError {
+                line: None,
+                message: "x".into(),
+            }),
+            reconnecting: 3,
+        };
+        assert!(m.apply(Event::Snapshot(Box::new(snap))));
+        assert_eq!(m.agents, spec.agents);
+        assert_eq!(m.needs_you, spec.needs_you);
+        assert_eq!(m.reconnecting, 3);
+        assert!(m.settings_error.is_some());
+        assert!(m.apply(Event::Reconnected));
+        assert_eq!(m.reconnecting, 0);
+    }
+}
