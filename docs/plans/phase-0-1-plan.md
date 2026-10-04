@@ -1243,7 +1243,7 @@ pub fn real_adapters() -> Adapters;
 pub fn probe_version(kind: CliKind) -> CliPresence;          // detect.rs: runs `<binary> --version`, 2 s timeout, Sn.1 regex;
                                                               // each real adapter's CliAdapter::detect calls it
 pub fn parse_cli_version(kind: CliKind, out: &str) -> Option<String>;
-pub fn hook_command(spec: &LaunchSpec, event: &str) -> String;   // "'<hook_exe>' hook '<agent>' <event>", sh-quoted
+pub fn hook_command(spec: &LaunchSpec, event: &str) -> Result<String, LaunchError>;   // "'<hook_exe>' hook '<agent>' <event>", sh-quoted; a non-UTF-8 hook_exe → LaunchError::Invalid
 ```
 Each adapter:
 - `launch`: instructions per **Sn.2** (`spec.agent.prompt`); hook configuration per **Sn.3**, written as a `LaunchFile` under `spec.run_dir`, each hook running `hook_command(spec, <duohive event>)`; model and effort per **Sn.6**'s flags when set; `spec.agent.flags` appended; the task last per **Sn.8**, with a `--` separator before it when the CLI supports one (Review Focus 4); `cwd = expand_home(directory, home)`.
