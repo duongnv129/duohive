@@ -22,13 +22,14 @@ use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::status::AgentState;
 use duohive_store::{Paths, save_org};
+use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
 use duohive_tui::UiModel;
 use tokio::sync::mpsc;
 
 use crate::system::{StartError, SystemHandle, SystemOptions, start_system};
 pub use measure::percentiles;
 use observe::Observer;
-pub use report::{BenchOutcome, BenchReport, Machine, Percentiles, Targets};
+pub use report::{BenchOutcome, BenchReport, Machine, Percentiles, ServerUse, Targets};
 
 /// Every fifth agent plays OpenCode, whose fake has no hooks (screen-read path).
 const SCREEN_READ_EVERY: u32 = 5;
@@ -82,6 +83,9 @@ pub enum BenchError {
     /// A phase took too long.
     #[error("timed out waiting for {0}")]
     Timeout(&'static str),
+    /// Ctrl-C or SIGTERM: everything the bench started was cleaned up.
+    #[error("interrupted")]
+    Interrupted,
     /// The engine stopped on its own.
     #[error("the engine stopped unexpectedly")]
     EngineGone,
@@ -108,43 +112,131 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     save_org(&env.paths, &org).map_err(|e| BenchError::Org(e.to_string()))?;
     let exe = std::env::current_exe()?;
     let (tap_tx, tap) = mpsc::unbounded_channel();
-    let handle = start_system(
+    let start = start_system(
         &env.paths,
         Arc::new(fake_adapters(&exe)),
         SystemOptions {
             tap: Some(tap_tx),
             first_frame: None,
         },
-    )
-    .await?;
+    );
+    let handle = tokio::select! {
+        handle = start => handle?,
+        () = interrupted() => {
+            env.kill_tmux();
+            return Err(BenchError::Interrupted);
+        }
+    };
     let observer = Observer::new(org, &env.paths.tmux_socket);
     let mut run = Run {
         handle,
         tap,
         observer,
         names,
+        procs: Procs::find(&env.paths.tmux_socket),
     };
-    let result = run.measure(&a).await;
+    let result = tokio::select! {
+        result = run.measure(&a) => result,
+        () = interrupted() => Err(BenchError::Interrupted),
+    };
+    // Interrupted or not: stop the agents, the system and the bench's tmux server.
+    let (rss_client, rss_server) = (run.procs.client_peak_mb, run.procs.server_peak_mb);
+    let control_client = run.procs.client.is_some();
     run.finish().await;
     env.kill_tmux();
-    let (idle_cpu_pct, hook_to_screen_ms, hook_samples) = result?;
+    let m = result?;
     Ok(BenchOutcome {
         report: BenchReport {
             agents: a.agents,
             tmux,
             platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
-            idle_cpu_pct,
-            peak_rss_mb: measure::peak_rss_mb(),
-            hook_to_screen_ms,
+            idle_cpu_pct: m.idle_cpu_pct,
+            peak_rss_mb: measure::peak_rss_mb() + rss_client,
+            hook_to_screen_ms: m.hooks,
         },
         machine: Machine {
             cpus: std::thread::available_parallelism().map_or(1, usize::from),
             load_start: machine_start,
             load_end: measure::load_average(),
         },
-        hook_samples,
+        tmux_server: m.server_cpu_pct.map(|cpu_pct| ServerUse {
+            cpu_pct,
+            rss_mb: rss_server,
+        }),
+        control_client,
+        hook_samples: m.hook_samples,
         pid: std::process::id(),
     })
+}
+
+/// Resolves on Ctrl-C or SIGTERM (never, if the handlers cannot be installed).
+async fn interrupted() {
+    use tokio::signal::unix::{SignalKind, signal};
+    let term = signal(SignalKind::terminate());
+    let int = signal(SignalKind::interrupt());
+    match (term, int) {
+        (Ok(mut term), Ok(mut int)) => {
+            tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
+        }
+        _ => std::future::pending().await,
+    }
+}
+
+/// What a finished measurement hands back.
+struct Measured {
+    idle_cpu_pct: f64,
+    hooks: Percentiles,
+    hook_samples: usize,
+    server_cpu_pct: Option<f64>,
+}
+
+/// DuoHive's tmux control client and DuoHive's tmux server, sampled by pid.
+struct Procs {
+    client: Option<u32>,
+    server: Option<u32>,
+    client_peak_mb: f64,
+    server_peak_mb: f64,
+}
+
+impl Procs {
+    /// The control client is a child of this process on the bench socket; the
+    /// server's pid is whatever tmux says it is.
+    fn find(socket: &str) -> Self {
+        let client = measure::child_pids_matching(socket).first().copied();
+        let server = Process::new("tmux")
+            .args([
+                "-f",
+                "/dev/null",
+                "-L",
+                socket,
+                "display-message",
+                "-p",
+                "#{pid}",
+            ])
+            .env_remove("TMUX")
+            .output()
+            .ok()
+            .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok());
+        Self {
+            client,
+            server,
+            client_peak_mb: 0.0,
+            server_peak_mb: 0.0,
+        }
+    }
+
+    /// Reads both processes, keeping the largest resident size seen.
+    fn sample(&mut self) -> (Option<measure::ProcStats>, Option<measure::ProcStats>) {
+        let client = self.client.and_then(measure::process_stats);
+        let server = self.server.and_then(measure::process_stats);
+        if let Some(c) = client {
+            self.client_peak_mb = self.client_peak_mb.max(c.rss_mb);
+        }
+        if let Some(s) = server {
+            self.server_peak_mb = self.server_peak_mb.max(s.rss_mb);
+        }
+        (client, server)
+    }
 }
 
 fn agent_names(count: u32) -> Vec<AgentName> {
@@ -180,15 +272,20 @@ fn bench_org(names: &[AgentName], dir: &Path) -> Org {
     org
 }
 
-/// `tmux -V` without its `tmux ` prefix.
+/// The tmux version, as `duohive-tmux` reads it (`3.7c`).
 fn tmux_version() -> Result<String, BenchError> {
-    let out = Process::new("tmux")
-        .args(["-f", "/dev/null", "-V"])
-        .env_remove("TMUX")
-        .output()
-        .map_err(|e| BenchError::Tmux(e.to_string()))?;
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(text.trim().trim_start_matches("tmux ").to_owned())
+    let cfg = TmuxConfig {
+        tmux_bin: "tmux".into(),
+        socket: String::new(),
+        session: String::new(),
+        buffer_name: String::new(),
+        run_root: std::path::PathBuf::new(),
+    };
+    match probe_tmux_version(&cfg) {
+        Ok(Some(v)) => Ok(v.raw.trim_start_matches("tmux ").to_owned()),
+        Ok(None) => Err(BenchError::Tmux("tmux not found".to_owned())),
+        Err(e) => Err(BenchError::Tmux(e.to_string())),
+    }
 }
 
 /// Temp config and data directories and the bench's tmux socket, removed on drop.
@@ -246,11 +343,12 @@ struct Run {
     tap: mpsc::UnboundedReceiver<HookMessage>,
     observer: Observer,
     names: Vec<AgentName>,
+    procs: Procs,
 }
 
 impl Run {
     /// Start, work, settle, then watch idle: returns idle CPU and the hook timings.
-    async fn measure(&mut self, a: &BenchArgs) -> Result<(f64, Percentiles, usize), BenchError> {
+    async fn measure(&mut self, a: &BenchArgs) -> Result<Measured, BenchError> {
         self.pump(Duration::from_secs(5), |m| !m.agents.is_empty())
             .await?
             .then_some(())
@@ -260,6 +358,7 @@ impl Run {
         }
         self.wait_all("every agent to start", START_WAIT, at_rest)
             .await?;
+        self.procs.sample();
         for turn in 1..=a.turns {
             let task = format!("bench task {turn}");
             for agent in self.names.clone() {
@@ -271,20 +370,32 @@ impl Run {
                 at_rest(m, n) && m.view(n).last_reply.as_deref() == Some(reply.as_str())
             })
             .await?;
+            self.procs.sample();
         }
         self.pump(SETTLE, |_| false).await?;
         let idle = Duration::from_secs(a.idle_secs);
+        let (client_before, server_before) = self.procs.sample();
         let cpu_before = measure::cpu_time();
         let started = Instant::now();
         self.pump(idle, |_| false).await?;
-        let idle_cpu_pct = match (cpu_before, measure::cpu_time()) {
-            (Some(before), Some(after)) => {
-                measure::cpu_percent(after.saturating_sub(before), started.elapsed())
-            }
-            _ => 0.0,
+        let cpu_after = measure::cpu_time();
+        let wall = started.elapsed();
+        let (client_after, server_after) = self.procs.sample();
+        let used = |before: Option<Duration>, after: Option<Duration>| {
+            before.zip(after).map(|(b, a)| a.saturating_sub(b))
         };
+        // DuoHive = this process + its control client.
+        let own = used(cpu_before, cpu_after).unwrap_or_default();
+        let client =
+            used(client_before.map(|c| c.cpu), client_after.map(|c| c.cpu)).unwrap_or_default();
+        let server = used(server_before.map(|c| c.cpu), server_after.map(|c| c.cpu));
         let mut samples = self.observer.samples().to_vec();
-        Ok((idle_cpu_pct, percentiles(&mut samples), samples.len()))
+        Ok(Measured {
+            idle_cpu_pct: measure::cpu_percent(own + client, wall),
+            hooks: percentiles(&mut samples),
+            hook_samples: samples.len(),
+            server_cpu_pct: server.map(|u| measure::cpu_percent(u, wall)),
+        })
     }
 
     async fn send(&self, command: Command) -> Result<(), BenchError> {
@@ -404,6 +515,79 @@ memory (peak)   11.2 MB  target < 20 MB
 hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
 ";
         assert_eq!(report.to_string(), expected);
+    }
+
+    fn report(p: Percentiles) -> BenchReport {
+        BenchReport {
+            agents: 10,
+            tmux: "3.7c".to_owned(),
+            platform: "macos-aarch64".to_owned(),
+            idle_cpu_pct: 0.4,
+            peak_rss_mb: 11.2,
+            hook_to_screen_ms: p,
+        }
+    }
+
+    #[test]
+    fn no_samples_is_a_miss_not_a_pass() {
+        let text = report(Percentiles::default()).to_string();
+        assert!(text.contains("no samples"), "{text}");
+        assert_eq!(text.matches("MISSED").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn the_hook_target_is_judged_on_the_slowest_hook() {
+        let text = report(Percentiles {
+            p50: 12.0,
+            p95: 40.0,
+            max: 1000.0,
+        })
+        .to_string();
+        assert_eq!(text.matches("MISSED").count(), 1, "{text}");
+    }
+
+    #[test]
+    fn the_outcome_says_what_it_did_not_measure() {
+        let outcome = BenchOutcome {
+            report: report(Percentiles {
+                p50: 1.0,
+                p95: 2.0,
+                max: 3.0,
+            }),
+            machine: Machine {
+                cpus: 10,
+                load_start: None,
+                load_end: None,
+            },
+            tmux_server: Some(ServerUse {
+                cpu_pct: 0.2,
+                rss_mb: 5.0,
+            }),
+            control_client: true,
+            hook_samples: 4,
+            pid: 1,
+        };
+        let text = outcome.to_string();
+        assert!(text.contains("tmux server"), "{text}");
+        assert!(text.contains("not DuoHive"), "{text}");
+        assert!(text.contains("not measured"), "{text}");
+        assert!(text.contains("10-agent targets"), "{text}");
+        assert_eq!(outcome.to_json()["tmux_server"]["rss_mb"], 5.0);
+    }
+
+    #[test]
+    fn a_newer_hook_replaces_an_older_one_for_the_same_agent() {
+        let mut obs = observe::Observer::new(Org::blank(CliKind::Claude), "sock");
+        let hook = |event: &str| HookMessage {
+            token: String::new(),
+            agent: "bench-1".to_owned(),
+            event: event.to_owned(),
+            payload: serde_json::Value::Null,
+            sent_at_ms: 1,
+        };
+        obs.hook(&hook("busy"));
+        obs.hook(&hook("turn-end"));
+        assert_eq!(obs.pending_count(), 1);
     }
 
     #[test]

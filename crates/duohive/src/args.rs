@@ -41,7 +41,7 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
 }
 
 const BENCH_RUN_USAGE: &str =
-    "usage: duohive bench [--agents N] [--idle-secs N] [--turns N] [--json]";
+    "usage: duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--json]";
 
 /// The bench's flags in any order; counts must be numbers, agents and turns at least 1.
 fn parse_bench(args: &[String]) -> Result<BenchArgs, String> {
@@ -55,16 +55,24 @@ fn parse_bench(args: &[String]) -> Result<BenchArgs, String> {
         };
         match arg.as_str() {
             "--json" => out.json = true,
-            "--agents" => out.agents = u32::try_from(number()?).map_err(|e| e.to_string())?,
-            "--turns" => out.turns = u32::try_from(number()?).map_err(|e| e.to_string())?,
+            "--agents" => out.agents = count(number()?)?,
+            "--turns" => out.turns = count(number()?)?,
             "--idle-secs" => out.idle_secs = number()?,
             _ => return Err(BENCH_RUN_USAGE.to_owned()),
         }
     }
-    if out.agents == 0 || out.turns == 0 {
-        return Err(BENCH_RUN_USAGE.to_owned());
-    }
     Ok(out)
+}
+
+/// The most agents or turns a bench run takes.
+const BENCH_MAX: u64 = 1000;
+
+/// An agent or turn count: 1 to [`BENCH_MAX`].
+fn count(n: u64) -> Result<u32, String> {
+    u32::try_from(n)
+        .ok()
+        .filter(|n| (1..=BENCH_MAX as u32).contains(n))
+        .ok_or_else(|| BENCH_RUN_USAGE.to_owned())
 }
 
 const BENCH_USAGE: &str = "usage: duohive bench-agent [--no-hooks] [--task <text>]";
@@ -169,6 +177,12 @@ mod tests {
         assert!(parse_args(&s(["bench", "--agents"])).is_err());
         assert!(parse_args(&s(["bench", "--agents", "x"])).is_err());
         assert!(parse_args(&s(["bench", "--agents", "0"])).is_err());
+        for bad in ["5000000000", "1001", "-1"] {
+            let err = parse_args(&s(["bench", "--agents", bad])).unwrap_err();
+            assert!(err.starts_with("usage: duohive bench"), "{bad}: {err}");
+        }
+        let err = parse_args(&s(["bench", "--turns", "1001"])).unwrap_err();
+        assert!(err.starts_with("usage: duohive bench"), "{err}");
         assert!(parse_args(&s(["bench", "--frob"])).is_err());
     }
 

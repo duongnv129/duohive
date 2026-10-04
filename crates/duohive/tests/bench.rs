@@ -41,6 +41,12 @@ fn bench_runs_two_agents() {
     );
     assert!(json["machine"]["cpus"].as_u64().unwrap() > 0, "{json}");
 
+    assert!(
+        json["tmux_server"]["rss_mb"].as_f64().unwrap() > 0.0,
+        "{json}"
+    );
+    assert_eq!(json["control_client"], true, "{json}");
+
     // The bench's own tmux server is gone, and no socket is left for its pid.
     let list = Command::new("tmux")
         .args(["-f", "/dev/null", "-L"])
@@ -50,4 +56,54 @@ fn bench_runs_two_agents() {
         .output()
         .unwrap();
     assert!(!list.status.success(), "the bench's tmux server still runs");
+}
+
+fn bench_socket_answers(pid: u32) -> bool {
+    Command::new("tmux")
+        .args([
+            "-f",
+            "/dev/null",
+            "-L",
+            &format!("duohive-bench-{pid}"),
+            "list-sessions",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+#[test]
+fn sigterm_cleans_up_the_bench() {
+    use std::time::{Duration, Instant};
+    let mut child = Command::new(BIN)
+        .args([
+            "bench",
+            "--agents",
+            "2",
+            "--idle-secs",
+            "60",
+            "--turns",
+            "1",
+        ])
+        .env_remove("TMUX")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !bench_socket_answers(pid) {
+        assert!(Instant::now() < deadline, "the bench never started tmux");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    let sent = Command::new("kill")
+        .args(["-TERM", &pid.to_string()])
+        .status()
+        .unwrap();
+    assert!(sent.success());
+    let status = child.wait().unwrap();
+    assert!(!status.success(), "an interrupted bench must not exit 0");
+    assert!(!bench_socket_answers(pid), "tmux server left behind");
 }
