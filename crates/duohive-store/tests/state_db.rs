@@ -44,6 +44,7 @@ fn row(state: AgentState) -> SessionRow {
 
 fn hook(event: &str) -> HookMessage {
     HookMessage {
+        sent_at_ms: 0,
         token: "tok-1".into(),
         agent: "auth-service".into(),
         event: event.into(),
@@ -62,10 +63,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 1);
+    assert_eq!(user_version(&first), 2);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 1);
+    assert_eq!(user_version(&second), 2);
 }
 
 #[test]
@@ -344,4 +345,53 @@ fn hook_open_inserts_into_a_current_database() {
     let conn = open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).unwrap();
     insert_pending_hook(&conn, &hook("busy"), Millis(5)).unwrap();
     assert_eq!(store.take_pending_hooks().unwrap(), vec![hook("busy")]);
+}
+
+fn fired_at(event: &str, sent_at_ms: u64) -> HookMessage {
+    HookMessage {
+        sent_at_ms,
+        ..hook(event)
+    }
+}
+
+#[test]
+fn pending_hooks_replay_in_the_order_they_fired() {
+    // Shutdown: a later hook falls back to the database while the core still
+    // holds an earlier one, which it stores afterwards. Replay goes by firing time.
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let fallback = open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).unwrap();
+    insert_pending_hook(&fallback, &fired_at("turn-end", 200), Millis(210)).unwrap();
+    store
+        .queue_pending_hook(&fired_at("busy", 100), Millis(300))
+        .unwrap();
+    assert_eq!(
+        store.take_pending_hooks().unwrap(),
+        vec![fired_at("busy", 100), fired_at("turn-end", 200)]
+    );
+}
+
+#[test]
+fn hooks_queued_before_the_firing_time_column_replay_by_arrival() {
+    // A schema-1 database (no `sent_at_ms`): its rows take their `received_at`.
+    let (_t, paths) = temp_paths();
+    std::fs::create_dir_all(&paths.data_dir).unwrap();
+    let old = rusqlite::Connection::open(paths.state_db()).unwrap();
+    old.execute_batch(
+        "CREATE TABLE sessions (agent TEXT PRIMARY KEY, token TEXT, window TEXT, state TEXT NOT NULL,
+           quiet INTEGER NOT NULL, quiet_since INTEGER, from_screen INTEGER NOT NULL, since INTEGER NOT NULL,
+           error TEXT, last_reply TEXT, task_at_launch INTEGER NOT NULL, saw_end_hook INTEGER NOT NULL, last_task TEXT);
+         CREATE TABLE pending_hooks (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, agent TEXT NOT NULL,
+           event TEXT NOT NULL, payload TEXT NOT NULL, received_at INTEGER NOT NULL);
+         INSERT INTO pending_hooks (token, agent, event, payload, received_at)
+           VALUES ('tok-1', 'auth-service', 'busy', '{\"k\":\"busy\"}', 50);
+         PRAGMA user_version = 1;",
+    )
+    .unwrap();
+    drop(old);
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(
+        store.take_pending_hooks().unwrap(),
+        vec![fired_at("busy", 50)]
+    );
 }

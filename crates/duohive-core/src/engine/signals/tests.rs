@@ -26,6 +26,7 @@ const FULL: HookCoverage = HookCoverage {
 
 fn hook_with(agent: &str, token: &str, event: &str, payload: serde_json::Value) -> Input {
     Input::Hook(HookMessage {
+        sent_at_ms: 0,
         token: token.into(),
         agent: agent.into(),
         event: event.into(),

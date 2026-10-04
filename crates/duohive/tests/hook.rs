@@ -50,7 +50,26 @@ fn vars(token: Option<&str>, data: &Path) -> HashMap<String, String> {
     v
 }
 
+/// The queued hooks with their firing time cleared, for comparing with [`hook`].
 fn pending(data: &Path) -> Vec<HookMessage> {
+    pending_raw(data).into_iter().map(unstamped).collect()
+}
+
+fn unstamped(m: HookMessage) -> HookMessage {
+    HookMessage { sent_at_ms: 0, ..m }
+}
+
+fn now_ms() -> u64 {
+    u64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap()
+}
+
+fn pending_raw(data: &Path) -> Vec<HookMessage> {
     let paths = Paths {
         config_dir: data.join("config"),
         data_dir: data.to_path_buf(),
@@ -69,6 +88,7 @@ fn init_db(data: &Path) {
 
 fn hook(token: &str, agent: &str, event: &str, payload: serde_json::Value) -> HookMessage {
     HookMessage {
+        sent_at_ms: 0,
         token: token.to_owned(),
         agent: agent.to_owned(),
         event: event.to_owned(),
@@ -143,6 +163,7 @@ async fn hook_forwards_one_line_to_the_socket() {
     let data = tmp.path().to_path_buf();
     let mut served = serve(&data.join("run.sock"), no_agents(), Adapters::new(vec![]));
     let env = vars(Some("tok-1"), &data);
+    let before = now_ms();
     let code = tokio::task::spawn_blocking(move || {
         run_hook(
             &s(&["hook", "pay-qa", "busy"]),
@@ -158,7 +179,16 @@ async fn hook_forwards_one_line_to_the_socket() {
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(got, hook("tok-1", "pay-qa", "busy", json!({"a": 1})));
+    // Stamped with its firing time, which orders replay (Review Focus 3).
+    assert!(
+        (before..=now_ms()).contains(&got.sent_at_ms),
+        "{}",
+        got.sent_at_ms
+    );
+    assert_eq!(
+        unstamped(got.clone()),
+        hook("tok-1", "pay-qa", "busy", json!({"a": 1}))
+    );
     assert_eq!(
         tokio::time::timeout(BUDGET, served.core.recv())
             .await
@@ -200,6 +230,7 @@ fn terminal_stdin_is_not_read() {
 fn hook_falls_back_to_the_database_when_no_listener() {
     let tmp = tempfile::tempdir().unwrap();
     init_db(tmp.path());
+    let before = now_ms();
     let code = run_hook(
         &s(&["hook", "pay-qa", "turn-end"]),
         &b"{\"x\":2}"[..],
@@ -207,9 +238,12 @@ fn hook_falls_back_to_the_database_when_no_listener() {
         &vars(Some("tok-2"), tmp.path()),
     );
     assert_eq!(code, ExitCode::SUCCESS);
+    let queued = pending_raw(tmp.path());
+    assert_eq!(queued.len(), 1);
+    assert!((before..=now_ms()).contains(&queued[0].sent_at_ms));
     assert_eq!(
-        pending(tmp.path()),
-        vec![hook("tok-2", "pay-qa", "turn-end", json!({"x": 2}))]
+        unstamped(queued[0].clone()),
+        hook("tok-2", "pay-qa", "turn-end", json!({"x": 2}))
     );
 }
 
@@ -235,7 +269,7 @@ fn hook_survives_silent_open_stdin() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        got,
+        unstamped(got),
         hook("tok-3", "pay-qa", "busy", serde_json::Value::Null)
     );
     drop(served.core);
@@ -543,7 +577,7 @@ async fn large_payload_still_arrives() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(got, hook("tok-11", "pay-qa", "turn-end", want));
+        assert_eq!(unstamped(got), hook("tok-11", "pay-qa", "turn-end", want));
     }
     drop(served.core);
 }

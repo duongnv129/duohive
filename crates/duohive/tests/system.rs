@@ -432,6 +432,7 @@ fn replayed_hooks_are_enriched() {
     let store = SqliteStore::open(&paths).unwrap();
     let conn = open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).unwrap();
     let msg = HookMessage {
+        sent_at_ms: 0,
         token: "tok".to_owned(),
         agent: "pay-qa".to_owned(),
         event: "turn-end".to_owned(),
@@ -554,6 +555,7 @@ async fn no_hook_lost_at_shutdown() {
     .await;
     assert!(idle.is_some(), "the fake agent never went idle");
     let hook = HookMessage {
+        sent_at_ms: 0,
         token: launch_token(&env.paths, "bench-1"),
         agent: "bench-1".to_owned(),
         event: "busy".to_owned(),
