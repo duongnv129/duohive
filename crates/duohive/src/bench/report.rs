@@ -24,11 +24,15 @@ pub struct BenchReport {
     pub tmux: String,
     /// `<os>-<arch>`.
     pub platform: String,
-    /// DuoHive's CPU while every agent is at rest, percent of one core.
+    /// DuoHive's CPU while every agent is at rest, percent of one core: this
+    /// process plus its `tmux -C` control client, never the tmux server or agents.
     pub idle_cpu_pct: f64,
-    /// DuoHive's peak resident memory in MB.
+    /// DuoHive's peak resident memory in MB: this process's peak plus the
+    /// control client's largest sampled size.
     pub peak_rss_mb: f64,
-    /// From a hook's `sent_at` to the frame that shows its state, in ms.
+    /// From a hook's `sent_at_ms` (stamped when `duohive hook` has started, so
+    /// the hook process's own start-up is not included) to the end of the frame
+    /// that shows its state, in ms.
     pub hook_to_screen_ms: Percentiles,
 }
 
@@ -74,6 +78,15 @@ pub struct Machine {
     pub load_end: Option<[f64; 3]>,
 }
 
+/// DuoHive's own tmux server: reported, never judged (it is not DuoHive's).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ServerUse {
+    /// CPU over the idle window, percent of one core.
+    pub cpu_pct: f64,
+    /// Largest resident size sampled, MB.
+    pub rss_mb: f64,
+}
+
 /// A run: the report plus the context around it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct BenchOutcome {
@@ -81,6 +94,10 @@ pub struct BenchOutcome {
     pub report: BenchReport,
     /// The machine they were taken on.
     pub machine: Machine,
+    /// The tmux server on the bench's socket, when it could be sampled.
+    pub tmux_server: Option<ServerUse>,
+    /// Whether the control client's CPU and memory are inside the report's figures.
+    pub control_client: bool,
     /// How many hooks were timed (the percentiles rest on these).
     pub hook_samples: usize,
     /// The bench's pid (its tmux socket is `duohive-bench-<pid>`).
@@ -90,12 +107,12 @@ pub struct BenchOutcome {
 const LABEL_WIDTH: usize = 16;
 const VALUE_WIDTH: usize = 9;
 
-/// ` · MISSED` when `over`, which must never be left out.
+/// The two-space `MISSED` marker when `over`: a missed target is never left unsaid.
 fn verdict(over: bool) -> &'static str {
     if over { "  MISSED" } else { "" }
 }
 
-/// `{:.1}` with the sign and width the report uses.
+/// One decimal place, as the report prints CPU and memory.
 fn one(v: f64) -> String {
     format!("{v:.1}")
 }
@@ -125,6 +142,16 @@ impl fmt::Display for BenchReport {
             t.rss_mb,
             verdict(self.peak_rss_mb >= t.rss_mb)
         )?;
+        if h.max <= 0.0 {
+            // No hook was timed: that is a failure to measure, not a pass.
+            return writeln!(
+                f,
+                "{:<LABEL_WIDTH$}no samples   target < {} ms{}",
+                "hook → screen",
+                t.hook_ms,
+                verdict(true)
+            );
+        }
         writeln!(
             f,
             "{:<LABEL_WIDTH$}p50 {:.0} ms · p95 {:.0} ms · max {:.0} ms   target < {} ms{}",
@@ -133,7 +160,7 @@ impl fmt::Display for BenchReport {
             h.p95,
             h.max,
             t.hook_ms,
-            verdict(h.p95 >= t.hook_ms)
+            verdict(h.max >= t.hook_ms)
         )
     }
 }
@@ -148,10 +175,29 @@ fn loads(l: Option<[f64; 3]>) -> String {
 impl fmt::Display for BenchOutcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.report)?;
+        let set = if self.report.agents <= 10 { 10 } else { 100 };
+        let client = if self.control_client {
+            "this process + its tmux control client"
+        } else {
+            "this process only (control client not found)"
+        };
+        writeln!(f, "{:<LABEL_WIDTH$}DuoHive = {client}", "counted")?;
+        if let Some(s) = &self.tmux_server {
+            writeln!(
+                f,
+                "{:<LABEL_WIDTH$}{:.1} % CPU · {:.1} MB (not DuoHive: no target)",
+                "tmux server", s.cpu_pct, s.rss_mb
+            )?;
+        }
         writeln!(
             f,
-            "{:<LABEL_WIDTH$}{} timed hooks",
+            "{:<LABEL_WIDTH$}{} timed hooks · {set}-agent targets apply",
             "samples", self.hook_samples
+        )?;
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}screen-read (~) freshness (< 2 s), start-up first frame (< 100 ms at 10)",
+            "not measured"
         )?;
         writeln!(
             f,
@@ -182,6 +228,8 @@ impl BenchOutcome {
                 "load_end": self.machine.load_end,
             },
             "hook_samples": self.hook_samples,
+            "control_client": self.control_client,
+            "tmux_server": self.tmux_server.map(|s| json!({ "cpu_pct": s.cpu_pct, "rss_mb": s.rss_mb })),
             "pid": self.pid,
         })
     }
