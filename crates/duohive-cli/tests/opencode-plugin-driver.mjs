@@ -114,7 +114,8 @@ for (const [f, path] of eventFiles.entries()) {
 }
 
 // The `config` hook composes edit and bash (S2.11). What counts is the
-// decision OpenCode reaches: its rules are the build agent's default, then
+// decision OpenCode reaches: its rules are the default ("*" allow), the
+// agent's built-in rules (as `opencode agent list` showed them for 1.18.34),
 // the top-level `permission`, then the agent's, each in key order, and the
 // last rule whose permission and pattern match wins (`rules.findLast`).
 const samples = [
@@ -141,6 +142,13 @@ const samples = [
   { agent: { build: { permission: { bash: "allow", "*": "allow" } } } },
   // A pattern object without "*": its own patterns still decide.
   { permission: { edit: { "src/**": "deny" } } },
+  // A stricter "*" after edit or bash still decides for them.
+  { permission: { edit: "ask", "*": "deny" } },
+  { permission: { bash: "allow", "*": "deny" } },
+  { agent: { plan: { permission: { edit: "allow", "*": "deny" } } } },
+  { permission: { edit: { "*": "ask" }, "*": "deny" } },
+  // The user's own top-level allow overrides plan's built-in deny: it asks.
+  { permission: { edit: "allow" } },
 ];
 const queries = [
   ["build", "edit", "a.txt"],
@@ -151,10 +159,27 @@ const queries = [
   ["build", "bash", "git commit -m x"],
   ["build", "webfetch", "x"],
   ["plan", "edit", "a.txt"],
+  ["plan", "edit", ".opencode/plans/p.md"],
   ["plan", "bash", "rm -rf x"],
   ["docs", "edit", "a.txt"],
   ["docs", "edit", "docs/a.md"],
+  ["explore", "edit", "a.txt"],
+  ["explore", "bash", "ls"],
+  ["general", "edit", "a.txt"],
+  ["title", "bash", "ls"],
 ];
+
+const DENY_ALL = [{ permission: "*", pattern: "*", action: "deny" }];
+const BUILTIN = {
+  plan: [
+    { permission: "edit", pattern: "*", action: "deny" },
+    { permission: "edit", pattern: ".opencode/plans/*.md", action: "allow" },
+  ],
+  explore: [...DENY_ALL, { permission: "bash", pattern: "*", action: "allow" }],
+  compaction: DENY_ALL,
+  summary: DENY_ALL,
+  title: DENY_ALL,
+};
 
 function wildcard(pattern, text) {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
@@ -174,6 +199,7 @@ function rules(block) {
 function decide(cfg, agent, permission, pattern) {
   const all = [
     { permission: "*", pattern: "*", action: "allow" },
+    ...(BUILTIN[agent] ?? []),
     ...rules(cfg.permission),
     ...rules(cfg.agent?.[agent]?.permission),
   ];
@@ -183,10 +209,13 @@ function decide(cfg, agent, permission, pattern) {
 
 const composer = await instance("config", "");
 const decisions = [];
+const before = [];
+const decideAll = (cfg) => queries.map(([agent, permission, pattern]) => decide(cfg, agent, permission, pattern));
 for (const sample of samples) {
   const cfg = JSON.parse(JSON.stringify(sample));
+  before.push(decideAll(cfg));
   await timed("config", RETURNS_AT_ONCE_MS, () => composer.hooks.config(cfg));
-  decisions.push(queries.map(([agent, permission, pattern]) => decide(cfg, agent, permission, pattern)));
+  decisions.push(decideAll(cfg));
 }
 await timed("config dispose", 2500, () => composer.hooks.dispose());
 
@@ -285,5 +314,5 @@ await quiet("trim");
 await timed("trim dispose", 2600, () => trim.hooks.dispose());
 
 await sleep(200);
-process.stdout.write(JSON.stringify({ feed, decisions, errors, hangDispose }));
+process.stdout.write(JSON.stringify({ feed, decisions, before, queries, errors, hangDispose }));
 process.exit(0);
