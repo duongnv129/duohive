@@ -10,7 +10,7 @@ use std::process::{Command as Process, ExitStatus};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
@@ -21,10 +21,11 @@ use duohive_core::time::Millis;
 use duohive_core::validate::DirProbe;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
+use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
-pub use terminal::run_app;
+pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
 use crate::input::{UiEffect, map_key, paste, update};
@@ -140,17 +141,92 @@ pub fn editor_command(editor: Option<&str>, path: &Path) -> Process {
 }
 
 /// The app over any backend: all drawing, input handling and timing live here.
-/// `first_frame` fires once, right after the first frame is drawn.
+/// `first_frame` fires once, right after the first frame is drawn. Signals are left
+/// alone (no terminal: [`run_app`] handles them).
 pub async fn run_app_on<B: Backend>(
     terminal: &mut Terminal<B>,
     input: mpsc::Receiver<InputEvent>,
     cfg: AppConfig,
-    events: mpsc::UnboundedReceiver<Event>,
+    events: &mut mpsc::UnboundedReceiver<Event>,
     commands: mpsc::Sender<Command>,
     first_frame: Option<oneshot::Sender<()>>,
 ) -> Result<(), TuiError> {
     let host: Arc<dyn TerminalHost> = Arc::new(PlainHost);
-    run_loop(terminal, input, cfg, events, commands, first_frame, host).await
+    let signals = QuitSignals::none();
+    run_loop(
+        terminal,
+        input,
+        cfg,
+        events,
+        commands,
+        first_frame,
+        host,
+        signals,
+    )
+    .await
+}
+
+/// SIGINT and SIGTERM, which quit the app like `q` (agents keep running). Needed
+/// because once tokio has a SIGINT handler (the editor hand-over installs one), the
+/// default action no longer ends the process.
+pub(crate) struct QuitSignals {
+    int: Option<Signal>,
+    term: Option<Signal>,
+}
+
+impl QuitSignals {
+    /// Listens for both; a handler that can't be installed is left out.
+    pub(crate) fn install() -> Self {
+        Self {
+            int: signal(SignalKind::interrupt()).ok(),
+            term: signal(SignalKind::terminate()).ok(),
+        }
+    }
+
+    /// Listens for neither.
+    pub(crate) fn none() -> Self {
+        Self {
+            int: None,
+            term: None,
+        }
+    }
+
+    /// Resolves at the next SIGINT or SIGTERM.
+    async fn recv(&mut self) {
+        let Self { int, term } = self;
+        tokio::select! {
+            () = next(int) => {}
+            () = next(term) => {}
+        }
+    }
+
+    /// A ctrl+c typed while the editor had the terminal was meant for the editor:
+    /// forget it. A fresh listener sees only signals that arrive from now on.
+    fn forget_interrupts(&mut self) {
+        if self.int.is_some() {
+            self.int = signal(SignalKind::interrupt()).ok();
+        }
+    }
+}
+
+/// The next delivery of `sig`; never, without a listener or once it is closed.
+async fn next(sig: &mut Option<Signal>) {
+    let delivered = match sig {
+        Some(s) => s.recv().await.is_some(),
+        None => false,
+    };
+    if !delivered {
+        std::future::pending::<()>().await;
+    }
+}
+
+/// Keys that leave a blocking screen: `q`, or `ctrl+c` (raw mode makes it a key).
+pub fn quits_blocking(k: &KeyEvent) -> bool {
+    match k.code {
+        KeyCode::Char('q') => true,
+        KeyCode::Char('c') => k.modifiers.contains(KeyModifiers::CONTROL),
+        _ => false,
+    }
 }
 
 /// When the next frame, spinner step and age refresh are due.
@@ -223,15 +299,20 @@ fn wall_now() -> Millis {
     Millis(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// The loop, with the terminal hand-over for `o` injected.
+/// The loop, with the terminal hand-over for `o` and the quit signals injected.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the loop's seams, each injected for tests"
+)]
 pub(crate) async fn run_loop<B: Backend>(
     terminal: &mut Terminal<B>,
     mut input: mpsc::Receiver<InputEvent>,
     cfg: AppConfig,
-    mut events: mpsc::UnboundedReceiver<Event>,
+    events: &mut mpsc::UnboundedReceiver<Event>,
     commands: mpsc::Sender<Command>,
     mut first_frame: Option<oneshot::Sender<()>>,
     host: Arc<dyn TerminalHost>,
+    mut signals: QuitSignals,
 ) -> Result<(), TuiError> {
     let mut m = UiModel::new(Org::blank(CliKind::Claude));
     m.settings = cfg.settings.clone();
@@ -248,6 +329,7 @@ pub(crate) async fn run_loop<B: Backend>(
     loop {
         let wake = clock.next_wake(&m);
         tokio::select! {
+            () = signals.recv() => return Ok(()),
             event = events.recv() => {
                 let event = event.ok_or(TuiError::CoreStopped)?;
                 let snapshot = matches!(event, Event::Snapshot(_));
@@ -280,6 +362,7 @@ pub(crate) async fn run_loop<B: Backend>(
                                 let editor = cfg.editor.as_deref();
                                 let cmd = editor_command(editor, &path);
                                 let ran = hand_over(cmd, &host).await;
+                                signals.forget_interrupts();
                                 terminal
                                     .clear()
                                     .map_err(|e| TuiError::Terminal(e.to_string()))?;

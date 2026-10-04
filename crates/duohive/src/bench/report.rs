@@ -182,6 +182,13 @@ impl fmt::Display for BenchOutcome {
             "this process only (control client not found)"
         };
         writeln!(f, "{:<LABEL_WIDTH$}DuoHive = {client}", "counted")?;
+        if self.report.platform.starts_with("linux") {
+            writeln!(
+                f,
+                "{:<LABEL_WIDTH$}Linux ps counts CPU in whole seconds: tmux processes' CPU is coarse",
+                "note"
+            )?;
+        }
         if let Some(s) = &self.tmux_server {
             writeln!(
                 f,

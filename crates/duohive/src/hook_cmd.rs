@@ -25,6 +25,7 @@ use serde_json::{Map, Value, json};
 
 use crate::MAX_HOOK_LINE;
 use crate::args::{Cli, parse_args};
+use crate::logging::ensure_logs_dir;
 
 /// How long a CLI may leave stdin open and silent.
 const STDIN_DEADLINE: Duration = Duration::from_millis(300);
@@ -35,6 +36,9 @@ const CONNECT_DEADLINE: Duration = Duration::from_millis(200);
 const WRITE_DEADLINE: Duration = Duration::from_millis(150);
 const DB_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 const LOG_FILE_MODE: u32 = 0o600;
+/// `hook.log` stops growing at 1 MiB: it only takes hooks that reached neither
+/// the socket nor the database, so a full log already says what is wrong.
+const HOOK_LOG_CAP: u64 = 1024 * 1024;
 /// Payload fields a shrunk payload keeps: enrichment and the engine need them.
 const KEEP_FIELDS: [&str; 3] = ["transcript_path", "session_id", "hook_event_name"];
 const TRUNCATED: &str = "duohive_truncated";
@@ -238,12 +242,16 @@ fn queue_in_db(paths: &Paths, msg: &HookMessage) -> Result<(), String> {
 }
 
 fn append_log(dir: &Path, line: &str) -> io::Result<()> {
-    fs::create_dir_all(dir)?;
+    ensure_logs_dir(dir)?;
+    let path = dir.join("hook.log");
+    if fs::metadata(&path).is_ok_and(|m| m.len() >= HOOK_LOG_CAP) {
+        return Ok(());
+    }
     OpenOptions::new()
         .create(true)
         .append(true)
         .mode(LOG_FILE_MODE)
-        .open(dir.join("hook.log"))?
+        .open(path)?
         .write_all(line.as_bytes())
 }
 
@@ -294,5 +302,20 @@ mod tests {
         assert_eq!(log.lines().count(), 1);
         assert!(log.contains("hook pay-qa busy not delivered"), "{log}");
         assert!(!log.contains("secret-token"), "{log}");
+    }
+
+    #[test]
+    fn hook_log_is_owner_only_and_bounded() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("logs");
+        append_log(&dir, "first\n").unwrap();
+        let mode = fs::metadata(&dir).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o700);
+        let full = "x".repeat(usize::try_from(HOOK_LOG_CAP).unwrap());
+        fs::write(dir.join("hook.log"), &full).unwrap();
+        append_log(&dir, "dropped\n").unwrap();
+        let log = fs::read_to_string(dir.join("hook.log")).unwrap();
+        assert_eq!(log, full, "a full hook.log grew");
     }
 }
