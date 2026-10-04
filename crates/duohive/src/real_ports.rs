@@ -27,6 +27,8 @@ impl Clock for SystemClock {
 pub struct RandomIds;
 
 impl Ids for RandomIds {
+    /// A fresh 64-character hex token. If the OS has no entropy source this
+    /// aborts the process (no terminal restore), rather than return a weak token.
     fn new_token(&mut self) -> Token {
         let mut bytes = [0u8; TOKEN_BYTES];
         if let Err(e) = getrandom::fill(&mut bytes) {
@@ -45,7 +47,8 @@ impl Ids for RandomIds {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
-/// Stat-only directory probe: no `git` process, no threads. A stat on a hung
+/// Stat-only directory probe. It walks up the ancestors, so a directory inside
+/// a repository is a `GitRepo`: no `git` process, no threads. A stat on a hung
 /// network mount can block the caller; that risk is accepted (see Task 26 report).
 pub struct FsDirProbe;
 
@@ -101,7 +104,10 @@ mod tests {
         fs::write(p.join("file.txt"), "x").unwrap();
         assert_eq!(FsDirProbe.probe(&p.join("repo")), DirStatus::GitRepo);
         assert_eq!(FsDirProbe.probe(&p.join("wt")), DirStatus::GitRepo);
-        assert_eq!(FsDirProbe.probe(&p.join("plain")), DirStatus::Found);
+        // Walk-up means a `.git` above the temp dir turns `plain` into a GitRepo.
+        if !p.ancestors().any(|d| d.join(".git").exists()) {
+            assert_eq!(FsDirProbe.probe(&p.join("plain")), DirStatus::Found);
+        }
         assert_eq!(FsDirProbe.probe(&p.join("file.txt")), DirStatus::Missing);
         assert_eq!(FsDirProbe.probe(&p.join("none")), DirStatus::Missing);
     }
