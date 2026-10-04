@@ -61,7 +61,9 @@ pub fn run_hook(
     } else {
         parse_payload(&read_stdin(stdin))
     };
+    // Stamped before any delivery attempt: replay orders by it (Review Focus 3).
     let msg = HookMessage {
+        sent_at_ms: now().0,
         token: token.clone(),
         agent,
         event,
@@ -281,6 +283,7 @@ mod tests {
         // No listener, and a directory where state.db should be: both routes fail.
         fs::create_dir(paths.state_db()).unwrap();
         let msg = HookMessage {
+            sent_at_ms: 0,
             token: "secret-token".to_owned(),
             agent: "pay-qa".to_owned(),
             event: "busy".to_owned(),
