@@ -12,3 +12,9 @@ workspace = true
 [dependencies]
 duohive-core = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros", "process", "io-util"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "rt", "macros", "process", "io-util"] }
