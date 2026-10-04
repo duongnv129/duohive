@@ -1,0 +1,35 @@
+---
+source: crates/duohive-tui/src/input/tests.rs
+assertion_line: 139
+expression: text
+---
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ───────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   attach:                                      │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│tmux -L duohive attach -t duohive:auth-service  │
+┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                │
+┃ │  │  │   "Running go test ./..."              ┃│                                                │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                │
+┃ │  └─ ◇ QA                                     ┃│                                                │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
+┃    ├─ squad-1   ┌─ Stop agent? ────────────────────────────────────────────────┐                 │
+┃    ├─ squad-2   │                                                              │                 │
+┃    └─ squad-3   │  Stop auth-service? It is working (2m).                      │                 │
+┃                 │                                                              │                 │
+┃                 │                              [ y Stop ]   ▌[ n Cancel ]      │                 │
+┃                 └──────────────────────────────────────────────────────────────┘                 │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+ ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit
