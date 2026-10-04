@@ -294,6 +294,10 @@ impl Store for FakeStore {
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
         Ok(std::mem::take(&mut self.state.lock().unwrap().pending))
     }
+    fn queue_pending_hook(&mut self, msg: &HookMessage, _at: Millis) -> Result<(), StoreError> {
+        self.state.lock().unwrap().pending.push(msg.clone());
+        Ok(())
+    }
 }
 
 /// A scriptable [`CliAdapter`].

@@ -38,22 +38,12 @@ pub fn run_bench_agent(hooks: bool, task: Option<&str>, env: &HashMap<String, St
     let mut agent = Agent { hooks };
     agent.hooks.fire("session-start", json!({}));
     show(PROMPT);
-    if let Some(task) = task {
-        agent.turn(task);
-    }
+    let mut going = task.is_none_or(|t| agent.line(t));
     let stdin = io::stdin();
-    for line in stdin.lock().split(b'\n') {
-        let Ok(bytes) = line else { break };
-        let line = String::from_utf8_lossy(&bytes);
-        let line = line.trim();
-        if line == EXIT {
-            break;
-        }
-        if line.is_empty() {
-            show(PROMPT);
-        } else {
-            agent.turn(line);
-        }
+    let mut lines = stdin.lock().split(b'\n');
+    while going {
+        let Some(Ok(bytes)) = lines.next() else { break };
+        going = agent.line(&String::from_utf8_lossy(&bytes));
     }
     agent.hooks.fire("session-end", json!({}));
     agent.hooks.finish();
@@ -65,6 +55,20 @@ struct Agent {
 }
 
 impl Agent {
+    /// One input line (the task, or a stdin line): `false` once it is `/exit`.
+    fn line(&mut self, text: &str) -> bool {
+        let text = text.trim();
+        if text == EXIT {
+            return false;
+        }
+        if text.is_empty() {
+            show(PROMPT);
+        } else {
+            self.turn(text);
+        }
+        true
+    }
+
     /// One turn: `busy`, `working…` lines, a reply, `turn-end`, the prompt.
     fn turn(&mut self, text: &str) {
         show("\n");
