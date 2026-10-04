@@ -20,19 +20,24 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use duohive_core::hook::HookMessage;
 use duohive_core::time::Millis;
 use duohive_store::Paths;
-use duohive_store::db::{insert_pending_hook, open_db};
-use serde_json::{Value, json};
+use duohive_store::db::{insert_pending_hook, open_db_for_hook};
+use serde_json::{Map, Value, json};
 
+use crate::MAX_HOOK_LINE;
 use crate::args::{Cli, parse_args};
 
 /// How long a CLI may leave stdin open and silent.
 const STDIN_DEADLINE: Duration = Duration::from_millis(300);
-/// Payloads are capped; anything longer is cut (and then wrapped as raw text).
+/// Reading stops here; anything longer is cut (and then wrapped as raw text).
+/// The socket line is capped lower, at [`MAX_HOOK_LINE`], by shrinking the payload.
 const STDIN_CAP: usize = 4 * 1024 * 1024;
 const CONNECT_DEADLINE: Duration = Duration::from_millis(200);
 const WRITE_DEADLINE: Duration = Duration::from_millis(150);
 const DB_BUSY_TIMEOUT: Duration = Duration::from_millis(200);
 const LOG_FILE_MODE: u32 = 0o600;
+/// Payload fields a shrunk payload keeps: enrichment and the engine need them.
+const KEEP_FIELDS: [&str; 3] = ["transcript_path", "session_id", "hook_event_name"];
+const TRUNCATED: &str = "duohive_truncated";
 
 /// Runs `duohive hook <agent> <event>`. Reads nothing from the process
 /// environment: `env` holds the variables. Always exits 0 and prints nothing.
@@ -141,10 +146,66 @@ fn connect(sock: &Path) -> io::Result<UnixStream> {
 }
 
 fn send_to_socket(sock: &Path, msg: &HookMessage) -> io::Result<()> {
-    let mut line = serde_json::to_vec(msg)?;
+    let mut line = fit_line(msg)?;
     line.push(b'\n');
     let mut stream = connect(sock)?;
     write_with_deadline(&mut stream, &line, Instant::now() + WRITE_DEADLINE)
+}
+
+/// The message as one JSON line of at most [`MAX_HOOK_LINE`] bytes. Too long:
+/// the largest payload fields go (never [`KEEP_FIELDS`]) and `duohive_truncated`
+/// is set, so the event itself always arrives.
+fn fit_line(msg: &HookMessage) -> io::Result<Vec<u8>> {
+    let line = serde_json::to_vec(msg)?;
+    if line.len() <= MAX_HOOK_LINE {
+        return Ok(line);
+    }
+    let fields = match &msg.payload {
+        Value::Object(m) => m.clone(),
+        _ => Map::new(),
+    };
+    let mut sized: Vec<(String, usize)> = fields
+        .iter()
+        .filter(|(k, _)| !KEEP_FIELDS.contains(&k.as_str()))
+        // Key, quotes, colon and comma, then the value.
+        .map(|(k, v)| {
+            (
+                k.clone(),
+                k.len() + 4 + serde_json::to_vec(v).map_or(0, |b| b.len()),
+            )
+        })
+        .collect();
+    sized.sort_by_key(|(_, size)| std::cmp::Reverse(*size));
+    // Room for the `"duohive_truncated":true` marker too.
+    let mut over = (line.len() + TRUNCATED.len() + 8).saturating_sub(MAX_HOOK_LINE);
+    let drop: Vec<String> = sized
+        .into_iter()
+        .take_while(|(_, size)| {
+            let needed = over > 0;
+            over = over.saturating_sub(*size);
+            needed
+        })
+        .map(|(k, _)| k)
+        .collect();
+    let mut kept: Map<String, Value> = fields
+        .into_iter()
+        .filter(|(k, _)| !drop.contains(k))
+        .collect();
+    kept.insert(TRUNCATED.to_owned(), Value::Bool(true));
+    for payload in [Value::Object(kept), json!({ TRUNCATED: true })] {
+        let shrunk = HookMessage {
+            payload,
+            ..msg.clone()
+        };
+        let line = serde_json::to_vec(&shrunk)?;
+        if line.len() <= MAX_HOOK_LINE {
+            return Ok(line);
+        }
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        "hook too large to send",
+    ))
 }
 
 /// `write_all` bounded by one overall deadline, not one per `write`.
@@ -170,7 +231,7 @@ fn write_with_deadline(
 }
 
 fn queue_in_db(paths: &Paths, msg: &HookMessage) -> Result<(), String> {
-    let conn = open_db(&paths.state_db(), DB_BUSY_TIMEOUT).map_err(|e| e.to_string())?;
+    let conn = open_db_for_hook(&paths.state_db(), DB_BUSY_TIMEOUT).map_err(|e| e.to_string())?;
     insert_pending_hook(&conn, msg, now()).map_err(|e| e.to_string())
 }
 

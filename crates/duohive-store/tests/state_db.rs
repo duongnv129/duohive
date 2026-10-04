@@ -9,7 +9,7 @@ use duohive_core::ports::{SessionRow, Store};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::{example_org, n};
 use duohive_core::time::Millis;
-use duohive_store::db::{insert_pending_hook, open_db};
+use duohive_store::db::{insert_pending_hook, open_db, open_db_for_hook};
 use duohive_store::{Paths, SqliteStore};
 
 fn temp_paths() -> (tempfile::TempDir, Paths) {
@@ -320,4 +320,28 @@ fn negative_user_version_is_a_clear_error() {
     drop(conn);
     let err = open_db(&paths.state_db(), BUSY).unwrap_err();
     assert!(err.0.contains("schema version"), "{}", err.0);
+}
+
+#[test]
+fn hook_open_never_creates_or_migrates() {
+    let (_t, paths) = temp_paths();
+    // DuoHive never ran: no file, and the hook does not create one.
+    assert!(open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).is_err());
+    assert!(!paths.state_db().exists());
+    // A database behind the schema (here: empty) is refused rather than migrated.
+    std::fs::create_dir_all(&paths.data_dir).unwrap();
+    drop(rusqlite::Connection::open(paths.state_db()).unwrap());
+    let err = open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).unwrap_err();
+    assert!(err.0.contains("schema"), "{err:?}");
+    let conn = rusqlite::Connection::open(paths.state_db()).unwrap();
+    assert_eq!(user_version(&conn), 0);
+}
+
+#[test]
+fn hook_open_inserts_into_a_current_database() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let conn = open_db_for_hook(&paths.state_db(), Duration::from_millis(200)).unwrap();
+    insert_pending_hook(&conn, &hook("busy"), Millis(5)).unwrap();
+    assert_eq!(store.take_pending_hooks().unwrap(), vec![hook("busy")]);
 }
