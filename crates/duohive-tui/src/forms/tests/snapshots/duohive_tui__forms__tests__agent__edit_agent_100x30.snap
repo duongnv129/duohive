@@ -1,5 +1,5 @@
 ---
-source: crates/duohive-tui/src/forms/tests.rs
+source: crates/duohive-tui/src/forms/tests/agent.rs
 expression: screen_text(&m)
 ---
  DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
@@ -31,4 +31,4 @@ expression: screen_text(&m)
 ┃                                                ┃│                                                │
 ┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
- ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit
+ tab next field · ctrl+s save · esc cancel

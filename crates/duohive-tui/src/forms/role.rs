@@ -9,9 +9,7 @@ use duohive_core::names::NodeName;
 use duohive_core::org::{Fields, NodeKey, Org, RoleKey};
 use duohive_core::validate::{DirProbe, next_agent_names};
 
-use super::{
-    Field, FieldId, Form, Look, MAX_NEW_AGENTS, Target, cli_choice, placeholder, worktree_choice,
-};
+use super::{Field, FieldId, Form, Look, Target, cli_choice, placeholder, worktree_choice};
 
 /// The New role mock-up's width.
 const WIDTH: u16 = 72;
@@ -171,12 +169,7 @@ pub(super) fn edit(f: &Form) -> Option<OrgEdit> {
 }
 
 fn count(f: &Form) -> Option<u8> {
-    f.field(FieldId::Agents)?
-        .edit
-        .text()
-        .parse::<u8>()
-        .ok()
-        .filter(|n| *n <= MAX_NEW_AGENTS)
+    f.field(FieldId::Agents)?.edit.text().parse::<u8>().ok()
 }
 
 /// The Agents count is bounded, and its suffix names the first agent it creates (D11).
@@ -201,6 +194,6 @@ pub(super) fn check_agents(f: &mut Form, org: &Org) {
         None => CREATE_NOW.to_owned(),
     });
     if !valid {
-        agents.error = Some(format!("from 0 to {MAX_NEW_AGENTS}"));
+        agents.error = Some(format!("from 0 to {}", u8::MAX));
     }
 }

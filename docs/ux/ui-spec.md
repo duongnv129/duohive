@@ -488,12 +488,12 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 ┌─ Edit org · saved to org.toml ───────────────────────────────────────────────┐
 │                                                                              │
 │  Duo                                                                         │
-│    Name        [ Duo______ ]                                                 │
+│    Name        [ Duo_________________ ]                                      │
 │    Runs on     [ OpenCode ▾ ]   changing it restarts Duo (asks first)        │
 │  Defaults for every agent                                                    │
 │    CLI         [ Claude Code ▾ ]   Model [ sonnet ▾ ]   Effort [ high ▾ ]    │
 │    Worktrees   [ off ▾ ]                                                     │
-│  Org prompt    [ Ask before you delete anything._______________ ]            │
+│  Org prompt    [ Ask before you delete anything.                ]            │
 │                                                                              │
 │  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │
 └──────────────────────────────────────────────────────────────────────────────┘

@@ -6,9 +6,11 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
+use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
 use crate::format::wrap_capped;
-use crate::model::UiModel;
+use crate::forms::FieldKind;
+use crate::model::{Dialog, UiModel};
 use crate::theme::Palette;
 
 /// Continuation lines of a banner start under its text, past ` ✕ `.
@@ -16,6 +18,8 @@ const BANNER_INDENT: &str = "   ";
 const MAX_BANNER_LINES: usize = 3;
 
 /// Phase 1 keys (D8): no `? help`, no `space` until phase 2.
+/// Added to a form's keys while a prompt field has focus.
+const NEWLINE_KEY: &str = " · alt+enter new line";
 const FOOTER_KEYS: &str =
     " ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit";
 
@@ -101,9 +105,19 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
 
 /// The footer: the note when one is set, else the keys.
 pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
-    let text = match &m.footer_note {
-        Some(note) => format!(" {note}"),
-        None => FOOTER_KEYS.to_owned(),
+    let text = match (&m.footer_note, &m.dialog) {
+        (Some(note), _) => format!(" {note}"),
+        // A form is typing: its keys, never the tree's (`q` types there).
+        (None, Some(Dialog::Form(f))) => {
+            let prompt = f
+                .fields
+                .get(f.focus)
+                .is_some_and(|x| x.kind == FieldKind::Prompt);
+            let newline = if prompt { NEWLINE_KEY } else { "" };
+            format!(" {HINT}{newline}")
+        }
+        (None, Some(Dialog::Chooser(_))) => format!(" {CHOOSER_HINT}"),
+        (None, _) => FOOTER_KEYS.to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
 }
