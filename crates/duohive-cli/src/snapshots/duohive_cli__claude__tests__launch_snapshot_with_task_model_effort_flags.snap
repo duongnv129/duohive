@@ -8,10 +8,8 @@ args:
   - "# Org\n\nIf you are asked for the sentinel, reply HIVE-SENTINEL."
   - "--settings"
   - /data/duohive/run/squad-1/settings.json
-  - "--model"
-  - opus
-  - "--effort"
-  - high
+  - "--model=opus"
+  - "--effort=high"
   - "--verbose"
   - "--"
   - Add retry cases
