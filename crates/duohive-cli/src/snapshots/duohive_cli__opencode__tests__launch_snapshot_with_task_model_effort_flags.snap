@@ -5,6 +5,7 @@ expression: for_snapshot(cmd)
 program: opencode
 args:
   - "--model=opus"
+  - "--agent=build"
   - "--verbose"
   - "--prompt=Add retry cases"
 env:
