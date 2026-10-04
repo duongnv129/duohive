@@ -20,7 +20,10 @@ use ratatui::buffer::Cell;
 use ratatui::layout::{Position, Size};
 use tokio::sync::{mpsc, oneshot};
 
-use super::{AppConfig, InputEvent, TerminalHost, TuiError, editor_command, run_app_on, run_loop};
+use super::{
+    AppConfig, InputEvent, QuitSignals, TerminalHost, TuiError, editor_command, quits_blocking,
+    run_app_on, run_loop,
+};
 use crate::fixtures::{mins, model_for, status, view};
 use crate::model::UiModel;
 
@@ -175,7 +178,7 @@ async fn first_frame_signal_fires_once_after_drawing() {
         &mut p.terminal,
         p.input,
         cfg(true),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
     );
@@ -203,7 +206,7 @@ async fn nothing_is_drawn_before_the_snapshot() {
         &mut p.terminal,
         p.input,
         cfg(true),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
     );
@@ -227,7 +230,7 @@ async fn idle_app_does_not_redraw() {
         &mut p.terminal,
         p.input,
         cfg(false),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
     );
@@ -250,7 +253,7 @@ async fn ages_redraw_once_a_minute() {
         &mut p.terminal,
         p.input,
         cfg(false),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
     );
@@ -281,7 +284,7 @@ async fn spinner_ticks_four_times_a_second_while_working() {
             &mut p.terminal,
             p.input,
             cfg(reduce_motion),
-            p.events,
+            &mut p.events,
             p.commands,
             Some(p.first_frame),
         );
@@ -305,7 +308,7 @@ async fn keys_send_commands_and_redraw() {
         &mut p.terminal,
         p.input,
         cfg(true),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
     );
@@ -370,10 +373,11 @@ async fn o_hands_the_terminal_to_the_editor_then_reloads() {
         &mut p.terminal,
         p.input,
         cfg(true),
-        p.events,
+        &mut p.events,
         p.commands,
         Some(p.first_frame),
         Arc::clone(&host) as Arc<dyn TerminalHost>,
+        QuitSignals::none(),
     );
     let driver = async {
         (&mut h.first_frame).await.unwrap();
@@ -417,7 +421,7 @@ async fn closed_event_channel_ends_the_app() {
         &mut p.terminal,
         p.input,
         cfg(true),
-        p.events,
+        &mut p.events,
         p.commands,
         None,
     )
@@ -445,7 +449,7 @@ async fn press_o(
 ) -> Vec<Command> {
     h.events.send(snapshot(&idle_model())).unwrap();
     let input = std::mem::replace(&mut p.input, mpsc::channel(1).1);
-    let events = std::mem::replace(&mut p.events, mpsc::unbounded_channel().1);
+    let mut events = std::mem::replace(&mut p.events, mpsc::unbounded_channel().1);
     let first_frame = std::mem::replace(&mut p.first_frame, oneshot::channel().0);
     let commands = p.commands.clone();
     let app = async {
@@ -455,10 +459,11 @@ async fn press_o(
                     &mut p.terminal,
                     input,
                     cfg(true),
-                    events,
+                    &mut events,
                     commands,
                     Some(first_frame),
                     host,
+                    QuitSignals::none(),
                 )
                 .await
             }
@@ -467,7 +472,7 @@ async fn press_o(
                     &mut p.terminal,
                     input,
                     cfg(true),
-                    events,
+                    &mut events,
                     commands,
                     Some(first_frame),
                 )
@@ -525,4 +530,100 @@ async fn run_app_on_has_no_terminal_to_hand_over() {
         footer(&p.terminal),
         " couldn't run the editor: no terminal to hand over"
     );
+}
+
+/// Signal tests send real signals to this process: one at a time.
+static SIGNALS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// `kill -<sig>` this process.
+fn raise(sig: &str) {
+    let pid = std::process::id().to_string();
+    let sent = Process::new("kill").args([sig, &pid]).status().unwrap();
+    assert!(sent.success(), "kill {sig}");
+}
+
+#[tokio::test]
+async fn sigint_and_sigterm_quit() {
+    let _one = SIGNALS.lock().await;
+    for sig in ["-INT", "-TERM"] {
+        let (mut h, mut p) = harness();
+        h.events.send(snapshot(&idle_model())).unwrap();
+        let host: Arc<dyn TerminalHost> = Arc::new(FakeHost::default());
+        let app = run_loop(
+            &mut p.terminal,
+            p.input,
+            cfg(true),
+            &mut p.events,
+            p.commands,
+            Some(p.first_frame),
+            host,
+            QuitSignals::install(),
+        );
+        let driver = async {
+            (&mut h.first_frame).await.unwrap();
+            raise(sig);
+        };
+        let run = async { tokio::join!(app, driver) };
+        let (result, ()) = tokio::time::timeout(Duration::from_secs(5), run)
+            .await
+            .unwrap_or_else(|_| panic!("{sig} did not quit"));
+        result.unwrap();
+        // Nothing was sent: agents keep running.
+        assert_eq!(h.commands.try_recv().ok(), None);
+    }
+}
+
+/// Hands over like an editor that the user pressed ctrl+c in: the terminal sends
+/// SIGINT to DuoHive too.
+struct CtrlCInEditor;
+
+impl TerminalHost for CtrlCInEditor {
+    fn hand_over(&self, _cmd: Process) -> io::Result<ExitStatus> {
+        raise("-INT");
+        std::thread::sleep(Duration::from_millis(300));
+        Ok(ExitStatus::from_raw(0))
+    }
+}
+
+#[tokio::test]
+async fn ctrl_c_in_the_editor_does_not_quit() {
+    let _one = SIGNALS.lock().await;
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let app = run_loop(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        &mut p.events,
+        p.commands,
+        Some(p.first_frame),
+        Arc::new(CtrlCInEditor),
+        QuitSignals::install(),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        h.input.send(key('o')).await.unwrap();
+        assert_eq!(h.commands.recv().await, Some(Command::ReloadOrg));
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        assert!(!h.input.is_closed(), "the editor's ctrl+c quit DuoHive");
+        // A later SIGINT still quits.
+        raise("-INT");
+    };
+    let run = async { tokio::join!(app, driver) };
+    let (result, ()) = tokio::time::timeout(Duration::from_secs(5), run)
+        .await
+        .expect("SIGINT after the editor did not quit");
+    result.unwrap();
+}
+
+#[test]
+fn blocking_screen_quits_on_q_or_ctrl_c() {
+    let k = |code, mods| KeyEvent::new(code, mods);
+    assert!(quits_blocking(&k(KeyCode::Char('q'), KeyModifiers::NONE)));
+    assert!(quits_blocking(&k(
+        KeyCode::Char('c'),
+        KeyModifiers::CONTROL
+    )));
+    assert!(!quits_blocking(&k(KeyCode::Char('c'), KeyModifiers::NONE)));
+    assert!(!quits_blocking(&k(KeyCode::Enter, KeyModifiers::NONE)));
 }

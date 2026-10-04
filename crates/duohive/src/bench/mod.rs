@@ -24,6 +24,7 @@ use duohive_core::status::AgentState;
 use duohive_store::{Paths, save_org};
 use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
 use duohive_tui::UiModel;
+use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio::sync::mpsc;
 
 use crate::system::{StartError, SystemHandle, SystemOptions, start_system};
@@ -111,6 +112,8 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     let org = bench_org(&names, &env.workdir);
     save_org(&env.paths, &org).map_err(|e| BenchError::Org(e.to_string()))?;
     let exe = std::env::current_exe()?;
+    // Registered once, before anything starts: no signal falls between two waits.
+    let mut interrupt = Interrupt::install();
     let (tap_tx, tap) = mpsc::unbounded_channel();
     let start = start_system(
         &env.paths,
@@ -118,11 +121,12 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
         SystemOptions {
             tap: Some(tap_tx),
             first_frame: None,
+            home: env.home(),
         },
     );
     let handle = tokio::select! {
         handle = start => handle?,
-        () = interrupted() => {
+        () = interrupt.recv() => {
             env.kill_tmux();
             return Err(BenchError::Interrupted);
         }
@@ -137,7 +141,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     };
     let result = tokio::select! {
         result = run.measure(&a) => result,
-        () = interrupted() => Err(BenchError::Interrupted),
+        () = interrupt.recv() => Err(BenchError::Interrupted),
     };
     // Interrupted or not: stop the agents, the system and the bench's tmux server.
     let (rss_client, rss_server) = (run.procs.client_peak_mb, run.procs.server_peak_mb);
@@ -169,16 +173,38 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     })
 }
 
-/// Resolves on Ctrl-C or SIGTERM (never, if the handlers cannot be installed).
-async fn interrupted() {
-    use tokio::signal::unix::{SignalKind, signal};
-    let term = signal(SignalKind::terminate());
-    let int = signal(SignalKind::interrupt());
-    match (term, int) {
-        (Ok(mut term), Ok(mut int)) => {
-            tokio::select! { _ = term.recv() => {}, _ = int.recv() => {} }
+/// Ctrl-C and SIGTERM, listened for from [`Interrupt::install`] on.
+struct Interrupt {
+    int: Option<Signal>,
+    term: Option<Signal>,
+}
+
+impl Interrupt {
+    fn install() -> Self {
+        Self {
+            int: signal(SignalKind::interrupt()).ok(),
+            term: signal(SignalKind::terminate()).ok(),
         }
-        _ => std::future::pending().await,
+    }
+
+    /// Resolves at the next Ctrl-C or SIGTERM (never, if neither handler installed).
+    async fn recv(&mut self) {
+        let Self { int, term } = self;
+        tokio::select! {
+            () = next(int) => {}
+            () = next(term) => {}
+        }
+    }
+}
+
+/// The next delivery of `sig`; never, without a listener or once it is closed.
+async fn next(sig: &mut Option<Signal>) {
+    let delivered = match sig {
+        Some(s) => s.recv().await.is_some(),
+        None => false,
+    };
+    if !delivered {
+        std::future::pending::<()>().await;
     }
 }
 
@@ -314,6 +340,11 @@ impl BenchEnv {
             paths,
             workdir,
         })
+    }
+
+    /// The home the bench's system expands `~` to: its own work dir, never the user's.
+    fn home(&self) -> std::path::PathBuf {
+        self.workdir.clone()
     }
 
     fn kill_tmux(&self) {
@@ -573,6 +604,29 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
         assert!(text.contains("not measured"), "{text}");
         assert!(text.contains("10-agent targets"), "{text}");
         assert_eq!(outcome.to_json()["tmux_server"]["rss_mb"], 5.0);
+    }
+
+    #[test]
+    fn linux_cpu_granularity_is_noted() {
+        let outcome = |platform: &str| BenchOutcome {
+            report: BenchReport {
+                platform: platform.to_owned(),
+                ..report(Percentiles::default())
+            },
+            machine: Machine {
+                cpus: 1,
+                load_start: None,
+                load_end: None,
+            },
+            tmux_server: None,
+            control_client: true,
+            hook_samples: 0,
+            pid: 1,
+        };
+        let linux = outcome("linux-x86_64").to_string();
+        assert!(linux.contains("whole seconds"), "{linux}");
+        let mac = outcome("macos-aarch64").to_string();
+        assert!(!mac.contains("whole seconds"), "{mac}");
     }
 
     #[test]
