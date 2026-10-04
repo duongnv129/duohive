@@ -557,7 +557,7 @@ fn stop_running_sends_quit_keys_with_grace() {
         h.calls(),
         vec![RuntimeCall::Stop(
             n("auth-service"),
-            vec![Key::Text("/exit".into()), Key::Enter],
+            vec![Key::Escape, Key::Text("/exit".into()), Key::Enter],
             Duration::from_secs(5)
         )]
     );

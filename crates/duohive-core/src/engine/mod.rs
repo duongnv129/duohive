@@ -105,6 +105,9 @@ struct AgentRt {
     stopping: bool,
     saw_end_hook: bool,
     last_signal_at: Millis,
+    /// The newest `sent_at_ms` of a hook applied this launch (0 = none), so a
+    /// hook that arrives after a newer one moves nothing.
+    last_hook_sent_at: u64,
     last_activity_secs: Option<u64>,
     settle_due: Option<Millis>,
     start_deadline: Option<Millis>,
@@ -140,6 +143,7 @@ impl AgentRt {
             stopping: false,
             saw_end_hook: false,
             last_signal_at: now,
+            last_hook_sent_at: 0,
             last_activity_secs: None,
             settle_due: None,
             start_deadline: None,
