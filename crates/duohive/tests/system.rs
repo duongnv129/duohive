@@ -406,7 +406,8 @@ async fn bench_agent_runs_its_task_first() {
     stdin.write_all(b"next\n").unwrap();
     assert_eq!(next_hook(&mut tap).await.event, "busy");
     assert_eq!(next_hook(&mut tap).await.event, "turn-end");
-    stdin.write_all(b"/exit\n").unwrap();
+    // A stop sends Escape before the quit keys; the ESC byte is not a turn.
+    stdin.write_all(b"\x1b/exit\n").unwrap();
     assert_eq!(next_hook(&mut tap).await.event, "session-end");
     let status = tokio::task::spawn_blocking(move || {
         let mut child = child;

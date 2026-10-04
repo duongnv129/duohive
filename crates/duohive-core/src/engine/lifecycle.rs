@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::{Engine, reject};
 use crate::adapter::{CliAdapter, CliPresence, untested_notice};
@@ -9,7 +10,7 @@ use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
-use crate::launch::LaunchSpec;
+use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
 use crate::validate::{DirStatus, agent_problem};
@@ -58,19 +59,31 @@ impl Engine {
                 }
                 self.change(agent, &Trigger::Stop, None, &mut out);
             }
+            // A key could answer the open prompt ("Yes" is often the default),
+            // so the window is killed with no keys; the exit still ends stopped.
+            AgentState::Waiting => {
+                let rt = self.rt_mut(agent);
+                rt.stopping = true;
+                match rt.window.clone() {
+                    Some(window) => self.ports.runtime.kill(agent, &window),
+                    None => self.ports.runtime.stop(agent, Vec::new(), Duration::ZERO),
+                }
+            }
             AgentState::Starting
             | AgentState::Working
-            | AgentState::Waiting
             | AgentState::Finished
             | AgentState::Idle => {
                 self.rt_mut(agent).stopping = true;
-                // Stopping must always work: with no adapter there are no quit
-                // keys, and the runtime kills the window after the grace.
-                let quit = self
-                    .with_running_adapter(agent, |a| a.quit_keys())
-                    .unwrap_or_else(|_| Vec::new());
+                // Escape first declines a prompt that opened meanwhile. Stopping
+                // must always work: with no adapter there are no quit keys, and
+                // the runtime kills the window after the grace.
+                let mut keys = vec![Key::Escape];
+                keys.extend(
+                    self.with_running_adapter(agent, |a| a.quit_keys())
+                        .unwrap_or_else(|_| Vec::new()),
+                );
                 let grace = self.cfg.stop_grace;
-                self.ports.runtime.stop(agent, quit, grace);
+                self.ports.runtime.stop(agent, keys, grace);
             }
         }
         out
@@ -180,6 +193,7 @@ impl Engine {
         let deadline = now + self.cfg.start_timeout;
         let rt = self.rt_mut(agent);
         rt.token = Some(token);
+        rt.last_hook_sent_at = 0;
         rt.cli = Some(cli);
         rt.task_at_launch = task.is_some();
         rt.last_task = task;
@@ -264,5 +278,7 @@ fn not_found(cli: CliKind) -> String {
     )
 }
 
+#[cfg(test)]
+mod stop_tests;
 #[cfg(test)]
 mod tests;

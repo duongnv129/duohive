@@ -56,7 +56,9 @@ struct Agent {
 
 impl Agent {
     /// One input line (the task, or a stdin line): `false` once it is `/exit`.
+    /// Control bytes (the Escape a stop sends first) are dropped, like a CLI's input box.
     fn line(&mut self, text: &str) -> bool {
+        let text: String = text.chars().filter(|c| !c.is_control()).collect();
         let text = text.trim();
         if text == EXIT {
             return false;
