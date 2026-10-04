@@ -98,6 +98,29 @@ impl Clock for FakeClock {
     }
 }
 
+/// A clock that follows tokio's clock from `start`, so paused-time tests move it.
+#[derive(Clone, Debug)]
+pub struct TokioClock {
+    start: Millis,
+    origin: tokio::time::Instant,
+}
+
+impl TokioClock {
+    /// A clock showing `start` now.
+    pub fn new(start: Millis) -> Self {
+        Self {
+            start,
+            origin: tokio::time::Instant::now(),
+        }
+    }
+}
+
+impl Clock for TokioClock {
+    fn now(&self) -> Millis {
+        self.start + self.origin.elapsed()
+    }
+}
+
 /// Tokens `tok-1`, `tok-2`, and so on.
 #[derive(Debug, Default)]
 pub struct FakeIds {
@@ -173,6 +196,8 @@ pub struct FakeStoreState {
     pub fail_next_save: bool,
     /// Every org saved, oldest first.
     pub saved_orgs: Vec<Org>,
+    /// Every `mark_last_good` call that succeeded, oldest first.
+    pub marked_last_good: Vec<Org>,
     /// Every settings value saved, oldest first.
     pub saved_settings: Vec<Settings>,
     /// Session rows by agent.
@@ -190,6 +215,7 @@ impl Default for FakeStoreState {
             last_good: None,
             fail_next_save: false,
             saved_orgs: Vec::new(),
+            marked_last_good: Vec::new(),
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
             deleted_sessions: Vec::new(),
@@ -228,6 +254,13 @@ impl Store for FakeStore {
         st.saved_orgs.push(org.clone());
         st.last_good = Some(org.clone());
         st.org_result = Ok(Some(org.clone()));
+        Ok(())
+    }
+    fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.marked_last_good.push(org.clone());
+        st.last_good = Some(org.clone());
         Ok(())
     }
     fn save_settings(&mut self, s: &Settings) -> Result<(), StoreError> {

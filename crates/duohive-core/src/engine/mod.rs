@@ -1,13 +1,17 @@
 //! The sans-I/O engine (TD §3.3): one owner of all state. It takes commands and
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
+mod driver;
 #[cfg(test)]
 mod harness;
 mod lifecycle;
 mod org_edit;
+mod reconnect;
 mod signals;
 mod timers;
 
+pub use driver::run_core;
+use reconnect::Reconnect;
 use signals::Exit;
 
 use std::collections::{BTreeMap, HashMap};
@@ -166,6 +170,8 @@ pub struct Engine {
     queued_launches: Vec<Command>,
     /// The Needs you list last reported in `NeedsYouChanged`.
     needs_you_shown: Vec<NeedsYouItem>,
+    /// Set from `start_up` until the start-up inventory is applied (Task 15).
+    reconnect: Option<Reconnect>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -193,6 +199,7 @@ impl Engine {
             dirs: None,
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
+            reconnect: None,
             cfg,
             ports,
             adapters,
@@ -234,17 +241,16 @@ impl Engine {
             Input::Runtime(RuntimeEvent::ConnectionLost { reason }) => {
                 self.on_connection_lost(&reason)
             }
-            Input::Hook(message) => self.on_hook(&message),
+            Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::DirInventory(list) => self.on_dir_inventory(list),
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
             }
             Input::Tick => self.on_tick(),
-            // Pastes and inventories: Task 15.
-            Input::Runtime(RuntimeEvent::PasteFailed { .. } | RuntimeEvent::Inventory(_)) => {
-                Vec::new()
-            }
+            Input::Runtime(RuntimeEvent::Inventory(windows)) => self.on_inventory(&windows),
+            // Pastes: Give work's dialog (phase 2).
+            Input::Runtime(RuntimeEvent::PasteFailed { .. }) => Vec::new(),
         }
     }
 
@@ -257,7 +263,7 @@ impl Engine {
             Command::EditOrg(edit) => self.edit_org(edit),
             Command::ReloadOrg => self.reload_org(),
             Command::UpdateSettings(s) => self.update_settings(s),
-            // Shutdown: the driver (Task 15).
+            // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
         }
     }
@@ -284,10 +290,9 @@ impl Engine {
             org: self.org.clone(),
             agents,
             needs_you: self.needs_you(),
-            // Reconnecting: Task 15.
             org_error: self.org_error.clone(),
             settings_error: self.settings_error.clone(),
-            reconnecting: 0,
+            reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
         }
     }
 
@@ -389,6 +394,15 @@ impl Engine {
         if let Err(e) = self.ports.store.delete_session(agent) {
             out.push(Event::CommandRejected {
                 reason: format!("couldn't save state: {e}"),
+            });
+        }
+    }
+
+    /// Records the current org as the last good one (D10); a failure is reported, not fatal.
+    fn mark_last_good(&mut self, out: &mut Vec<Event>) {
+        if let Err(e) = self.ports.store.mark_last_good(&self.org) {
+            out.push(Event::CommandRejected {
+                reason: format!("couldn't save org.last-good.toml: {e}"),
             });
         }
     }
