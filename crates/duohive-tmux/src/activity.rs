@@ -145,12 +145,19 @@ impl Table {
             })
     }
 
-    /// Diffs a full poll reply against the table.
-    pub fn diff(&mut self, rows: &[PollRow]) -> Vec<RuntimeEvent> {
+    /// Taken just before a poll is sent: entries newer than the mark may be missing
+    /// from that reply without being gone.
+    pub fn mark(&self) -> u64 {
+        self.next_seq
+    }
+
+    /// Diffs a full poll reply, asked for at `mark`, against the entries that existed then.
+    pub fn diff(&mut self, rows: &[PollRow], mark: u64) -> Vec<RuntimeEvent> {
         let by_id: HashMap<&str, &PollRow> = rows.iter().map(|r| (r.window.as_str(), r)).collect();
         let mut ids: Vec<(u64, String)> = self
             .windows
             .iter()
+            .filter(|(_, e)| e.seq <= mark)
             .map(|(w, e)| (e.seq, w.clone()))
             .collect();
         ids.sort();
@@ -258,14 +265,20 @@ mod tests {
         let mut t = Table::default();
         t.insert_started(&w("@1"), &n("a"));
         t.insert_started(&w("@2"), &n("b"));
-        let ev = t.diff(&[row("@1", 10, false, None), row("@2", 10, false, None)]);
+        let ev = t.diff(
+            &[row("@1", 10, false, None), row("@2", 10, false, None)],
+            u64::MAX,
+        );
         assert_eq!(ev.len(), 2);
         assert!(
-            t.diff(&[row("@1", 10, false, None), row("@2", 10, false, None)])
-                .is_empty()
+            t.diff(
+                &[row("@1", 10, false, None), row("@2", 10, false, None)],
+                u64::MAX
+            )
+            .is_empty()
         );
         assert_eq!(
-            t.diff(&[row("@1", 10, true, Some(3))]),
+            t.diff(&[row("@1", 10, true, Some(3))], u64::MAX),
             vec![
                 RuntimeEvent::PaneDied {
                     agent: n("a"),
@@ -278,21 +291,21 @@ mod tests {
                 },
             ]
         );
-        assert!(t.diff(&[row("@1", 10, true, Some(3))]).is_empty());
+        assert!(t.diff(&[row("@1", 10, true, Some(3))], u64::MAX).is_empty());
         assert_eq!(t.gone("@2"), None);
     }
 
     #[test]
     fn untracked_windows_are_ignored_and_restored_ones_start_as_reported() {
         let mut t = Table::default();
-        assert!(t.diff(&[row("@0", 1, false, None)]).is_empty());
+        assert!(t.diff(&[row("@0", 1, false, None)], u64::MAX).is_empty());
         t.insert_restored(&LiveWindow {
             agent: n("a"),
             window: w("@4"),
             dead: Some(Some(1)),
             activity_secs: 50,
         });
-        assert!(t.diff(&[row("@4", 50, true, Some(1))]).is_empty());
+        assert!(t.diff(&[row("@4", 50, true, Some(1))], u64::MAX).is_empty());
     }
 
     #[test]
@@ -311,5 +324,31 @@ mod tests {
         );
         assert_eq!(t.current(&n("a")), Some(w("@1")));
         assert_eq!(t.current(&n("b")), None);
+    }
+
+    #[test]
+    fn windows_added_after_the_poll_was_sent_wait_for_the_next_reply() {
+        let mut t = Table::default();
+        t.insert_started(&w("@1"), &n("a"));
+        let mark = t.mark();
+        t.insert_started(&w("@2"), &n("b"));
+        // The reply was asked for before @2 joined: it is absent, but not gone.
+        let ev = t.diff(&[row("@1", 10, false, None)], mark);
+        assert_eq!(
+            ev,
+            vec![RuntimeEvent::Activity {
+                agent: n("a"),
+                at_secs: 10
+            }]
+        );
+        assert!(t.contains(&w("@2")));
+        let ev = t.diff(&[row("@1", 10, false, None)], t.mark());
+        assert_eq!(
+            ev,
+            vec![RuntimeEvent::WindowGone {
+                agent: n("b"),
+                window: w("@2")
+            }]
+        );
     }
 }
