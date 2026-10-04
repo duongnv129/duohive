@@ -3,6 +3,7 @@
 pub mod adapter;
 pub mod cli_kind;
 pub mod command;
+pub mod engine;
 pub mod event;
 pub mod hook;
 pub mod inherit;
