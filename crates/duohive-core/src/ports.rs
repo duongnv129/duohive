@@ -169,7 +169,7 @@ pub struct StoreError(pub String);
 pub trait Store: Send {
     /// Loads `org.toml`; `Ok(None)` when there is no file yet.
     fn load_org(&mut self) -> Result<Option<Org>, OrgFileError>;
-    /// The last org that parsed.
+    /// The last org that parsed and validated.
     fn last_good_org(&mut self) -> Option<Org>;
     /// Saves the org.
     fn save_org(&mut self, org: &Org) -> Result<(), StoreError>;

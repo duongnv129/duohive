@@ -13,7 +13,7 @@ use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
 use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, Fields, NodeKey, Org, Role, RoleKey, Team};
-use crate::ports::OrgFileError;
+use crate::ports::{OrgFileError, StoreError};
 use crate::settings::Settings;
 use crate::status::AgentState;
 use crate::validate::{next_agent_names, validate};
@@ -61,6 +61,9 @@ impl Engine {
                 line: None,
                 message: e.to_string(),
             });
+        }
+        if let Some(e) = self.reload_drops_live_agent(&org) {
+            return self.org_file_broken(e);
         }
         let old = std::mem::replace(&mut self.org, org);
         self.sync_agents();
@@ -130,7 +133,9 @@ impl Engine {
                     self.move_agent(&old.duo.name, &duo.name, out);
                 }
                 let name = duo.name.clone();
-                if duo.cli != old.duo.cli && self.state_of(&name).is_running() {
+                // A stop the user already asked for stays a plain stop.
+                let stopping = self.agents.get(&name).is_some_and(|rt| rt.stopping);
+                if duo.cli != old.duo.cli && self.state_of(&name).is_running() && !stopping {
                     out.extend(self.stop_agent(&name));
                     self.rt_mut(&name).restart_after_stop = true;
                 }
@@ -145,39 +150,52 @@ impl Engine {
         self.sync_agents();
     }
 
-    /// Moves a stopped agent's runtime state and session row to its new name.
+    /// Moves a stopped agent's runtime state and session row to its new name:
+    /// the new row is saved before the old one is deleted, and on a store
+    /// failure nothing moves.
     fn move_agent(&mut self, from: &AgentName, to: &AgentName, out: &mut Vec<Event>) {
+        let row = match self.ports.store.load_sessions() {
+            Ok(rows) => rows.into_iter().find(|r| &r.agent == from),
+            Err(e) => return state_not_saved(&e, out),
+        };
+        if let Some(mut row) = row {
+            row.agent = to.clone();
+            if let Err(e) = self.ports.store.save_session(&row) {
+                return state_not_saved(&e, out);
+            }
+            self.delete_row(from, out);
+        }
         if let Some(rt) = self.agents.remove(from) {
             self.agents.insert(to.clone(), rt);
         }
-        let row = match self.ports.store.load_sessions() {
-            Ok(rows) => rows.into_iter().find(|r| &r.agent == from),
-            Err(e) => {
-                out.push(Event::CommandRejected {
-                    reason: format!("couldn't save state: {e}"),
-                });
-                return;
-            }
-        };
-        let Some(mut row) = row else {
-            return;
-        };
-        self.delete_row(from, out);
-        row.agent = to.clone();
-        if let Err(e) = self.ports.store.save_session(&row) {
-            out.push(Event::CommandRejected {
-                reason: format!("couldn't save state: {e}"),
-            });
-        }
     }
 
-    /// Gives every agent in the org a runtime entry and drops stopped entries
-    /// the org no longer names (a running one keeps its window until it exits).
+    /// Refuses a reload that drops an agent that isn't stopped (renamed or removed
+    /// by hand, Duo included): its live session must not be orphaned (D9).
+    fn reload_drops_live_agent(&self, org: &Org) -> Option<OrgFileError> {
+        let keeps = |a: &AgentName| org.is_duo(a) || org.find_agent(a).is_some();
+        self.agent_names()
+            .into_iter()
+            .filter(|a| !keeps(a))
+            .find_map(|a| {
+                let how = match self.state_of(&a) {
+                    AgentState::Stopped => return None,
+                    AgentState::Errored => "errored",
+                    _ => "running",
+                };
+                Some(OrgFileError {
+                    line: None,
+                    message: format!("{a} is {how} · stop it, then press o to reload"),
+                })
+            })
+    }
+
+    /// Gives every agent in the org a runtime entry and drops entries the org no
+    /// longer names (only stopped agents ever leave the org).
     fn sync_agents(&mut self) {
         let now = self.ports.clock.now();
         let names: BTreeSet<AgentName> = self.agent_names().into_iter().collect();
-        self.agents
-            .retain(|a, rt| names.contains(a) || rt.status.state != AgentState::Stopped);
+        self.agents.retain(|a, _| names.contains(a));
         for name in names {
             self.agents
                 .entry(name)
@@ -224,6 +242,13 @@ impl Engine {
             })
             .collect()
     }
+}
+
+/// Reports a session row that couldn't be written.
+fn state_not_saved(e: &StoreError, out: &mut Vec<Event>) {
+    out.push(Event::CommandRejected {
+        reason: format!("couldn't save state: {e}"),
+    });
 }
 
 /// Agents a delete of `key` removes, in tree order.
