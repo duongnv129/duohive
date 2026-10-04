@@ -1,0 +1,310 @@
+//! Keys to actions, and actions to model changes and effects (UI §4.8, §4.11, D8, D16).
+
+use std::path::PathBuf;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use duohive_core::command::{Command, OrgEdit};
+use duohive_core::names::AgentName;
+use duohive_core::org::{NodeKey, Org, Role, RoleKey};
+use duohive_core::status::AgentState;
+
+use crate::format::{age_of, format_age, status_word};
+use crate::model::{Confirm, Dialog, UiModel};
+use crate::tree::tree_rows;
+
+const GROUP_START_STOP: &str = "s starts or stops an agent";
+const DUO_NOT_DELETABLE: &str = "Duo can't be deleted";
+
+/// What a key asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    /// Select the node above.
+    Up,
+    /// Select the node below.
+    Down,
+    /// Start a stopped agent, stop an errored one, or ask before stopping a running one.
+    StartStop,
+    /// New here… (forms arrive in Task 25).
+    New,
+    /// Edit the selection (forms arrive in Task 25).
+    Edit,
+    /// Delete the selection, asking first.
+    Delete,
+    /// Last reply on / off.
+    ToggleReplies,
+    /// Open `org.toml` in `$EDITOR`, then reload it.
+    OpenOrgFile,
+    /// Quit; agents keep running.
+    Quit,
+    /// `y` in a dialog.
+    DialogYes,
+    /// `n` in a dialog.
+    DialogNo,
+    /// `enter` in a dialog: act on the focused button.
+    DialogEnter,
+    /// Back one level; never quits.
+    Esc,
+    /// Next button or field.
+    Tab,
+    /// Previous button or field.
+    BackTab,
+    /// A typed character, for forms (Task 25).
+    Char(char),
+}
+
+/// What the app loop does after an action.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UiEffect {
+    /// Send a command to the core.
+    Send(Command),
+    /// Leave the app.
+    Quit,
+    /// Hand the terminal to `$EDITOR` on this file, then reload the org.
+    OpenEditor(PathBuf),
+}
+
+/// The action for a key press, given what has focus; `None` for keys with no meaning here.
+pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
+    if k.kind == KeyEventKind::Release {
+        return None;
+    }
+    let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    if ctrl {
+        return (k.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    if k.modifiers.contains(KeyModifiers::ALT) {
+        return None;
+    }
+    let common = match k.code {
+        KeyCode::Esc => Some(Action::Esc),
+        KeyCode::Tab => Some(Action::Tab),
+        KeyCode::BackTab => Some(Action::BackTab),
+        KeyCode::Char('q') => Some(Action::Quit),
+        _ => None,
+    };
+    if common.is_some() {
+        return common;
+    }
+    if m.dialog.is_some() {
+        return match k.code {
+            KeyCode::Char('y') => Some(Action::DialogYes),
+            KeyCode::Char('n') => Some(Action::DialogNo),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        };
+    }
+    match k.code {
+        KeyCode::Up => Some(Action::Up),
+        KeyCode::Down => Some(Action::Down),
+        KeyCode::Char('s') => Some(Action::StartStop),
+        KeyCode::Char('n') => Some(Action::New),
+        KeyCode::Char('e') => Some(Action::Edit),
+        KeyCode::Char('d') => Some(Action::Delete),
+        KeyCode::Char('v') => Some(Action::ToggleReplies),
+        KeyCode::Char('o') => Some(Action::OpenOrgFile),
+        _ => None,
+    }
+}
+
+/// Applies an action to the model; pure. Any key clears the footer note.
+pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    m.footer_note = None;
+    if a == Action::Quit {
+        return vec![UiEffect::Quit];
+    }
+    if let Some(Dialog::Confirm(c)) = &mut m.dialog {
+        let yes = match a {
+            Action::DialogYes => true,
+            Action::DialogEnter => c.focus_yes,
+            Action::DialogNo | Action::Esc => false,
+            Action::Tab | Action::BackTab => {
+                c.focus_yes = !c.focus_yes;
+                return Vec::new();
+            }
+            _ => return Vec::new(),
+        };
+        let on_yes = c.on_yes.clone();
+        m.dialog = None;
+        return if yes {
+            vec![UiEffect::Send(on_yes)]
+        } else {
+            Vec::new()
+        };
+    }
+    match a {
+        Action::Up => select_next(m, false),
+        Action::Down => select_next(m, true),
+        Action::StartStop => start_stop(m),
+        Action::Delete => delete(m),
+        Action::ToggleReplies => {
+            m.settings.show_last_reply = !m.settings.show_last_reply;
+            vec![UiEffect::Send(Command::UpdateSettings(m.settings.clone()))]
+        }
+        Action::OpenOrgFile => vec![UiEffect::OpenEditor(m.org_toml.clone())],
+        _ => Vec::new(),
+    }
+}
+
+/// Moves the selection to the next node row (detail lines are skipped); landing on a
+/// finished agent marks it seen (UI §2.1).
+fn select_next(m: &mut UiModel, down: bool) -> Vec<UiEffect> {
+    let keys: Vec<NodeKey> = tree_rows(m, false, false, m.now)
+        .into_iter()
+        .filter_map(|r| r.key)
+        .collect();
+    let at = keys.iter().position(|k| k == &m.selected);
+    let next = match (at, down) {
+        (None, _) => Some(0),
+        (Some(i), true) => (i + 1 < keys.len()).then_some(i + 1),
+        (Some(i), false) => i.checked_sub(1),
+    };
+    let Some(key) = next.and_then(|i| keys.get(i)) else {
+        return Vec::new();
+    };
+    m.selected = key.clone();
+    match agent_of(m, key) {
+        Some(a) if m.view(&a).status.state == AgentState::Finished => {
+            vec![UiEffect::Send(Command::ViewAgent { agent: a })]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// The agent a node names: Duo's name for Duo, `None` for teams and roles.
+fn agent_of(m: &UiModel, key: &NodeKey) -> Option<AgentName> {
+    match key {
+        NodeKey::Duo => Some(m.org.duo.name.clone()),
+        NodeKey::Agent(a) => Some(a.clone()),
+        NodeKey::Team(_) | NodeKey::Role(_) => None,
+    }
+}
+
+/// `s`: stopped → start; errored → stop (D16); running → ask first (UI §4.8).
+fn start_stop(m: &mut UiModel) -> Vec<UiEffect> {
+    let Some(agent) = agent_of(m, &m.selected) else {
+        m.footer_note = Some(GROUP_START_STOP.to_owned());
+        return Vec::new();
+    };
+    let status = &m.view(&agent).status;
+    match status.state {
+        AgentState::Stopped => vec![UiEffect::Send(Command::StartAgent { agent })],
+        AgentState::Errored => vec![UiEffect::Send(Command::StopAgent { agent })],
+        _ => {
+            let age = age_of(status, m.now)
+                .map(|d| format!(" ({})", format_age(d)))
+                .unwrap_or_default();
+            let line = format!("Stop {agent}? It is {}{age}.", status_word(status));
+            m.dialog = Some(confirm(
+                "Stop agent?",
+                vec![line],
+                "Stop",
+                Command::StopAgent { agent },
+            ));
+            Vec::new()
+        }
+    }
+}
+
+/// `d`: asks before deleting a stopped node; refuses with the reason in the footer otherwise.
+fn delete(m: &mut UiModel) -> Vec<UiEffect> {
+    let key = m.selected.clone();
+    let (title, first, agents) = match &key {
+        NodeKey::Duo => return note(m, DUO_NOT_DELETABLE),
+        NodeKey::Agent(a) if m.org.is_duo(a) => return note(m, DUO_NOT_DELETABLE),
+        NodeKey::Agent(a) => {
+            let Some(loc) = m.org.find_agent(a) else {
+                return Vec::new();
+            };
+            let role = NodeKey::Role(RoleKey {
+                team: loc.team.map(|t| t.name.clone()),
+                role: loc.role.name.clone(),
+            });
+            let first = format!("Delete agent {a} in {}?", m.org.breadcrumb(&role));
+            ("Delete agent?", first, vec![a.clone()])
+        }
+        NodeKey::Role(k) => {
+            let Some(role) = find_role(&m.org, k) else {
+                return Vec::new();
+            };
+            let place = match &k.team {
+                Some(t) => format!(" in {t}"),
+                None => String::new(),
+            };
+            let first = format!("Delete role {}{place}?", k.role);
+            ("Delete role?", first, names(std::slice::from_ref(role)))
+        }
+        NodeKey::Team(t) => {
+            let Some(team) = m.org.teams.iter().find(|x| &x.name == t) else {
+                return Vec::new();
+            };
+            (
+                "Delete team?",
+                format!("Delete team {t}?"),
+                names(&team.roles),
+            )
+        }
+    };
+    if let Some(busy) = agents
+        .iter()
+        .find(|a| m.view(a).status.state != AgentState::Stopped)
+    {
+        return note(m, &format!("stop {busy} first"));
+    }
+    let lines = match &key {
+        NodeKey::Agent(_) => vec![first],
+        _ => removes(m, &first, &agents),
+    };
+    let on_yes = Command::EditOrg(OrgEdit::Delete(key));
+    m.dialog = Some(confirm(title, lines, "Delete", on_yes));
+    Vec::new()
+}
+
+/// `<first> It removes n agents:` and one indented line per agent (UI §4.8).
+fn removes(m: &UiModel, first: &str, agents: &[AgentName]) -> Vec<String> {
+    let head = match agents.len() {
+        0 => format!("{first} It has no agents."),
+        1 => format!("{first} It removes 1 agent:"),
+        k => format!("{first} It removes {k} agents:"),
+    };
+    std::iter::once(head)
+        .chain(
+            agents
+                .iter()
+                .map(|a| format!("  {a} ({})", m.view(a).status.state.word())),
+        )
+        .collect()
+}
+
+fn names(roles: &[Role]) -> Vec<AgentName> {
+    roles
+        .iter()
+        .flat_map(|r| r.agents.iter().map(|a| a.name.clone()))
+        .collect()
+}
+
+fn find_role<'a>(org: &'a Org, k: &RoleKey) -> Option<&'a Role> {
+    let roles = match &k.team {
+        Some(t) => &org.teams.iter().find(|x| &x.name == t)?.roles,
+        None => &org.roles,
+    };
+    roles.iter().find(|r| r.name == k.role)
+}
+
+fn note(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
+    m.footer_note = Some(text.to_owned());
+    Vec::new()
+}
+
+/// A confirmation that opens with focus on Cancel.
+fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialog {
+    Dialog::Confirm(Confirm {
+        title: title.to_owned(),
+        lines,
+        yes_label: yes.to_owned(),
+        focus_yes: false,
+        on_yes,
+    })
+}
+
+#[cfg(test)]
+mod tests;

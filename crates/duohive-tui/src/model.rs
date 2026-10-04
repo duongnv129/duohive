@@ -1,12 +1,14 @@
 //! The UI's copy of engine state, updated from events.
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::ports::OrgFileError;
+use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 
@@ -53,6 +55,12 @@ pub struct UiModel {
     pub dialog: Option<Dialog>,
     /// Agents still being reattached at start-up; 0 = none.
     pub reconnecting: u32,
+    /// The settings in use; `v` changes and saves them.
+    pub settings: Settings,
+    /// The time ages are measured to when an action needs one (the stop dialog).
+    pub now: Millis,
+    /// `org.toml`, which `o` opens in `$EDITOR`.
+    pub org_toml: PathBuf,
 }
 
 impl UiModel {
@@ -68,6 +76,9 @@ impl UiModel {
             footer_note: None,
             dialog: None,
             reconnecting: 0,
+            settings: Settings::default(),
+            now: Millis(0),
+            org_toml: PathBuf::new(),
         }
     }
 
@@ -88,8 +99,9 @@ impl UiModel {
             Event::NeedsYouChanged(items) => self.needs_you = items,
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => self.footer_note = Some(reason),
-            // Give work has no dialog until phase 2, so nothing can be refused yet.
-            Event::GiveWorkRefused { .. } => return false,
+            Event::GiveWorkRefused { agent, state } => {
+                self.footer_note = Some(format!("{agent} is {}", state.word()));
+            }
             Event::Reconnected => self.reconnecting = 0,
         }
         true

@@ -1,0 +1,422 @@
+//! The app loop over a counting test backend: when frames are drawn, and what keys send.
+
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Command as Process;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use duohive_core::command::Command;
+use duohive_core::event::{Event, Snapshot};
+use duohive_core::settings::Settings;
+use duohive_core::status::AgentState;
+use duohive_core::testkit::{example_org, n};
+use ratatui::Terminal;
+use ratatui::backend::{Backend, ClearType, TestBackend, WindowSize};
+use ratatui::buffer::Cell;
+use ratatui::layout::{Position, Size};
+use tokio::sync::{mpsc, oneshot};
+
+use super::{AppConfig, InputEvent, TerminalHost, TuiError, editor_command, run_app_on, run_loop};
+use crate::fixtures::{mins, model_for, status, view};
+use crate::model::UiModel;
+
+/// `TestBackend` that counts flushes: ratatui flushes once per `Terminal::draw`.
+struct CountingBackend {
+    inner: TestBackend,
+    flushes: Arc<AtomicUsize>,
+}
+
+impl Backend for CountingBackend {
+    type Error = <TestBackend as Backend>::Error;
+
+    fn draw<'a, I>(&mut self, content: I) -> Result<(), Self::Error>
+    where
+        I: Iterator<Item = (u16, u16, &'a Cell)>,
+    {
+        self.inner.draw(content)
+    }
+    fn hide_cursor(&mut self) -> Result<(), Self::Error> {
+        self.inner.hide_cursor()
+    }
+    fn show_cursor(&mut self) -> Result<(), Self::Error> {
+        self.inner.show_cursor()
+    }
+    fn get_cursor_position(&mut self) -> Result<Position, Self::Error> {
+        self.inner.get_cursor_position()
+    }
+    fn set_cursor_position<P: Into<Position>>(&mut self, p: P) -> Result<(), Self::Error> {
+        self.inner.set_cursor_position(p)
+    }
+    fn clear(&mut self) -> Result<(), Self::Error> {
+        self.inner.clear()
+    }
+    fn clear_region(&mut self, t: ClearType) -> Result<(), Self::Error> {
+        self.inner.clear_region(t)
+    }
+    fn size(&self) -> Result<Size, Self::Error> {
+        self.inner.size()
+    }
+    fn window_size(&mut self) -> Result<WindowSize, Self::Error> {
+        self.inner.window_size()
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        self.flushes.fetch_add(1, Ordering::SeqCst);
+        self.inner.flush()
+    }
+}
+
+/// Channels and counters around one run of the loop.
+struct Harness {
+    draws: Arc<AtomicUsize>,
+    input: mpsc::Sender<InputEvent>,
+    events: mpsc::UnboundedSender<Event>,
+    commands: mpsc::Receiver<Command>,
+    first_frame: oneshot::Receiver<()>,
+}
+
+struct Parts {
+    terminal: Terminal<CountingBackend>,
+    input: mpsc::Receiver<InputEvent>,
+    events: mpsc::UnboundedReceiver<Event>,
+    commands: mpsc::Sender<Command>,
+    first_frame: oneshot::Sender<()>,
+}
+
+fn harness() -> (Harness, Parts) {
+    let draws = Arc::new(AtomicUsize::new(0));
+    let backend = CountingBackend {
+        inner: TestBackend::new(100, 30),
+        flushes: Arc::clone(&draws),
+    };
+    let (in_tx, in_rx) = mpsc::channel(16);
+    let (ev_tx, ev_rx) = mpsc::unbounded_channel();
+    let (cmd_tx, cmd_rx) = mpsc::channel(16);
+    let (ff_tx, ff_rx) = oneshot::channel();
+    (
+        Harness {
+            draws,
+            input: in_tx,
+            events: ev_tx,
+            commands: cmd_rx,
+            first_frame: ff_rx,
+        },
+        Parts {
+            terminal: Terminal::new(backend).unwrap(),
+            input: in_rx,
+            events: ev_rx,
+            commands: cmd_tx,
+            first_frame: ff_tx,
+        },
+    )
+}
+
+fn cfg(reduce_motion: bool) -> AppConfig {
+    AppConfig {
+        org_toml: PathBuf::from("/cfg/org.toml"),
+        tmux_socket: "duohive".to_owned(),
+        settings: Settings {
+            reduce_motion,
+            ..Settings::default()
+        },
+        no_color: false,
+        editor: Some("nano -w".to_owned()),
+    }
+}
+
+fn snapshot(m: &UiModel) -> Event {
+    Event::Snapshot(Box::new(Snapshot {
+        org: m.org.clone(),
+        agents: m.agents.clone(),
+        needs_you: m.needs_you.clone(),
+        org_error: None,
+        settings_error: None,
+        reconnecting: 0,
+    }))
+}
+
+/// Every agent stopped for a day, Duo idle: ages show, nothing works, no spinner.
+fn idle_model() -> UiModel {
+    model_for(example_org())
+}
+
+/// Idle, finished, waiting and stopped agents.
+fn resting_model() -> UiModel {
+    let mut m = model_for(example_org());
+    m.agents
+        .insert(n("auth-service"), view(status(AgentState::Idle, mins(2))));
+    m.agents.insert(
+        n("billing-api"),
+        view(status(AgentState::Finished, mins(3))),
+    );
+    m.agents
+        .insert(n("squad-1"), view(status(AgentState::Waiting, mins(4))));
+    m
+}
+
+fn key(c: char) -> InputEvent {
+    InputEvent::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
+}
+
+fn count(h: &Harness) -> usize {
+    h.draws.load(Ordering::SeqCst)
+}
+
+#[tokio::test]
+async fn first_frame_signal_fires_once_after_drawing() {
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        assert_eq!(count(&h), 1);
+        h.events
+            .send(Event::CommandRejected {
+                reason: "no".into(),
+            })
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(count(&h), 2);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+    assert_eq!(count(&h), 2);
+}
+
+#[tokio::test(start_paused = true)]
+async fn nothing_is_drawn_before_the_snapshot() {
+    let (mut h, mut p) = harness();
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(count(&h), 0);
+        h.events.send(snapshot(&idle_model())).unwrap();
+        (&mut h.first_frame).await.unwrap();
+        assert_eq!(count(&h), 1);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn idle_app_does_not_redraw() {
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(false),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        let before = count(&h);
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert_eq!(count(&h), before);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn ages_redraw_once_a_minute() {
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&resting_model())).unwrap();
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(false),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        let before = count(&h);
+        tokio::time::sleep(Duration::from_secs(59)).await;
+        assert_eq!(count(&h), before);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        assert_eq!(count(&h), before + 1);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn spinner_ticks_four_times_a_second_while_working() {
+    let mut working = idle_model();
+    working.agents.insert(
+        n("auth-service"),
+        view(status(AgentState::Working, mins(2))),
+    );
+    for (reduce_motion, ticks) in [(false, 4), (true, 0)] {
+        let (mut h, mut p) = harness();
+        h.events.send(snapshot(&working)).unwrap();
+        let app = run_app_on(
+            &mut p.terminal,
+            p.input,
+            cfg(reduce_motion),
+            p.events,
+            p.commands,
+            Some(p.first_frame),
+        );
+        let driver = async {
+            (&mut h.first_frame).await.unwrap();
+            let before = count(&h);
+            tokio::time::sleep(Duration::from_millis(1_010)).await;
+            assert_eq!(count(&h), before + ticks, "reduce motion {reduce_motion}");
+            h.input.send(key('q')).await.unwrap();
+        };
+        let (result, ()) = tokio::join!(app, driver);
+        result.unwrap();
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn keys_send_commands_and_redraw() {
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let app = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        let before = count(&h);
+        // A snapshot selects Duo; move down to Payments, Backend, auth-service.
+        for _ in 0..3 {
+            h.input
+                .send(InputEvent::Key(KeyEvent::new(
+                    KeyCode::Down,
+                    KeyModifiers::NONE,
+                )))
+                .await
+                .unwrap();
+        }
+        h.input.send(key('s')).await.unwrap();
+        assert_eq!(
+            h.commands.recv().await,
+            Some(Command::StartAgent {
+                agent: n("auth-service")
+            })
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(count(&h) > before);
+        let after_keys = count(&h);
+        h.input.send(InputEvent::Resize(120, 40)).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(count(&h), after_keys + 1);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+}
+
+/// Records what it was asked to run instead of running it.
+#[derive(Default)]
+struct FakeHost {
+    runs: Mutex<Vec<(String, Vec<String>)>>,
+}
+
+impl TerminalHost for FakeHost {
+    fn hand_over(&self, cmd: Process) -> io::Result<()> {
+        let program = cmd.get_program().to_string_lossy().into_owned();
+        let args = cmd
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        self.runs.lock().unwrap().push((program, args));
+        Ok(())
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn o_hands_the_terminal_to_the_editor_then_reloads() {
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let host = Arc::new(FakeHost::default());
+    let app = run_loop(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        p.events,
+        p.commands,
+        Some(p.first_frame),
+        Arc::clone(&host) as Arc<dyn TerminalHost>,
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        let before = count(&h);
+        h.input.send(key('o')).await.unwrap();
+        assert_eq!(h.commands.recv().await, Some(Command::ReloadOrg));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(count(&h), before + 1);
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+    let runs = host.runs.lock().unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].0, "sh");
+    assert_eq!(runs[0].1.last().map(String::as_str), Some("/cfg/org.toml"));
+}
+
+#[test]
+fn editor_command_uses_editor_else_vi() {
+    let args = |c: &Process| -> Vec<String> {
+        c.get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect()
+    };
+    let path = Path::new("/cfg/my org.toml");
+    let c = editor_command(Some("code -w"), path);
+    assert_eq!(c.get_program(), "sh");
+    assert_eq!(args(&c), ["-c", "code -w \"$1\"", "sh", "/cfg/my org.toml"]);
+    for none in [None, Some(""), Some("  ")] {
+        let c = editor_command(none, path);
+        assert_eq!(args(&c), ["-c", "vi \"$1\"", "sh", "/cfg/my org.toml"]);
+    }
+}
+
+#[tokio::test]
+async fn closed_event_channel_ends_the_app() {
+    let (h, mut p) = harness();
+    drop(h.events);
+    let result = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        p.events,
+        p.commands,
+        None,
+    )
+    .await;
+    assert!(matches!(result, Err(TuiError::CoreStopped)), "{result:?}");
+    drop(h.input);
+}

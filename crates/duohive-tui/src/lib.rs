@@ -1,6 +1,8 @@
 //! The terminal UI: renders the engine's events and sends its commands.
 
+pub mod app;
 pub mod format;
+pub mod input;
 pub mod model;
 pub mod render;
 pub mod theme;
@@ -14,7 +16,9 @@ pub mod tree;
 )]
 mod fixtures;
 
+pub use app::{AppConfig, InputEvent, TerminalHost, TuiError, editor_command, run_app, run_app_on};
 pub use format::{format_age, state_cell, truncate_middle};
+pub use input::{Action, UiEffect, map_key, update};
 pub use model::{Confirm, Dialog, UiModel};
 pub use render::{BlockingScreen, RenderCtx, render, render_blocking};
 pub use theme::{Palette, palette_for};
