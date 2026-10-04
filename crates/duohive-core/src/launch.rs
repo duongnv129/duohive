@@ -7,8 +7,15 @@ use serde::{Deserialize, Serialize};
 use crate::inherit::ResolvedAgent;
 
 /// A per-launch secret (D1) that hooks present.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Token(pub String);
+
+impl std::fmt::Debug for Token {
+    /// Never prints the secret.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Token(<redacted>)")
+    }
+}
 
 /// A tmux window id such as `@12`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -75,6 +82,14 @@ pub fn sh_quote(arg: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn token_debug_is_redacted() {
+        let t = super::Token("s3cr3t-value".to_string());
+        let shown = format!("{t:?}");
+        assert!(!shown.contains("s3cr3t"), "{shown}");
+        assert_eq!(shown, "Token(<redacted>)");
+    }
+
     use super::*;
 
     #[test]
