@@ -113,7 +113,10 @@ for (const [f, path] of eventFiles.entries()) {
   while (open.length > 0) await finish(open.pop());
 }
 
-// The `config` hook composes edit and bash (S2.11).
+// The `config` hook composes edit and bash (S2.11). What counts is the
+// decision OpenCode reaches: its rules are the build agent's default, then
+// the top-level `permission`, then the agent's, each in key order, and the
+// last rule whose permission and pattern match wins (`rules.findLast`).
 const samples = [
   {},
   { permission: "allow" },
@@ -132,13 +135,58 @@ const samples = [
       docs: { permission: { edit: { "*": "allow", "docs/**": "allow" } } },
     },
   },
+  // "*" after edit and bash: under last-match-wins it would decide for them.
+  { permission: { edit: "allow", "*": "allow" } },
+  { permission: { bash: { "git *": "allow" }, "*": "allow" } },
+  { agent: { build: { permission: { bash: "allow", "*": "allow" } } } },
+  // A pattern object without "*": its own patterns still decide.
+  { permission: { edit: { "src/**": "deny" } } },
 ];
+const queries = [
+  ["build", "edit", "a.txt"],
+  ["build", "edit", "src/x.ts"],
+  ["build", "bash", "ls"],
+  ["build", "bash", "rm -rf x"],
+  ["build", "bash", "git push"],
+  ["build", "bash", "git commit -m x"],
+  ["build", "webfetch", "x"],
+  ["plan", "edit", "a.txt"],
+  ["plan", "bash", "rm -rf x"],
+  ["docs", "edit", "a.txt"],
+  ["docs", "edit", "docs/a.md"],
+];
+
+function wildcard(pattern, text) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s").test(text);
+}
+
+function rules(block) {
+  if (block === undefined) return [];
+  if (typeof block === "string") return [{ permission: "*", pattern: "*", action: block }];
+  return Object.entries(block).flatMap(([permission, value]) =>
+    typeof value === "string"
+      ? [{ permission, pattern: "*", action: value }]
+      : Object.entries(value).map(([pattern, action]) => ({ permission, pattern, action })),
+  );
+}
+
+function decide(cfg, agent, permission, pattern) {
+  const all = [
+    { permission: "*", pattern: "*", action: "allow" },
+    ...rules(cfg.permission),
+    ...rules(cfg.agent?.[agent]?.permission),
+  ];
+  const hit = all.findLast((r) => wildcard(r.permission, permission) && wildcard(r.pattern, pattern));
+  return hit?.action;
+}
+
 const composer = await instance("config", "");
-const composed = [];
+const decisions = [];
 for (const sample of samples) {
   const cfg = JSON.parse(JSON.stringify(sample));
   await timed("config", RETURNS_AT_ONCE_MS, () => composer.hooks.config(cfg));
-  composed.push(cfg);
+  decisions.push(queries.map(([agent, permission, pattern]) => decide(cfg, agent, permission, pattern)));
 }
 await timed("config dispose", 2500, () => composer.hooks.dispose());
 
@@ -174,6 +222,68 @@ await timed("hang busy", RETURNS_AT_ONCE_MS, () =>
 );
 const hangDispose = await timed("hang dispose", 2600, () => hang.hooks.dispose());
 
+// Dispose kills a delivery still running, so session-end is the last one
+// (its session-start would be logged 1.5 s in, after session-end, if it lived).
+const inflight = await instance("inflight", hookExe);
+await timed("inflight event", RETURNS_AT_ONCE_MS, () =>
+  inflight.hooks.event(sample("catalog.updated", {})),
+);
+await sleep(100);
+await timed("inflight dispose", 2600, () => inflight.hooks.dispose());
+
+// A delivery that hangs is killed at 2 s and the chain goes on.
+const slow = await instance("slow", hookExe);
+await timed("slow event", RETURNS_AT_ONCE_MS, () => slow.hooks.event(sample("catalog.updated", {})));
+await timed("slow busy", RETURNS_AT_ONCE_MS, () =>
+  slow.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
+);
+await sleep(2600);
+await quiet("slow");
+await timed("slow dispose", 2600, () => slow.hooks.dispose());
+
+// Subagent sessions (with a parentID) neither busy nor end the agent's turn.
+const sub = await instance("subagent", hookExe);
+const subEvents = [
+  sample("catalog.updated", {}),
+  sample("session.created", { info: { id: "c", parentID: "p" } }),
+  sample("session.status", { sessionID: "c", status: { type: "busy" } }),
+  sample("session.idle", { sessionID: "c" }),
+  sample("session.status", { sessionID: "p", status: { type: "busy" } }),
+  sample("session.updated", { info: { id: "c2", parentID: "p" } }),
+  sample("session.idle", { sessionID: "c2" }),
+  sample("session.idle", { sessionID: "p" }),
+];
+for (const e of subEvents) await timed("subagent event", RETURNS_AT_ONCE_MS, () => sub.hooks.event(e));
+await quiet("subagent");
+await timed("subagent dispose", 2600, () => sub.hooks.dispose());
+
+// Busy payloads carry only what DuoHive reads, never a tool's full output.
+const trim = await instance("trim", hookExe);
+const big = "x".repeat(100000);
+await timed("trim tool", RETURNS_AT_ONCE_MS, () =>
+  trim.hooks["tool.execute.after"](
+    { tool: "write", sessionID: "s", callID: "c" },
+    { title: "t", output: big, metadata: { diff: big } },
+  ),
+);
+await timed("trim asked", RETURNS_AT_ONCE_MS, () =>
+  trim.hooks.event(
+    sample("permission.asked", {
+      id: "per_1",
+      sessionID: "s",
+      permission: "edit",
+      patterns: ["a.txt"],
+      metadata: { filepath: "/w/a.txt", diff: big },
+      always: ["*"],
+    }),
+  ),
+);
+await timed("trim chat", RETURNS_AT_ONCE_MS, () =>
+  trim.hooks["chat.message"]({ sessionID: "s", agent: "build" }, { parts: [{ type: "text", text: big }] }),
+);
+await quiet("trim");
+await timed("trim dispose", 2600, () => trim.hooks.dispose());
+
 await sleep(200);
-process.stdout.write(JSON.stringify({ feed, composed, errors, hangDispose }));
+process.stdout.write(JSON.stringify({ feed, decisions, errors, hangDispose }));
 process.exit(0);
