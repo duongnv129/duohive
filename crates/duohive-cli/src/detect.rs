@@ -124,6 +124,13 @@ mod tests {
         }
     }
 
+    /// Generous probe limit for tests that must read a real fake binary's
+    /// output: a freshly written script can take seconds to start when the
+    /// whole workspace's tests run in parallel. The production limit
+    /// (`PROBE_TIMEOUT`, 2 s) is pinned by `probe_timeout_is_two_seconds`, and
+    /// the timeout path is covered with a deliberately hanging binary.
+    const LOADED_TIMEOUT: Duration = Duration::from_secs(30);
+
     fn script(dir: &Path, body: &str) -> std::path::PathBuf {
         let path = dir.join("fake-cli");
         std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
@@ -136,7 +143,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let exe = script(dir.path(), "echo '2.1.288 (Claude Code)'");
         assert_eq!(
-            probe(CliKind::Claude, exe.as_os_str(), PROBE_TIMEOUT),
+            probe(CliKind::Claude, exe.as_os_str(), LOADED_TIMEOUT),
             CliPresence::Found {
                 version: "2.1.288".into()
             }
@@ -160,7 +167,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let exe = script(dir.path(), "echo something else; exit 3");
         assert_eq!(
-            probe(CliKind::Claude, exe.as_os_str(), PROBE_TIMEOUT),
+            probe(CliKind::Claude, exe.as_os_str(), LOADED_TIMEOUT),
             CliPresence::Found {
                 version: String::new()
             }
@@ -173,8 +180,10 @@ mod tests {
         let exe = script(dir.path(), "exec sleep 10");
         let started = Instant::now();
         let got = probe(CliKind::Claude, exe.as_os_str(), Duration::from_millis(200));
+        // The binary sleeps 10 s; returning well before that proves the
+        // timeout (not the binary) ended the probe. 8 s leaves slack for load.
         assert!(
-            started.elapsed() < Duration::from_secs(2),
+            started.elapsed() < Duration::from_secs(8),
             "{:?}",
             started.elapsed()
         );
@@ -193,16 +202,19 @@ mod tests {
         let exe = script(
             dir.path(),
             &format!(
-                "echo '1.18.34'; sleep 10 & echo $! > '{}'",
+                "echo '1.18.34'; sleep 60 & echo $! > '{}'",
                 pid_file.display()
             ),
         );
         let started = Instant::now();
-        // The real limit: a freshly written script can take a few hundred
-        // milliseconds to start on macOS, so a shorter one could kill it first.
-        let got = probe(CliKind::Opencode, exe.as_os_str(), PROBE_TIMEOUT);
+        // The grandchild keeps stdout open, so the probe always runs to its
+        // timeout and then kills the group. A long-enough limit lets the
+        // script print its version first even under load; the bound proves
+        // the probe still returns at the timeout rather than at the 60 s sleep.
+        let limit = Duration::from_secs(5);
+        let got = probe(CliKind::Opencode, exe.as_os_str(), limit);
         assert!(
-            started.elapsed() < PROBE_TIMEOUT + Duration::from_secs(1),
+            started.elapsed() < limit + Duration::from_secs(10),
             "{:?}",
             started.elapsed()
         );
