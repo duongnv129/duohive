@@ -455,4 +455,17 @@ fn edits_refused_while_org_file_invalid() {
     assert_eq!(h.engine.org, test_org());
 }
 
+#[test]
+fn org_save_failure_changes_nothing() {
+    let mut h = Harness::new();
+    put_row(&mut h, "pay-qa");
+    h.store.state.lock().unwrap().fail_next_save = true;
+    let fields = h.engine.org.teams[0].roles[1].agents[0].fields.clone();
+    let ev = edit(&mut h, agent_edit("pay-qa", "pay-qa-old", fields));
+    assert_eq!(rejected(&ev), vec!["couldn't save org.toml: disk full"]);
+    assert_eq!(h.engine.org, test_org());
+    assert!(h.engine.agents.contains_key(&n("pay-qa")));
+    assert_eq!(session_names(&h), vec!["pay-qa"]);
+}
+
 mod duo_reload_settings;
