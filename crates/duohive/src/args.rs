@@ -1,5 +1,7 @@
 //! Command-line parsing (hand-rolled; Tasks 27–29 add the rest).
 
+use crate::bench::BenchArgs;
+
 /// What the command line asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Cli {
@@ -19,6 +21,8 @@ pub enum Cli {
         /// The first turn's task, verbatim.
         task: Option<String>,
     },
+    /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--json]`.
+    Bench(BenchArgs),
 }
 
 /// Parses the arguments (without the program name); `[]` is the app.
@@ -31,8 +35,36 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
         }),
         [cmd, ..] if cmd == "hook" => Err("usage: duohive hook <agent> <event>".to_owned()),
         [cmd, rest @ ..] if cmd == "bench-agent" => parse_bench_agent(rest),
+        [cmd, rest @ ..] if cmd == "bench" => parse_bench(rest).map(Cli::Bench),
         [other, ..] => Err(format!("unknown command \"{other}\"")),
     }
+}
+
+const BENCH_RUN_USAGE: &str =
+    "usage: duohive bench [--agents N] [--idle-secs N] [--turns N] [--json]";
+
+/// The bench's flags in any order; counts must be numbers, agents and turns at least 1.
+fn parse_bench(args: &[String]) -> Result<BenchArgs, String> {
+    let mut out = BenchArgs::default();
+    let mut rest = args.iter();
+    while let Some(arg) = rest.next() {
+        let mut number = || -> Result<u64, String> {
+            rest.next()
+                .and_then(|v| v.parse::<u64>().ok())
+                .ok_or_else(|| BENCH_RUN_USAGE.to_owned())
+        };
+        match arg.as_str() {
+            "--json" => out.json = true,
+            "--agents" => out.agents = u32::try_from(number()?).map_err(|e| e.to_string())?,
+            "--turns" => out.turns = u32::try_from(number()?).map_err(|e| e.to_string())?,
+            "--idle-secs" => out.idle_secs = number()?,
+            _ => return Err(BENCH_RUN_USAGE.to_owned()),
+        }
+    }
+    if out.agents == 0 || out.turns == 0 {
+        return Err(BENCH_RUN_USAGE.to_owned());
+    }
+    Ok(out)
 }
 
 const BENCH_USAGE: &str = "usage: duohive bench-agent [--no-hooks] [--task <text>]";
@@ -58,6 +90,7 @@ fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bench::BenchArgs;
 
     fn s<const N: usize>(items: [&str; N]) -> Vec<String> {
         items.iter().map(|i| (*i).to_owned()).collect()
@@ -100,6 +133,43 @@ mod tests {
         );
         assert!(parse_args(&s(["bench-agent", "--task"])).is_err());
         assert!(parse_args(&s(["bench-agent", "--frob"])).is_err());
+    }
+
+    #[test]
+    fn args_parse_bench() {
+        assert_eq!(
+            parse_args(&s(["bench", "--agents", "10", "--json"])),
+            Ok(Cli::Bench(BenchArgs {
+                agents: 10,
+                json: true,
+                ..Default::default()
+            }))
+        );
+        assert_eq!(
+            parse_args(&s(["bench"])),
+            Ok(Cli::Bench(BenchArgs::default()))
+        );
+        assert_eq!(
+            parse_args(&s([
+                "bench",
+                "--idle-secs",
+                "2",
+                "--turns",
+                "1",
+                "--agents",
+                "2"
+            ])),
+            Ok(Cli::Bench(BenchArgs {
+                agents: 2,
+                idle_secs: 2,
+                turns: 1,
+                json: false
+            }))
+        );
+        assert!(parse_args(&s(["bench", "--agents"])).is_err());
+        assert!(parse_args(&s(["bench", "--agents", "x"])).is_err());
+        assert!(parse_args(&s(["bench", "--agents", "0"])).is_err());
+        assert!(parse_args(&s(["bench", "--frob"])).is_err());
     }
 
     #[test]

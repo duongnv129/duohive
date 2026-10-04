@@ -7,6 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use duohive::args::{Cli, parse_args};
+use duohive::bench::{BenchArgs, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
 
@@ -26,9 +27,38 @@ fn main() -> ExitCode {
         Ok(Cli::BenchAgent { hooks, task }) => {
             run_bench_agent(hooks, task.as_deref(), &utf8_vars(std::env::vars_os()))
         }
+        Ok(Cli::Bench(args)) => bench(args),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");
             ExitCode::from(2)
+        }
+    }
+}
+
+/// Runs the bench and prints its report (plain, or JSON with `--json`).
+fn bench(args: BenchArgs) -> ExitCode {
+    let json = args.json;
+    let result = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())
+        .and_then(|rt| {
+            rt.block_on(run_bench_detailed(args))
+                .map_err(|e| e.to_string())
+        });
+    match result {
+        Ok(outcome) => {
+            let text = if json {
+                format!("{}\n", outcome.to_json())
+            } else {
+                outcome.to_string()
+            };
+            let _ = std::io::stdout().write_all(text.as_bytes());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
+            ExitCode::FAILURE
         }
     }
 }
