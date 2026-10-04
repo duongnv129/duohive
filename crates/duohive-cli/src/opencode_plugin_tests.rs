@@ -154,7 +154,7 @@ fn delivered(log_dir: &Path, agent: &str) -> Vec<(String, HookSignal)> {
 /// `git push`, bash `git commit -m x`, webfetch; plan: edit a.txt, edit
 /// .opencode/plans/p.md, bash `rm -rf x`; docs (a user agent in one sample,
 /// unknown otherwise): edit a.txt, edit docs/a.md; explore: edit a.txt, bash
-/// ls; general: edit a.txt; title: bash ls.
+/// ls; general: edit a.txt; title: bash ls; build: edit 5; plan: edit 5.
 fn expected_decisions() -> Value {
     fn row(s: &str) -> Vec<&str> {
         s.split_whitespace().collect()
@@ -162,34 +162,62 @@ fn expected_decisions() -> Value {
     json!([
         // {}: plan keeps its built-in edit deny (and plan files), explore and
         // title keep theirs; an agent DuoHive does not know (docs) is untouched.
-        row("ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
+        row(
+            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
+        ),
         // "permission": "allow" (overrides the built-ins, so everything asks)
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
         // "permission": "deny" stays deny everywhere
-        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        row(
+            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
+        ),
         // {"*": "ask", "edit": "allow"}
-        row("ask ask ask ask ask ask ask  ask ask ask  allow allow  ask ask  ask  ask"),
+        row("ask ask ask ask ask ask ask  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
         // the user's deny and patterns kept, their allows made ask
-        row("ask ask ask deny ask deny allow  ask ask ask  ask allow  deny ask  deny  ask"),
+        row(
+            "ask ask ask deny ask deny allow  ask ask ask  ask allow  deny ask  deny  ask  ask ask"
+        ),
         // {"edit": "allow", "*": "allow"}: "*" last must not win
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
         // {"bash": {"git *": "allow"}, "*": "allow"}: the later "*" overrode
         // the user's pattern, so it asks too
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask"),
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
         // agent build {"bash": "allow", "*": "allow"}
-        row("ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
+        row(
+            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
+        ),
         // {"edit": {"src/**": "deny"}}: the added "*" does not override it
-        row("ask deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny"),
+        row(
+            "ask deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
+        ),
         // {"edit": "ask", "*": "deny"}: the later deny still decides
-        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        row(
+            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
+        ),
         // {"bash": "allow", "*": "deny"}
-        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        row(
+            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
+        ),
         // agent plan {"edit": "allow", "*": "deny"}
-        row("ask ask ask ask ask ask allow  deny deny deny  allow allow  deny ask  ask  deny"),
+        row(
+            "ask ask ask ask ask ask allow  deny deny deny  allow allow  deny ask  ask  deny  ask deny"
+        ),
         // {"edit": {"*": "ask"}, "*": "deny"}
-        row("deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny"),
+        row(
+            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
+        ),
         // {"edit": "allow"}: the user's allow overrode plan's deny; now it asks
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  deny"),
+        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  deny  ask ask"),
+        // {"edit": {"5": "deny"}}: "5" stays denied; the "*" that would come
+        // after it in the JS object is raised to keep it, so build's edits deny
+        row(
+            "deny deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  deny  deny  deny deny"
+        ),
+        // top {"edit": {"?": "allow"}}, build {"edit": {"5": "deny"}}: "5" stays
+        // denied for build ("?" raised); plan keeps the user's "?" allow
+        row(
+            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  deny allow"
+        ),
     ])
 }
 
