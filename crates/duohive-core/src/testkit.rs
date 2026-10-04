@@ -358,7 +358,9 @@ impl CliAdapter for StubAdapter {
         match event {
             "session-start" => Some(HookSignal::Ready),
             "busy" => Some(HookSignal::Busy),
-            "needs-input" => Some(HookSignal::NeedsInput { prompt: None }),
+            "needs-input" => Some(HookSignal::NeedsInput {
+                prompt: payload["prompt"].as_str().map(str::to_owned),
+            }),
             "turn-end" => Some(HookSignal::TurnEnded {
                 last_reply: payload["last_reply"].as_str().map(str::to_owned),
             }),
@@ -366,18 +368,21 @@ impl CliAdapter for StubAdapter {
             _ => None,
         }
     }
+    /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`); at rest,
+    /// the non-blank line above it is the last reply.
     fn read_screen(&self, screen: &str) -> ScreenSignal {
-        let last = screen.lines().rev().find(|l| !l.trim().is_empty());
-        let state = match last.map(str::trim_end) {
+        let mut lines = screen.lines().rev().filter(|l| !l.trim().is_empty());
+        let state = match lines.next().map(str::trim_end) {
             Some("BUSY") => Some(ScreenState::Busy),
             Some("ASK") => Some(ScreenState::NeedsInput),
             Some("REST") => Some(ScreenState::AtRest),
             _ => None,
         };
-        ScreenSignal {
-            state,
-            last_reply: None,
-        }
+        let last_reply = match state {
+            Some(ScreenState::AtRest) => lines.next().map(|l| l.trim().to_owned()),
+            _ => None,
+        };
+        ScreenSignal { state, last_reply }
     }
     fn quit_keys(&self) -> Vec<Key> {
         vec![Key::Text("/exit".to_owned()), Key::Enter]
