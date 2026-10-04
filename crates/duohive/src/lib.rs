@@ -1,9 +1,12 @@
-//! DuoHive binary internals: argument parsing, the `hook` subcommand and the hook listener.
+//! DuoHive binary internals: argument parsing, the `hook` subcommand, the hook
+//! listener, the fake agent and the headless system.
 
 pub mod args;
+pub mod fake_agent;
 pub mod hook_cmd;
 pub mod hook_listener;
 pub mod real_ports;
+pub mod system;
 
 /// The longest `run.sock` line (without its newline), shared by `duohive hook`
 /// (which shrinks a payload to fit) and the listener (which drops longer lines).
