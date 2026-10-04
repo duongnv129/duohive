@@ -1,0 +1,327 @@
+//! The app loop (TD §3.3): applies events, maps keys, sends commands, and draws only when
+//! something changed (capped at 30 fps), plus the spinner and once-a-minute age ticks.
+
+mod terminal;
+
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::Command as Process;
+use std::sync::Arc;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use crossterm::event::KeyEvent;
+use duohive_core::cli_kind::CliKind;
+use duohive_core::command::Command;
+use duohive_core::event::Event;
+use duohive_core::org::Org;
+use duohive_core::settings::Settings;
+use duohive_core::status::AgentState;
+use duohive_core::time::Millis;
+use ratatui::Terminal;
+use ratatui::backend::Backend;
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::Instant;
+
+pub use terminal::run_app;
+
+use crate::format::age_of;
+use crate::input::{UiEffect, map_key, update};
+use crate::model::UiModel;
+use crate::render::{RenderCtx, render};
+use crate::theme::palette_for;
+
+/// At most 30 frames a second.
+const FRAME: Duration = Duration::from_micros(33_334);
+/// The working spinner's 4 frames a second (UI §2.1).
+const SPINNER_TICK: Duration = Duration::from_millis(250);
+/// Ages are shown in minutes, so one redraw a minute keeps them current.
+const AGE_TICK: Duration = Duration::from_secs(60);
+/// The editor when `$EDITOR` is unset or blank.
+const DEFAULT_EDITOR: &str = "vi";
+
+/// What the app needs besides its channels.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppConfig {
+    /// `org.toml`, opened by `o`.
+    pub org_toml: PathBuf,
+    /// The tmux socket in use, for the attach hint (D31).
+    pub tmux_socket: String,
+    /// The settings at start-up.
+    pub settings: Settings,
+    /// `NO_COLOR` is set.
+    pub no_color: bool,
+    /// The value of `$EDITOR`, read by the caller; `None` or blank runs `vi`.
+    pub editor: Option<String>,
+}
+
+/// Terminal input, as the loop sees it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputEvent {
+    /// A key press.
+    Key(KeyEvent),
+    /// The terminal's new size.
+    Resize(u16, u16),
+}
+
+/// Why the app stopped other than by `q`.
+#[derive(Debug, thiserror::Error)]
+pub enum TuiError {
+    /// The terminal could not be set up, drawn on or restored.
+    #[error("terminal: {0}")]
+    Terminal(String),
+    /// The core's channels closed.
+    #[error("the core stopped")]
+    CoreStopped,
+    /// Terminal input stopped.
+    #[error("terminal input closed")]
+    InputClosed,
+}
+
+impl From<io::Error> for TuiError {
+    fn from(e: io::Error) -> Self {
+        Self::Terminal(e.to_string())
+    }
+}
+
+/// Hands the terminal to a program (the editor) and takes it back; blocking.
+pub trait TerminalHost: Send + Sync {
+    /// Runs `cmd` with the terminal handed over, and restores the terminal afterwards.
+    fn hand_over(&self, cmd: Process) -> io::Result<()>;
+}
+
+/// For a backend that isn't a real terminal: runs the program as is, with nothing to hand over.
+struct PlainHost;
+
+impl TerminalHost for PlainHost {
+    fn hand_over(&self, mut cmd: Process) -> io::Result<()> {
+        cmd.status().map(|_| ())
+    }
+}
+
+/// `sh -c '<editor> "$1"' sh <path>`: `$EDITOR` may carry arguments (`code -w`), and the
+/// path is passed as `$1`, never interpreted by the shell.
+pub fn editor_command(editor: Option<&str>, path: &Path) -> Process {
+    let editor = editor
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .unwrap_or(DEFAULT_EDITOR);
+    let mut cmd = Process::new("sh");
+    cmd.arg("-c")
+        .arg(format!("{editor} \"$1\""))
+        .arg("sh")
+        .arg(path);
+    cmd
+}
+
+/// The app over any backend: all drawing, input handling and timing live here.
+/// `first_frame` fires once, right after the first frame is drawn.
+pub async fn run_app_on<B: Backend>(
+    terminal: &mut Terminal<B>,
+    input: mpsc::Receiver<InputEvent>,
+    cfg: AppConfig,
+    events: mpsc::UnboundedReceiver<Event>,
+    commands: mpsc::Sender<Command>,
+    first_frame: Option<oneshot::Sender<()>>,
+) -> Result<(), TuiError> {
+    let host: Arc<dyn TerminalHost> = Arc::new(PlainHost);
+    run_loop(terminal, input, cfg, events, commands, first_frame, host).await
+}
+
+/// When the next frame, spinner step and age refresh are due.
+struct Clock {
+    dirty: bool,
+    /// The first `Snapshot` has arrived: nothing is drawn before it.
+    ready: bool,
+    spinner: usize,
+    last_draw: Option<Instant>,
+    spinner_next: Option<Instant>,
+}
+
+impl Clock {
+    /// Updates the spinner's schedule and returns when the loop should next wake to draw.
+    fn next_wake(&mut self, m: &UiModel) -> Option<Instant> {
+        let now = Instant::now();
+        let spinning = self.ready && !m.settings.reduce_motion && any_working(m);
+        self.spinner_next = match (spinning, self.spinner_next) {
+            (false, _) => None,
+            (true, Some(at)) => Some(at),
+            (true, None) => Some(now + SPINNER_TICK),
+        };
+        let frame = self.last_draw.map_or(now, |t| (t + FRAME).max(now));
+        let draw = (self.dirty && self.ready).then_some(frame);
+        let ages = (self.ready && ages_shown(m))
+            .then(|| self.last_draw.map(|t| t + AGE_TICK))
+            .flatten();
+        [draw, self.spinner_next, ages].into_iter().flatten().min()
+    }
+
+    /// At a wake: steps the spinner when due and marks the frame dirty when a tick is due.
+    fn on_wake(&mut self, m: &UiModel) -> bool {
+        let now = Instant::now();
+        if let Some(at) = self.spinner_next.filter(|at| *at <= now) {
+            self.spinner = self.spinner.wrapping_add(1);
+            self.spinner_next = Some((at + SPINNER_TICK).max(now));
+            self.dirty = true;
+        }
+        if ages_shown(m) && self.last_draw.is_some_and(|t| t + AGE_TICK <= now) {
+            self.dirty = true;
+        }
+        let frame_ok = self.last_draw.is_none_or(|t| t + FRAME <= now);
+        self.dirty && self.ready && frame_ok
+    }
+}
+
+/// A working (not quiet) agent: its row animates.
+fn any_working(m: &UiModel) -> bool {
+    m.agent_names().into_iter().any(|a| {
+        let s = &m.view(a).status;
+        s.state == AgentState::Working && !s.quiet
+    })
+}
+
+/// Some age is on screen: a state cell or a Needs you row. Whether an agent shows an age
+/// doesn't depend on the time it is measured to (only an unknown start hides it), so any
+/// `now` does here.
+fn ages_shown(m: &UiModel) -> bool {
+    !m.needs_you.is_empty()
+        || m.agent_names()
+            .into_iter()
+            .any(|a| age_of(&m.view(a).status, Millis(1)).is_some())
+}
+
+/// The wall clock, in the engine's units.
+fn wall_now() -> Millis {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    Millis(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// The loop, with the terminal hand-over for `o` injected.
+pub(crate) async fn run_loop<B: Backend>(
+    terminal: &mut Terminal<B>,
+    mut input: mpsc::Receiver<InputEvent>,
+    cfg: AppConfig,
+    mut events: mpsc::UnboundedReceiver<Event>,
+    commands: mpsc::Sender<Command>,
+    mut first_frame: Option<oneshot::Sender<()>>,
+    host: Arc<dyn TerminalHost>,
+) -> Result<(), TuiError> {
+    let mut m = UiModel::new(Org::blank(CliKind::Claude));
+    m.settings = cfg.settings.clone();
+    m.org_toml = cfg.org_toml.clone();
+    let mut clock = Clock {
+        dirty: true,
+        ready: false,
+        spinner: 0,
+        last_draw: None,
+        spinner_next: None,
+    };
+    loop {
+        let wake = clock.next_wake(&m);
+        tokio::select! {
+            event = events.recv() => {
+                let event = event.ok_or(TuiError::CoreStopped)?;
+                let snapshot = matches!(event, Event::Snapshot(_));
+                clock.dirty |= m.apply(event);
+                clock.ready |= snapshot;
+            }
+            got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
+                InputEvent::Resize(..) => clock.dirty = true,
+                InputEvent::Key(k) => {
+                    m.now = wall_now();
+                    let before = m.clone();
+                    let effects = match map_key(&m, k) {
+                        Some(a) => update(&mut m, a),
+                        None => {
+                            m.footer_note = None;
+                            Vec::new()
+                        }
+                    };
+                    clock.dirty |= m != before;
+                    for effect in effects {
+                        match effect {
+                            UiEffect::Quit => return Ok(()),
+                            UiEffect::Send(c) => send(&commands, c).await?,
+                            UiEffect::OpenEditor(path) => {
+                                let cmd = editor_command(cfg.editor.as_deref(), &path);
+                                edit(terminal, &mut m, cmd, &host, &commands).await?;
+                                clock.dirty = true;
+                            }
+                        }
+                    }
+                }
+            },
+            () = sleep_until(wake), if wake.is_some() => {
+                if clock.on_wake(&m) {
+                    draw(terminal, &m, &cfg, clock.spinner)?;
+                    clock.dirty = false;
+                    clock.last_draw = Some(Instant::now());
+                    if let Some(tx) = first_frame.take() {
+                        // The receiver may be gone; the app runs on regardless.
+                        let _ = tx.send(());
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn sleep_until(at: Option<Instant>) {
+    if let Some(at) = at {
+        tokio::time::sleep_until(at).await;
+    }
+}
+
+async fn send(commands: &mpsc::Sender<Command>, c: Command) -> Result<(), TuiError> {
+    commands.send(c).await.map_err(|_| TuiError::CoreStopped)
+}
+
+/// Runs the editor with the terminal handed over, repaints everything, and reloads the org;
+/// an editor that can't be run leaves the org as it is and says why in the footer.
+async fn edit<B: Backend>(
+    terminal: &mut Terminal<B>,
+    m: &mut UiModel,
+    cmd: Process,
+    host: &Arc<dyn TerminalHost>,
+    commands: &mpsc::Sender<Command>,
+) -> Result<(), TuiError> {
+    let host = Arc::clone(host);
+    let ran = tokio::task::spawn_blocking(move || host.hand_over(cmd)).await;
+    terminal
+        .clear()
+        .map_err(|e| TuiError::Terminal(e.to_string()))?;
+    match ran {
+        Ok(Ok(())) => send(commands, Command::ReloadOrg).await,
+        Ok(Err(e)) => {
+            m.footer_note = Some(format!("couldn't run the editor: {e}"));
+            Ok(())
+        }
+        Err(e) => {
+            m.footer_note = Some(format!("couldn't run the editor: {e}"));
+            Ok(())
+        }
+    }
+}
+
+fn draw<B: Backend>(
+    terminal: &mut Terminal<B>,
+    m: &UiModel,
+    cfg: &AppConfig,
+    spinner: usize,
+) -> Result<(), TuiError> {
+    let ctx = RenderCtx {
+        now: wall_now(),
+        spinner,
+        palette: palette_for(m.settings.theme, cfg.no_color),
+        settings: m.settings.clone(),
+        tmux_socket: cfg.tmux_socket.clone(),
+    };
+    terminal
+        .draw(|f| render(f, m, &ctx))
+        .map(|_| ())
+        .map_err(|e| TuiError::Terminal(e.to_string()))
+}
+
+#[cfg(test)]
+mod tests;
