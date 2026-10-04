@@ -1,5 +1,7 @@
 # DuoHive docs
 
+**Where we are:** Phases 0 and 1 are done (2026-10-04): the org, standing agents on Claude Code and OpenCode with live status, the minimal TUI and `duohive bench`. Phase 2 (one screen) is next. See the [roadmap](plans/v1-roadmap.md).
+
 Three living documents, each updated in place. Read them in this order.
 
 | Doc | Answers | Path |
