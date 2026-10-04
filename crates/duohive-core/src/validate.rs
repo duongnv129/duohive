@@ -12,10 +12,6 @@ use crate::org::{Fields, Org, Role};
 const MAX_NAME_LEN: usize = 40;
 /// Longest slug once names would overflow (D11).
 const SLUG_CUT: usize = 16;
-/// Room for `-` and a three-digit counter after the slugs.
-const COUNTER_ROOM: usize = 4;
-/// Highest counter tried when naming new agents.
-const MAX_COUNTER: u32 = 1000;
 
 /// A problem with one field, addressed by its path in the org.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -173,6 +169,14 @@ fn cut(slug: &str) -> String {
     short.trim_end_matches('-').to_string()
 }
 
+fn candidate(base: &str, k: u32) -> String {
+    if base.is_empty() {
+        k.to_string()
+    } else {
+        format!("{base}-{k}")
+    }
+}
+
 /// Names for `count` new agents in a role (D11), skipping names in use.
 pub fn next_agent_names(
     org: &Org,
@@ -180,32 +184,32 @@ pub fn next_agent_names(
     role: &NodeName,
     count: u8,
 ) -> Vec<AgentName> {
-    let mut slugs: Vec<String> = team.into_iter().chain([role]).map(slug).collect();
-    if slugs
-        .iter()
+    let slugs: Vec<String> = team
+        .into_iter()
+        .chain([role])
+        .map(slug)
         .filter(|s| !s.is_empty())
-        .map(String::len)
-        .sum::<usize>()
-        + slugs.len()
-        + COUNTER_ROOM
-        > MAX_NAME_LEN
-    {
-        slugs = slugs.iter().map(|s| cut(s)).collect();
-    }
-    slugs.retain(|s| !s.is_empty());
-    let base = slugs.join("-");
+        .collect();
+    let full = slugs.join("-");
+    let short = slugs
+        .iter()
+        .map(|s| cut(s))
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
     let taken: HashSet<&AgentName> = org
         .agents()
         .into_iter()
         .map(|a| &a.agent.name)
         .chain([&org.duo.name])
         .collect();
-    (1..=MAX_COUNTER)
+    (1u32..)
         .filter_map(|k| {
-            let name = if base.is_empty() {
-                k.to_string()
+            let name = candidate(&full, k);
+            let name = if name.len() > MAX_NAME_LEN {
+                candidate(&short, k)
             } else {
-                format!("{base}-{k}")
+                name
             };
             AgentName::parse(&name).ok()
         })
@@ -485,6 +489,31 @@ mod tests {
             got.iter().map(ToString::to_string).collect::<Vec<_>>(),
             ["customer-success-platform-reliabi-1"]
         );
+    }
+
+    fn first_name(team: &str, role: &str) -> String {
+        let org = Org::blank(crate::cli_kind::CliKind::Claude);
+        next_agent_names(&org, Some(&nn(team)), &nn(role), 1)[0].to_string()
+    }
+
+    #[test]
+    fn forty_character_name_stays_uncut() {
+        let got = first_name("abcdefghijklmnopqrs", "abcdefghijklmnopqr");
+        assert_eq!(got.len(), 40);
+        assert_eq!(got, "abcdefghijklmnopqrs-abcdefghijklmnopqr-1");
+    }
+
+    #[test]
+    fn forty_one_character_name_is_cut() {
+        let got = first_name("abcdefghijklmnopqrs", "abcdefghijklmnopqrs");
+        assert_eq!(got, "abcdefghijklmnop-abcdefghijklmnop-1");
+    }
+
+    #[test]
+    fn count_is_always_met() {
+        let org = Org::blank(crate::cli_kind::CliKind::Claude);
+        let got = next_agent_names(&org, Some(&nn("a-b")), &nn("c"), 255);
+        assert_eq!(got.len(), 255);
     }
 
     #[test]
