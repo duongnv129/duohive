@@ -17,9 +17,9 @@ use crate::theme::Palette;
 const BANNER_INDENT: &str = "   ";
 const MAX_BANNER_LINES: usize = 3;
 
-/// Phase 1 keys (D8): no `? help`, no `space` until phase 2.
 /// Added to a form's keys while a prompt field has focus.
 const NEWLINE_KEY: &str = " · alt+enter new line";
+/// Phase 1 keys (D8): no `? help`, no `space` until phase 2.
 const FOOTER_KEYS: &str =
     " ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit";
 
