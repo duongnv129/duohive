@@ -250,3 +250,45 @@ fn settings_save_failure_changes_nothing() {
     );
     assert_eq!(h.engine.settings, Settings::default());
 }
+
+fn marked(h: &Harness) -> Vec<Org> {
+    h.store.state.lock().unwrap().marked_last_good.clone()
+}
+
+#[test]
+fn reload_marks_only_an_accepted_org_last_good() {
+    let mut h = Harness::new();
+    reload(&mut h, &example_org());
+    assert_eq!(marked(&h), vec![example_org()]);
+
+    // Broken, invalid, refused or missing files mark nothing.
+    let mut h = Harness::new();
+    h.store.state.lock().unwrap().org_result = Err(OrgFileError {
+        line: Some(1),
+        message: "bad".into(),
+    });
+    h.send(Command::ReloadOrg);
+    let mut dup = example_org();
+    dup.roles[0].agents[1].name = n("squad-1");
+    reload(&mut h, &dup);
+    let mut without_auth = test_org();
+    without_auth.teams[0].roles[0].agents.remove(0);
+    h.force("auth-service", AgentState::Working);
+    reload(&mut h, &without_auth);
+    h.store.state.lock().unwrap().org_result = Ok(None);
+    h.send(Command::ReloadOrg);
+    assert!(marked(&h).is_empty());
+}
+
+#[test]
+fn reload_reports_a_failed_last_good_write() {
+    let mut h = Harness::new();
+    h.store.state.lock().unwrap().fail_next_save = true;
+    let ev = reload(&mut h, &example_org());
+    assert_eq!(
+        rejected(&ev),
+        vec!["couldn't save org.last-good.toml: disk full"]
+    );
+    assert_eq!(h.engine.org, example_org());
+    assert!(ev.contains(&Event::OrgFileError(None)));
+}
