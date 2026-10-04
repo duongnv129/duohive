@@ -1,0 +1,18 @@
+[org]
+cli = "claude"
+
+[duo]
+name = "Duo"
+cli = "claude"
+
+[[team]]
+name = "Payments"
+
+[[team.role]]
+name = "Backend"
+
+[[team.role.agent]]
+name = "auth-service"
+
+[[team.role.agent.agent]]
+name = "too-deep"
