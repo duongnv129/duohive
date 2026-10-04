@@ -5,6 +5,7 @@
 mod harness;
 mod lifecycle;
 mod signals;
+mod timers;
 
 use signals::Exit;
 
@@ -16,7 +17,7 @@ use std::time::Duration;
 use crate::adapter::{Adapters, CliPresence};
 use crate::cli_kind::CliKind;
 use crate::command::Command;
-use crate::event::{AgentView, Event, Snapshot};
+use crate::event::{AgentView, Event, NeedsYouItem, Snapshot};
 use crate::hook::HookMessage;
 use crate::inherit::{expand_home, resolve};
 use crate::launch::{Token, WindowId};
@@ -97,11 +98,8 @@ struct AgentRt {
     task_at_launch: bool,
     stopping: bool,
     saw_end_hook: bool,
-    #[allow(dead_code, reason = "read by quiet (Task 13)")]
     last_signal_at: Millis,
-    #[allow(dead_code, reason = "read by activity handling (Task 13)")]
     last_activity_secs: Option<u64>,
-    #[allow(dead_code, reason = "read by settle reads (Task 13)")]
     settle_due: Option<Millis>,
     start_deadline: Option<Millis>,
     last_reply: Option<String>,
@@ -109,9 +107,7 @@ struct AgentRt {
     last_task: Option<String>,
     restart_after_stop: bool,
     /// The `NeedsInput { prompt }` text while waiting (Task 13's excerpt).
-    #[allow(dead_code, reason = "read by Needs you (Task 13)")]
     waiting_prompt: Option<String>,
-    #[allow(dead_code, reason = "read by the pre-timeout read (Task 13)")]
     pre_read_done: bool,
     exit_pending: Option<ExitPending>,
     /// The CLI the current session was launched on (org edits apply on the next start).
@@ -154,7 +150,6 @@ impl AgentRt {
 pub struct Engine {
     org: Org,
     org_error: Option<OrgFileError>,
-    #[allow(dead_code, reason = "read by quiet and settings (Tasks 13, 14)")]
     settings: Settings,
     settings_error: Option<OrgFileError>,
     agents: BTreeMap<AgentName, AgentRt>,
@@ -164,6 +159,8 @@ pub struct Engine {
     dirs: Option<HashMap<PathBuf, DirStatus>>,
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
+    /// The Needs you list last reported in `NeedsYouChanged`.
+    needs_you_shown: Vec<NeedsYouItem>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -190,6 +187,7 @@ impl Engine {
             cli: None,
             dirs: None,
             queued_launches: Vec::new(),
+            needs_you_shown: Vec::new(),
             cfg,
             ports,
             adapters,
@@ -202,8 +200,15 @@ impl Engine {
         engine
     }
 
-    /// Handles one input and returns the events it caused.
+    /// Handles one input and returns the events it caused, ending with
+    /// `NeedsYouChanged` when the Needs you list changed.
     pub fn handle(&mut self, input: Input) -> Vec<Event> {
+        let mut out = self.dispatch(input);
+        self.publish_needs_you(&mut out);
+        out
+    }
+
+    fn dispatch(&mut self, input: Input) -> Vec<Event> {
         match input {
             Input::Command(c) => self.on_command(c),
             Input::Runtime(RuntimeEvent::StartFailed { agent, reason }) => {
@@ -227,13 +232,14 @@ impl Engine {
             Input::Hook(message) => self.on_hook(&message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::DirInventory(list) => self.on_dir_inventory(list),
+            Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
+                self.on_activity(&agent, at_secs)
+            }
             Input::Tick => self.on_tick(),
-            // Activity, pastes and inventories: Tasks 13 and 15.
-            Input::Runtime(
-                RuntimeEvent::Activity { .. }
-                | RuntimeEvent::PasteFailed { .. }
-                | RuntimeEvent::Inventory(_),
-            ) => Vec::new(),
+            // Pastes and inventories: Task 15.
+            Input::Runtime(RuntimeEvent::PasteFailed { .. } | RuntimeEvent::Inventory(_)) => {
+                Vec::new()
+            }
         }
     }
 
@@ -272,27 +278,12 @@ impl Engine {
         Snapshot {
             org: self.org.clone(),
             agents,
-            // Needs you: Task 13; reconnecting: Task 15.
-            needs_you: Vec::new(),
+            needs_you: self.needs_you(),
+            // Reconnecting: Task 15.
             org_error: self.org_error.clone(),
             settings_error: self.settings_error.clone(),
             reconnecting: 0,
         }
-    }
-
-    /// When the next timer is due: start timeouts and zero exits waiting for
-    /// their end hook (Task 13 adds settle and quiet timers).
-    pub fn next_deadline(&self) -> Option<Millis> {
-        let starts = self
-            .agents
-            .values()
-            .filter(|rt| rt.status.state == AgentState::Starting)
-            .filter_map(|rt| rt.start_deadline);
-        let exits = self
-            .agents
-            .values()
-            .filter_map(|rt| rt.exit_pending.as_ref().map(|p| p.due));
-        starts.chain(exits).min()
     }
 
     /// Duo, then every agent in tree order.
