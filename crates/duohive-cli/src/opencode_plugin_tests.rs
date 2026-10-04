@@ -291,13 +291,14 @@ fn assert_dead(pid_file: &Path) {
 }
 
 /// The scenarios after the replay: dispose kills an in-flight delivery,
-/// the chain goes on after a 2 s kill, subagent sessions are ignored, and
-/// payloads are trimmed.
+/// the chain goes on after a 2 s kill, a 3 s delivery lands under the default
+/// limit, subagent sessions are ignored, and payloads are trimmed.
 fn check_scenarios(log_dir: &Path) {
     assert_eq!(events(log_dir, "inflight"), ["session-end"]);
     assert_dead(&log_dir.join("inflight.pid"));
     assert_eq!(events(log_dir, "slow"), ["busy", "session-end"]);
     assert_dead(&log_dir.join("slow.pid"));
+    assert_eq!(events(log_dir, "patient"), ["session-start", "session-end"]);
     assert_eq!(
         events(log_dir, "subagent"),
         ["session-start", "busy", "turn-end", "session-end"]
@@ -337,7 +338,7 @@ fn replay_under(runtime: &Path) {
     let hook = dir.path().join("fake-duohive");
     // Logs each delivery as one JSON line. For the `inflight` and `slow`
     // scenarios, session-start first records its pid, then takes 1.5 s (and
-    // would still log) or hangs.
+    // would still log) or hangs; for `patient` it takes 3 s, then logs.
     script(
         &hook,
         r#"IFS= read -r payload || true
@@ -345,6 +346,7 @@ if [ "$3" = session-start ]; then
   case "$2" in
     inflight) echo $$ > "$FAKE_HOOK_LOG_DIR/inflight.pid"; sleep 1.5 ;;
     slow) echo $$ > "$FAKE_HOOK_LOG_DIR/slow.pid"; exec sleep 10 ;;
+    patient) sleep 3 ;;
   esac
 fi
 printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" "$payload" >> "$FAKE_HOOK_LOG_DIR/$2.jsonl""#,
@@ -412,11 +414,29 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     check_scenarios(&log_dir);
 }
 
+/// With neither node nor bun: a failure on CI (`CI` set), else a skip.
+fn no_runtime(on_ci: bool) {
+    let why = "plugin_replays_recorded_events: neither node nor bun is on PATH";
+    assert!(!on_ci, "{why} (CI is set)");
+    eprintln!("skipped {why}");
+}
+
+#[test]
+fn no_runtime_skips_off_ci() {
+    no_runtime(false);
+}
+
+#[test]
+#[should_panic(expected = "CI is set")]
+fn no_runtime_fails_on_ci() {
+    no_runtime(true);
+}
+
 #[test]
 fn plugin_replays_recorded_events() {
     let found = runtimes();
     if found.is_empty() {
-        eprintln!("skipped plugin_replays_recorded_events: neither node nor bun is on PATH");
+        no_runtime(std::env::var_os("CI").is_some());
         return;
     }
     for runtime in found {
