@@ -2,7 +2,7 @@
 //! a reader thread that forwards crossterm input, and pauses while the editor has the tty.
 
 use std::io::{self, stdout};
-use std::process::Command as Process;
+use std::process::{Command as Process, ExitStatus};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -41,7 +41,14 @@ pub async fn run_app(
     commands: mpsc::Sender<Command>,
     first_frame: Option<oneshot::Sender<()>>,
 ) -> Result<(), TuiError> {
-    let mut terminal = ratatui::try_init()?;
+    let mut terminal = match ratatui::try_init() {
+        Ok(t) => t,
+        Err(e) => {
+            // Raw mode may be on even though the alternate screen failed.
+            let _ = ratatui::try_restore();
+            return Err(e.into());
+        }
+    };
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
     let (ack_tx, ack_rx) = std_mpsc::channel();
@@ -139,16 +146,21 @@ impl CrosstermHost {
 }
 
 impl TerminalHost for CrosstermHost {
-    fn hand_over(&self, mut cmd: Process) -> io::Result<()> {
+    fn hand_over(&self, mut cmd: Process) -> io::Result<ExitStatus> {
+        let parked = self.parked.lock();
+        if let Ok(parked) = &parked {
+            // A late answer from an earlier hand-over must not count as this one's.
+            while parked.try_recv().is_ok() {}
+        }
         self.tell(Gate::Pause);
-        if let Ok(parked) = self.parked.lock() {
+        if let Ok(parked) = &parked {
             // On a timeout the editor still runs; the reader stops at its next poll.
             let _ = parked.recv_timeout(PARK_WAIT);
         }
-        let ran = suspend().and_then(|()| cmd.status().map(|_| ()));
+        let ran = suspend().and_then(|()| cmd.status());
         let back = resume();
         self.tell(Gate::Resume);
-        ran.and(back)
+        back.and(ran)
     }
 }
 
