@@ -1,17 +1,15 @@
 //! The Claude Code adapter (spike S1, Claude Code 2.1.288).
 
-use std::path::Path;
-
 use duohive_core::adapter::{
     CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
-use duohive_core::inherit::expand_home;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
 use serde_json::Value;
 
 use crate::detect::probe_version;
 use crate::hooks_json::command_hooks;
+use crate::{launch_cwd, utf8};
 
 /// Claude Code hook → DuoHive event (S1.3). `Notification` is left out on
 /// purpose: it arrives about 6 s after `PermissionRequest` and would mark an
@@ -63,37 +61,37 @@ impl CliAdapter for ClaudeAdapter {
     }
 
     /// `claude [--append-system-prompt <prompt>] --settings <run>/settings.json
-    /// [--model m] [--effort e] [flags…] [-- <task>]` (S1.2, S1.3, S1.6, S1.8, S1.11).
+    /// [--model=m] [--effort=e] [flags…] [-- <task>]` (S1.2, S1.3, S1.6, S1.8, S1.11).
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
         let settings_path = spec.run_dir.join(SETTINGS_FILE);
-        let settings = serde_json::to_string_pretty(&command_hooks(spec, &HOOKS))
+        let settings = serde_json::to_string_pretty(&command_hooks(spec, &HOOKS)?)
             .map_err(|e| LaunchError::Invalid(format!("couldn't build hook settings: {e}")))?;
         let agent = &spec.agent;
         let mut args = Vec::new();
         if !agent.prompt.trim().is_empty() {
             args.extend(["--append-system-prompt".to_owned(), agent.prompt.clone()]);
         }
-        args.extend(["--settings".to_owned(), utf8(&settings_path)?.to_owned()]);
+        args.extend([
+            "--settings".to_owned(),
+            utf8(&settings_path, "run directory")?.to_owned(),
+        ]);
+        // One `--flag=value` argument each: free text starting with `-` stays a value.
         if let Some(model) = &agent.model {
-            args.extend(["--model".to_owned(), model.clone()]);
+            args.push(format!("--model={model}"));
         }
         if let Some(effort) = &agent.effort {
-            args.extend(["--effort".to_owned(), effort.clone()]);
+            args.push(format!("--effort={effort}"));
         }
         args.extend(agent.flags.iter().cloned());
         if let Some(task) = &spec.task {
             // `--` keeps a task that starts with `-` from being read as options (S1.8).
             args.extend(["--".to_owned(), task.clone()]);
         }
-        let cwd = agent
-            .directory
-            .as_deref()
-            .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home));
         Ok(LaunchCommand {
             program: self.kind().binary().to_owned(),
             args,
             env: Vec::new(),
-            cwd,
+            cwd: launch_cwd(spec),
             files: vec![LaunchFile {
                 path: settings_path,
                 contents: settings,
@@ -161,12 +159,6 @@ impl CliAdapter for ClaudeAdapter {
     }
 }
 
-fn utf8(path: &Path) -> Result<&str, LaunchError> {
-    path.to_str().ok_or_else(|| {
-        LaunchError::Invalid(format!("run directory is not UTF-8: {}", path.display()))
-    })
-}
-
 /// A non-empty string field of `payload`.
 fn text_field<'a>(payload: &'a Value, key: &str) -> Option<&'a str> {
     payload
@@ -192,7 +184,7 @@ fn approval_prompt(payload: &Value) -> Option<String> {
 /// `message.content` is a string; its reply is the `text` blocks of the last
 /// `assistant` message (by `message.id`) in the turn that has any, joined by
 /// newlines. A turn with no text (a denied tool) has `None`.
-pub fn transcript_turn_replies(transcript: &str) -> Vec<Option<String>> {
+pub(crate) fn transcript_turn_replies(transcript: &str) -> Vec<Option<String>> {
     let mut turns: Vec<Option<(String, Vec<String>)>> = Vec::new();
     for entry in transcript
         .lines()
@@ -230,7 +222,7 @@ pub fn transcript_turn_replies(transcript: &str) -> Vec<Option<String>> {
 }
 
 /// The last turn's reply in a transcript, if it has one.
-pub fn last_reply_from_transcript(transcript: &str) -> Option<String> {
+pub(crate) fn last_reply_from_transcript(transcript: &str) -> Option<String> {
     transcript_turn_replies(transcript).pop().flatten()
 }
 
@@ -283,11 +275,14 @@ fn is_rule(line: &str) -> bool {
     line.chars().count() >= RULE_MIN && line.chars().all(|c| c == '─')
 }
 
-/// `❯` then any continuation lines (indented), as in a multi-line paste.
+/// `❯` then any continuation lines (indented, or blank), as in a multi-line paste.
 fn is_input_box(rows: &[&str]) -> bool {
     match rows.split_first() {
         Some((first, rest)) => {
-            first.starts_with('❯') && rest.iter().all(|l| l.starts_with(char::is_whitespace))
+            first.starts_with('❯')
+                && rest
+                    .iter()
+                    .all(|l| l.is_empty() || l.starts_with(char::is_whitespace))
         }
         None => false,
     }
@@ -401,9 +396,11 @@ mod tests {
         let cmd = launch(&s);
         let args = &cmd.args;
         let pos = |a: &str| args.iter().position(|x| x == a).unwrap();
-        assert_eq!(args[pos("--model") + 1], "opus");
-        assert_eq!(args[pos("--effort") + 1], "high");
-        assert!(pos("--verbose") > pos("--effort"));
+        // One `--flag=value` argument each: a value starting with `-` stays a value.
+        assert!(!args.contains(&"--model".to_owned()));
+        assert!(!args.contains(&"--effort".to_owned()));
+        assert!(pos("--verbose") > pos("--effort=high"));
+        assert!(pos("--effort=high") > pos("--model=opus"));
         assert_eq!(args[args.len() - 2..], ["--", "Add retry cases"]);
         insta::assert_yaml_snapshot!(cmd);
     }
@@ -433,6 +430,27 @@ mod tests {
                 .args
                 .contains(&"--append-system-prompt".to_owned())
         );
+    }
+
+    #[test]
+    fn launch_keeps_model_and_effort_values_that_start_with_a_dash() {
+        let mut s = spec(None);
+        s.agent.model = Some("-x".into());
+        s.agent.effort = Some("--max".into());
+        let args = launch(&s).args;
+        assert!(args.contains(&"--model=-x".to_owned()), "{args:?}");
+        assert!(args.contains(&"--effort=--max".to_owned()), "{args:?}");
+    }
+
+    #[test]
+    fn launch_refuses_a_non_utf8_hook_exe() {
+        use std::os::unix::ffi::OsStrExt;
+        let mut s = spec(None);
+        s.hook_exe = std::ffi::OsStr::from_bytes(b"/opt/\xff/duohive").into();
+        assert!(matches!(
+            ClaudeAdapter.launch(&s),
+            Err(duohive_core::adapter::LaunchError::Invalid(_))
+        ));
     }
 
     #[test]
@@ -502,7 +520,7 @@ mod tests {
             assert_eq!(entry[0]["hooks"][0]["type"], "command", "{cli_event}");
             assert_eq!(
                 entry[0]["hooks"][0]["command"],
-                hook_command(&s, ours),
+                hook_command(&s, ours).unwrap(),
                 "{cli_event}"
             );
         }
@@ -719,6 +737,18 @@ mod tests {
             Some(ScreenState::AtRest)
         );
         assert_eq!(read("✽ Elucidating… (soon)"), Some(ScreenState::AtRest));
+        // A blank row inside a multi-line input box is a continuation row.
+        let multi =
+            format!("✻ Brewed for 5s\n{rule}\n❯ first line\n\n  third line\n{rule}\n  status\n");
+        assert_eq!(
+            ClaudeAdapter.read_screen(&multi).state,
+            Some(ScreenState::AtRest)
+        );
+        let multi_busy = format!("✽ Elucidating… (4s)\n{rule}\n❯ first\n   \n  third\n{rule}\n");
+        assert_eq!(
+            ClaudeAdapter.read_screen(&multi_busy).state,
+            Some(ScreenState::Busy)
+        );
         assert_eq!(ClaudeAdapter.read_screen("").state, None);
         assert_eq!(
             ClaudeAdapter.read_screen("✽ Elucidating… (1s)\n").state,
