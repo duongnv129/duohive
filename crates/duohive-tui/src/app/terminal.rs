@@ -3,6 +3,7 @@
 
 use std::io::{self, stdout};
 use std::process::{Command as Process, ExitStatus};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -37,13 +38,15 @@ enum Gate {
 }
 
 /// The app on the real terminal. The terminal is restored on exit and, through ratatui's
-/// panic hook, on panic. SIGINT and SIGTERM quit like `q`. `events` is lent, so the
-/// caller keeps its handle (and shuts it down) afterwards.
+/// panic hook, on panic (which also sets `cfg.halted`, so nothing is drawn after it).
+/// `signals` quit like `q`. `events` and `signals` are lent, so the caller keeps its
+/// handle (and shuts it down) and its signal listeners afterwards.
 pub async fn run_app(
     cfg: AppConfig,
     events: &mut mpsc::UnboundedReceiver<Event>,
     commands: mpsc::Sender<Command>,
     first_frame: Option<oneshot::Sender<()>>,
+    signals: &mut QuitSignals,
 ) -> Result<(), TuiError> {
     let mut terminal = match ratatui::try_init() {
         Ok(t) => t,
@@ -55,7 +58,7 @@ pub async fn run_app(
     };
     // Pasted text arrives whole, so a newline in it never reads as enter (forms).
     let _ = execute!(stdout(), EnableBracketedPaste);
-    restore_paste_on_panic();
+    restore_paste_on_panic(Arc::clone(&cfg.halted));
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
     let (ack_tx, ack_rx) = std_mpsc::channel();
@@ -76,7 +79,7 @@ pub async fn run_app(
                 commands,
                 first_frame,
                 host,
-                QuitSignals::install(),
+                signals,
             )
             .await
         }
@@ -84,6 +87,15 @@ pub async fn run_app(
     };
     // The reader may already be gone; it ends within one poll either way.
     let _ = gate_tx.send(Gate::Stop);
+    // Dropping a `Terminal` whose cursor is hidden shows it and reports a failure with
+    // `eprintln!`, which panics when the terminal (and so stderr) is gone, as after a
+    // SIGHUP. Show the cursor here, ignoring errors, and never drop it.
+    let _ = execute!(stdout(), Show);
+    std::mem::forget(terminal);
+    if signals.hung_up() {
+        // The terminal is gone: there is nothing to restore.
+        return result;
+    }
     let _ = execute!(stdout(), DisableBracketedPaste);
     let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
@@ -135,10 +147,12 @@ fn blocking_loop(
 }
 
 /// Wraps the panic hook (ratatui's, which restores raw mode and the screen) so a panic
-/// also turns bracketed paste off; otherwise the shell would get pastes wrapped in escapes.
-fn restore_paste_on_panic() {
+/// first stops drawing (`halted`), and also turns bracketed paste off; otherwise the
+/// shell would get pastes wrapped in escapes.
+fn restore_paste_on_panic(halted: Arc<AtomicBool>) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
+        halted.store(true, Ordering::SeqCst);
         let _ = execute!(stdout(), DisableBracketedPaste);
         previous(info);
     }));

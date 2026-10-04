@@ -23,8 +23,7 @@ use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::status::AgentState;
 use duohive_store::{Paths, save_org};
 use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
-use duohive_tui::UiModel;
-use tokio::signal::unix::{Signal, SignalKind, signal};
+use duohive_tui::{QuitSignals, UiModel};
 use tokio::sync::mpsc;
 
 use crate::system::{StartError, SystemHandle, SystemOptions, start_system};
@@ -113,7 +112,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     save_org(&env.paths, &org).map_err(|e| BenchError::Org(e.to_string()))?;
     let exe = std::env::current_exe()?;
     // Registered once, before anything starts: no signal falls between two waits.
-    let mut interrupt = Interrupt::install();
+    let mut interrupt = QuitSignals::install();
     let (tap_tx, tap) = mpsc::unbounded_channel();
     let start = start_system(
         &env.paths,
@@ -171,41 +170,6 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
         hook_samples: m.hook_samples,
         pid: std::process::id(),
     })
-}
-
-/// Ctrl-C and SIGTERM, listened for from [`Interrupt::install`] on.
-struct Interrupt {
-    int: Option<Signal>,
-    term: Option<Signal>,
-}
-
-impl Interrupt {
-    fn install() -> Self {
-        Self {
-            int: signal(SignalKind::interrupt()).ok(),
-            term: signal(SignalKind::terminate()).ok(),
-        }
-    }
-
-    /// Resolves at the next Ctrl-C or SIGTERM (never, if neither handler installed).
-    async fn recv(&mut self) {
-        let Self { int, term } = self;
-        tokio::select! {
-            () = next(int) => {}
-            () = next(term) => {}
-        }
-    }
-}
-
-/// The next delivery of `sig`; never, without a listener or once it is closed.
-async fn next(sig: &mut Option<Signal>) {
-    let delivered = match sig {
-        Some(s) => s.recv().await.is_some(),
-        None => false,
-    };
-    if !delivered {
-        std::future::pending::<()>().await;
-    }
 }
 
 /// What a finished measurement hands back.

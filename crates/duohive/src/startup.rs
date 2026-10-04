@@ -1,23 +1,37 @@
 //! The app's start-up and exit (TD §4.1 Start-up, §8):
-//! paths → logging → tmux check (missing or older than 3.2: the blocking screen,
-//! then exit 1) → the system → the TUI until `q`, SIGINT, SIGTERM or a panic →
-//! an orderly shutdown. Agents keep running in tmux.
+//! paths → logging → tmux check (missing or older than 3.2: the blocking screen on a
+//! terminal, then exit 1) → quit signals → the system → the TUI → an orderly
+//! shutdown, bounded by [`SHUTDOWN_LIMIT`]. Agents keep running in tmux.
+//!
+//! How the app ends:
+//! - `q`, `ctrl+c`, SIGINT, SIGTERM or SIGHUP: quit, exit 0. A signal during
+//!   start-up lets the start finish, then shuts down what started. A second signal
+//!   during shutdown exits at once.
+//! - Panics (ruling): any panic, on any thread or task, quits the app with exit 101
+//!   through the same orderly shutdown. Ratatui's hook has restored the terminal by
+//!   then, so the TUI draws nothing more (`AppConfig::halted`). A panicking tmux
+//!   runtime task is also reported to the engine as `ConnectionLost`; that matters
+//!   headless (the bench), where nothing else would notice.
 
 use std::any::Any;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::future::Future;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::task::Poll;
+use std::time::Duration;
 
 use duohive_cli::real_adapters;
 use duohive_store::Paths;
 use duohive_tmux::{TmuxError, TmuxVersion, tmux_version};
-use duohive_tui::{AppConfig, BlockingScreen, TuiError, restore_terminal, run_app, show_blocking};
+use duohive_tui::{
+    AppConfig, BlockingScreen, QuitSignals, TuiError, restore_terminal, run_app, show_blocking,
+};
 use tokio::sync::{Notify, oneshot};
 
 use crate::logging::init_logging;
@@ -26,6 +40,8 @@ use crate::system::{StartError, SystemOptions, start_system, tmux_config};
 
 /// The exit status after a panic (Rust's own).
 const PANIC_EXIT: u8 = 101;
+/// The longest an orderly shutdown may take before DuoHive just exits.
+const SHUTDOWN_LIMIT: Duration = Duration::from_secs(10);
 
 /// The process environment, dropping entries that aren't UTF-8.
 pub fn env_vars() -> HashMap<String, String> {
@@ -72,13 +88,17 @@ pub async fn run_app_main() -> ExitCode {
     if let Some(code) = check_tmux(&paths).await {
         return code;
     }
+    // From here a quit signal shuts down in order instead of killing the process.
+    let mut signals = QuitSignals::install();
     let (first_frame_tx, first_frame) = oneshot::channel();
     let opts = SystemOptions {
         tap: None,
         first_frame: Some(first_frame),
         home: home.clone(),
     };
-    let mut handle = match start_system(&paths, Arc::new(real_adapters()), opts).await {
+    let start = start_system(&paths, Arc::new(real_adapters()), opts);
+    let (started, quit_early) = finish_start(start, signals.recv()).await;
+    let mut handle = match started {
         Ok(h) => h,
         Err(e) => {
             tracing::error!(error = %e, "start-up failed");
@@ -89,26 +109,48 @@ pub async fn run_app_main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let cfg = AppConfig {
-        org_toml: paths.org_toml(),
-        tmux_socket: paths.tmux_socket.clone(),
-        settings: handle.settings.clone(),
-        no_color: var(&env, "NO_COLOR").is_some(),
-        editor: env.get("EDITOR").cloned(),
-        dirs: Arc::new(FsDirProbe),
-        home,
+    let ended = if quit_early {
+        tracing::info!("quit during start-up");
+        Ended::Quit
+    } else {
+        let cfg = AppConfig {
+            org_toml: paths.org_toml(),
+            tmux_socket: paths.tmux_socket.clone(),
+            settings: handle.settings.clone(),
+            no_color: var(&env, "NO_COLOR").is_some(),
+            editor: env.get("EDITOR").cloned(),
+            dirs: Arc::new(FsDirProbe),
+            home,
+            halted: Arc::new(AtomicBool::new(false)),
+        };
+        let panicked = watch_panics();
+        let commands = handle.commands.clone();
+        let app = run_app(
+            cfg,
+            &mut handle.events,
+            commands,
+            Some(first_frame_tx),
+            &mut signals,
+        );
+        until_quit(app, &panicked).await
     };
-    let panicked = watch_panics();
-    let commands = handle.commands.clone();
-    let app = run_app(cfg, &mut handle.events, commands, Some(first_frame_tx));
-    let ended = until_quit(app, &panicked).await;
     if ended == Ended::Panicked {
         // The app may have been dropped mid-frame; the panic hook restored the
         // terminal already, so this is only belt and braces.
         restore_terminal();
     }
-    handle.shutdown().await;
-    tracing::info!(?ended, "stopped; agents keep running");
+    match bounded(handle.shutdown(), SHUTDOWN_LIMIT, signals.recv()).await {
+        Bounded::Done => tracing::info!(?ended, "stopped; agents keep running"),
+        Bounded::TimedOut => {
+            tracing::error!(?ended, "shutdown took over {SHUTDOWN_LIMIT:?}; exiting");
+            say("duohive: shutdown took too long; exiting (your agents keep running)");
+            return ExitCode::FAILURE;
+        }
+        Bounded::Quit => {
+            tracing::warn!(?ended, "quit again during shutdown; exiting at once");
+            return ExitCode::FAILURE;
+        }
+    }
     match ended {
         Ended::Quit => ExitCode::SUCCESS,
         Ended::Failed(e) => {
@@ -119,6 +161,44 @@ pub async fn run_app_main() -> ExitCode {
             say("duohive: an internal error stopped DuoHive; your agents keep running");
             ExitCode::from(PANIC_EXIT)
         }
+    }
+}
+
+/// `start`'s result, and whether `quit` fired meanwhile: a quit never abandons a
+/// half-started system (the listener may already hold hooks), it waits for it.
+pub(crate) async fn finish_start<T>(
+    start: impl Future<Output = T>,
+    quit: impl Future<Output = ()>,
+) -> (T, bool) {
+    let mut start = std::pin::pin!(start);
+    tokio::select! {
+        biased;
+        started = &mut start => (started, false),
+        () = quit => (start.await, true),
+    }
+}
+
+/// How a bounded shutdown went.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Bounded {
+    Done,
+    /// It ran past the limit.
+    TimedOut,
+    /// Another quit signal: the user wants out now.
+    Quit,
+}
+
+/// Runs `f` for at most `limit`, or until `quit`.
+pub(crate) async fn bounded(
+    f: impl Future<Output = ()>,
+    limit: Duration,
+    quit: impl Future<Output = ()>,
+) -> Bounded {
+    tokio::select! {
+        biased;
+        () = f => Bounded::Done,
+        () = quit => Bounded::Quit,
+        () = tokio::time::sleep(limit) => Bounded::TimedOut,
     }
 }
 
@@ -133,10 +213,13 @@ async fn check_tmux(paths: &Paths) -> Option<ExitCode> {
         TmuxGate::Ready => None,
         TmuxGate::Missing { found } => {
             tracing::error!(?found, "tmux missing or older than 3.2");
-            let screen = BlockingScreen::TmuxMissing { found };
-            let shown = tokio::task::spawn_blocking(move || show_blocking(&screen)).await;
-            if let Ok(Err(e)) = &shown {
-                say(&format!("duohive: {e}"));
+            // The blocking screen needs a terminal; without one the message says it.
+            if std::io::stdout().is_terminal() {
+                let screen = BlockingScreen::TmuxMissing { found };
+                let shown = tokio::task::spawn_blocking(move || show_blocking(&screen)).await;
+                if let Ok(Err(e)) = &shown {
+                    say(&format!("duohive: {e}"));
+                }
             }
             say("duohive: tmux 3.2 or newer is required");
             Some(ExitCode::FAILURE)
@@ -195,6 +278,7 @@ pub(crate) async fn until_quit(
     tokio::select! {
         ran = catch_panic(app) => match ran {
             Ok(Ok(())) => Ended::Quit,
+            Ok(Err(TuiError::Halted)) => Ended::Panicked,
             Ok(Err(e)) => Ended::Failed(e.to_string()),
             Err(_) => Ended::Panicked,
         },
@@ -277,5 +361,26 @@ mod tests {
         // A panic inside the app itself is caught too (`resume_unwind`: no hook noise).
         let app = async { std::panic::resume_unwind(Box::new("boom")) };
         assert_eq!(until_quit(app, &Notify::new()).await, Ended::Panicked);
+    }
+
+    #[tokio::test]
+    async fn a_quit_during_start_up_waits_for_the_start_to_finish() {
+        let start = async {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            "handle"
+        };
+        assert_eq!(finish_start(start, async {}).await, ("handle", true));
+        let quick = async { "handle" };
+        let never = std::future::pending::<()>();
+        assert_eq!(finish_start(quick, never).await, ("handle", false));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_is_bounded_and_a_second_quit_cuts_it_short() {
+        let never = || std::future::pending::<()>();
+        let limit = Duration::from_secs(10);
+        assert_eq!(bounded(async {}, limit, never()).await, Bounded::Done);
+        assert_eq!(bounded(never(), limit, never()).await, Bounded::TimedOut);
+        assert_eq!(bounded(never(), limit, async {}).await, Bounded::Quit);
     }
 }
