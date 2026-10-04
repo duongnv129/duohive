@@ -187,6 +187,11 @@ export const DuohivePlugin = async () => {
   const agent = process.env.DUOHIVE_HOOK_AGENT || "";
   const fallback = Number(process.env.DUOHIVE_START_FALLBACK_MS);
   const fallbackMs = Number.isFinite(fallback) && fallback > 0 ? fallback : START_FALLBACK_MS;
+  // Test hook, like DUOHIVE_START_FALLBACK_MS: a loaded machine can take longer
+  // than 1 s to start even a trivial hook exe, which the replay test must not
+  // mistake for a lost session-end.
+  const endLimit = Number(process.env.DUOHIVE_SESSION_END_LIMIT_MS);
+  const endLimitMs = Number.isFinite(endLimit) && endLimit > 0 ? endLimit : SESSION_END_LIMIT_MS;
   const enabled = exe !== "" && agent !== "";
 
   let chain = Promise.resolve();
@@ -314,7 +319,7 @@ export const DuohivePlugin = async () => {
       spawnSync(exe, ["hook", agent, "session-end"], {
         input: "{}",
         stdio: ["pipe", "ignore", "ignore"],
-        timeout: SESSION_END_LIMIT_MS,
+        timeout: endLimitMs,
         killSignal: "SIGKILL",
       });
     } catch {}
