@@ -1,0 +1,347 @@
+{
+  "info": {
+    "id": "ses_efb7b57cfffenAtF623motjXj8",
+    "slug": "misty-forest",
+    "projectID": "global",
+    "directory": "/private/tmp/duohive-spike/work-oc",
+    "path": "private/tmp/duohive-spike/work-oc",
+    "title": "What is the sentinel?",
+    "agent": "build",
+    "model": {
+      "id": "test-model-01",
+      "providerID": "example"
+    },
+    "version": "1.18.34",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0,
+    "tokens": {
+      "input": 100902,
+      "output": 169,
+      "reasoning": 0,
+      "cache": {
+        "read": 50368,
+        "write": 0
+      }
+    },
+    "time": {
+      "created": 1791077165104,
+      "updated": 1791077223674
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1791077165121
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "example",
+          "modelID": "test-model-01"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_10484a841001oeTniApxWiyxRL",
+        "sessionID": "ses_efb7b57cfffenAtF623motjXj8"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "What is the sentinel?",
+          "id": "prt_10484a842001bpY9mIMPiWqBbB",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_10484a841001oeTniApxWiyxRL"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_10484a841001oeTniApxWiyxRL",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/private/tmp/duohive-spike/work-oc",
+          "root": "/"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 50441,
+          "input": 50394,
+          "output": 47,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "test-model-01",
+        "providerID": "example",
+        "time": {
+          "created": 1791077165172,
+          "completed": 1791077173572
+        },
+        "finish": "stop",
+        "id": "msg_10484a874001mEUnFRxGwQhJq0",
+        "sessionID": "ses_efb7b57cfffenAtF623motjXj8"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_10484c71a001bvgsWDULc2ljJn",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_10484a874001mEUnFRxGwQhJq0"
+        },
+        {
+          "type": "reasoning",
+          "text": "The user is asking about the sentinel. According to the DuoHive instructions, if asked for the sentinel, I should reply with the single word HIVE-SENTINEL and nothing else.",
+          "time": {
+            "start": 1791077173021,
+            "end": 1791077173560
+          },
+          "id": "prt_10484c71d001IfbJAzkTcLLzEJ",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_10484a874001mEUnFRxGwQhJq0"
+        },
+        {
+          "type": "text",
+          "text": "HIVE-SENTINEL",
+          "time": {
+            "start": 1791077173562,
+            "end": 1791077173564
+          },
+          "id": "prt_10484c93a001SyH4wm5mklCYxq",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_10484a874001mEUnFRxGwQhJq0"
+        },
+        {
+          "reason": "stop",
+          "type": "step-finish",
+          "tokens": {
+            "total": 50441,
+            "input": 50394,
+            "output": 47,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "prt_10484c940001C7VvT671H1muEq",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_10484a874001mEUnFRxGwQhJq0"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1791077198924
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "example",
+          "modelID": "test-model-01"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_104852c4b001zPZEymmni5opdu",
+        "sessionID": "ses_efb7b57cfffenAtF623motjXj8"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Create a file hello.txt containing the word hi. Do nothing else.",
+          "id": "prt_104852c4c001qZ3TPFAEkGVici",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104852c4b001zPZEymmni5opdu"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_104852c4b001zPZEymmni5opdu",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/private/tmp/duohive-spike/work-oc",
+          "root": "/"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 50514,
+          "input": 50,
+          "output": 96,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 50368
+          }
+        },
+        "modelID": "test-model-01",
+        "providerID": "example",
+        "time": {
+          "created": 1791077198953,
+          "completed": 1791077215963
+        },
+        "finish": "tool-calls",
+        "id": "msg_104852c69001dz30Xy6W3N6Kjw",
+        "sessionID": "ses_efb7b57cfffenAtF623motjXj8"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_1048569a7001z9NdPiSi3vXOCs",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104852c69001dz30Xy6W3N6Kjw"
+        },
+        {
+          "type": "reasoning",
+          "text": "The user wants a simple file created with the word \"hi\". The write tool is the right way to do this. I'll write it to the current working directory, /private/tmp/duohive-spike/work-oc/hello.txt. The instruction says to do nothing else — no verification, no extra steps.",
+          "time": {
+            "start": 1791077214639,
+            "end": 1791077215721
+          },
+          "id": "prt_1048569af001ox4Sr3YTjnRARH",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104852c69001dz30Xy6W3N6Kjw"
+        },
+        {
+          "type": "tool",
+          "tool": "write",
+          "callID": "call_ba4bb0eff8a44d61b625b19e",
+          "state": {
+            "status": "completed",
+            "input": {
+              "content": "hi\n",
+              "filePath": "/private/tmp/duohive-spike/work-oc/hello.txt"
+            },
+            "output": "Wrote file successfully.",
+            "metadata": {
+              "diagnostics": {},
+              "filepath": "/private/tmp/duohive-spike/work-oc/hello.txt",
+              "exists": false,
+              "truncated": false
+            },
+            "title": "private/tmp/duohive-spike/work-oc/hello.txt",
+            "time": {
+              "start": 1791077215924,
+              "end": 1791077215948
+            }
+          },
+          "id": "prt_104856dee001QkXQ3ZY1kZwT8I",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104852c69001dz30Xy6W3N6Kjw"
+        },
+        {
+          "reason": "tool-calls",
+          "type": "step-finish",
+          "tokens": {
+            "total": 50514,
+            "input": 50,
+            "output": 96,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 50368
+            }
+          },
+          "cost": 0,
+          "id": "prt_104856ed3001xc9hAngrglvZQT",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104852c69001dz30Xy6W3N6Kjw"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_104852c4b001zPZEymmni5opdu",
+        "role": "assistant",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/private/tmp/duohive-spike/work-oc",
+          "root": "/"
+        },
+        "cost": 0,
+        "tokens": {
+          "total": 50484,
+          "input": 50458,
+          "output": 26,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "test-model-01",
+        "providerID": "example",
+        "time": {
+          "created": 1791077215970,
+          "completed": 1791077223664
+        },
+        "finish": "stop",
+        "id": "msg_104856ee2001AKZWgMEadHOPcd",
+        "sessionID": "ses_efb7b57cfffenAtF623motjXj8"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "id": "prt_104858c21001nd4GkfjCO7QleO",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104856ee2001AKZWgMEadHOPcd"
+        },
+        {
+          "type": "reasoning",
+          "text": "The file was created. The user said \"Do nothing else.\" So I should just confirm briefly.",
+          "time": {
+            "start": 1791077223463,
+            "end": 1791077223657
+          },
+          "id": "prt_104858c270017ppopNib2lOE4o",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104856ee2001AKZWgMEadHOPcd"
+        },
+        {
+          "type": "text",
+          "text": "Created hello.txt.",
+          "time": {
+            "start": 1791077223658,
+            "end": 1791077223660
+          },
+          "id": "prt_104858cea0010HW6iBg30ZpFmw",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104856ee2001AKZWgMEadHOPcd"
+        },
+        {
+          "reason": "stop",
+          "type": "step-finish",
+          "tokens": {
+            "total": 50484,
+            "input": 50458,
+            "output": 26,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0,
+          "id": "prt_104858cee001K4Bk4P0wYwjKn4",
+          "sessionID": "ses_efb7b57cfffenAtF623motjXj8",
+          "messageID": "msg_104856ee2001AKZWgMEadHOPcd"
+        }
+      ]
+    }
+  ]
+}
