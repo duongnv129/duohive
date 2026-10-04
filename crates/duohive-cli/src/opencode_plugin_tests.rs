@@ -147,26 +147,116 @@ fn delivered(log_dir: &Path, agent: &str) -> Vec<(String, HookSignal)> {
         .collect()
 }
 
-fn composed_configs() -> Vec<Value> {
-    vec![
-        json!({"permission": {"edit": "ask", "bash": "ask"}}),
-        json!({"permission": {"*": "allow", "edit": "ask", "bash": "ask"}}),
-        json!({"permission": "deny"}),
-        json!({"permission": {"*": "ask", "edit": "ask"}}),
-        json!({
-            "permission": {
-                "edit": "deny",
-                "bash": {"*": "ask", "rm *": "deny", "git push*": "ask"},
-                "webfetch": "allow",
-            },
-            "agent": {
-                "build": {"permission": {"edit": "ask", "bash": {"git commit*": "deny"}}},
-                "plan": {"permission": {"*": "allow", "edit": "ask", "bash": "ask"}},
-                "review": {"model": "x"},
-                "docs": {"permission": {"edit": {"*": "ask", "docs/**": "allow"}}},
-            },
-        }),
-    ]
+/// The decision OpenCode reaches (last match wins) for each of the driver's
+/// queries, per sample user config, once the plugin's `config` hook has run.
+/// Queries: build edit a.txt, build edit src/x.ts, build bash ls,
+/// build bash `rm -rf x`, build bash `git push`, build bash `git commit -m x`,
+/// build webfetch, plan edit, plan bash `rm -rf x`, docs edit a.txt,
+/// docs edit docs/a.md.
+fn expected_decisions() -> Value {
+    fn row(s: &str) -> Vec<&str> {
+        s.split(" ").collect()
+    }
+    json!([
+        // {}
+        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        // "permission": "allow"
+        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        // "permission": "deny" stays deny everywhere
+        row("deny deny deny deny deny deny deny deny deny deny deny"),
+        // {"*": "ask", "edit": "allow"}
+        row("ask ask ask ask ask ask ask ask ask ask ask"),
+        // the user's deny and patterns kept, their allows made ask
+        row("ask ask ask deny ask deny allow ask ask ask allow"),
+        // {"edit": "allow", "*": "allow"}: "*" last must not win
+        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        // {"bash": {"git *": "allow"}, "*": "allow"}: the user's pattern still allows
+        row("ask ask ask ask allow allow allow ask ask ask ask"),
+        // agent build {"bash": "allow", "*": "allow"}
+        row("ask ask ask ask ask ask allow ask ask ask ask"),
+        // {"edit": {"src/**": "deny"}}: the added "*" does not override it
+        row("ask deny ask ask ask ask allow ask ask ask ask"),
+    ])
+}
+
+/// Each delivery the fake hook exe logged for `agent`: (event, payload).
+fn raw_deliveries(log_dir: &Path, agent: &str) -> Vec<(String, Value)> {
+    let Ok(text) = std::fs::read_to_string(log_dir.join(format!("{agent}.jsonl"))) else {
+        return Vec::new();
+    };
+    text.lines()
+        .map(|line| {
+            let v: Value = serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));
+            (
+                v["event"].as_str().unwrap().to_owned(),
+                v["payload"].clone(),
+            )
+        })
+        .collect()
+}
+
+fn events(log_dir: &Path, agent: &str) -> Vec<String> {
+    raw_deliveries(log_dir, agent)
+        .into_iter()
+        .map(|(e, _)| e)
+        .collect()
+}
+
+fn assert_dead(pid_file: &Path) {
+    let pid = std::fs::read_to_string(pid_file).unwrap();
+    let alive = || {
+        Command::new("kill")
+            .args(["-0", pid.trim()])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap()
+            .success()
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while alive() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(!alive(), "{} still running", pid_file.display());
+}
+
+/// The scenarios after the replay: dispose kills an in-flight delivery,
+/// the chain goes on after a 2 s kill, subagent sessions are ignored, and
+/// payloads are trimmed.
+fn check_scenarios(log_dir: &Path) {
+    assert_eq!(events(log_dir, "inflight"), ["session-end"]);
+    assert_dead(&log_dir.join("inflight.pid"));
+    assert_eq!(events(log_dir, "slow"), ["busy", "session-end"]);
+    assert_dead(&log_dir.join("slow.pid"));
+    assert_eq!(
+        events(log_dir, "subagent"),
+        ["session-start", "busy", "turn-end", "session-end"]
+    );
+    let trim = raw_deliveries(log_dir, "trim");
+    let trimmed: Vec<_> = trim.iter().map(|(e, p)| (e.as_str(), p.clone())).collect();
+    assert_eq!(
+        trimmed,
+        [
+            (
+                "busy",
+                json!({"input": {"tool": "write", "sessionID": "s"}})
+            ),
+            (
+                "needs-input",
+                json!({"type": "permission.asked", "properties": {"id": "per_1",
+                    "sessionID": "s", "permission": "edit", "patterns": ["a.txt"],
+                    "metadata": {"filepath": "/w/a.txt"}}})
+            ),
+            ("session-start", json!({})),
+            ("busy", json!({"input": {"sessionID": "s"}})),
+            ("session-end", json!({})),
+        ]
+    );
+    assert_eq!(
+        OpencodeAdapter.parse_hook("needs-input", &trim[1].1),
+        Some(HookSignal::NeedsInput {
+            prompt: Some("edit /w/a.txt".into())
+        })
+    );
 }
 
 fn replay_under(runtime: &Path) {
@@ -174,9 +264,18 @@ fn replay_under(runtime: &Path) {
     let log_dir = dir.path().join("log");
     std::fs::create_dir(&log_dir).unwrap();
     let hook = dir.path().join("fake-duohive");
+    // Logs each delivery as one JSON line. For the `inflight` and `slow`
+    // scenarios, session-start first records its pid, then takes 1.5 s (and
+    // would still log) or hangs.
     script(
         &hook,
         r#"payload=$(cat)
+if [ "$3" = session-start ]; then
+  case "$2" in
+    inflight) echo $$ > "$FAKE_HOOK_LOG_DIR/inflight.pid"; sleep 1.5 ;;
+    slow) echo $$ > "$FAKE_HOOK_LOG_DIR/slow.pid"; exec sleep 10 ;;
+  esac
+fi
 printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" "$payload" >> "$FAKE_HOOK_LOG_DIR/$2.jsonl""#,
     );
     let hang = dir.path().join("hanging-duohive");
@@ -205,7 +304,12 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     let summary: Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(summary["errors"], json!([]), "{}", runtime.display());
-    assert_eq!(summary["composed"], json!(composed_configs()));
+    assert_eq!(
+        summary["decisions"],
+        expected_decisions(),
+        "{}",
+        runtime.display()
+    );
 
     let feed = summary["feed"].as_array().unwrap();
     let want = expected(feed);
@@ -233,6 +337,7 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     for quiet in ["config", "missing", "hang"] {
         assert!(!log_dir.join(format!("{quiet}.jsonl")).exists(), "{quiet}");
     }
+    check_scenarios(&log_dir);
 }
 
 #[test]

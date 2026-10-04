@@ -17,15 +17,22 @@
 //   session-end    `dispose`
 //
 // Its `config` hook makes `edit` and `bash` ask where the user's value would
-// allow them (S2.11). It never answers a permission prompt itself (TD §2).
+// allow them (S2.11). OpenCode decides by the last matching rule, in key
+// order (`rules.findLast`), so the composed `edit` and `bash` keys are moved
+// after every other key, "*" included. It never answers a permission prompt
+// itself (TD §2).
 //
 // It must never disturb OpenCode (plan Review Focus 1): every hook returns at
 // once; deliveries run one at a time on an internal promise chain, in event
 // order, never awaited by OpenCode; a spawn that throws, fails or exits
 // non-zero is dropped; nothing is thrown into OpenCode; the child's output is
 // ignored; a delivery still running after 2 s is killed; `dispose` waits for
-// the chain for at most 1 s, then sends session-end with a synchronous spawn
-// bounded at 1 s (an async child started during shutdown may not run).
+// the chain for at most 1 s, kills a delivery still running and drops the
+// queued ones, then sends session-end with a synchronous spawn bounded at
+// 1 s (an async child started during shutdown may not run).
+//
+// Sessions with a parentID (subagents, unmeasured in spike S2) are ignored
+// for busy and turn-end: only the agent's own session reports its turn.
 //
 // Only node:child_process is used, which Bun also provides, so the plugin runs
 // under Bun inside OpenCode and under Node in DuoHive's tests.
@@ -45,13 +52,15 @@ function isObject(v) {
 
 // One permission value (a string or a pattern object) for edit or bash, made
 // "ask" where it would allow. `fallbackAllows`: what an absent value (or an
-// absent "*" in a pattern object) falls back to allows.
+// absent "*" in a pattern object) falls back to allows. An added "*" goes
+// first, so the user's own patterns, which come after it, still win.
 function tightenValue(value, fallbackAllows) {
   if (value === undefined) return fallbackAllows ? "ask" : undefined;
   if (value === "allow") return "ask";
   if (!isObject(value)) return value;
   const star = value["*"];
-  if (star === "allow" || (star === undefined && fallbackAllows)) return { ...value, "*": "ask" };
+  if (star === "allow") return { ...value, "*": "ask" };
+  if (star === undefined && fallbackAllows) return { "*": "ask", ...value };
   return value;
 }
 
@@ -65,7 +74,7 @@ function tightenBlock(block, topLevel) {
   const current = b ?? {};
   const star = current["*"];
   const fallbackAllows = star === "allow" || (star === undefined && topLevel);
-  const out = { ...current };
+  const out = Object.fromEntries(Object.entries(current).filter(([key]) => !GUARDED.includes(key)));
   for (const key of GUARDED) {
     const tightened = tightenValue(current[key], fallbackAllows);
     if (tightened !== undefined) out[key] = tightened;
@@ -82,6 +91,26 @@ function composePermissions(cfg) {
       agent.permission = tightenBlock(agent.permission, false);
     }
   }
+}
+
+// Payloads carry only what DuoHive reads, so a tool's output or a diff never
+// fills the hook's stdin.
+function toolPayload(input) {
+  return { input: { tool: input?.tool, sessionID: input?.sessionID } };
+}
+
+function askedPayload(event) {
+  const p = event.properties ?? {};
+  return {
+    type: event.type,
+    properties: {
+      id: p.id,
+      sessionID: p.sessionID,
+      permission: p.permission,
+      patterns: p.patterns,
+      metadata: { filepath: p.metadata?.filepath },
+    },
+  };
 }
 
 function payloadText(payload) {
@@ -106,6 +135,9 @@ export const DuohivePlugin = async () => {
   let disposed = false;
   // Per session: the last assistant message that had text, and its text parts.
   const replies = new Map();
+  // Subagent sessions (with a parentID): their status and idle are not the agent's.
+  const children = new Set();
+  let inFlight;
 
   function runOne(event, body) {
     return new Promise((resolve) => {
@@ -122,8 +154,10 @@ export const DuohivePlugin = async () => {
         } catch {}
         resolve();
       }, DELIVERY_LIMIT_MS);
+      inFlight = child;
       const done = () => {
         clearTimeout(timer);
+        if (inFlight === child) inFlight = undefined;
         resolve();
       };
       try {
@@ -187,6 +221,12 @@ export const DuohivePlugin = async () => {
     track(event);
     const p = event.properties ?? {};
     if (START_EVENTS.has(event.type)) start();
+    if ((event.type === "session.created" || event.type === "session.updated") && p.info?.parentID) {
+      children.add(p.info.id);
+    }
+    if ((event.type === "session.status" || event.type === "session.idle") && children.has(p.sessionID)) {
+      return;
+    }
     switch (event.type) {
       case "session.status":
         if (p.status?.type === "busy") markBusy(event);
@@ -196,7 +236,7 @@ export const DuohivePlugin = async () => {
         break;
       case "permission.asked":
         busy = false;
-        deliver("needs-input", event);
+        deliver("needs-input", askedPayload(event));
         break;
       case "session.idle":
         busy = false;
@@ -237,20 +277,20 @@ export const DuohivePlugin = async () => {
         onEvent(input?.event);
       } catch {}
     },
-    "chat.message": async (input, output) => {
+    "chat.message": async (input) => {
       try {
         start();
-        markBusy({ input, output });
+        markBusy({ input: { sessionID: input?.sessionID } });
       } catch {}
     },
-    "tool.execute.before": async (input, output) => {
+    "tool.execute.before": async (input) => {
       try {
-        markBusy({ input, output });
+        markBusy(toolPayload(input));
       } catch {}
     },
-    "tool.execute.after": async (input, output) => {
+    "tool.execute.after": async (input) => {
       try {
-        markBusy({ input, output });
+        markBusy(toolPayload(input));
       } catch {}
     },
     dispose: async () => {
@@ -265,6 +305,10 @@ export const DuohivePlugin = async () => {
         await Promise.race([chain, waited]);
         clearTimeout(waitTimer);
         disposed = true;
+        // A delivery still running would land after session-end.
+        try {
+          inFlight?.kill("SIGKILL");
+        } catch {}
         sendSessionEnd();
       } catch {}
     },
