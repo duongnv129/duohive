@@ -7,8 +7,6 @@ use crate::names::{AgentName, NodeName};
 
 /// Breadcrumb separator.
 const SEP: &str = " › ";
-/// Duo's default name.
-const DUO_NAME: &str = "Duo";
 
 /// Optional settings a node may set; unset ones inherit from above.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,8 +140,7 @@ impl Org {
                 prompt: None,
             },
             duo: DuoConfig {
-                // "Duo" satisfies the agent-name rule, so parse cannot fail.
-                name: AgentName::parse(DUO_NAME).unwrap_or_else(|_| unreachable!()),
+                name: AgentName::duo(),
                 cli,
             },
             teams: Vec::new(),

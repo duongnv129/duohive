@@ -57,6 +57,11 @@ impl AgentName {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Duo's default name, built without a fallible call.
+    pub(crate) fn duo() -> Self {
+        Self("Duo".to_owned())
+    }
 }
 
 /// A team or role name: 1-40 characters, trimmed, no control characters, no `›`.
@@ -160,5 +165,21 @@ mod tests {
         assert_eq!(ok.n.as_str(), "auth-service");
         assert_eq!(toml::to_string(&ok).unwrap().trim(), "n = \"auth-service\"");
         assert!(toml::from_str::<Wrap>("n = \"bad name\"").is_err());
+    }
+
+    #[test]
+    fn duo_matches_parse() {
+        assert_eq!(AgentName::parse("Duo"), Ok(AgentName::duo()));
+    }
+
+    #[test]
+    fn node_name_serde_goes_through_parse() {
+        #[derive(Deserialize, Serialize, Debug)]
+        struct NodeWrap {
+            n: NodeName,
+        }
+        let ok: NodeWrap = toml::from_str("n = \"Payments\"").unwrap();
+        assert_eq!(ok.n.as_str(), "Payments");
+        assert!(toml::from_str::<NodeWrap>("n = \"A › B\"").is_err());
     }
 }

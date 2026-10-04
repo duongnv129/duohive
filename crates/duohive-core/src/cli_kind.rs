@@ -74,4 +74,18 @@ mod tests {
         assert_eq!("claude".parse(), Ok(CliKind::Claude));
         assert_eq!("opencode".parse(), Ok(CliKind::Opencode));
     }
+
+    #[test]
+    fn toml_round_trip() {
+        #[derive(serde::Deserialize, serde::Serialize, PartialEq, Debug)]
+        struct W {
+            cli: CliKind,
+        }
+        for (kind, text) in [(CliKind::Claude, "claude"), (CliKind::Opencode, "opencode")] {
+            let line = format!("cli = \"{text}\"");
+            assert_eq!(toml::from_str::<W>(&line).unwrap(), W { cli: kind });
+            assert_eq!(toml::to_string(&W { cli: kind }).unwrap().trim(), line);
+        }
+        assert!(toml::from_str::<W>("cli = \"claud\"").is_err());
+    }
 }
