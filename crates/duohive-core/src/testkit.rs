@@ -1,13 +1,25 @@
 //! Test-only fixtures and fakes shared across crates.
 
+use crate::adapter::{
+    CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
+};
 use crate::cli_kind::CliKind;
+use crate::hook::HookMessage;
+use crate::launch::{Key, LaunchCommand, LaunchSpec, Token, WindowId};
 use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, Fields, Org, Role, Team};
+use crate::ports::{Clock, Ids, OrgFileError, Runtime, SessionRow, Store, StoreError};
+use crate::settings::Settings;
+use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus};
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
 
 /// Parses an agent name, panicking on invalid input.
 pub fn n(s: &str) -> AgentName {
@@ -59,5 +71,267 @@ impl DirProbe for FakeDirs {
     fn probe(&self, dir: &Path) -> DirStatus {
         self.1.fetch_add(1, Ordering::SeqCst);
         self.0.get(dir).copied().unwrap_or(DirStatus::Found)
+    }
+}
+
+/// A clock the test moves by hand; clones share the same time.
+#[derive(Clone, Debug)]
+pub struct FakeClock(Arc<AtomicU64>);
+
+impl FakeClock {
+    /// A clock showing `start`.
+    pub fn new(start: Millis) -> Self {
+        Self(Arc::new(AtomicU64::new(start.0)))
+    }
+
+    /// Moves time forward.
+    pub fn advance(&self, by: Duration) {
+        let ms = u64::try_from(by.as_millis()).unwrap_or(u64::MAX);
+        self.0.fetch_add(ms, Ordering::SeqCst);
+    }
+}
+
+impl Clock for FakeClock {
+    fn now(&self) -> Millis {
+        Millis(self.0.load(Ordering::SeqCst))
+    }
+}
+
+/// Tokens `tok-1`, `tok-2`, and so on.
+#[derive(Debug, Default)]
+pub struct FakeIds {
+    issued: u64,
+}
+
+impl Ids for FakeIds {
+    fn new_token(&mut self) -> Token {
+        self.issued += 1;
+        Token(format!("tok-{}", self.issued))
+    }
+}
+
+/// One call made on a [`FakeRuntime`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuntimeCall {
+    /// `start`.
+    Start(AgentName, LaunchCommand),
+    /// `stop`.
+    Stop(AgentName, Vec<Key>, Duration),
+    /// `kill`.
+    Kill(AgentName, WindowId),
+    /// `paste`.
+    Paste(AgentName, String, Vec<Key>),
+    /// `capture`.
+    Capture(AgentName),
+    /// `inventory`.
+    Inventory,
+}
+
+/// A [`Runtime`] that records its calls.
+#[derive(Clone, Debug, Default)]
+pub struct FakeRuntime {
+    /// Calls so far, oldest first.
+    pub calls: Arc<Mutex<Vec<RuntimeCall>>>,
+}
+
+impl FakeRuntime {
+    fn record(&self, call: RuntimeCall) {
+        self.calls.lock().unwrap().push(call);
+    }
+}
+
+impl Runtime for FakeRuntime {
+    fn start(&mut self, agent: &AgentName, cmd: LaunchCommand) {
+        self.record(RuntimeCall::Start(agent.clone(), cmd));
+    }
+    fn stop(&mut self, agent: &AgentName, quit: Vec<Key>, grace: Duration) {
+        self.record(RuntimeCall::Stop(agent.clone(), quit, grace));
+    }
+    fn kill(&mut self, agent: &AgentName, window: &WindowId) {
+        self.record(RuntimeCall::Kill(agent.clone(), window.clone()));
+    }
+    fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>) {
+        self.record(RuntimeCall::Paste(agent.clone(), text, submit));
+    }
+    fn capture(&mut self, agent: &AgentName) {
+        self.record(RuntimeCall::Capture(agent.clone()));
+    }
+    fn inventory(&mut self) {
+        self.record(RuntimeCall::Inventory);
+    }
+}
+
+/// An in-memory [`Store`].
+#[derive(Debug)]
+pub struct FakeStore {
+    /// What `load_org` returns.
+    pub org_result: Result<Option<Org>, OrgFileError>,
+    /// What `last_good_org` returns.
+    pub last_good: Option<Org>,
+    /// Makes the next save (org, settings or session) fail, once.
+    pub fail_next_save: bool,
+    /// Every org saved, oldest first.
+    pub saved_orgs: Vec<Org>,
+    /// Every settings value saved, oldest first.
+    pub saved_settings: Vec<Settings>,
+    /// Session rows by agent.
+    pub sessions: BTreeMap<AgentName, SessionRow>,
+    /// Queued hooks, oldest first.
+    pub pending: Vec<HookMessage>,
+}
+
+impl Default for FakeStore {
+    fn default() -> Self {
+        Self {
+            org_result: Ok(None),
+            last_good: None,
+            fail_next_save: false,
+            saved_orgs: Vec::new(),
+            saved_settings: Vec::new(),
+            sessions: BTreeMap::new(),
+            pending: Vec::new(),
+        }
+    }
+}
+
+impl FakeStore {
+    fn check_save(&mut self) -> Result<(), StoreError> {
+        if std::mem::take(&mut self.fail_next_save) {
+            return Err(StoreError("disk full".to_owned()));
+        }
+        Ok(())
+    }
+}
+
+impl Store for FakeStore {
+    fn load_org(&mut self) -> Result<Option<Org>, OrgFileError> {
+        self.org_result.clone()
+    }
+    fn last_good_org(&mut self) -> Option<Org> {
+        self.last_good.clone()
+    }
+    fn save_org(&mut self, org: &Org) -> Result<(), StoreError> {
+        self.check_save()?;
+        self.saved_orgs.push(org.clone());
+        self.last_good = Some(org.clone());
+        self.org_result = Ok(Some(org.clone()));
+        Ok(())
+    }
+    fn save_settings(&mut self, s: &Settings) -> Result<(), StoreError> {
+        self.check_save()?;
+        self.saved_settings.push(s.clone());
+        Ok(())
+    }
+    fn load_sessions(&mut self) -> Result<Vec<SessionRow>, StoreError> {
+        Ok(self.sessions.values().cloned().collect())
+    }
+    fn save_session(&mut self, row: &SessionRow) -> Result<(), StoreError> {
+        self.check_save()?;
+        self.sessions.insert(row.agent.clone(), row.clone());
+        Ok(())
+    }
+    fn delete_session(&mut self, agent: &AgentName) -> Result<(), StoreError> {
+        self.sessions.remove(agent);
+        Ok(())
+    }
+    fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
+        Ok(std::mem::take(&mut self.pending))
+    }
+}
+
+/// A scriptable [`CliAdapter`].
+#[derive(Clone, Debug)]
+pub struct StubAdapter {
+    /// Which CLI it stands in for.
+    pub kind: CliKind,
+    /// What `coverage()` returns.
+    pub coverage: HookCoverage,
+    /// What `detect()` returns.
+    pub presence: CliPresence,
+    /// What `startup_prompts()` returns.
+    pub startup_prompts: bool,
+}
+
+impl StubAdapter {
+    /// Complete coverage, found at 2.1.0, no start-up prompts.
+    pub fn new(kind: CliKind) -> Self {
+        Self {
+            kind,
+            coverage: HookCoverage {
+                ready: true,
+                busy: true,
+                needs_input: true,
+                turn_end: true,
+                session_end: true,
+                last_reply: true,
+            },
+            presence: CliPresence::Found {
+                version: "2.1.0".to_owned(),
+            },
+            startup_prompts: false,
+        }
+    }
+}
+
+impl CliAdapter for StubAdapter {
+    fn kind(&self) -> CliKind {
+        self.kind
+    }
+    fn detect(&self) -> CliPresence {
+        self.presence.clone()
+    }
+    fn tested_versions(&self) -> &'static [&'static str] {
+        &["2.1"]
+    }
+    fn coverage(&self) -> HookCoverage {
+        self.coverage
+    }
+    fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
+        let args = spec
+            .task
+            .iter()
+            .flat_map(|t| ["--task".to_owned(), t.clone()])
+            .collect();
+        Ok(LaunchCommand {
+            program: self.kind.binary().to_owned(),
+            args,
+            env: Vec::new(),
+            cwd: spec.home.clone(),
+            files: Vec::new(),
+        })
+    }
+    fn parse_hook(&self, event: &str, payload: &serde_json::Value) -> Option<HookSignal> {
+        match event {
+            "session-start" => Some(HookSignal::Ready),
+            "busy" => Some(HookSignal::Busy),
+            "needs-input" => Some(HookSignal::NeedsInput { prompt: None }),
+            "turn-end" => Some(HookSignal::TurnEnded {
+                last_reply: payload["last_reply"].as_str().map(str::to_owned),
+            }),
+            "session-end" => Some(HookSignal::SessionEnded),
+            _ => None,
+        }
+    }
+    fn read_screen(&self, screen: &str) -> ScreenSignal {
+        let last = screen.lines().rev().find(|l| !l.trim().is_empty());
+        let state = match last.map(str::trim_end) {
+            Some("BUSY") => Some(ScreenState::Busy),
+            Some("ASK") => Some(ScreenState::NeedsInput),
+            Some("REST") => Some(ScreenState::AtRest),
+            _ => None,
+        };
+        ScreenSignal {
+            state,
+            last_reply: None,
+        }
+    }
+    fn quit_keys(&self) -> Vec<Key> {
+        vec![Key::Text("/exit".to_owned()), Key::Enter]
+    }
+    fn submit_keys(&self) -> Vec<Key> {
+        vec![Key::Enter]
+    }
+    fn startup_prompts(&self) -> bool {
+        self.startup_prompts
     }
 }

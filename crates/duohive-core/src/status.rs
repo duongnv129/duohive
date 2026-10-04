@@ -1,9 +1,11 @@
 //! The per-agent status state machine (TD §4.2): pure, no I/O.
 
+use serde::{Deserialize, Serialize};
+
 use crate::time::Millis;
 
 /// Where an agent is in its life (PRD, UI §2.1).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AgentState {
     Stopped,
     Starting,
@@ -58,7 +60,7 @@ impl AgentState {
 }
 
 /// An agent's state with its overlays.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub state: AgentState,
     /// Quiet overlay (working and starting only).
