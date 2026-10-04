@@ -5,6 +5,11 @@
 //! was closed (and the live ones that arrived meanwhile), and only then
 //! applies the exit rules to dead panes.
 
+mod held;
+
+pub(super) use held::Held;
+use held::is_live;
+
 use super::org_edit::drop_refusal;
 use super::{Engine, Exit};
 use crate::event::Event;
@@ -42,6 +47,13 @@ impl Engine {
             });
             Vec::new()
         });
+        // Stopped means no row: a stale one goes.
+        let (stopped, rows): (Vec<_>, Vec<_>) = rows
+            .into_iter()
+            .partition(|r| r.status.state == AgentState::Stopped);
+        for row in stopped {
+            self.delete_row(&row.agent, &mut out);
+        }
         let (known, orphans): (Vec<_>, Vec<_>) =
             rows.into_iter().partition(|r| self.knows(&r.agent));
         let running = known.iter().filter(|r| r.status.state.is_running()).count();
@@ -71,40 +83,61 @@ impl Engine {
         self.on_hook(&message)
     }
 
-    /// The start-up inventory, in D9's order; any later one is ignored.
+    /// The start-up inventory, in D9's order. A later one only settles held rows.
     pub(super) fn on_inventory(&mut self, windows: &[LiveWindow]) -> Vec<Event> {
         let Some(reconnect) = self.reconnect.take() else {
-            tracing::debug!("inventory outside start-up, ignored");
-            return Vec::new();
+            return self.settle_held(windows);
         };
         let mut out = Vec::new();
         let mut restored = reconnect.restored;
-        restored.extend(self.settle_orphans(reconnect.orphans, windows, &mut out));
+        let adopted = self.settle_orphans(reconnect.orphans, &restored, windows, &mut out);
+        restored.extend(adopted);
         let dead = self.match_windows(&restored, windows, &mut out);
         self.replay(reconnect.buffered, &mut out);
         for (agent, window, status) in dead {
             out.extend(self.on_exit(&agent, &window, Exit::PaneDied(status)));
         }
+        self.finish_reconnect(&mut out);
+        out
+    }
+
+    /// `ConnectionLost`. Before the start-up inventory it ends the reconnect:
+    /// the server took every window, so orphan rows go; queued then buffered
+    /// hooks replay in order, then running agents are errored.
+    pub(super) fn connection_lost(&mut self, reason: &str) -> Vec<Event> {
+        let Some(reconnect) = self.reconnect.take() else {
+            let mut out = self.settle_held(&[]);
+            out.extend(self.on_connection_lost(reason));
+            return out;
+        };
+        let mut out = Vec::new();
+        self.drop_rows(reconnect.orphans, &[], &mut out);
+        if self.org_error.is_none() {
+            self.mark_last_good(&mut out);
+        }
+        self.replay(reconnect.buffered, &mut out);
+        out.extend(self.on_connection_lost(reason));
+        self.finish_reconnect(&mut out);
+        out
+    }
+
+    /// Step 4: `NeedsYouChanged` (always) and `Reconnected`.
+    fn finish_reconnect(&mut self, out: &mut Vec<Event>) {
         let items = self.needs_you();
         self.needs_you_shown.clone_from(&items);
         out.push(Event::NeedsYouChanged(items));
         out.push(Event::Reconnected);
-        out
     }
 
     /// Puts a row's state back, with `last_signal_at = now`: time DuoHive was
     /// closed is not silence it saw. A starting agent gets a fresh start timeout.
-    fn restore(&mut self, row: SessionRow) -> AgentName {
+    pub(super) fn restore(&mut self, row: SessionRow) -> AgentName {
         let now = self.ports.clock.now();
         let deadline =
             (row.status.state == AgentState::Starting).then(|| now + self.cfg.start_timeout);
-        // A stopped agent has no session: its token must match no hook.
-        let token = row
-            .token
-            .filter(|_| row.status.state != AgentState::Stopped);
         let rt = self.rt_mut(&row.agent);
         rt.status = row.status;
-        rt.token = token;
+        rt.token = row.token;
         rt.window = row.window;
         rt.last_reply = row.last_reply;
         rt.task_at_launch = row.task_at_launch;
@@ -166,85 +199,114 @@ impl Engine {
     }
 
     /// Rows for agents `org.toml` no longer names (edited while DuoHive was
-    /// closed). One with a live window keeps the last good org, as a reload
-    /// would, when that org names every such agent; otherwise the rows go and
-    /// the loaded org is accepted. Returns the agents restored here.
+    /// closed). Rows whose window is gone or dead are dropped. While a live
+    /// one remains, the loaded org is never accepted: the last good org is
+    /// kept, as a reload would, when it names every live agent (those orphans
+    /// and the loaded org's own); otherwise the rows are held. Returns the
+    /// agents restored here.
     fn settle_orphans(
         &mut self,
         orphans: Vec<SessionRow>,
+        restored: &[AgentName],
         windows: &[LiveWindow],
         out: &mut Vec<Event>,
     ) -> Vec<AgentName> {
+        // With none, start-up has already accepted the org.
         if orphans.is_empty() {
             return Vec::new();
         }
-        let live: Vec<&SessionRow> = orphans
+        let (live, gone): (Vec<_>, Vec<_>) = orphans
+            .into_iter()
+            .partition(|r| is_live(windows, &r.agent));
+        self.drop_rows(gone, windows, out);
+        let Some(refusal) = live
             .iter()
-            .filter(|r| {
-                windows
+            .find_map(|r| drop_refusal(&r.agent, r.status.state))
+        else {
+            if self.org_error.is_none() {
+                self.mark_last_good(out);
+            }
+            return Vec::new();
+        };
+        let must_name: Vec<AgentName> = live
+            .iter()
+            .map(|r| r.agent.clone())
+            .chain(
+                restored
                     .iter()
-                    .any(|w| w.agent == r.agent && w.dead.is_none())
-            })
+                    .filter(|a| is_live(windows, a) && self.state_of(a) != AgentState::Stopped)
+                    .cloned(),
+            )
             .collect();
-        let refusal = live
-            .iter()
-            .find_map(|r| drop_refusal(&r.agent, r.status.state));
-        let keeper = match refusal {
-            Some(e) if self.org_error.is_none() => self
-                .ports
+        let keeper = if self.org_error.is_none() {
+            self.ports
                 .store
                 .last_good_org()
-                .filter(|org| live.iter().all(|r| names(org, &r.agent)))
-                .map(|org| (org, e)),
-            _ => None,
+                .filter(|org| must_name.iter().all(|a| names(org, a)))
+        } else {
+            None
         };
-        if let Some((org, e)) = keeper {
-            return self.keep_last_good(org, e, orphans, out);
+        match keeper {
+            Some(org) => self.keep_last_good(org, refusal, live, out),
+            None => {
+                self.hold(live, out);
+                Vec::new()
+            }
         }
-        self.drop_rows(orphans, windows, out);
-        if self.org_error.is_none() {
-            self.mark_last_good(out);
-        }
-        Vec::new()
     }
 
     /// Starts on the last good org with the banner, so a running agent the
-    /// file dropped stays manageable; restores the rows that org names.
+    /// file dropped stays manageable; restores the rows (that org names them all).
     fn keep_last_good(
         &mut self,
         org: Org,
         e: OrgFileError,
-        orphans: Vec<SessionRow>,
+        rows: Vec<SessionRow>,
         out: &mut Vec<Event>,
     ) -> Vec<AgentName> {
         let old = std::mem::replace(&mut self.org, org);
         self.sync_agents();
-        let (kept, gone): (Vec<_>, Vec<_>) =
-            orphans.into_iter().partition(|r| self.knows(&r.agent));
-        self.drop_rows(gone, &[], out);
-        let restored = kept.into_iter().map(|row| self.restore(row)).collect();
+        let restored = rows.into_iter().map(|row| self.restore(row)).collect();
         out.push(self.org_changed(&old));
         self.org_error = Some(e.clone());
         out.push(Event::OrgFileError(Some(e)));
         restored
     }
 
-    /// Deletes rows for agents the org doesn't name; their windows are left running (D9).
-    fn drop_rows(&mut self, rows: Vec<SessionRow>, windows: &[LiveWindow], out: &mut Vec<Event>) {
+    /// Deletes rows for agents no org in use names. D9: their windows are
+    /// never killed; a dead pane is left too, as it may hold the last output.
+    pub(super) fn drop_rows(
+        &mut self,
+        rows: Vec<SessionRow>,
+        windows: &[LiveWindow],
+        out: &mut Vec<Event>,
+    ) {
         for row in rows {
-            if windows.iter().any(|w| w.agent == row.agent) {
-                tracing::info!(agent = %row.agent, "agent not in the org: row dropped, window left running");
+            match windows.iter().find(|w| w.agent == row.agent) {
+                Some(w) if w.dead.is_some() => tracing::info!(
+                    agent = %row.agent, window = %w.window.0,
+                    "agent not in the org: row dropped, dead pane left with its last output"
+                ),
+                Some(w) => tracing::info!(
+                    agent = %row.agent, window = %w.window.0,
+                    "agent not in the org: row dropped, window left running"
+                ),
+                None => {}
             }
             self.delete_row(&row.agent, out);
         }
     }
 
-    /// Records `agent`'s window, saving the row when it changed.
+    /// Records `agent`'s window, saving the row when it changed (a stopped
+    /// agent has no row, so none is saved for it).
     fn set_window(&mut self, agent: &AgentName, window: Option<WindowId>, out: &mut Vec<Event>) {
+        let stopped = self.state_of(agent) == AgentState::Stopped;
         let rt = self.rt_mut(agent);
         if rt.window != window {
             rt.window = window;
-            self.save_row(agent, out);
+            if !stopped {
+                self.save_row(agent, out);
+            }
         }
     }
 }

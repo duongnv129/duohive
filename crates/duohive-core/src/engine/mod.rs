@@ -11,7 +11,7 @@ mod signals;
 mod timers;
 
 pub use driver::run_core;
-use reconnect::Reconnect;
+use reconnect::{Held, Reconnect};
 use signals::Exit;
 
 use std::collections::{BTreeMap, HashMap};
@@ -172,6 +172,8 @@ pub struct Engine {
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
     reconnect: Option<Reconnect>,
+    /// Rows of running agents no org names (controller ruling B).
+    held: Held,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -200,6 +202,7 @@ impl Engine {
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
+            held: Held::default(),
             cfg,
             ports,
             adapters,
@@ -239,7 +242,7 @@ impl Engine {
                 self.on_exit(&agent, &window, Exit::WindowGone)
             }
             Input::Runtime(RuntimeEvent::ConnectionLost { reason }) => {
-                self.on_connection_lost(&reason)
+                self.connection_lost(&reason)
             }
             Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),

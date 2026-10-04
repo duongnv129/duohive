@@ -8,7 +8,8 @@ use super::{Engine, Input};
 use crate::command::Command;
 use crate::event::Event;
 
-/// Runs `engine` until `Command::Shutdown` or until both channels close,
+/// Runs `engine` until `Command::Shutdown`, until both channels close, or
+/// until no one listens for events,
 /// sending every event it returns. A `Tick` goes in when the next timer is due.
 /// Shutdown leaves every agent running (their windows outlive DuoHive).
 pub async fn run_core(
@@ -38,12 +39,13 @@ pub async fn run_core(
             },
             () = sleep_until(due.unwrap_or_else(Instant::now)), if due.is_some() => Input::Tick,
         };
-        if input == Input::Command(Command::Shutdown) {
+        if matches!(input, Input::Command(Command::Shutdown)) {
             return;
         }
         for event in engine.handle(input) {
             if events.send(event).is_err() {
-                tracing::debug!("event dropped: no one is listening");
+                tracing::warn!("no one is listening for events: the core stops");
+                return;
             }
         }
     }
