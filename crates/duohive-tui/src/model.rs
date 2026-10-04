@@ -1,7 +1,9 @@
 //! The UI's copy of engine state, updated from events.
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::fmt;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
@@ -11,12 +13,19 @@ use duohive_core::ports::OrgFileError;
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
+use duohive_core::validate::{DirProbe, DirStatus};
 
-/// A dialog over the main screen (Task 24 renders it; Task 25 adds forms and the chooser).
+use crate::forms::{Chooser, Form};
+
+/// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Dialog {
     /// A yes/cancel question.
-    Confirm(Confirm),
+    Confirm(Box<Confirm>),
+    /// A team, role, agent or Edit org form (UI §4.4.1).
+    Form(Box<Form>),
+    /// What `n` can create here (UI §4.4.2).
+    Chooser(Chooser),
 }
 
 /// A confirmation dialog (UI §4.8).
@@ -32,6 +41,42 @@ pub struct Confirm {
     pub focus_yes: bool,
     /// What yes sends.
     pub on_yes: Command,
+    /// The form that asked: cancel goes back to it, yes leaves it waiting for the engine.
+    pub back: Option<Box<Form>>,
+}
+
+/// The directory probe forms use; equal only to itself, so the model stays comparable.
+#[derive(Clone)]
+pub struct SharedDirs(pub Arc<dyn DirProbe>);
+
+impl SharedDirs {
+    /// The probe.
+    pub fn probe(&self) -> &dyn DirProbe {
+        self.0.as_ref()
+    }
+}
+
+impl PartialEq for SharedDirs {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for SharedDirs {}
+
+impl fmt::Debug for SharedDirs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("SharedDirs(..)")
+    }
+}
+
+/// Until the app sets the real probe: every directory exists and none is a repo.
+struct NoProbe;
+
+impl DirProbe for NoProbe {
+    fn probe(&self, _dir: &Path) -> DirStatus {
+        DirStatus::Found
+    }
 }
 
 /// Everything the main screen draws.
@@ -61,6 +106,10 @@ pub struct UiModel {
     pub now: Millis,
     /// `org.toml`, which `o` opens in `$EDITOR`.
     pub org_toml: PathBuf,
+    /// Probes the directories forms show (`✓ git repo`).
+    pub dirs: SharedDirs,
+    /// The home directory `~` expands to.
+    pub home: PathBuf,
 }
 
 impl UiModel {
@@ -79,6 +128,8 @@ impl UiModel {
             settings: Settings::default(),
             now: Millis(0),
             org_toml: PathBuf::new(),
+            dirs: SharedDirs(Arc::new(NoProbe)),
+            home: PathBuf::new(),
         }
     }
 
@@ -86,7 +137,13 @@ impl UiModel {
     pub fn apply(&mut self, e: Event) -> bool {
         match e {
             Event::Snapshot(s) => self.apply_snapshot(*s),
-            Event::OrgChanged { org, problems } => self.apply_org(*org, problems),
+            Event::OrgChanged { org, problems } => {
+                self.apply_org(*org, problems);
+                // The edit a form was waiting for (or another) is in: the form is done.
+                if matches!(&self.dialog, Some(Dialog::Form(f)) if f.saving) {
+                    self.dialog = None;
+                }
+            }
             Event::AgentStatusChanged { agent, status } => {
                 return self.update_view(&agent, |v| v.status = status);
             }
@@ -98,7 +155,10 @@ impl UiModel {
             }
             Event::NeedsYouChanged(items) => self.needs_you = items,
             Event::OrgFileError(e) => self.org_error = e,
-            Event::CommandRejected { reason } => self.footer_note = Some(reason),
+            Event::CommandRejected { reason } => match &mut self.dialog {
+                Some(Dialog::Form(f)) if f.saving => f.reject(reason),
+                _ => self.footer_note = Some(reason),
+            },
             Event::GiveWorkRefused { agent, state } => {
                 self.footer_note = Some(format!("{agent} is {}", state.word()));
             }

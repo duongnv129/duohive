@@ -1,7 +1,7 @@
 //! A confirmation dialog over the main screen (UI §4.8).
 
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 
 use super::{LIGHT, draw_box, fg, put};
@@ -19,11 +19,14 @@ const BUTTONS_RIGHT: u16 = 6;
 const FOCUS: &str = "▌";
 const GAP: &str = "   ";
 
-/// Draws the open dialog centred over `area`.
-pub(super) fn draw(buf: &mut Buffer, area: Rect, d: &Dialog, p: &Palette) {
+/// Draws the open dialog centred over `area`; returns where the terminal cursor goes.
+pub(super) fn draw(buf: &mut Buffer, area: Rect, d: &Dialog, p: &Palette) -> Option<Position> {
     match d {
         Dialog::Confirm(c) => draw_confirm(buf, area, c, p),
+        Dialog::Form(f) => return super::form::draw_form(buf, area, f, p),
+        Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
     }
+    None
 }
 
 fn draw_confirm(buf: &mut Buffer, area: Rect, c: &Confirm, p: &Palette) {

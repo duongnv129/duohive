@@ -3,6 +3,7 @@
 
 mod terminal;
 
+use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitStatus};
@@ -17,6 +18,7 @@ use duohive_core::org::Org;
 use duohive_core::settings::Settings;
 use duohive_core::status::AgentState;
 use duohive_core::time::Millis;
+use duohive_core::validate::DirProbe;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use tokio::sync::{mpsc, oneshot};
@@ -25,8 +27,8 @@ use tokio::time::Instant;
 pub use terminal::run_app;
 
 use crate::format::age_of;
-use crate::input::{UiEffect, map_key, update};
-use crate::model::UiModel;
+use crate::input::{UiEffect, map_key, paste, update};
+use crate::model::{SharedDirs, UiModel};
 use crate::render::{RenderCtx, render};
 use crate::theme::palette_for;
 
@@ -40,7 +42,7 @@ const AGE_TICK: Duration = Duration::from_secs(60);
 const DEFAULT_EDITOR: &str = "vi";
 
 /// What the app needs besides its channels.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct AppConfig {
     /// `org.toml`, opened by `o`.
     pub org_toml: PathBuf,
@@ -52,13 +54,32 @@ pub struct AppConfig {
     pub no_color: bool,
     /// The value of `$EDITOR`, read by the caller; `None` or blank runs `vi`.
     pub editor: Option<String>,
+    /// Probes the directories forms show (`✓ git repo`).
+    pub dirs: Arc<dyn DirProbe>,
+    /// The home directory `~` expands to.
+    pub home: PathBuf,
+}
+
+impl fmt::Debug for AppConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppConfig")
+            .field("org_toml", &self.org_toml)
+            .field("tmux_socket", &self.tmux_socket)
+            .field("settings", &self.settings)
+            .field("no_color", &self.no_color)
+            .field("editor", &self.editor)
+            .field("home", &self.home)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Terminal input, as the loop sees it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputEvent {
     /// A key press.
     Key(KeyEvent),
+    /// Pasted text (bracketed paste), delivered whole.
+    Paste(String),
     /// The terminal's new size.
     Resize(u16, u16),
 }
@@ -215,6 +236,8 @@ pub(crate) async fn run_loop<B: Backend>(
     let mut m = UiModel::new(Org::blank(CliKind::Claude));
     m.settings = cfg.settings.clone();
     m.org_toml = cfg.org_toml.clone();
+    m.dirs = SharedDirs(Arc::clone(&cfg.dirs));
+    m.home = cfg.home.clone();
     let mut clock = Clock {
         dirty: true,
         ready: false,
@@ -233,6 +256,11 @@ pub(crate) async fn run_loop<B: Backend>(
             }
             got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
                 InputEvent::Resize(..) => clock.dirty = true,
+                InputEvent::Paste(text) => {
+                    let before = m.clone();
+                    paste(&mut m, &text);
+                    clock.dirty |= m != before;
+                }
                 InputEvent::Key(k) => {
                     m.now = wall_now();
                     let before = m.clone();
