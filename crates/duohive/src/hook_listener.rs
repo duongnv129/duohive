@@ -213,22 +213,12 @@ impl Route {
 
     /// Runs the agent's adapter `enrich_hook` on the blocking pool (it may read a transcript).
     async fn enrich(&self, msg: HookMessage) -> HookMessage {
-        let kind = self
-            .agents
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .get(&msg.agent)
-            .copied();
-        let Some(kind) = kind else {
-            return msg;
-        };
+        let agents = Arc::clone(&self.agents);
         let adapters = Arc::clone(&self.adapters);
         let fallback = msg.clone();
         let enriched = tokio::task::spawn_blocking(move || {
             let mut msg = msg;
-            if let Some(adapter) = adapters.get(kind) {
-                adapter.enrich_hook(&msg.event, &mut msg.payload);
-            }
+            enrich_message(&agents, &adapters, &mut msg);
             msg
         })
         .await;
@@ -236,6 +226,20 @@ impl Route {
             tracing::warn!(error = %e, agent = %fallback.agent, "hook enrichment failed");
             fallback
         })
+    }
+}
+
+/// Runs the agent's adapter `enrich_hook` on `msg`, looking its CLI up in
+/// `agents`; an agent with no known CLI is left as is. Blocking: it may read a
+/// transcript. Live hooks (the listener) and replayed ones (D22) share it.
+pub fn enrich_message(agents: &AgentClis, adapters: &Adapters, msg: &mut HookMessage) {
+    let kind = agents
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&msg.agent)
+        .copied();
+    if let Some(adapter) = kind.and_then(|k| adapters.get(k)) {
+        adapter.enrich_hook(&msg.event, &mut msg.payload);
     }
 }
 

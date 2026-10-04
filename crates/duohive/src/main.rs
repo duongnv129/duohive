@@ -7,6 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use duohive::args::{Cli, parse_args};
+use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
 
 fn main() -> ExitCode {
@@ -22,6 +23,9 @@ fn main() -> ExitCode {
     match parse_args(&args) {
         // The app arrives in Task 29.
         Ok(Cli::App | Cli::Hook { .. }) => ExitCode::SUCCESS,
+        Ok(Cli::BenchAgent { hooks, task }) => {
+            run_bench_agent(hooks, task.as_deref(), &utf8_vars(std::env::vars_os()))
+        }
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");
             ExitCode::from(2)
