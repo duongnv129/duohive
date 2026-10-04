@@ -12,13 +12,16 @@ pub struct TmuxVersion {
 /// Oldest supported version.
 const MIN_SUPPORTED: (u32, u32) = (3, 2);
 
-/// Parses `tmux 3.2a`, `tmux 3.7c`, `tmux next-3.6`; `tmux master` and junk give `None`.
+/// Parses `tmux 3.2a`, `tmux 3.7c`, `tmux next-3.6`, and a major-only `tmux 4` (minor 0).
+///
+/// `None` means unknown (`tmux master`, `openbsd-7.4`, junk): the caller warns or refuses.
+/// A `next-3.2` build reports as 3.2 and so as supported.
 #[must_use]
 pub fn parse_version(out: &str) -> Option<TmuxVersion> {
     let raw = out.trim();
     let ver = raw.strip_prefix("tmux ")?.trim();
     let ver = ver.strip_prefix("next-").unwrap_or(ver);
-    let (major, rest) = ver.split_once('.')?;
+    let (major, rest) = ver.split_once('.').unwrap_or((ver, "0"));
     let minor_len = rest
         .find(|c: char| !c.is_ascii_digit())
         .unwrap_or(rest.len());
@@ -56,6 +59,19 @@ mod tests {
         assert!(parse_version("tmux 4.0").unwrap().supported());
         assert!(!parse_version("tmux 2.9").unwrap().supported());
         assert_eq!(parse_version("tmux next-3.6").map(|v| v.minor), Some(6));
+        assert_eq!(
+            parse_version("tmux 3.10").map(|v| (v.major, v.minor)),
+            Some((3, 10))
+        );
+        assert!(parse_version("tmux 3.10").unwrap().supported());
+        assert_eq!(
+            parse_version("tmux 4").map(|v| (v.major, v.minor)),
+            Some((4, 0))
+        );
+        assert!(parse_version("tmux 4").unwrap().supported());
+        assert_eq!(parse_version("tmux next-3.8").map(|v| v.minor), Some(8));
+        assert!(parse_version("tmux next-3.2").unwrap().supported());
+        assert_eq!(parse_version("openbsd-7.4"), None);
         assert_eq!(parse_version("tmux master"), None);
         assert_eq!(parse_version("garbage"), None);
         assert_eq!(parse_version("tmux 3.2a").unwrap().raw, "tmux 3.2a");
