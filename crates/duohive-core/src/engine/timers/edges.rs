@@ -210,3 +210,20 @@ fn started_for_a_window_the_timeout_killed_is_ignored() {
     assert_eq!(h.rt("pay-qa").window, None);
     assert_eq!(kills(&h, "@1"), 1);
 }
+
+#[test]
+fn late_started_for_a_killed_window_after_restart_is_ignored() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    h.input(started("pay-qa", "@1"));
+    h.send(Command::StopAgent { agent: n("pay-qa") });
+    h.rt_mut("pay-qa").restart_after_stop = true;
+    h.tick_at(secs(120));
+    assert_eq!(kills(&h, "@1"), 1);
+    assert_eq!(h.state("pay-qa"), AgentState::Starting);
+    h.input(started("pay-qa", "@1"));
+    assert_eq!(h.rt("pay-qa").window, None);
+    assert_eq!(kills(&h, "@1"), 1);
+    h.input(started("pay-qa", "@2"));
+    assert_eq!(h.rt("pay-qa").window, Some(WindowId("@2".into())));
+}
