@@ -65,6 +65,7 @@ pub fn replied(status: Status, reply: &str) -> AgentView {
 /// A model over `org` with every agent stopped for a day and Duo idle for a minute.
 pub fn model_for(org: Org) -> UiModel {
     let mut m = UiModel::new(org);
+    m.now = NOW;
     let names: Vec<_> = std::iter::once(m.org.duo.name.clone())
         .chain(m.org.agents().iter().map(|a| a.agent.name.clone()))
         .collect();

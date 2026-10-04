@@ -10,10 +10,14 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+crossterm = { workspace = true }
 duohive-core = { workspace = true }
 ratatui = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
 duohive-core = { workspace = true, features = ["testkit"] }
 insta = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
