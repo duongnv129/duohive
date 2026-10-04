@@ -31,7 +31,8 @@ From the technical design, section 3.4: `duohive-core` depends on no other `duoh
 ## Constraints that matter in review
 
 - No `unwrap` or `expect` outside tests (clippy denies both).
-- No `unsafe` code.
+- No `unsafe` code. The one exception is `crates/duohive/src/bench/measure.rs` (`getrusage`, `getloadavg`, which have no safe wrapper in std), each use under `#[expect(unsafe_code, reason = "…")]`.
+- Single instance is per data directory (`run.lock` there). Two instances with different `XDG_DATA_HOME` both start and share the `tmux -L duohive` server; tests and the bench avoid this with their own `DUOHIVE_TMUX_SOCKET`.
 - `duohive-core` does no I/O: no filesystem, process, socket or terminal access.
 - No `std::env::set_var` in tests. Code that reads the environment takes a map of variables; tests that run the binary use `Command::env`.
 - tmux integration tests run on a throwaway socket, never on DuoHive's own `duohive` socket.
