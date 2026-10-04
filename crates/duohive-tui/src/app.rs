@@ -5,7 +5,7 @@ mod terminal;
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Command as Process;
+use std::process::{Command as Process, ExitStatus};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -66,9 +66,12 @@ pub enum InputEvent {
 /// Why the app stopped other than by `q`.
 #[derive(Debug, thiserror::Error)]
 pub enum TuiError {
-    /// The terminal could not be set up, drawn on or restored.
+    /// The terminal could not be drawn on.
     #[error("terminal: {0}")]
     Terminal(String),
+    /// The terminal could not be set up or restored.
+    #[error(transparent)]
+    Io(#[from] io::Error),
     /// The core's channels closed.
     #[error("the core stopped")]
     CoreStopped,
@@ -77,34 +80,36 @@ pub enum TuiError {
     InputClosed,
 }
 
-impl From<io::Error> for TuiError {
-    fn from(e: io::Error) -> Self {
-        Self::Terminal(e.to_string())
-    }
-}
-
 /// Hands the terminal to a program (the editor) and takes it back; blocking.
 pub trait TerminalHost: Send + Sync {
     /// Runs `cmd` with the terminal handed over, and restores the terminal afterwards.
-    fn hand_over(&self, cmd: Process) -> io::Result<()>;
+    fn hand_over(&self, cmd: Process) -> io::Result<ExitStatus>;
 }
 
-/// For a backend that isn't a real terminal: runs the program as is, with nothing to hand over.
+/// For a backend that isn't a real terminal: there is nothing to hand over, so no editor runs.
 struct PlainHost;
 
 impl TerminalHost for PlainHost {
-    fn hand_over(&self, mut cmd: Process) -> io::Result<()> {
-        cmd.status().map(|_| ())
+    fn hand_over(&self, _cmd: Process) -> io::Result<ExitStatus> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "no terminal to hand over",
+        ))
     }
+}
+
+/// `$EDITOR` trimmed, or `vi` when it is unset or blank.
+fn editor_or_default(editor: Option<&str>) -> &str {
+    editor
+        .map(str::trim)
+        .filter(|e| !e.is_empty())
+        .unwrap_or(DEFAULT_EDITOR)
 }
 
 /// `sh -c '<editor> "$1"' sh <path>`: `$EDITOR` may carry arguments (`code -w`), and the
 /// path is passed as `$1`, never interpreted by the shell.
 pub fn editor_command(editor: Option<&str>, path: &Path) -> Process {
-    let editor = editor
-        .map(str::trim)
-        .filter(|e| !e.is_empty())
-        .unwrap_or(DEFAULT_EDITOR);
+    let editor = editor_or_default(editor);
     let mut cmd = Process::new("sh");
     cmd.arg("-c")
         .arg(format!("{editor} \"$1\""))
@@ -244,8 +249,16 @@ pub(crate) async fn run_loop<B: Backend>(
                             UiEffect::Quit => return Ok(()),
                             UiEffect::Send(c) => send(&commands, c).await?,
                             UiEffect::OpenEditor(path) => {
-                                let cmd = editor_command(cfg.editor.as_deref(), &path);
-                                edit(terminal, &mut m, cmd, &host, &commands).await?;
+                                let editor = cfg.editor.as_deref();
+                                let cmd = editor_command(editor, &path);
+                                let ran = hand_over(cmd, &host).await;
+                                terminal
+                                    .clear()
+                                    .map_err(|e| TuiError::Terminal(e.to_string()))?;
+                                match after_editor(ran, editor) {
+                                    Ok(()) => send(&commands, Command::ReloadOrg).await?,
+                                    Err(note) => m.footer_note = Some(note),
+                                }
                                 clock.dirty = true;
                             }
                         }
@@ -277,30 +290,38 @@ async fn send(commands: &mpsc::Sender<Command>, c: Command) -> Result<(), TuiErr
     commands.send(c).await.map_err(|_| TuiError::CoreStopped)
 }
 
-/// Runs the editor with the terminal handed over, repaints everything, and reloads the org;
-/// an editor that can't be run leaves the org as it is and says why in the footer.
-async fn edit<B: Backend>(
-    terminal: &mut Terminal<B>,
-    m: &mut UiModel,
-    cmd: Process,
-    host: &Arc<dyn TerminalHost>,
-    commands: &mpsc::Sender<Command>,
-) -> Result<(), TuiError> {
+/// Runs `cmd` with the terminal handed over. A `ctrl+c` typed while the editor has the
+/// terminal reaches DuoHive as SIGINT too; it is swallowed here so DuoHive keeps running.
+async fn hand_over(cmd: Process, host: &Arc<dyn TerminalHost>) -> io::Result<ExitStatus> {
     let host = Arc::clone(host);
-    let ran = tokio::task::spawn_blocking(move || host.hand_over(cmd)).await;
-    terminal
-        .clear()
-        .map_err(|e| TuiError::Terminal(e.to_string()))?;
-    match ran {
-        Ok(Ok(())) => send(commands, Command::ReloadOrg).await,
-        Ok(Err(e)) => {
-            m.footer_note = Some(format!("couldn't run the editor: {e}"));
-            Ok(())
+    let mut job = tokio::task::spawn_blocking(move || host.hand_over(cmd));
+    let mut swallowing = true;
+    loop {
+        tokio::select! {
+            ran = &mut job => return ran.map_err(io::Error::other)?,
+            got = tokio::signal::ctrl_c(), if swallowing => {
+                // Without a signal handler there is nothing to swallow; just wait.
+                swallowing = got.is_ok();
+            }
         }
-        Err(e) => {
-            m.footer_note = Some(format!("couldn't run the editor: {e}"));
-            Ok(())
+    }
+}
+
+/// `Ok` when the org should be reloaded; else the footer note saying why not.
+fn after_editor(ran: io::Result<ExitStatus>, editor: Option<&str>) -> Result<(), String> {
+    let status = ran.map_err(|e| format!("couldn't run the editor: {e}"))?;
+    match status.code() {
+        Some(0) => Ok(()),
+        // The shell's "not executable" and "command not found".
+        Some(126 | 127) => {
+            let name = editor_or_default(editor)
+                .split_whitespace()
+                .next()
+                .unwrap_or(DEFAULT_EDITOR);
+            Err(format!("{name} not found"))
         }
+        Some(code) => Err(format!("the editor exited with code {code}")),
+        None => Err("the editor was stopped by a signal".to_owned()),
     }
 }
 
