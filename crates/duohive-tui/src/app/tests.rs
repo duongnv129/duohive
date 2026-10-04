@@ -1,8 +1,9 @@
 //! The app loop over a counting test backend: when frames are drawn, and what keys send.
 
 use std::io;
+use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::Command as Process;
+use std::process::{Command as Process, ExitStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -338,21 +339,23 @@ async fn keys_send_commands_and_redraw() {
     result.unwrap();
 }
 
-/// Records what it was asked to run instead of running it.
+/// Records what it was asked to run instead of running it, and "exits" with `code`.
 #[derive(Default)]
 struct FakeHost {
     runs: Mutex<Vec<(String, Vec<String>)>>,
+    code: i32,
 }
 
 impl TerminalHost for FakeHost {
-    fn hand_over(&self, cmd: Process) -> io::Result<()> {
+    fn hand_over(&self, cmd: Process) -> io::Result<ExitStatus> {
         let program = cmd.get_program().to_string_lossy().into_owned();
         let args = cmd
             .get_args()
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
         self.runs.lock().unwrap().push((program, args));
-        Ok(())
+        // A wait status: the exit code sits in the second byte.
+        Ok(ExitStatus::from_raw(self.code << 8))
     }
 }
 
@@ -419,4 +422,105 @@ async fn closed_event_channel_ends_the_app() {
     .await;
     assert!(matches!(result, Err(TuiError::CoreStopped)), "{result:?}");
     drop(h.input);
+}
+
+/// The footer line of the last frame drawn.
+fn footer(t: &Terminal<CountingBackend>) -> String {
+    let buf = t.backend().inner.buffer();
+    let y = buf.area.bottom() - 1;
+    (0..buf.area.width)
+        .map(|x| buf[(x, y)].symbol())
+        .collect::<String>()
+        .trim_end()
+        .to_owned()
+}
+
+/// Presses `o` with `host` handing over, then `q`; returns the commands sent.
+async fn press_o(
+    p: &mut Parts,
+    mut h: Harness,
+    host: Option<Arc<dyn TerminalHost>>,
+) -> Vec<Command> {
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let input = std::mem::replace(&mut p.input, mpsc::channel(1).1);
+    let events = std::mem::replace(&mut p.events, mpsc::unbounded_channel().1);
+    let first_frame = std::mem::replace(&mut p.first_frame, oneshot::channel().0);
+    let commands = p.commands.clone();
+    let app = async {
+        match host {
+            Some(host) => {
+                run_loop(
+                    &mut p.terminal,
+                    input,
+                    cfg(true),
+                    events,
+                    commands,
+                    Some(first_frame),
+                    host,
+                )
+                .await
+            }
+            None => {
+                run_app_on(
+                    &mut p.terminal,
+                    input,
+                    cfg(true),
+                    events,
+                    commands,
+                    Some(first_frame),
+                )
+                .await
+            }
+        }
+    };
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        h.input.send(key('o')).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+    let mut sent = Vec::new();
+    while let Ok(c) = h.commands.try_recv() {
+        sent.push(c);
+    }
+    sent
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_editor_that_is_not_found_reloads_nothing() {
+    for code in [126, 127] {
+        let (h, mut p) = harness();
+        let host = Arc::new(FakeHost {
+            code,
+            ..FakeHost::default()
+        });
+        let sent = press_o(&mut p, h, Some(host)).await;
+        assert_eq!(sent, [], "exit {code}");
+        assert_eq!(footer(&p.terminal), " nano not found");
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_editor_that_fails_reloads_nothing() {
+    let (h, mut p) = harness();
+    let host = Arc::new(FakeHost {
+        code: 3,
+        ..FakeHost::default()
+    });
+    let sent = press_o(&mut p, h, Some(host)).await;
+    assert_eq!(sent, []);
+    assert_eq!(footer(&p.terminal), " the editor exited with code 3");
+}
+
+#[tokio::test(start_paused = true)]
+async fn run_app_on_has_no_terminal_to_hand_over() {
+    let (h, mut p) = harness();
+    let sent = press_o(&mut p, h, None).await;
+    assert_eq!(sent, []);
+    assert_eq!(
+        footer(&p.terminal),
+        " couldn't run the editor: no terminal to hand over"
+    );
 }
