@@ -313,8 +313,10 @@ fn render(org: &Org) -> Result<String, StoreError> {
 /// Partial failure: `org.toml` is replaced first. If that succeeds but the
 /// last-good write fails, this still returns `Err` though `org.toml` is new on
 /// disk; the message then starts `org.toml was saved, but` so callers can tell
-/// it from a save that changed nothing. Any other `Err` leaves `org.toml` and
-/// `org.toml.bak` as they were, with no `.tmp` file left behind.
+/// it from a save that changed nothing. Any other `Err` leaves `org.toml` as it
+/// was and no `.tmp` file behind; `org.toml.bak` too, except that when the
+/// backup copy succeeded and the final rename then failed, `.bak` may already
+/// hold the current file.
 pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError> {
     let text = render(org)?;
     write_atomic(
