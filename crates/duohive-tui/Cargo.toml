@@ -14,7 +14,7 @@ crossterm = { workspace = true }
 duohive-core = { workspace = true }
 ratatui = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["sync", "time", "macros", "rt"] }
+tokio = { workspace = true, features = ["sync", "time", "macros", "rt", "signal"] }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
