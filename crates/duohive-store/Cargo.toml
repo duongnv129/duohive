@@ -11,6 +11,10 @@ workspace = true
 
 [dependencies]
 duohive-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+toml = { workspace = true }
 
 [dev-dependencies]
 duohive-core = { workspace = true, features = ["testkit"] }
+tempfile = { workspace = true }
