@@ -278,16 +278,18 @@ Configured by one per-launch file, `--settings <run>/settings.json`, in the stan
 | `PreToolUse` (`""`) | `busy` | before each tool call, before its approval prompt | `tool_name`, `tool_input` | `hooks/PreToolUse-1.json`, `-2.json` |
 | `PostToolUse` (`""`) | `busy` | after a tool ran; the first hook after an approval answered Yes | `tool_name` | `hooks/PostToolUse-1.json` |
 | `PermissionRequest` (`""`) | `needs-input` | at once when the approval prompt is shown (same second as `PreToolUse`) | `tool_name`, `tool_input` (the prompt text for the card) | `hooks/PermissionRequest-1.json`, `-2.json` |
-| `Notification` (`""`; `notification_type` = `permission_prompt`) | `needs-input` (backup) | about 6 s after the approval prompt is shown | `message` ("Claude needs your permission") | `hooks/Notification-1.json`, `-2.json` |
+| `Notification` (`notification_type` = `permission_prompt`) | not used (registered in the spike with matcher `""`; the adapter does not register it) | about 6 s after the approval prompt is shown | `message` ("Claude needs your permission") | `hooks/Notification-1.json`, `-2.json` |
 | `Stop` (`""`) | `turn-end` | when a turn ends normally | `last_assistant_message` (S1.4) | `hooks/Stop-1.json` … `-4.json` |
 | `StopFailure` (`""`) | `turn-end` | registered; did not fire (it is for turns ended by an API error) | — | none |
 | `SessionEnd` (`""`) | `session-end` | on `/exit` | `reason` (`prompt_input_exit`) | `hooks/SessionEnd-1.json` |
 
+`Notification` is dropped: `PermissionRequest` fires at once for the same prompt and carries the tool, while `Notification` comes about 6 s later with only a fixed message; a late one after the user has already answered Yes would mark a working agent waiting again. The adapter therefore registers `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `StopFailure` and `SessionEnd`, all with matcher `""`.
+
 Also registered and never fired: `PermissionDenied` (it reports denials by auto mode's classifier, not the user's "No"). `Notification` with `idle_prompt` did not fire within 90 s at rest (a2, after `Stop-4`), so it is not used. The `PermissionRequest` hook prints nothing, so it makes no decision and the prompt still shows (`screens/approval-write.txt`); the adapter must never return a decision from it (TD §2).
 
-**Coverage:** all five DuoHive events have a hook (`HookCoverage` complete, `last_reply` from a hook). Three gaps are not events but transitions with no hook, and go to the other sources (S1.13):
+**Coverage:** all five DuoHive events have a hook (`HookCoverage` complete, `last_reply` from a hook), with one exception that applies to every CLI: no hook reports the user's answer to an approval prompt, so while an agent is waiting, settled screen reads apply whatever the coverage (at rest → finished/idle, busy → working; plan D2, TD §4.2). Three gaps are not events but transitions with no hook, and go to the other sources (S1.13):
 
-- **Approval answered No:** the turn ends with "User rejected write to …" and the prompt returns, but no `Stop`, `PostToolUse` or `PermissionDenied` fires (`hooks/index.log` after `Notification-2`; `screens/after-approve-no.txt`). The agent stays `needs-input` until a settle read finds it at rest.
+- **Approval answered No:** the turn ends with "User rejected write to …" and the prompt returns, but no `Stop`, `PostToolUse` or `PermissionDenied` fires (`hooks/index.log` after `Notification-2`; `screens/after-approve-no.txt`). The agent stays waiting until a settle read finds it at rest, which the waiting exception above allows despite complete coverage. An answer of Yes is reported only by the tool's `PostToolUse`, when the tool ends, so a long-running tool also needs the screen read (busy → working).
 - **Trust dialog:** appears before `SessionStart` (S1.8), so a new directory sits in `starting` with no hook.
 - **Crash:** `kill -9` fires no `SessionEnd`; tmux reports the death (S1.9).
 
@@ -327,12 +329,12 @@ Other screens: a slash-command menu while `/exit` is typed (`screens/exit-typed.
 ### S1.8 Ready
 
 - **Without a first prompt:** `SessionStart` (`source: startup`) fires when the input box is drawn, about 1–2 s after launch in a trusted directory. Typing before that is not needed: DuoHive sends no keys until then.
-- **With a first prompt** (`claude … "<task>"`): `SessionStart` then `UserPromptSubmit` for the task one second later (`hooks/index.log` 00:46:30 → 00:46:31); the task is submitted by Claude Code itself, with no keys.
+- **With a first prompt** (`claude … "<task>"`): `SessionStart` then `UserPromptSubmit` for the task one second later (`hooks/index.log` 00:46:30 → 00:46:31); the task is submitted by Claude Code itself, with no keys. **`--` before the task:** accepted, and required for a task that starts with `-`: `claude --model haiku -p -- "-rf reply with the single word OK"` replied `OK` (exit 0), while the same command without `--` failed with `Error: --resume requires a valid session ID …` (`-rf` read as `-r f…`, exit 1). Checked in `-p` mode, which shares the option parser with the interactive launch; so the adapter puts `--` before the task.
 - **Start-up prompts:** the workspace-trust dialog, shown the first time Claude Code runs in a directory (`screens/startup-trust.txt`). It comes before `SessionStart`, so no hook fires until it is answered; with a first prompt, the task waits behind it. Answering "Yes" records `hasTrustDialogAccepted: true` for that directory in `~/.claude.json` (Claude Code's own write, S1.12); later launches there show no dialog (a2). It is an approval, so DuoHive does not answer it: the screen rule marks the agent waiting `~` and the user answers in the pane. In the spike it was answered with `Down`, `Enter`. Also seen: a one-line tmux notice above the `/mcp` dialog, "tmux focus-events off · add 'set -g focus-events on' …" (`screens/mcp-list.txt`), which is not a prompt; DuoHive's own tmux config can set `focus-events on`. Login and update prompts did not appear (the account was signed in, and the pinned version was current); their text is not captured here.
 
 ### S1.9 Quit
 
-`/exit` typed (`send-keys -l /exit`), then `Enter`: exit status 0 (`#{pane_dead_status}` 0) and `SessionEnd` with `reason: "prompt_input_exit"` (`hooks/SessionEnd-1.json`, `screens/after-exit.txt`). The slash-command menu that opens while typing does not change what `Enter` runs (`screens/exit-typed.txt`). Quit keys: `Text("/exit")`, `Enter`. Killed with `kill -9`: `#{pane_dead}` 1, `#{pane_dead_status}` empty and `#{pane_dead_signal}` `kill`; no `SessionEnd` (`screens/after-kill9.txt`, `hooks/index.log`), and Claude Code records `lastGracefulShutdown: false` for the project.
+`/exit` typed (`send-keys -l /exit`), then `Enter`: exit status 0 (`#{pane_dead_status}` 0) and `SessionEnd` with `reason: "prompt_input_exit"` (`hooks/SessionEnd-1.json`, `screens/after-exit.txt`). The slash-command menu that opens while typing does not change what `Enter` runs (`screens/exit-typed.txt`). Quit keys: `Text("/exit")`, `Enter`. Killed with `kill -9`: `#{pane_dead}` 1 and `#{pane_dead_status}` empty, so a signal death has no exit status (the spike ran tmux 3.7c, where `#{pane_dead_signal}` also gave `kill`; that format exists only from tmux 3.3, and DuoHive supports 3.2, so it is not relied on); no `SessionEnd` (`screens/after-kill9.txt`, `hooks/index.log`), and Claude Code records `lastGracefulShutdown: false` for the project.
 
 ### S1.10 Paste
 
@@ -362,10 +364,10 @@ No mechanism is missing: instructions, hooks, MCP, model and effort are all per-
 
 | Gap | Fallback | Fixture |
 |---|---|---|
-| Approval answered No: no hook leaves `needs-input` | tmux activity, then the settle read: input box, no working line → at rest | `hooks/index.log`, `screens/after-approve-no.txt` |
-| Approval answered Yes: no hook at the answer itself | `PostToolUse` (or `Stop`) moves the agent back to `busy`/`turn-end` | `hooks/PostToolUse-1.json` |
+| Approval answered No: no hook leaves waiting | tmux activity, then the settle read: input box, no working line → at rest; applied while waiting whatever the coverage (D2) | `hooks/index.log`, `screens/after-approve-no.txt` |
+| Approval answered Yes: no hook at the answer itself | `PostToolUse` (or `Stop`) when the tool ends; before that, a settled busy screen while waiting → working (D2) | `hooks/PostToolUse-1.json` |
 | Trust dialog before `SessionStart` | screen rule → waiting `~`; the user answers it (`startup_prompts` true) | `screens/startup-trust.txt` |
-| Crash: no `SessionEnd` | pane death from the activity poll; a signal death has an empty `#{pane_dead_status}`, so the poll also reads `#{pane_dead_signal}` | `screens/after-kill9.txt` |
+| Crash: no `SessionEnd` | pane death from the activity poll (tmux 3.7c in the spike); a signal death has an empty `#{pane_dead_status}`, so it is errored "exited unexpectedly" with no status; the signal can be named only where tmux ≥ 3.3 provides `#{pane_dead_signal}` | `screens/after-kill9.txt` |
 | No model listing | `--model` aliases and `--effort` choices from `claude --help`; other models typed | `screens/model-picker.txt` |
 
 TD edits (`docs/design/technical-design.md`):
@@ -373,8 +375,11 @@ TD edits (`docs/design/technical-design.md`):
 - **§5.2 Claude Code row:** hooks column names the hook events; "effort setting" → `--effort`; replies column → `last_assistant_message` in the `Stop` payload, with the transcript as fallback.
 - **§5.2 notes:** a "Spike S1" bullet (no fallback file needed; the three gaps above and where they are covered; no model listing and the picker writes the user's default); the model-and-effort bullet says where Claude Code's lists come from.
 - **§6.5 Replies:** Claude Code's reply comes from `last_assistant_message` in the `Stop` payload; the transcript is the fallback.
-- **§4.1 tmux-activity row:** the poll format adds `#{pane_dead_signal}`, as a killed CLI leaves `#{pane_dead_status}` empty; "pane deaths with exit status" → "with exit status or signal".
-- **§5.5 Failed launch or crash:** "the exit status kept by tmux" → "the exit status or signal".
+- **§4.1 tmux-activity row:** the poll format is unchanged; it notes that a CLI killed by a signal leaves `#{pane_dead_status}` empty, has no exit status and is errored "exited unexpectedly".
+- **§4.2:** the intro adds the waiting exception (settled screen reads apply while waiting whatever the hook coverage); the unexpected-exit row says "non-zero status or no status (killed by a signal)".
+- **§5.5 Failed launch or crash:** a signal death has no exit status and shows "exited unexpectedly", naming the signal only where tmux ≥ 3.3 provides `#{pane_dead_signal}`.
+
+Plan edits (`docs/plans/phase-0-1-plan.md`, review fixes): D2 and Task 12's screen-read rules and test descriptions add the waiting exception; D22 and Task 20 take Claude Code's reply from `last_assistant_message` in `parse_hook`, with the transcript read by `enrich_hook` only when the field is missing.
 
 ## S2 OpenCode
 
