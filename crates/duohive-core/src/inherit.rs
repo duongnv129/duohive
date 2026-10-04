@@ -1,5 +1,6 @@
 //! Inheritance of settings and stacking of prompts down the org tree.
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::cli_kind::CliKind;
@@ -13,7 +14,7 @@ const DUO_DIRECTORY: &str = "~";
 const ORG_LABEL: &str = "Org";
 
 /// An agent with every setting resolved, ready to launch.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolvedAgent {
     /// The agent's name.
     pub name: AgentName,
