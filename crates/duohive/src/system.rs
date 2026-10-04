@@ -141,7 +141,16 @@ impl SystemHandle {
 }
 
 impl Drop for SystemHandle {
-    /// Without `shutdown`: stop the listener and the core, without waiting.
+    /// Without `shutdown`: asks the listener and the core to stop, waiting for
+    /// neither. This is weaker than [`SystemHandle::shutdown`]:
+    /// - nothing orders the two, so the core may stop before the listener has
+    ///   forwarded the hooks it had accepted, and those are lost;
+    /// - `Shutdown` is only `try_send`, so a full command queue drops it, and the
+    ///   core then runs on until its channels close;
+    /// - the instance lock is released at once, while the core may still be
+    ///   writing to `state.db`.
+    ///
+    /// Call `shutdown` whenever an async context is available.
     fn drop(&mut self) {
         if let Some(stop) = self.listener_stop.take() {
             let _ = stop.send(());

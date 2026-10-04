@@ -58,6 +58,7 @@ fn queue(h: &Harness, agent: &str, event: &str, payload: serde_json::Value) {
 
 fn message(agent: &str, event: &str, payload: serde_json::Value) -> HookMessage {
     HookMessage {
+        sent_at_ms: 0,
         token: token(agent),
         agent: agent.into(),
         event: event.into(),

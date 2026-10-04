@@ -121,6 +121,7 @@ fn gone(agent: &str, window: &str) -> Input {
 
 fn busy(agent: &str, token: &str) -> Input {
     Input::Hook(HookMessage {
+        sent_at_ms: 0,
         token: token.into(),
         agent: agent.into(),
         event: "busy".into(),

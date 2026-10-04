@@ -255,6 +255,7 @@ mod tests {
         s.delete_session(&n("a")).unwrap();
         assert!(s.load_sessions().unwrap().is_empty());
         s.state.lock().unwrap().pending.push(HookMessage {
+            sent_at_ms: 0,
             token: "t".into(),
             agent: "a".into(),
             event: "e".into(),
