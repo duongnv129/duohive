@@ -18,7 +18,7 @@ pub mod tree;
 mod fixtures;
 
 pub use app::{
-    AppConfig, InputEvent, TerminalHost, TuiError, editor_command, quits_blocking,
+    AppConfig, InputEvent, QuitSignals, TerminalHost, TuiError, editor_command, quits_blocking,
     restore_terminal, run_app, run_app_on, show_blocking,
 };
 pub use format::{format_age, state_cell, truncate_middle};

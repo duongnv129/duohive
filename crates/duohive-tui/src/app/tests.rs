@@ -4,7 +4,7 @@ use std::io;
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command as Process, ExitStatus};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -129,6 +129,7 @@ fn cfg(reduce_motion: bool) -> AppConfig {
         editor: Some("nano -w".to_owned()),
         dirs: std::sync::Arc::new(duohive_core::testkit::FakeDirs::new(Default::default())),
         home: PathBuf::from("/home/me"),
+        halted: Arc::new(AtomicBool::new(false)),
     }
 }
 
@@ -369,6 +370,7 @@ async fn o_hands_the_terminal_to_the_editor_then_reloads() {
     let (mut h, mut p) = harness();
     h.events.send(snapshot(&idle_model())).unwrap();
     let host = Arc::new(FakeHost::default());
+    let mut signals = QuitSignals::none();
     let app = run_loop(
         &mut p.terminal,
         p.input,
@@ -377,7 +379,7 @@ async fn o_hands_the_terminal_to_the_editor_then_reloads() {
         p.commands,
         Some(p.first_frame),
         Arc::clone(&host) as Arc<dyn TerminalHost>,
-        QuitSignals::none(),
+        &mut signals,
     );
     let driver = async {
         (&mut h.first_frame).await.unwrap();
@@ -463,7 +465,7 @@ async fn press_o(
                     commands,
                     Some(first_frame),
                     host,
-                    QuitSignals::none(),
+                    &mut QuitSignals::none(),
                 )
                 .await
             }
@@ -543,12 +545,13 @@ fn raise(sig: &str) {
 }
 
 #[tokio::test]
-async fn sigint_and_sigterm_quit() {
+async fn sigint_sigterm_and_sighup_quit() {
     let _one = SIGNALS.lock().await;
-    for sig in ["-INT", "-TERM"] {
+    for sig in ["-INT", "-TERM", "-HUP"] {
         let (mut h, mut p) = harness();
         h.events.send(snapshot(&idle_model())).unwrap();
         let host: Arc<dyn TerminalHost> = Arc::new(FakeHost::default());
+        let mut signals = QuitSignals::install();
         let app = run_loop(
             &mut p.terminal,
             p.input,
@@ -557,7 +560,7 @@ async fn sigint_and_sigterm_quit() {
             p.commands,
             Some(p.first_frame),
             host,
-            QuitSignals::install(),
+            &mut signals,
         );
         let driver = async {
             (&mut h.first_frame).await.unwrap();
@@ -570,6 +573,8 @@ async fn sigint_and_sigterm_quit() {
         result.unwrap();
         // Nothing was sent: agents keep running.
         assert_eq!(h.commands.try_recv().ok(), None);
+        // After SIGHUP the terminal is gone: run_app must not touch it again.
+        assert_eq!(signals.hung_up(), sig == "-HUP", "{sig}");
     }
 }
 
@@ -588,6 +593,7 @@ impl TerminalHost for CtrlCInEditor {
 #[tokio::test]
 async fn ctrl_c_in_the_editor_does_not_quit() {
     let _one = SIGNALS.lock().await;
+    let mut signals = QuitSignals::install();
     let (mut h, mut p) = harness();
     h.events.send(snapshot(&idle_model())).unwrap();
     let app = run_loop(
@@ -598,7 +604,7 @@ async fn ctrl_c_in_the_editor_does_not_quit() {
         p.commands,
         Some(p.first_frame),
         Arc::new(CtrlCInEditor),
-        QuitSignals::install(),
+        &mut signals,
     );
     let driver = async {
         (&mut h.first_frame).await.unwrap();
@@ -626,4 +632,24 @@ fn blocking_screen_quits_on_q_or_ctrl_c() {
     )));
     assert!(!quits_blocking(&k(KeyCode::Char('c'), KeyModifiers::NONE)));
     assert!(!quits_blocking(&k(KeyCode::Enter, KeyModifiers::NONE)));
+}
+
+#[tokio::test]
+async fn a_halted_app_draws_nothing() {
+    // Set by the panic hook once it has restored the terminal.
+    let (h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let cfg = cfg(true);
+    cfg.halted.store(true, Ordering::SeqCst);
+    let result = run_app_on(
+        &mut p.terminal,
+        p.input,
+        cfg,
+        &mut p.events,
+        p.commands,
+        Some(p.first_frame),
+    )
+    .await;
+    assert!(matches!(result, Err(TuiError::Halted)), "{result:?}");
+    assert_eq!(count(&h), 0);
 }
