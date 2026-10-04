@@ -66,7 +66,7 @@ impl TestServer {
     /// Runs `tmux -L <socket> <args>`.
     pub fn tmux(&self, args: &[&str]) -> Output {
         Command::new(&self.tmux_bin)
-            .arg("-L")
+            .args(["-f", "/dev/null", "-L"])
             .arg(&self.socket)
             .args(args)
             .env_remove("TMUX")
