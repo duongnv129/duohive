@@ -2,6 +2,7 @@
 //! a reader thread that forwards crossterm input, and pauses while the editor has the tty.
 
 use std::io::{self, stdout};
+use std::mem::ManuallyDrop;
 use std::process::{Command as Process, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
@@ -48,8 +49,12 @@ pub async fn run_app(
     first_frame: Option<oneshot::Sender<()>>,
     signals: &mut QuitSignals,
 ) -> Result<(), TuiError> {
+    // Never dropped, on any path (a return, a panic unwinding through here, or the
+    // caller dropping this future): `Terminal`'s Drop shows a hidden cursor and reports
+    // a failure with `eprintln!`, which panics when the terminal (and stderr) is gone,
+    // as after a SIGHUP, and inside the panic hook aborts before the orderly shutdown.
     let mut terminal = match ratatui::try_init() {
-        Ok(t) => t,
+        Ok(t) => ManuallyDrop::new(t),
         Err(e) => {
             // Raw mode may be on even though the alternate screen failed.
             let _ = ratatui::try_restore();
@@ -87,17 +92,14 @@ pub async fn run_app(
     };
     // The reader may already be gone; it ends within one poll either way.
     let _ = gate_tx.send(Gate::Stop);
-    // Dropping a `Terminal` whose cursor is hidden shows it and reports a failure with
-    // `eprintln!`, which panics when the terminal (and so stderr) is gone, as after a
-    // SIGHUP. Show the cursor here, ignoring errors, and never drop it.
-    let _ = execute!(stdout(), Show);
-    std::mem::forget(terminal);
+    // What the `Terminal`'s Drop would do, with errors ignored rather than printed.
+    let _ = execute!(stdout(), DisableBracketedPaste, Show);
+    let restored = ratatui::try_restore();
     if signals.hung_up() {
-        // The terminal is gone: there is nothing to restore.
+        // A closed terminal can't be restored (the attempt only returns errors); a
+        // `kill -HUP` on a live one just was. Either way this is a quit.
         return result;
     }
-    let _ = execute!(stdout(), DisableBracketedPaste);
-    let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
 }
 
@@ -114,14 +116,16 @@ pub fn restore_terminal() {
 /// # Errors
 /// The terminal cannot be set up, drawn on, read or restored.
 pub fn show_blocking(screen: &BlockingScreen) -> Result<(), TuiError> {
+    // Never dropped, as in `run_app`.
     let mut terminal = match ratatui::try_init() {
-        Ok(t) => t,
+        Ok(t) => ManuallyDrop::new(t),
         Err(e) => {
             let _ = ratatui::try_restore();
             return Err(e.into());
         }
     };
     let result = blocking_loop(&mut terminal, screen);
+    let _ = execute!(stdout(), Show);
     let restored = ratatui::try_restore();
     result.and(restored.map_err(TuiError::from))
 }
