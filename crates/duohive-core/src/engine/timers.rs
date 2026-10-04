@@ -58,7 +58,10 @@ impl Engine {
         let quiet_since = quiet_at(rt, self.settings.quiet_after())
             .filter(|at| *at <= now)
             .map(|_| rt.last_signal_at);
-        let settle_read = settle && rt.status.state.is_running() && !self.complete_coverage(agent);
+        // D2: a waiting agent is read whatever its coverage (no hook reports a declined prompt).
+        let settle_read = settle
+            && rt.status.state.is_running()
+            && (rt.status.state == AgentState::Waiting || !self.complete_coverage(agent));
         let rt = self.rt_mut(agent);
         if settle {
             rt.settle_due = None;
@@ -78,9 +81,23 @@ impl Engine {
     }
 
     /// D20: starting past the start timeout errors, whatever the quiet threshold.
+    /// A stop in progress ends stopped instead, relaunching when a restart was asked for.
     fn time_out_start(&mut self, agent: &AgentName, out: &mut Vec<Event>) {
-        if let Some(window) = self.rt_mut(agent).window.take() {
+        let rt = self.rt_mut(agent);
+        let stopping = rt.stopping;
+        let restart = stopping && rt.restart_after_stop;
+        rt.stopping = false;
+        rt.restart_after_stop = false;
+        if let Some(window) = rt.window.take() {
+            rt.killed_window = Some(window.clone());
             self.ports.runtime.kill(agent, &window);
+        }
+        if stopping {
+            self.change(agent, &Trigger::Stop, None, out);
+            if restart {
+                out.extend(self.launch_or_queue(agent.clone(), None));
+            }
+            return;
         }
         let reason = format!("not ready within {}s", self.cfg.start_timeout.as_secs());
         self.change(agent, &Trigger::LaunchFailed, Some(reason), out);
@@ -176,9 +193,9 @@ impl Engine {
     }
 }
 
-/// When a starting agent times out; a stop in progress settles it instead.
+/// When a starting agent times out.
 fn start_timeout_at(rt: &AgentRt) -> Option<Millis> {
-    (rt.status.state == AgentState::Starting && !rt.stopping)
+    (rt.status.state == AgentState::Starting)
         .then_some(rt.start_deadline)
         .flatten()
 }
@@ -193,5 +210,7 @@ fn lead_ms() -> u64 {
     u64::try_from(PRE_READ_LEAD.as_millis()).unwrap_or(u64::MAX)
 }
 
+#[cfg(test)]
+mod edges;
 #[cfg(test)]
 mod tests;
