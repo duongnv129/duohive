@@ -33,7 +33,7 @@ impl Engine {
             return reject(reason);
         }
         let mut org = self.org.clone();
-        if let Err(reason) = apply(&mut org, &edit) {
+        if let Err(reason) = apply_edit(&mut org, &edit) {
             return reject(reason);
         }
         if let Some(e) = validate(&org).into_iter().next() {
@@ -289,8 +289,9 @@ fn agents_under(org: &Org, key: &NodeKey) -> Vec<AgentName> {
     }
 }
 
-/// Applies `edit` to `org`; fails only when its target doesn't exist.
-fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
+/// Applies `edit` to `org`; fails only when its target doesn't exist. Pure: forms use it to
+/// validate a draft against the org it would produce.
+pub fn apply_edit(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
     match edit {
         OrgEdit::AddTeam(d) => org.teams.push(Team {
             name: d.name.clone(),
