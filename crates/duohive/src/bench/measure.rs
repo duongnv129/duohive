@@ -2,6 +2,7 @@
 //! and the percentile arithmetic.
 
 use std::mem::MaybeUninit;
+use std::process::Command;
 use std::time::Duration;
 
 use super::report::Percentiles;
@@ -57,6 +58,63 @@ pub fn load_average() -> Option<[f64; 3]> {
     (got == 3).then_some(loads)
 }
 
+/// Another process's CPU time so far and current resident memory.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ProcStats {
+    /// User plus system CPU time (`ps` `time`: centiseconds on macOS, whole seconds on Linux).
+    pub cpu: Duration,
+    /// Resident set size now, in MB.
+    pub rss_mb: f64,
+}
+
+/// `[[dd-]hh:]mm:ss[.ss]`, as `ps` prints CPU time.
+pub fn parse_ps_time(text: &str) -> Option<Duration> {
+    let text = text.trim();
+    let (days, clock) = match text.split_once('-') {
+        Some((d, rest)) => (d.parse::<u64>().ok()?, rest),
+        None => (0, text),
+    };
+    let mut secs = 0.0_f64;
+    for part in clock.split(':') {
+        secs = secs * 60.0 + part.parse::<f64>().ok().filter(|v| *v >= 0.0)?;
+    }
+    Some(Duration::from_secs_f64(secs + days as f64 * 86_400.0))
+}
+
+/// What `ps` says about `pid`, or `None` when it is gone or `ps` fails.
+pub fn process_stats(pid: u32) -> Option<ProcStats> {
+    let out = Command::new("ps")
+        .args(["-o", "rss=,time=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let (rss, time) = text.trim().split_once(char::is_whitespace)?;
+    Some(ProcStats {
+        cpu: parse_ps_time(time)?,
+        rss_mb: rss.trim().parse::<f64>().ok()? / 1024.0,
+    })
+}
+
+/// The pids of this process's children whose command line mentions `needle`.
+pub fn child_pids_matching(needle: &str) -> Vec<u32> {
+    let me = std::process::id();
+    let Ok(out) = Command::new("ps")
+        .args(["-axo", "pid=,ppid=,command="])
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut it = line.split_whitespace();
+            let pid: u32 = it.next()?.parse().ok()?;
+            let ppid: u32 = it.next()?.parse().ok()?;
+            (ppid == me && line.contains(needle)).then_some(pid)
+        })
+        .collect()
+}
+
 /// The `p`-quantile (0..=1) of sorted samples, by linear interpolation.
 fn quantile(sorted: &[f64], p: f64) -> f64 {
     let Some(last) = sorted.len().checked_sub(1) else {
@@ -91,6 +149,28 @@ mod tests {
             (cpu_percent(Duration::from_millis(50), Duration::from_secs(10)) - 0.5).abs() < 1e-9
         );
         assert_eq!(cpu_percent(Duration::from_secs(1), Duration::ZERO), 0.0);
+    }
+
+    #[test]
+    fn ps_times_parse() {
+        assert_eq!(parse_ps_time("0:00.12"), Some(Duration::from_millis(120)));
+        assert_eq!(
+            parse_ps_time(" 1:02.50 "),
+            Some(Duration::from_millis(62_500))
+        );
+        assert_eq!(parse_ps_time("01:02:03"), Some(Duration::from_secs(3723)));
+        assert_eq!(
+            parse_ps_time("2-01:00:00"),
+            Some(Duration::from_secs(176_400))
+        );
+        assert_eq!(parse_ps_time("junk"), None);
+    }
+
+    #[test]
+    fn this_process_is_seen_by_ps() {
+        let own = process_stats(std::process::id()).unwrap();
+        assert!(own.rss_mb > 0.0);
+        assert!(process_stats(u32::MAX - 1).is_none());
     }
 
     #[test]

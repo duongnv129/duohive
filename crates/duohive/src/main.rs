@@ -7,7 +7,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use duohive::args::{Cli, parse_args};
-use duohive::bench::{BenchArgs, run_bench_detailed};
+use duohive::bench::{BenchArgs, BenchError, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
 
@@ -58,6 +58,10 @@ fn bench(args: BenchArgs) -> ExitCode {
         }
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
+            if e == BenchError::Interrupted.to_string() {
+                // The conventional exit status of a process ended by SIGINT.
+                return ExitCode::from(130);
+            }
             ExitCode::FAILURE
         }
     }
