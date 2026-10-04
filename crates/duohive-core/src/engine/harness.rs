@@ -89,9 +89,20 @@ impl Default for Setup {
 
 impl Setup {
     pub(crate) fn build(self) -> Harness {
+        let clock = FakeClock::new(self.start);
+        self.build_with(clock.clone(), Box::new(clock))
+    }
+
+    /// Builds on `engine_clock` (such as a `TokioClock`); the harness's
+    /// `clock` handle then moves nothing the engine sees.
+    pub(crate) fn build_on(self, engine_clock: Box<dyn Clock>) -> Harness {
+        let clock = FakeClock::new(self.start);
+        self.build_with(clock, engine_clock)
+    }
+
+    fn build_with(self, clock: FakeClock, engine_clock: Box<dyn Clock>) -> Harness {
         let runtime = FakeRuntime::default();
         let store = FakeStore::default();
-        let clock = FakeClock::new(self.start);
         let cfg = EngineConfig {
             home: HOME.into(),
             data_dir: DATA_DIR.into(),
@@ -106,7 +117,7 @@ impl Setup {
         let ports = Ports {
             runtime: Box::new(runtime.clone()),
             store: Box::new(store.clone()),
-            clock: Box::new(clock.clone()),
+            clock: engine_clock,
             ids: Box::new(FakeIds::default()),
             dirs: Arc::new(dirs),
         };
