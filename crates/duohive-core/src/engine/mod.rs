@@ -111,6 +111,7 @@ struct AgentRt {
     pre_read_done: bool,
     exit_pending: Option<ExitPending>,
     /// The window the start timeout killed, so a late `Started` for it is ignored.
+    /// Kept across launches: tmux window ids are unique, so it never matches a new window.
     killed_window: Option<WindowId>,
     /// The CLI the current session was launched on (org edits apply on the next start).
     cli: Option<CliKind>,
