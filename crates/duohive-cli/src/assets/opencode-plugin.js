@@ -16,11 +16,17 @@
 //   turn-end       `session.idle`, with `duohive_last_reply` added (S2.4)
 //   session-end    `dispose`
 //
-// Its `config` hook makes `edit` and `bash` ask where the user's value would
-// allow them (S2.11). OpenCode decides by the last matching rule, in key
-// order (`rules.findLast`), so the composed `edit` and `bash` keys are moved
-// after every other key, "*" included. It never answers a permission prompt
-// itself (TD §2).
+// Its `config` hook makes `edit` and `bash` ask where the user's rules would
+// allow them (S2.11), and never loosens anything. OpenCode puts each agent's
+// built-in rules before the user's, then the user's top level, then the
+// user's agent block, and the last matching rule wins (`rules.findLast`), in
+// key order. So the hook leaves the top level alone and, for each agent,
+// rewrites the user's rules for `edit` and `bash` into one key placed last in
+// that agent's block: the same patterns and decisions, with "*" made "ask"
+// where it allows. Where an agent's built-in rules restrict a key (plan's
+// edit, explore's edit, the hidden agents' everything; `opencode agent list`,
+// 1.18.34), no "*" is added, so the built-in still decides. It never answers
+// a permission prompt itself (TD §2).
 //
 // It must never disturb OpenCode (plan Review Focus 1): every hook returns at
 // once; deliveries run one at a time on an internal promise chain, in event
@@ -50,47 +56,73 @@ function isObject(v) {
   return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
-// One permission value (a string or a pattern object) for edit or bash, made
-// "ask" where it would allow. `fallbackAllows`: what an absent value (or an
-// absent "*" in a pattern object) falls back to allows. An added "*" goes
-// first, so the user's own patterns, which come after it, still win.
-function tightenValue(value, fallbackAllows) {
-  if (value === undefined) return fallbackAllows ? "ask" : undefined;
-  if (value === "allow") return "ask";
-  if (!isObject(value)) return value;
-  const star = value["*"];
-  if (star === "allow") return { ...value, "*": "ask" };
-  if (star === undefined && fallbackAllows) return { "*": "ask", ...value };
-  return value;
+// OpenCode 1.18.34's agents, and the guarded keys their built-in rules
+// restrict (`opencode agent list`): adding "*": "ask" there would loosen them.
+const BUILTIN_AGENTS = ["build", "plan", "general", "explore", "compaction", "summary", "title"];
+const RESTRICTED = {
+  plan: ["edit"],
+  explore: ["edit"],
+  compaction: GUARDED,
+  summary: GUARDED,
+  title: GUARDED,
+};
+
+function wildcard(pattern, text) {
+  const escaped = String(pattern).replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s").test(text);
 }
 
-// A `permission` block, top level or an agent's. A string shorthand "allow"
-// is read as {"*": "allow"}; any other string, and every "deny", "ask" and
-// pattern other than "*", is kept as the user wrote it.
-function tightenBlock(block, topLevel) {
-  const b = block === "allow" ? { "*": "allow" } : block;
-  if (b === undefined && !topLevel) return undefined;
-  if (b !== undefined && !isObject(b)) return b;
-  const current = b ?? {};
-  const star = current["*"];
-  const fallbackAllows = star === "allow" || (star === undefined && topLevel);
-  const out = Object.fromEntries(Object.entries(current).filter(([key]) => !GUARDED.includes(key)));
-  for (const key of GUARDED) {
-    const tightened = tightenValue(current[key], fallbackAllows);
-    if (tightened !== undefined) out[key] = tightened;
+// A `permission` block as OpenCode's ordered rules.
+function rulesOf(block) {
+  if (typeof block === "string") return [{ permission: "*", pattern: "*", action: block }];
+  if (!isObject(block)) return [];
+  return Object.entries(block).flatMap(([permission, value]) => {
+    if (typeof value === "string") return [{ permission, pattern: "*", action: value }];
+    if (!isObject(value)) return [];
+    return Object.entries(value)
+      .filter(([, action]) => typeof action === "string")
+      .map(([pattern, action]) => ({ permission, pattern, action }));
+  });
+}
+
+// The user's rules that match `key`, as one pattern object with the same
+// decisions (a pattern seen twice keeps its last place and action), "*"
+// raised from "allow" to "ask", and "*": "ask" added first when absent
+// unless the agent's built-in restricts the key.
+function composeKey(key, rules, restricted) {
+  const patterns = new Map();
+  for (const rule of rules) {
+    if (!wildcard(rule.permission, key)) continue;
+    patterns.delete(rule.pattern);
+    patterns.set(rule.pattern, rule.action);
   }
-  return out;
+  if (patterns.get("*") === "allow") patterns.set("*", "ask");
+  if (!patterns.has("*") && !restricted) return { "*": "ask", ...Object.fromEntries(patterns) };
+  return patterns.size > 0 ? Object.fromEntries(patterns) : undefined;
 }
 
 function composePermissions(cfg) {
   if (!isObject(cfg)) return;
-  cfg.permission = tightenBlock(cfg.permission, true);
-  if (!isObject(cfg.agent)) return;
-  for (const agent of Object.values(cfg.agent)) {
-    if (isObject(agent) && agent.permission !== undefined) {
-      agent.permission = tightenBlock(agent.permission, false);
+  const agents = isObject(cfg.agent) ? cfg.agent : {};
+  const top = rulesOf(cfg.permission);
+  const out = { ...agents };
+  for (const name of new Set([...BUILTIN_AGENTS, ...Object.keys(agents)])) {
+    const agent = agents[name] === undefined ? {} : agents[name];
+    if (!isObject(agent)) continue;
+    const own = agent.permission;
+    if (own !== undefined && typeof own !== "string" && !isObject(own)) continue;
+    const restricted = RESTRICTED[name] ?? [];
+    const composed = {};
+    for (const key of GUARDED) {
+      const value = composeKey(key, [...top, ...rulesOf(own)], restricted.includes(key));
+      if (value !== undefined) composed[key] = value;
     }
+    if (Object.keys(composed).length === 0) continue;
+    const block = typeof own === "string" ? { "*": own } : (own ?? {});
+    const rest = Object.fromEntries(Object.entries(block).filter(([key]) => !GUARDED.includes(key)));
+    out[name] = { ...agent, permission: { ...rest, ...composed } };
   }
+  cfg.agent = out;
 }
 
 // Payloads carry only what DuoHive reads, so a tool's output or a diff never
