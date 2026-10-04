@@ -35,7 +35,8 @@
 // once; deliveries run one at a time on an internal promise chain, in event
 // order, never awaited by OpenCode; a spawn that throws, fails or exits
 // non-zero is dropped; nothing is thrown into OpenCode; the child's output is
-// ignored; a delivery still running after 2 s is killed; `dispose` waits for
+// ignored; a delivery still running after 10 s is killed (a loaded machine
+// can take seconds to start one; deliveries stay serial); `dispose` waits for
 // the chain for at most 1 s, kills a delivery still running and drops the
 // queued ones, then sends session-end with a synchronous spawn bounded at
 // 1 s (an async child started during shutdown may not run).
@@ -47,7 +48,7 @@
 // under Bun inside OpenCode and under Node in DuoHive's tests.
 import { spawn, spawnSync } from "node:child_process";
 
-const DELIVERY_LIMIT_MS = 2000;
+const DELIVERY_LIMIT_MS = 10000;
 const DISPOSE_WAIT_MS = 1000;
 const SESSION_END_LIMIT_MS = 1000;
 const START_FALLBACK_MS = 3000;
@@ -192,8 +193,8 @@ export const DuohivePlugin = async () => {
   // mistake for a lost session-end.
   const endLimit = Number(process.env.DUOHIVE_SESSION_END_LIMIT_MS);
   const endLimitMs = Number.isFinite(endLimit) && endLimit > 0 ? endLimit : SESSION_END_LIMIT_MS;
-  // Test hook, same reason: under a fully loaded machine a first exec of a
-  // fresh fake exe can take over 2 s, which would drop session-start.
+  // Test hook: the kill scenario shortens it, and instances whose deliveries
+  // must complete on a fully loaded machine keep it long.
   const limit = Number(process.env.DUOHIVE_DELIVERY_LIMIT_MS);
   const deliveryLimitMs = Number.isFinite(limit) && limit > 0 ? limit : DELIVERY_LIMIT_MS;
   const enabled = exe !== "" && agent !== "";

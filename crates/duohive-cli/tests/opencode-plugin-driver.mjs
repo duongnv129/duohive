@@ -13,8 +13,8 @@ import { pathToFileURL } from "node:url";
 const [pluginPath, hookExe, hangExe, logDir, ...eventFiles] = process.argv.slice(2);
 const FALLBACK_MS = 100;
 // A hook must return without waiting for its child: the hanging exe sleeps
-// 10 s and a delivery is cut at 2 s, so a hook that did wait would take 2 s or
-// more. 1 s keeps that meaning while tolerating this process being descheduled
+// 10 s and its delivery is cut at 2 s here, so a hook that did wait would take
+// 2 s or more. 1 s keeps that meaning while tolerating this process being descheduled
 // for a few hundred ms in a fully loaded workspace test run.
 const RETURNS_AT_ONCE_MS = 1000;
 // Dispose is bounded by a 1 s chain wait plus a 1 s session-end spawn (2 s),
@@ -24,8 +24,9 @@ const DISPOSE_LIMIT_MS = 4500;
 // 1 s product default is for hung exes (the `hang` instance keeps it).
 const SESSION_END_LIMIT_MS = 10000;
 
-// Per-delivery kill limit for instances whose deliveries must complete: the 2 s
-// product default is for hung exes (the `slow` instance keeps it).
+// Per-delivery kill limit for instances whose deliveries must complete. The
+// `hang` and `slow` instances cut deliveries at 2 s instead of the 10 s product
+// default, to keep the run short; `patient` keeps the default.
 const DELIVERY_LIMIT_MS = 10000;
 
 const errors = [];
@@ -47,8 +48,10 @@ const ctx = {
   serverUrl: new URL("http://localhost:4096/"),
 };
 
+// `deliveryLimitMs` null leaves the product default in force.
 async function instance(agent, exe, endLimitMs = SESSION_END_LIMIT_MS, deliveryLimitMs = DELIVERY_LIMIT_MS) {
-  process.env.DUOHIVE_DELIVERY_LIMIT_MS = String(deliveryLimitMs);
+  if (deliveryLimitMs === null) delete process.env.DUOHIVE_DELIVERY_LIMIT_MS;
+  else process.env.DUOHIVE_DELIVERY_LIMIT_MS = String(deliveryLimitMs);
   process.env.DUOHIVE_SESSION_END_LIMIT_MS = String(endLimitMs);
   process.env.DUOHIVE_HOOK_EXE = exe;
   process.env.DUOHIVE_HOOK_AGENT = agent;
@@ -297,7 +300,7 @@ await timed("inflight event", RETURNS_AT_ONCE_MS, () =>
 await running("inflight");
 await timed("inflight dispose", DISPOSE_LIMIT_MS, () => inflight.hooks.dispose());
 
-// A delivery that hangs is killed at 2 s and the chain goes on.
+// A delivery that hangs is killed at its (shortened) 2 s limit and the chain goes on.
 const slow = await instance("slow", hookExe, SESSION_END_LIMIT_MS, 2000);
 await timed("slow event", RETURNS_AT_ONCE_MS, () => slow.hooks.event(sample("catalog.updated", {})));
 await timed("slow busy", RETURNS_AT_ONCE_MS, () =>
@@ -307,6 +310,15 @@ await running("slow");
 await sleep(2600);
 await quiet("slow", 1);
 await timed("slow dispose", DISPOSE_LIMIT_MS, () => slow.hooks.dispose());
+
+// A delivery slower than 2 s (a loaded machine) still lands under the
+// product default limit.
+const patient = await instance("patient", hookExe, SESSION_END_LIMIT_MS, null);
+await timed("patient event", RETURNS_AT_ONCE_MS, () =>
+  patient.hooks.event(sample("catalog.updated", {})),
+);
+await quiet("patient", 1);
+await timed("patient dispose", DISPOSE_LIMIT_MS, () => patient.hooks.dispose());
 
 // Subagent sessions (with a parentID) neither busy nor end the agent's turn.
 const sub = await instance("subagent", hookExe);
