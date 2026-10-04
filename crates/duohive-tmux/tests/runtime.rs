@@ -522,7 +522,7 @@ fn fake_tmux(srv: &TestServer, version: &str) -> std::path::PathBuf {
     std::fs::write(
         &path,
         format!(
-            "#!/bin/sh\nif [ \"$1\" = -V ]; then echo '{version}'; exit 0; fi\nexec '{}' \"$@\"\n",
+            "#!/bin/sh\ncase \" $* \" in *\" -V \"*) echo '{version}'; exit 0;; esac\nexec '{}' \"$@\"\n",
             real.trim()
         ),
     )
@@ -546,4 +546,78 @@ async fn connect_refuses_old_tmux_and_proceeds_on_unknown() {
     let a = agent("a");
     rt.start(&a, srv.sh("cat"));
     ev.started(&a).await;
+}
+
+#[tokio::test]
+async fn started_windows_are_160_by_48() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    let a = agent("a");
+    rt.start(&a, srv.sh("cat"));
+    let w = ev.started(&a).await;
+    let size = srv.tmux_out(&[
+        "display-message",
+        "-p",
+        "-t",
+        &w.0,
+        "#{window_width}x#{window_height}",
+    ]);
+    assert_eq!(size.trim(), "160x48");
+}
+
+#[tokio::test]
+async fn server_ignores_user_config_and_runs_posix_sh() {
+    let srv = TestServer::new();
+    let (_rt, _ev) = srv.connect().await;
+    let files = srv.tmux_out(&["display-message", "-p", "#{config_files}"]);
+    assert_eq!(files.trim(), "/dev/null");
+    let shell = srv.tmux_out(&["show-options", "-g", "-v", "default-shell"]);
+    assert_eq!(shell.trim(), "/bin/sh");
+}
+
+#[tokio::test]
+async fn start_refuses_a_symlinked_launch_script() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    let target = srv.path("target");
+    std::fs::write(&target, "orig").unwrap();
+    let run_dir = srv.run_root.join("a");
+    std::fs::create_dir_all(&run_dir).unwrap();
+    std::os::unix::fs::symlink(&target, run_dir.join("launch.sh")).unwrap();
+    let a = agent("a");
+    rt.start(&a, srv.sh("cat"));
+    let got = ev.next(SECS(5)).await;
+    assert!(
+        matches!(got, Some(RuntimeEvent::StartFailed { .. })),
+        "{got:?}"
+    );
+    assert_eq!(std::fs::read_to_string(&target).unwrap(), "orig");
+}
+
+#[tokio::test]
+async fn reattach_reports_a_window_killed_while_detached() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    let a = agent("a");
+    rt.start(&a, srv.sh("cat"));
+    let w = ev.started(&a).await;
+    // One tmux command list: the window goes after the control client has detached.
+    srv.tmux(&[
+        "detach-client",
+        "-s",
+        "duohive",
+        ";",
+        "kill-window",
+        "-t",
+        &w.0,
+    ]);
+    let got = ev.collect(SECS(3)).await;
+    assert!(
+        !got.iter()
+            .any(|e| matches!(e, RuntimeEvent::ConnectionLost { .. })),
+        "{got:?}"
+    );
+    let gone: Vec<_> = got.iter().filter(|e| is_window_gone(e, &w)).collect();
+    assert_eq!(gone.len(), 1, "{got:?}");
+    assert!(!srv.window_ids().contains(&w.0));
 }

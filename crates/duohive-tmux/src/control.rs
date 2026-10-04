@@ -3,12 +3,13 @@
 /// One classified control-mode line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ControlLine {
-    /// `%begin <time> <cmd> <flags>`: a command reply starts.
-    Begin { cmd: u64 },
+    /// `%begin <time> <cmd> <flags>`: a reply block starts. Flags 1 marks a command this
+    /// client sent; flags 0 blocks (the attach itself, hook commands) answer nothing it sent.
+    Begin { cmd: u64, flags: u32 },
     /// `%end ...`: the reply ended successfully.
-    End { cmd: u64 },
+    End { cmd: u64, flags: u32 },
     /// `%error ...`: the reply ended with an error.
-    Error { cmd: u64 },
+    Error { cmd: u64, flags: u32 },
     /// A line inside a `%begin` block, verbatim.
     Body(String),
     /// `%unlinked-window-close @N` (what tmux 3.2a and 3.7c send) or `%window-close @N`.
@@ -26,9 +27,10 @@ pub struct ControlParser {
     open_cmd: Option<u64>,
 }
 
-/// Parses the command number (second argument) of `%begin`/`%end`/`%error`.
-fn cmd_number(rest: &str) -> Option<u64> {
-    rest.split_whitespace().nth(1)?.parse().ok()
+/// Parses the command number and flags (second and third arguments) of `%begin`/`%end`/`%error`.
+fn cmd_number(rest: &str) -> Option<(u64, u32)> {
+    let mut args = rest.split_whitespace().skip(1);
+    Some((args.next()?.parse().ok()?, args.next()?.parse().ok()?))
 }
 
 impl ControlParser {
@@ -40,9 +42,9 @@ impl ControlParser {
         let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
         match word {
             "%begin" => match cmd_number(rest) {
-                Some(cmd) => {
+                Some((cmd, flags)) => {
                     self.open_cmd = Some(cmd);
-                    ControlLine::Begin { cmd }
+                    ControlLine::Begin { cmd, flags }
                 }
                 None => ControlLine::Other(line.to_owned()),
             },
@@ -65,11 +67,11 @@ impl ControlParser {
         let (word, rest) = line.split_once(' ').unwrap_or((line, ""));
         let end = match word {
             "%end" => cmd_number(rest)
-                .filter(|&c| c == open)
-                .map(|cmd| ControlLine::End { cmd }),
+                .filter(|&(c, _)| c == open)
+                .map(|(cmd, flags)| ControlLine::End { cmd, flags }),
             "%error" => cmd_number(rest)
-                .filter(|&c| c == open)
-                .map(|cmd| ControlLine::Error { cmd }),
+                .filter(|&(c, _)| c == open)
+                .map(|(cmd, flags)| ControlLine::Error { cmd, flags }),
             _ => None,
         };
         match end {
@@ -91,21 +93,30 @@ mod tests {
         let mut p = ControlParser::default();
         assert_eq!(
             p.feed("%begin 1767225600 12 1"),
-            ControlLine::Begin { cmd: 12 }
+            ControlLine::Begin { cmd: 12, flags: 1 }
         );
         assert_eq!(p.feed("@3"), ControlLine::Body("@3".into()));
-        assert_eq!(p.feed("%end 1767225600 12 1"), ControlLine::End { cmd: 12 });
+        assert_eq!(
+            p.feed("%end 1767225600 12 1"),
+            ControlLine::End { cmd: 12, flags: 1 }
+        );
     }
 
     #[test]
     fn parses_error_block() {
         let mut p = ControlParser::default();
-        assert_eq!(p.feed("%begin 1 13 1"), ControlLine::Begin { cmd: 13 });
+        assert_eq!(
+            p.feed("%begin 1 13 1"),
+            ControlLine::Begin { cmd: 13, flags: 1 }
+        );
         assert_eq!(
             p.feed("can't find window: @99"),
             ControlLine::Body("can't find window: @99".into())
         );
-        assert_eq!(p.feed("%error 1 13 1"), ControlLine::Error { cmd: 13 });
+        assert_eq!(
+            p.feed("%error 1 13 1"),
+            ControlLine::Error { cmd: 13, flags: 1 }
+        );
     }
 
     #[test]
@@ -137,7 +148,7 @@ mod tests {
         );
         assert_eq!(
             p.feed("%end 1791044832 570 0"),
-            ControlLine::End { cmd: 570 }
+            ControlLine::End { cmd: 570, flags: 0 }
         );
     }
 
@@ -186,7 +197,7 @@ mod tests {
             p.feed("%error 1 8 1"),
             ControlLine::Body("%error 1 8 1".into())
         );
-        assert_eq!(p.feed("%end 1 7 1"), ControlLine::End { cmd: 7 });
+        assert_eq!(p.feed("%end 1 7 1"), ControlLine::End { cmd: 7, flags: 1 });
     }
 
     #[test]
@@ -206,6 +217,32 @@ mod tests {
     fn malformed_begin_is_other_and_does_not_open_a_block() {
         let mut p = ControlParser::default();
         assert_eq!(p.feed("%begin x"), ControlLine::Other("%begin x".into()));
+        assert_eq!(
+            p.feed("%begin 1 5"),
+            ControlLine::Other("%begin 1 5".into())
+        );
         assert_eq!(p.feed("%exit"), ControlLine::Exit { reason: None });
+    }
+
+    #[test]
+    fn flags_tell_client_commands_from_server_blocks() {
+        let mut p = ControlParser::default();
+        // The attach's own block and hook commands carry flags 0 (spike S0.4, task 19).
+        assert_eq!(
+            p.feed("%begin 1 283 0"),
+            ControlLine::Begin { cmd: 283, flags: 0 }
+        );
+        assert_eq!(
+            p.feed("%end 1 283 0"),
+            ControlLine::End { cmd: 283, flags: 0 }
+        );
+        assert_eq!(
+            p.feed("%begin 1 290 1"),
+            ControlLine::Begin { cmd: 290, flags: 1 }
+        );
+        assert_eq!(
+            p.feed("%error 1 290 1"),
+            ControlLine::Error { cmd: 290, flags: 1 }
+        );
     }
 }
