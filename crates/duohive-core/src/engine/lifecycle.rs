@@ -192,7 +192,6 @@ impl Engine {
         rt.exit_pending = None;
         rt.settle_due = None;
         rt.last_activity_secs = None;
-        rt.killed_window = None;
         self.change(agent, &Trigger::Launch, None, &mut out);
         let notice = untested_notice(cli.binary(), &version, adapter.tested_versions());
         let rt = self.rt_mut(agent);
