@@ -19,7 +19,8 @@ duohive-tui = { path = "crates/duohive-tui", version = "0.1.0" }
 duohive-mcp = { path = "crates/duohive-mcp", version = "0.1.0" }
 
 tokio = "1.53"
-ratatui = "=0.30.2"
+ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm", "layout-cache", "underline-color"] }
+unicode-segmentation = "1.13"
 crossterm = "=0.29.0"
 rusqlite = { version = "0.40", features = ["bundled"] }
 toml = "1.1"

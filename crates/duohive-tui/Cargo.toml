@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 duohive-core = { workspace = true }
 ratatui = { workspace = true }
+unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
 duohive-core = { workspace = true, features = ["testkit"] }

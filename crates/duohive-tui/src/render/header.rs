@@ -7,27 +7,46 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 
 use super::{RenderCtx, fg, put};
+use crate::format::wrap_capped;
 use crate::model::UiModel;
 use crate::theme::Palette;
+
+/// Continuation lines of a banner start under its text, past ` ✕ `.
+const BANNER_INDENT: &str = "   ";
+const MAX_BANNER_LINES: usize = 3;
 
 /// Phase 1 keys (D8): no `? help`, no `space` until phase 2.
 const FOOTER_KEYS: &str =
     " ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit";
 
-/// One banner line per broken file: `org.toml` first, then `settings.toml`.
-pub(super) fn banners(m: &UiModel) -> Vec<String> {
+/// The banner lines for each broken file, `org.toml` first, wrapped to `cells` after a ` · `
+/// separator so the fix stays whole; continuation lines are indented under the text.
+pub(super) fn banners(m: &UiModel, cells: usize) -> Vec<String> {
     let org = m.org_error.as_ref().map(|e| {
         let where_ = located("org.toml", e);
         format!(
-            " ✕ {where_}: {} · using your last good org · o open in $EDITOR",
+            "✕ {where_}: {} · using your last good org · o open in $EDITOR",
             e.message
         )
     });
     let settings = m.settings_error.as_ref().map(|e| {
         let where_ = located("settings.toml", e);
-        format!(" ✕ {where_}: {} · using default settings", e.message)
+        format!("✕ {where_}: {} · using default settings", e.message)
     });
-    org.into_iter().chain(settings).collect()
+    let room = cells.saturating_sub(BANNER_INDENT.len());
+    org.into_iter()
+        .chain(settings)
+        .flat_map(|text| {
+            wrap_capped(&text, room, MAX_BANNER_LINES)
+                .into_iter()
+                .enumerate()
+                .map(|(i, line)| {
+                    let lead = if i == 0 { " " } else { BANNER_INDENT };
+                    format!("{lead}{line}")
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn located(file: &str, e: &OrgFileError) -> String {
@@ -41,9 +60,10 @@ fn located(file: &str, e: &OrgFileError) -> String {
 pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
     let p = &ctx.palette;
     let working = m
-        .agents
-        .values()
-        .filter(|v| v.status.state == AgentState::Working && !v.status.quiet)
+        .agent_names()
+        .into_iter()
+        .map(|a| &m.view(a).status)
+        .filter(|s| s.state == AgentState::Working && !s.quiet)
         .count();
     let need = m.needs_you.len();
     let w = usize::from(r.width);
