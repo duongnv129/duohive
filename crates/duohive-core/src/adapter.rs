@@ -49,7 +49,7 @@ pub struct ScreenSignal {
 }
 
 /// Which of the five Sn.3 events a CLI hooks, and where the reply comes from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HookCoverage {
     /// Ready hook.
     pub ready: bool,
@@ -78,7 +78,7 @@ impl HookCoverage {
 }
 
 /// Whether a CLI is installed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CliPresence {
     /// Not found.
     Missing,
@@ -148,16 +148,18 @@ impl Adapters {
 
 /// The UI §4.12 notice when `version`'s major.minor is not in `tested`.
 pub fn untested_notice(binary: &str, version: &str, tested: &[&str]) -> Option<String> {
-    let mut parts = version.trim().split('.');
+    let version = version.trim();
+    let mut parts = version.split('.');
     let major_minor = match (parts.next(), parts.next()) {
+        (Some(""), _) | (None, _) => return None,
         (Some(major), Some(minor)) => format!("{major}.{minor}"),
         (Some(major), None) => major.to_owned(),
-        _ => return None,
     };
+    // With no tested versions there is nothing to compare against.
+    let up_to = tested.last()?;
     if tested.contains(&major_minor.as_str()) {
         return None;
     }
-    let up_to = tested.last().copied().unwrap_or("nothing");
     Some(format!(
         "notice: {binary} {major_minor} untested (tested up to {up_to})"
     ))
@@ -247,5 +249,65 @@ mod tests {
             Some(ScreenState::NeedsInput)
         );
         assert_eq!(a.read_screen("hello").state, None);
+    }
+
+    #[test]
+    fn untested_notice_edge_cases() {
+        assert_eq!(untested_notice("claude", "", &["2.1"]), None);
+        assert_eq!(untested_notice("claude", "  ", &["2.1"]), None);
+        assert_eq!(untested_notice("claude", "2.3.0", &[]), None);
+    }
+
+    #[test]
+    fn adapter_types_round_trip_json() {
+        let p = CliPresence::Found {
+            version: "2.1.0".into(),
+        };
+        let back: CliPresence = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(back, p);
+        let c = StubAdapter::new(CliKind::Claude).coverage;
+        let back: HookCoverage = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
+    }
+
+    fn spec(dir: Option<&str>, task: Option<&str>) -> LaunchSpec {
+        let org = crate::testkit::example_org();
+        let mut agent = crate::inherit::resolve(&org, &crate::testkit::n("squad-1")).unwrap();
+        agent.directory = dir.map(str::to_owned);
+        LaunchSpec {
+            agent,
+            task: task.map(str::to_owned),
+            run_dir: "/run/a".into(),
+            hook_exe: "/bin/duohive".into(),
+            home: "/h".into(),
+        }
+    }
+
+    #[test]
+    fn stub_records_launch_specs_and_uses_agent_directory() {
+        let a = StubAdapter::new(CliKind::Claude);
+        let seen = a.launches.clone();
+        let boxed: Box<dyn CliAdapter> = Box::new(a);
+        let cmd = boxed.launch(&spec(Some("~/code"), Some("t"))).unwrap();
+        assert_eq!(cmd.cwd, std::path::PathBuf::from("/h/code"));
+        assert_eq!(cmd.args, vec!["--task".to_owned(), "t".to_owned()]);
+        let cmd = boxed.launch(&spec(None, None)).unwrap();
+        assert_eq!(cmd.cwd, std::path::PathBuf::from("/h"));
+        assert_eq!(seen.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn stub_enrich_hook_runs_the_configured_behaviour() {
+        fn add_reply(_: &str, p: &mut serde_json::Value) {
+            p["duohive_last_reply"] = serde_json::json!("hi");
+        }
+        let plain = StubAdapter::new(CliKind::Claude);
+        let mut p = serde_json::json!({});
+        plain.enrich_hook("turn-end", &mut p);
+        assert_eq!(p, serde_json::json!({}));
+        StubAdapter::new(CliKind::Claude)
+            .with_enrich(add_reply)
+            .enrich_hook("turn-end", &mut p);
+        assert_eq!(p["duohive_last_reply"], "hi");
     }
 }
