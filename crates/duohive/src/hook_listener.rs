@@ -1,16 +1,18 @@
 //! The app's end of `run.sock`: one JSON `HookMessage` per line from `duohive hook`.
 //!
-//! Review Focus 5: a second instance refuses to bind while the socket answers,
-//! and a stale socket file from a crash is replaced. Tokens are forwarded to the
-//! engine (which checks them) and never logged.
+//! Review Focus 5: liveness is an exclusive lock on `run.lock`, held for the
+//! listener's lifetime. A second instance finds it held and refuses; a socket
+//! file with no lock holder is stale (a crash) and is replaced. Tokens are
+//! forwarded to the engine (which checks them) and never logged.
 
 use std::collections::HashMap;
-use std::fs;
+use std::fs::{self, DirBuilder, File, OpenOptions, TryLockError};
 use std::io;
-use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::{UnixListener as StdUnixListener, UnixStream as StdUnixStream};
+use std::os::unix::fs::{DirBuilderExt, FileTypeExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::net::UnixListener as StdUnixListener;
 use std::path::Path;
 use std::sync::{Arc, PoisonError, RwLock};
+use std::time::Duration;
 
 use duohive_core::adapter::Adapters;
 use duohive_core::cli_kind::CliKind;
@@ -20,9 +22,13 @@ use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
 
-/// The longest line accepted; longer ones are dropped with a warning.
-const MAX_LINE: usize = 1024 * 1024;
-const SOCK_MODE: u32 = 0o600;
+use crate::MAX_HOOK_LINE as MAX_LINE;
+
+const DIR_MODE: u32 = 0o700;
+const FILE_MODE: u32 = 0o600;
+const LOCK_FILE: &str = "run.lock";
+/// A pause after a failed accept (e.g. out of file descriptors), so the loop never spins.
+const ACCEPT_RETRY: Duration = Duration::from_millis(100);
 
 /// Each agent's CLI, refreshed by the binary on `OrgChanged`.
 pub type AgentClis = Arc<RwLock<HashMap<String, CliKind>>>;
@@ -30,33 +36,50 @@ pub type AgentClis = Arc<RwLock<HashMap<String, CliKind>>>;
 /// The socket could not be taken.
 #[derive(Debug, thiserror::Error)]
 pub enum ListenerError {
-    /// Another DuoHive answers on the socket.
-    #[error("another DuoHive is already running (run.sock answers)")]
+    /// Another DuoHive holds the instance lock.
+    #[error("another DuoHive is already running (run.lock is held)")]
     AlreadyRunning,
-    /// Removing, binding or restricting the socket failed.
+    /// Creating the directory, locking, removing, binding or restricting failed.
     #[error("cannot listen on run.sock: {0}")]
     Io(#[from] io::Error),
 }
 
-/// A bound, owner-only `run.sock`.
+/// A bound, owner-only `run.sock`, and the instance lock that makes it ours.
 #[derive(Debug)]
 pub struct HookListener {
     listener: StdUnixListener,
+    /// Held (locked) until the listener is dropped.
+    lock: File,
 }
 
 impl HookListener {
-    /// Binds `sock`: refuses when another instance answers on it, replaces a stale one.
+    /// Takes the instance lock (`run.lock` beside `sock`), then binds `sock`,
+    /// replacing a stale socket file; refuses when another instance holds the lock.
+    ///
+    /// Call this before starting anything that spawns processes (tmux, CLI
+    /// `--version` detection): on macOS std marks a socket close-on-exec only
+    /// after creating it, so a process spawned meanwhile would inherit the
+    /// listener. (The lock file is opened close-on-exec atomically.)
     pub fn bind(sock: &Path) -> Result<HookListener, ListenerError> {
-        if fs::symlink_metadata(sock).is_ok() {
-            if StdUnixStream::connect(sock).is_ok() {
-                return Err(ListenerError::AlreadyRunning);
+        let dir = sock.parent().unwrap_or(Path::new("."));
+        ensure_private_dir(dir)?;
+        let lock = take_lock(&dir.join(LOCK_FILE))?;
+        // The lock is ours, so whatever socket sits at the path is stale.
+        match fs::symlink_metadata(sock) {
+            Ok(meta) if meta.file_type().is_socket() => fs::remove_file(sock)?,
+            Ok(_) => {
+                return Err(ListenerError::Io(io::Error::new(
+                    io::ErrorKind::AlreadyExists,
+                    format!("{} exists and is not a socket", sock.display()),
+                )));
             }
-            fs::remove_file(sock)?;
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
         }
         let listener = StdUnixListener::bind(sock)?;
-        fs::set_permissions(sock, fs::Permissions::from_mode(SOCK_MODE))?;
+        fs::set_permissions(sock, fs::Permissions::from_mode(FILE_MODE))?;
         listener.set_nonblocking(true)?;
-        Ok(HookListener { listener })
+        Ok(HookListener { listener, lock })
     }
 
     /// Accepts connections until the core's channel closes. Each line is parsed,
@@ -69,6 +92,7 @@ impl HookListener {
         to_core: mpsc::Sender<Input>,
         tap: Option<mpsc::UnboundedSender<HookMessage>>,
     ) {
+        let _lock = self.lock; // held while serving
         let listener = match UnixListener::from_std(self.listener) {
             Ok(l) => l,
             Err(e) => {
@@ -89,10 +113,44 @@ impl HookListener {
                     Ok((stream, _)) => {
                         tokio::spawn(route.clone().connection(stream));
                     }
-                    Err(e) => tracing::warn!(error = %e, "hook listener: accept failed"),
+                    Err(e) => {
+                        tracing::warn!(error = %e, "hook listener: accept failed");
+                        tokio::time::sleep(ACCEPT_RETRY).await;
+                    }
                 },
             }
         }
+    }
+}
+
+/// Creates `dir` (0700) or tightens it to 0700.
+fn ensure_private_dir(dir: &Path) -> io::Result<()> {
+    if let Some(parent) = dir.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    match DirBuilder::new().mode(DIR_MODE).create(dir) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
+            fs::set_permissions(dir, fs::Permissions::from_mode(DIR_MODE))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+/// Opens `run.lock` (0600) and locks it exclusively without waiting.
+fn take_lock(path: &Path) -> Result<File, ListenerError> {
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .mode(FILE_MODE)
+        .open(path)?;
+    file.set_permissions(fs::Permissions::from_mode(FILE_MODE))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => Err(ListenerError::AlreadyRunning),
+        Err(TryLockError::Error(e)) => Err(e.into()),
     }
 }
 
@@ -181,18 +239,20 @@ impl Route {
     }
 }
 
-/// Reads up to the next `\n` (dropped); a line over `MAX_LINE` is skipped to its end.
+/// Reads up to the next `\n` (dropped); a line over `MAX_LINE` is skipped to its
+/// end; an unterminated last line is dropped.
 async fn read_line(reader: &mut (impl AsyncBufRead + Unpin)) -> io::Result<Option<Line>> {
     let mut line = Vec::new();
     let mut too_long = false;
     loop {
         let buf = reader.fill_buf().await?;
         if buf.is_empty() {
-            return Ok(match (too_long, line.is_empty()) {
-                (true, _) => Some(Line::TooLong),
-                (false, true) => None,
-                (false, false) => Some(Line::Text(line)),
-            });
+            // An unterminated last line was not fully delivered (the sender
+            // gave up and queued the hook instead): drop it.
+            if too_long || !line.is_empty() {
+                tracing::warn!("unterminated hook line dropped");
+            }
+            return Ok(None);
         }
         let (chunk, found) = match buf.iter().position(|&b| b == b'\n') {
             Some(i) => (&buf[..i], Some(i + 1)),
@@ -238,11 +298,8 @@ mod tests {
     async fn lines_split_across_reads() {
         assert_eq!(
             lines(b"first line\nsecond\nlast").await,
-            vec![
-                Some(b"first line".to_vec()),
-                Some(b"second".to_vec()),
-                Some(b"last".to_vec())
-            ]
+            // An unterminated last line was never fully delivered: dropped.
+            vec![Some(b"first line".to_vec()), Some(b"second".to_vec())]
         );
     }
 
