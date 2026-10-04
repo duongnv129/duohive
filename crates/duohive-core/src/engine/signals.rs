@@ -31,8 +31,8 @@ impl Engine {
     pub(super) fn on_hook(&mut self, message: &HookMessage) -> Vec<Event> {
         let Some(agent) = self.authenticate(message) else {
             tracing::warn!(
-                agent = %message.agent,
-                event = %message.event,
+                agent = ?message.agent,
+                event = ?message.event,
                 "hook dropped: unknown agent or wrong token"
             );
             return Vec::new();
@@ -123,7 +123,7 @@ impl Engine {
         let outcome = if now < pending.due {
             ExitOutcome::Stopped
         } else {
-            ExitOutcome::Errored(unexpected(pending.status))
+            late_exit(rt.stopping, pending.status)
         };
         out.extend(self.finish_exit(agent, &pending.window, true, outcome));
         true
@@ -173,13 +173,23 @@ impl Engine {
         out
     }
 
-    /// `Started`: records the agent's current window.
+    /// `Started`: records the agent's current window. A window reported after
+    /// its launch already ended never leaks: an errored agent with no window
+    /// keeps it (so a stop or relaunch kills it), any other is killed now.
     pub(super) fn on_started(&mut self, agent: &AgentName, window: WindowId) -> Vec<Event> {
-        if !self.agents.contains_key(agent) || !self.state_of(agent).is_running() {
-            tracing::debug!(%agent, window = %window.0, "window started for an agent not running");
+        if !self.agents.contains_key(agent) {
+            tracing::debug!(%agent, window = %window.0, "window started for an unknown agent");
             return Vec::new();
         }
-        self.rt_mut(agent).window = Some(window);
+        let state = self.state_of(agent);
+        let rt = self.rt_mut(agent);
+        let keep = state.is_running() || (state == AgentState::Errored && rt.window.is_none());
+        if !keep {
+            tracing::debug!(%agent, window = %window.0, ?state, "late window killed");
+            self.ports.runtime.kill(agent, &window);
+            return Vec::new();
+        }
+        rt.window = Some(window);
         let mut out = Vec::new();
         self.save_row(agent, &mut out);
         out
@@ -277,8 +287,9 @@ impl Engine {
         out
     }
 
-    /// Zero exits whose end hook never came: errored at their due time (D21).
-    pub(super) fn on_tick(&mut self) -> Vec<Event> {
+    /// Zero exits whose end hook never came: errored at their due time (D21),
+    /// or stopped when a stop arrived during the grace.
+    pub(super) fn expire_exits(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
         let due: Vec<(AgentName, ExitPending)> = self
             .agents
@@ -288,7 +299,7 @@ impl Engine {
             .collect();
         due.into_iter()
             .flat_map(|(agent, p)| {
-                let outcome = ExitOutcome::Errored(unexpected(p.status));
+                let outcome = late_exit(self.rt_mut(&agent).stopping, p.status);
                 self.finish_exit(&agent, &p.window, true, outcome)
             })
             .collect()
@@ -353,6 +364,15 @@ fn screen_trigger(
     }
 }
 
+/// A zero exit whose end hook missed the grace: rule 5, unless a stop was asked for.
+fn late_exit(stopping: bool, status: Option<i32>) -> ExitOutcome {
+    if stopping {
+        ExitOutcome::Stopped
+    } else {
+        ExitOutcome::Errored(unexpected(status))
+    }
+}
+
 /// Rule 5's row text.
 fn unexpected(status: Option<i32>) -> String {
     match status {
@@ -367,5 +387,7 @@ fn same_token(expected: &str, given: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+#[cfg(test)]
+mod races;
 #[cfg(test)]
 mod tests;
