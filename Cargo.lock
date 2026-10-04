@@ -337,6 +337,7 @@ dependencies = [
  "duohive-store",
  "duohive-tmux",
  "duohive-tui",
+ "getrandom 0.4.3",
  "serde_json",
  "tempfile",
  "thiserror 2.0.21",
