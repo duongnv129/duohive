@@ -24,6 +24,10 @@ const DISPOSE_LIMIT_MS = 4500;
 // 1 s product default is for hung exes (the `hang` instance keeps it).
 const SESSION_END_LIMIT_MS = 10000;
 
+// Per-delivery kill limit for instances whose deliveries must complete: the 2 s
+// product default is for hung exes (the `slow` instance keeps it).
+const DELIVERY_LIMIT_MS = 10000;
+
 const errors = [];
 process.on("uncaughtException", (e) => errors.push(`uncaught: ${e}`));
 process.on("unhandledRejection", (e) => errors.push(`unhandled rejection: ${e}`));
@@ -43,7 +47,8 @@ const ctx = {
   serverUrl: new URL("http://localhost:4096/"),
 };
 
-async function instance(agent, exe, endLimitMs = SESSION_END_LIMIT_MS) {
+async function instance(agent, exe, endLimitMs = SESSION_END_LIMIT_MS, deliveryLimitMs = DELIVERY_LIMIT_MS) {
+  process.env.DUOHIVE_DELIVERY_LIMIT_MS = String(deliveryLimitMs);
   process.env.DUOHIVE_SESSION_END_LIMIT_MS = String(endLimitMs);
   process.env.DUOHIVE_HOOK_EXE = exe;
   process.env.DUOHIVE_HOOK_AGENT = agent;
@@ -274,7 +279,7 @@ await timed("missing exe dispose", DISPOSE_LIMIT_MS, () => h.dispose());
 
 // A hook exe that hangs: hooks still return at once, and dispose is bounded
 // (1 s for the chain, then a session-end spawn bounded at 1 s).
-const hang = await instance("hang", hangExe, 1000);
+const hang = await instance("hang", hangExe, 1000, 2000);
 await timed("hang event", RETURNS_AT_ONCE_MS, () =>
   hang.hooks.event(sample("catalog.updated", {})),
 );
@@ -293,7 +298,7 @@ await running("inflight");
 await timed("inflight dispose", DISPOSE_LIMIT_MS, () => inflight.hooks.dispose());
 
 // A delivery that hangs is killed at 2 s and the chain goes on.
-const slow = await instance("slow", hookExe);
+const slow = await instance("slow", hookExe, SESSION_END_LIMIT_MS, 2000);
 await timed("slow event", RETURNS_AT_ONCE_MS, () => slow.hooks.event(sample("catalog.updated", {})));
 await timed("slow busy", RETURNS_AT_ONCE_MS, () =>
   slow.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
