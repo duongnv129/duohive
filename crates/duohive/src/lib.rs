@@ -2,6 +2,7 @@
 //! listener, the fake agent and the headless system.
 
 pub mod args;
+pub mod bench;
 pub mod fake_agent;
 pub mod hook_cmd;
 pub mod hook_listener;

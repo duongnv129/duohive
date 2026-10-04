@@ -1,0 +1,188 @@
+//! The bench's numbers and how they print (PRD Success Metrics).
+
+use std::fmt;
+
+use serde_json::{Value, json};
+
+/// p50, p95 and max of a set of samples.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Percentiles {
+    /// The median.
+    pub p50: f64,
+    /// The 95th percentile.
+    pub p95: f64,
+    /// The largest sample.
+    pub max: f64,
+}
+
+/// What one bench run measured.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BenchReport {
+    /// How many agents ran.
+    pub agents: u32,
+    /// The tmux version, without the `tmux ` prefix.
+    pub tmux: String,
+    /// `<os>-<arch>`.
+    pub platform: String,
+    /// DuoHive's CPU while every agent is at rest, percent of one core.
+    pub idle_cpu_pct: f64,
+    /// DuoHive's peak resident memory in MB.
+    pub peak_rss_mb: f64,
+    /// From a hook's `sent_at` to the frame that shows its state, in ms.
+    pub hook_to_screen_ms: Percentiles,
+}
+
+/// The PRD targets for a run's agent count: at 10 agents or fewer the 10-agent
+/// targets, above that the 100-agent ones.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Targets {
+    /// Idle CPU, percent.
+    pub cpu_pct: f64,
+    /// Memory, MB.
+    pub rss_mb: f64,
+    /// Hook to screen, ms.
+    pub hook_ms: f64,
+}
+
+impl Targets {
+    /// The targets that apply at `agents`.
+    pub fn for_agents(agents: u32) -> Self {
+        if agents <= 10 {
+            Self {
+                cpu_pct: 1.0,
+                rss_mb: 20.0,
+                hook_ms: 1000.0,
+            }
+        } else {
+            Self {
+                cpu_pct: 3.0,
+                rss_mb: 60.0,
+                hook_ms: 2000.0,
+            }
+        }
+    }
+}
+
+/// How loaded the machine was, so a number can be read in context.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Machine {
+    /// Logical CPUs.
+    pub cpus: usize,
+    /// 1, 5 and 15 minute load averages when the bench began.
+    pub load_start: Option<[f64; 3]>,
+    /// The same, when the idle measurement ended.
+    pub load_end: Option<[f64; 3]>,
+}
+
+/// A run: the report plus the context around it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BenchOutcome {
+    /// The measurements.
+    pub report: BenchReport,
+    /// The machine they were taken on.
+    pub machine: Machine,
+    /// How many hooks were timed (the percentiles rest on these).
+    pub hook_samples: usize,
+    /// The bench's pid (its tmux socket is `duohive-bench-<pid>`).
+    pub pid: u32,
+}
+
+const LABEL_WIDTH: usize = 16;
+const VALUE_WIDTH: usize = 9;
+
+/// ` · MISSED` when `over`, which must never be left out.
+fn verdict(over: bool) -> &'static str {
+    if over { "  MISSED" } else { "" }
+}
+
+/// `{:.1}` with the sign and width the report uses.
+fn one(v: f64) -> String {
+    format!("{v:.1}")
+}
+
+impl fmt::Display for BenchReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let t = Targets::for_agents(self.agents);
+        let h = &self.hook_to_screen_ms;
+        writeln!(
+            f,
+            "duohive bench · {} agents · tmux {} · {}",
+            self.agents, self.tmux, self.platform
+        )?;
+        let cpu = format!("{} %", one(self.idle_cpu_pct));
+        let mem = format!("{} MB", one(self.peak_rss_mb));
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}{cpu:<VALUE_WIDTH$}target < {} %{}",
+            "idle CPU",
+            t.cpu_pct,
+            verdict(self.idle_cpu_pct >= t.cpu_pct)
+        )?;
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}{mem:<VALUE_WIDTH$}target < {} MB{}",
+            "memory (peak)",
+            t.rss_mb,
+            verdict(self.peak_rss_mb >= t.rss_mb)
+        )?;
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}p50 {:.0} ms · p95 {:.0} ms · max {:.0} ms   target < {} ms{}",
+            "hook → screen",
+            h.p50,
+            h.p95,
+            h.max,
+            t.hook_ms,
+            verdict(h.p95 >= t.hook_ms)
+        )
+    }
+}
+
+fn loads(l: Option<[f64; 3]>) -> String {
+    l.map_or_else(
+        || "unknown".to_owned(),
+        |[a, b, c]| format!("{a:.2} {b:.2} {c:.2}"),
+    )
+}
+
+impl fmt::Display for BenchOutcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.report)?;
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}{} timed hooks",
+            "samples", self.hook_samples
+        )?;
+        writeln!(
+            f,
+            "{:<LABEL_WIDTH$}{} cpus · load (1/5/15 min) {} at start, {} at the end",
+            "machine",
+            self.machine.cpus,
+            loads(self.machine.load_start),
+            loads(self.machine.load_end)
+        )
+    }
+}
+
+impl BenchOutcome {
+    /// The run as JSON (`--json`).
+    pub fn to_json(&self) -> Value {
+        let r = &self.report;
+        let h = &r.hook_to_screen_ms;
+        json!({
+            "agents": r.agents,
+            "tmux": r.tmux,
+            "platform": r.platform,
+            "idle_cpu_pct": r.idle_cpu_pct,
+            "peak_rss_mb": r.peak_rss_mb,
+            "hook_to_screen_ms": { "p50": h.p50, "p95": h.p95, "max": h.max },
+            "machine": {
+                "cpus": self.machine.cpus,
+                "load_start": self.machine.load_start,
+                "load_end": self.machine.load_end,
+            },
+            "hook_samples": self.hook_samples,
+            "pid": self.pid,
+        })
+    }
+}
