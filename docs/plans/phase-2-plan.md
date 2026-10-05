@@ -39,7 +39,7 @@ New in this phase:
 - [UI/UX spec](../ux/ui-spec.md): §2–§5 and §8.
 - [Technical design](../design/technical-design.md): §3, §4.2, §4.3, §5.1, §5.3 and §7–§9.
 - [Roadmap](v1-roadmap.md): row 2.
-- [Design note](../specs/2026-10-05-v1-remaining-phases-planning-design.md) and [traceability](v1-traceability.md).
+- [Roadmap: Planning](v1-roadmap.md#planning) and [traceability](v1-traceability.md).
 
 ## Global Constraints
 
