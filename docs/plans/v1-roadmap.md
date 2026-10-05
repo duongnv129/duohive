@@ -14,6 +14,19 @@ v1 supports two agent CLIs, Claude Code and OpenCode; Codex is deferred to after
 | Data access | Only through the `Store` port; SQLite via `rusqlite`; migrations append-only |
 | Tests | Unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket |
 
+## Planning
+
+How each phase's plan is written and kept consistent with the PRD, the UI/UX spec and the technical design (agreed 2026-10-05).
+
+| Topic | Rule |
+|---|---|
+| Depth | The next phase gets a full test-first plan. Later phases get an outline (goal, done-when, spec coverage, tasks with files, test intent and spec references, risks, open questions), expanded to full detail when the phase starts. A full plan written too early would rest on code that doesn't exist yet |
+| Format | A full plan follows [phase-2-plan.md](phase-2-plan.md): header, Global Constraints, Review Focus, File Structure, decisions where the specs are silent, then tasks with failing tests first and checkbox steps |
+| Decisions | Numbered per phase: `D1…` (phases 0–1), `P2-D1…`, and so on. Outlines list open questions as `P3-Q1…`, each with a default. Earlier decisions stay in force unless a later plan says which one it replaces |
+| Traceability | [v1-traceability.md](v1-traceability.md) gives every PRD requirement, UI spec section and TD section exactly one owning phase and task. A plan that moves a requirement updates it in the same commit |
+| Conflicts | Settled by the precedence in [docs/README.md](../README.md): the PRD decides *what*, the UI/UX spec *how it looks*, the technical design *how it's built*. A change to a PRD requirement goes to the author first; wording and status fixes are made in place |
+| Verification | Before a plan is used, two independent reviewers check it against one rubric: traceability, scope against this roadmap, spec fidelity, decisions, feasibility against the code and `AGENTS.md`, plan quality, internal consistency. Findings are fixed and re-reviewed, for up to three rounds; anything still open goes to the author |
+
 ## Phases
 
 | # | Phase | Delivers | Done when | Estimate | Status |
