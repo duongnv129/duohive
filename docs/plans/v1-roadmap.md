@@ -1,7 +1,7 @@
 # DuoHive v1 — Roadmap
 
 **Status:** Approved 2026-10-03 · Living document · Phases 0 and 1 done 2026-10-04.
-Sources: [PRD](../product/prd.md) · [UI/UX spec](../ux/ui-spec.md) · [Technical design](../design/technical-design.md). Each phase gets its own detailed, test-first plan in `docs/plans/` when it starts.
+Sources: [PRD](../product/prd.md) · [UI/UX spec](../ux/ui-spec.md) · [Technical design](../design/technical-design.md). Each phase gets its own detailed, test-first plan in `docs/plans/` when it starts: [phase 0–1](phase-0-1-plan.md) (done) · [phase 2](phase-2-plan.md) (full) · outlines for [phase 3](phase-3-plan.md), [phase 4](phase-4-plan.md) and [phase 5](phase-5-plan.md), expanded when each starts. [Traceability](v1-traceability.md) maps every requirement to its phase and task.
 v1 supports two agent CLIs, Claude Code and OpenCode; Codex is deferred to after v1 (PRD What We're NOT Building).
 
 ## Conventions (set in the first commit; there is no earlier code)
@@ -20,9 +20,9 @@ v1 supports two agent CLIs, Claude Code and OpenCode; Codex is deferred to after
 |---|---|---|---|---|---|
 | 0 | Foundations and spikes | Cargo workspace (7 crates), toolchain, licence, CI; Makefile, cargo-deny, typos and community files (README, CONTRIBUTING, code of conduct, security policy); spike S0 (tmux activity subscriptions at 100 windows); spikes S1 Claude Code and S2 OpenCode (per-launch instructions, hooks, MCP, model lists, reply extraction) | Spike report written; TD updated where a mechanism changed | 3–5 days | done 2026-10-04 |
 | 1 | Org and agents | Core domain (org, inheritance, validation); engine (command/event loop, full state machine, Give work by state, quiet, Needs you); store (`org.toml`, `settings.toml`, `state.db`); tmux runtime; the Claude Code and OpenCode adapters and `duohive hook`; minimal TUI (tree with live status, forms); basic `bench` | The author's daily agents run in DuoHive with correct status; `bench` reports at 10 agents | 2–3 weeks | done 2026-10-04 |
-| 2 | One screen | Three-pane layout; agent pane (Selected and Typing modes, zoom); Needs you you can act on; desktop alerts; Give work with worktrees and merge clean-up; friction log, then the UI/UX improvement pass | A day's work needs no `tmux attach` | 2 weeks | next |
+| 2 | One screen | Three-pane layout; agent pane (Selected and Typing modes, zoom); Needs you you can act on; desktop alerts and their Settings; Give work with worktrees and merge clean-up; friction log, then the UI/UX improvement pass | A day's work needs no `tmux attach` | 2 weeks | next |
 | 3 | Duo and messaging | MCP endpoint and helper; per-launch tokens and tool rights; inbox; Duo, Duo chat and `→` lines; approval cards; task to a role | A "what's blocked, then fix it" round trip happens entirely in chat; a task given to a role reaches a free agent | 2–3 weeks | pending |
-| 4 | Scale and polish | `bench` at 100 agents and tuning; first run with templates; model and effort picker; key-binding editor; key and mouse completeness | Every Success Metric target passes on Apple M-series | 1–2 weeks | pending |
+| 4 | Scale and polish | `bench` at 100 agents and tuning; first run with templates; model and effort picker; key-binding editor; key and mouse completeness (`?`, filter, move, mouse); theme `auto` and the accessibility re-check | Every Success Metric target passes on Apple M-series | 1–2 weeks | pending |
 | 5 | Open-source launch | Pre-launch UX check; `cargo-dist` release, Homebrew tap, crate; README finished for launch; name checks | DuoHive is public; 30-day daily use and < 10 minutes to a first team | 1 week + 30-day test | pending |
 
 Total: roughly 9–12 weeks of focused work.
