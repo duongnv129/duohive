@@ -5,11 +5,11 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 
 **Goal:** DuoHive meets every Success Metric at 100 agents on Apple M-series. A new user gets a ready-made org from a template. Model and effort come from each CLI. Every action works by key and by mouse, with a `?` map and editable bindings.
 
-**Done when (roadmap):** Every Success Metric target passes on Apple M-series.
+**Done when (roadmap):** Every benchmark target in Success Metrics (idle CPU, memory, status freshness, start-up, binary size) passes on Apple M-series.
 
 ## Constraints carried
 
-- **Inherited:** every Global Constraint of phase 2, and the decisions of phases 0–3.
+- **Inherited:** every Global Constraint of phases 0 and 2, decisions D1–D32, P2-D1–P2-D21 and the phase 3 decisions (its P3-Q answers, recorded when phase 3 is expanded).
 - **Targets** (PRD Success Metrics), gated on Apple M-series; Linux numbers are reported, not gating:
 
   | Metric | At 10 agents | At 100 agents |
@@ -42,7 +42,7 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 
 - **What this phase adds beyond the roadmap's wording:** roadmap row 4 says "key and mouse completeness". This plan reads that as every remaining UI §4.11 binding (`?`, `f`, `m`), the mouse (UI §5), and Settings' Keys and Org rows (P2-D13).
 - **Also assigned here:** theme `auto` and the accessibility re-check (UI §2.3, §6), as polish; no other phase owns them.
-- **The roadmap and PRD match:** roadmap row 4 and PRD Delivery Phases row 4 list all of these, since 2026-10-05.
+- **The three phase tables match:** roadmap row 4, PRD Delivery Phases row 4 and TD §12 row 4 list theme `auto` and the accessibility re-check, since 2026-10-05. The rest falls under their "key and mouse completeness", "the key-binding editor" and "first-run setup with templates".
 - **Recorded as P4-D1:** theme `auto`, the accessibility re-check, `f`, `m` and Settings' Keys and Org rows belong to phase 4. The UI spec requires them, and no other phase owns them.
 
 ## Spec coverage

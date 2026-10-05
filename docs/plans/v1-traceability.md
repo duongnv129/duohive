@@ -122,7 +122,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.11 Key map: phase 2 keys (P2-D9) | 2 | 2.5–2.8, 2.15–2.17 |
 | §4.11 Key map: chat and card keys | 3 | 3.9, 3.10 |
 | §4.11 Key map: `?`, `f`, `m`, mouse, rebinding | 4 | 4.6–4.9 |
-| §4.12 Errors and empty states: tmux missing, row errors, banner, empty role (held-back copy) | 1 | T23 |
+| §4.12 Errors and empty states: tmux missing, row errors (without `space retry`), banner, empty role (held-back copy) | 1 | T23 |
+| §4.12 Errors and empty states: errored row's `space retry` | 2 | 2.15 |
 | §4.12 Errors and empty states: empty role, full copy (`… or ask Duo`) | 3 | 3.9 |
 | §4.12 Errors and empty states: worktree creation error | 2 | 2.12 |
 | §5 Interaction rules: keys, typing, quit, destructive confirms, calm | 1 | T24 |
@@ -140,16 +141,20 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 
 | Section (part) | Phase | Task |
 |---|---|---|
-| §2 Decisions (except Agents' tools) | 1 | T1–T30 |
+| §2 Decisions: language, runtime, CI-facing choices verified by spikes | 0 | T1–T5 |
+| §2 Decisions: process model, status, concurrency, storage, CLI settings, approvals | 1 | T6–T30 |
 | §2 Agents' tools | 3 | 3.1–3.3 |
 | §3.1 Ports: `Runtime`, `CliAdapter`, `Store`, `Clock` | 1 | T10 |
 | §3.1 Ports: `Notifier`, `Git`, `PaneView` (P2-D1) | 2 | 2.1, 2.2 |
 | §3.2 Command/event boundary | 1 | T10 |
 | §3.2 Command/event boundary: tool commands | 3 | 3.1 |
-| §3.3 Concurrency | 1 | T15 |
+| §3.3 Concurrency: the core task and timer wheel; the TUI's draw-on-change at 30 fps | 1 | T15, T24 |
+| §3.3 Concurrency: git checks and worktree re-check timers | 2 | 2.13, 2.14 |
+| §3.3 Concurrency: the MCP listener | 3 | 3.1 |
 | §3.4 Workspace | 0 | T1 |
 | §3.4 `duohive-mcp` content | 3 | 3.1 |
 | §4.1–§4.2 Status pipeline and engine | 1 | T9, T12–13, T19 |
+| §4.1 Start-up: git checks after the first frame | 2 | 2.13 |
 | §4.2 The finished/idle next-turn row (P2-D11) | 2 | 2.12 |
 | §4.2 Alert triggers: agents | 2 | 2.9 |
 | §4.2 Alert triggers: a raised card | 3 | 3.6 |
@@ -166,8 +171,9 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §5.4 Task to a role | 3 | 3.7 |
 | §5.5 Stop and exit | 1 | T11, T12, T19 |
 | §6.1–§6.5 Identity, tools, inbox, Duo, Duo chat (token generation: D1) | 3 | 3.1–3.8 |
+| §6.4 Changing Duo's CLI restarts Duo after a confirmation | 1 | T14, T25 |
 | §6.3 Inbox: delivery counts once the recipient leaves rest (P2-D11) | 2 | 2.12 |
-| §7 Storage | 1 | T16–17 |
+| §7 Storage: files, `state.db`, single instance (`run.lock`), quit and shutdown, logs | 1 | T16–17, T22, T27, T29 |
 | §7 Storage: worktrees table, `sessions.worktree` | 2 | 2.11, 2.13 |
 | §7 Storage: messages, cards, chat tables | 3 | 3.4, 3.6, 3.8 |
 | §7 Storage: timestamped template backup | 4 | 4.4 |
@@ -175,7 +181,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §8 Errors: worktree, no notifier | 2 | 2.10, 2.12, 2.13 |
 | §8 Errors: message undeliverable | 3 | 3.4 |
 | §8 Errors: no agent CLI at first run (D28) | 4 | 4.3 |
-| §9 Testing: core, adapters, tmux, store, TUI at 80×24 and 160×48 | 1 | T6–T29 |
+| §9 Testing: core, adapters, tmux, store, TUI at 80×24 and 160×48, key tests | 1 | T6–T29 |
+| §9 Testing: mouse tests for every action | 4 | 4.7 |
 | §9 Testing: git integration tests | 2 | 2.14 |
 | §9 Testing: end-to-end story | 3 | 3.12 |
 | §10 Benchmark: basic | 1 | T28 |
@@ -183,6 +190,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §10 Benchmark: full and tuning | 4 | 4.1, 4.2 |
 | §10 Benchmark: release gate | 5 | 5.2 |
 | §11 CI | 0 | T2 |
+| §11 Dependencies: Ratatui and crossterm pinned, MSRV declared | 0 | T1 |
 | §11 Release: `cargo-dist`, Homebrew, crate | 5 | 5.3 |
 | §12 Delivery mapping | 5 | 5.9 (final check); kept in step by each phase's closing task: 2.20, 3.12, 4.10 |
 
@@ -196,7 +204,9 @@ Interim behaviour that a later phase removes. They are listed in the plans and h
 | D7 / P2-D3: empty-org and empty-role copy without "ask Duo" | phase 1 | 3.9 |
 | P2-D3: role summary without `space give work to this role` | 2.5 | 3.11 |
 | D14: free-text model and effort | phase 1 | 4.5 |
+| D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3 |
 | P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9 |
 | P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11 |
 | P2-D13: Settings without the Keys and Org rows; theme `auto` renders dark | 2.17 | 4.4, 4.6, 4.9 |
-| P2-D9: no `?`, `f`, `m` or mouse | phase 2 | 4.6–4.9 |
+| P2-D9: no `?` (footer and header), `f`, `m` or mouse | phase 2 | 4.6–4.9 |
+| T23: errored-row hint without `space retry` | phase 1 | 2.15 |
