@@ -43,7 +43,7 @@ New in this phase:
 
 ## Global Constraints
 
-- **Everything in [phase-0-1-plan.md](phase-0-1-plan.md) Global Constraints still holds:**
+- **Everything in [phase-0-plan.md](phase-0-plan.md#global-constraints) Global Constraints still holds:**
   - toolchain `1.99.0`, edition 2024, Apache-2.0;
   - the dependency rule;
   - `duohive-core` does no I/O;
@@ -52,7 +52,7 @@ New in this phase:
   - no `std::env::set_var` in tests;
   - tmux tests run on a throwaway socket, never on `duohive`;
   - conventional commits, with no `Co-Authored-By` line, and never push.
-- **Phase 0–1 decisions D1–D32 stay in force.** Four change here:
+- **Phase 1 decisions D1–D32 ([phase-1-plan.md](phase-1-plan.md)) stay in force.** Four change here:
   - D7 (the phase-1 layout) is replaced by P2-D3;
   - D8 (the phase-1 keys) is extended by P2-D9;
   - D15 is done here (alerts arrive in phase 2);
