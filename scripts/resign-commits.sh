@@ -3,11 +3,16 @@
 # marks them Verified.
 #
 #   scripts/resign-commits.sh                 re-sign all commits, then force-push
+#   scripts/resign-commits.sh --unsigned-only re-sign only from the oldest unsigned commit
 #   scripts/resign-commits.sh --base REF      re-sign only the commits after REF
 #   scripts/resign-commits.sh --no-push       re-sign locally, don't push
 #   scripts/resign-commits.sh --dry-run       list the commits and their status only
 #   scripts/resign-commits.sh --yes           don't ask before rewriting
 #
+# --unsigned-only: unsigned means no signature at all (%G? = N); a commit signed
+# with a key you don't have locally (E, such as GitHub's merge commits) counts as
+# signed. Commits before the oldest unsigned one keep their hashes; the ones after
+# it are re-signed too, since their parents change. Nothing unsigned → no rewrite.
 # Uses your git signing setup (user.signingkey, gpg.format). The key and the
 # committer email must both be on your GitHub account for Verified to show.
 # Commits are rewritten: hashes change, authors and dates are kept, and
@@ -18,9 +23,10 @@ base=""
 dry_run=0
 push=1
 assume_yes=0
+unsigned_only=0
 
 usage() {
-    sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -34,6 +40,7 @@ while [ $# -gt 0 ]; do
         --base=*) base="${1#--base=}"; shift ;;
         --dry-run) dry_run=1; shift ;;
         --no-push) push=0; shift ;;
+        --unsigned-only) unsigned_only=1; shift ;;
         -y | --yes) assume_yes=1; shift ;;
         -h | --help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -68,6 +75,7 @@ else
     rebase_onto=(--root)
     scope="since the first commit"
 fi
+rewrite_range="$range"
 
 count="$(git rev-list --count "$range")"
 [ "$count" -gt 0 ] || { echo "no commits on $branch $scope · nothing to do"; exit 0; }
@@ -77,9 +85,28 @@ show_status() {
     git log --reverse --format='  %h  %G?  %an <%ae>  %s' "$range"
 }
 
-echo "$count commit(s) on $branch $scope (G = signed, N = not signed):"
+echo "$count commit(s) on $branch $scope (G = signed, E = signed by a key you don't have, N = not signed):"
 show_status
-[ "$dry_run" -eq 0 ] || exit 0
+
+if [ "$unsigned_only" -eq 1 ]; then
+    # Rewrite from the oldest unsigned commit; everything before it is kept.
+    first_unsigned="$(git log --reverse --format='%H %G?' "$range" | awk '$2 == "N" && !found { print $1; found = 1 }')"
+    if [ -z "$first_unsigned" ]; then
+        echo "every commit is signed · nothing to do"
+        exit 0
+    fi
+    if git rev-parse --verify --quiet "$first_unsigned^" >/dev/null; then
+        rebase_onto=("$first_unsigned^")
+        rewrite_range="$first_unsigned^..HEAD"
+    else
+        rebase_onto=(--root)
+        rewrite_range="HEAD"
+    fi
+    unsigned="$(git log --format='%G?' "$range" | grep -c '^N$' || true)"
+    echo "$unsigned unsigned · rewriting from $(git rev-parse --short "$first_unsigned") to HEAD"
+fi
+rewrite="$(git rev-list --count "$rewrite_range")"
+[ "$dry_run" -eq 0 ] || { echo "would rewrite $rewrite commit(s)"; exit 0; }
 
 signing_format="$(git config --get gpg.format || echo openpgp)"
 signing_key="$(git config --get user.signingkey || true)"
@@ -99,7 +126,7 @@ committer_email="$(git config --get user.email || true)"
 echo "commits will be signed and committed as <$committer_email>; this email must be verified on GitHub"
 
 if [ "$assume_yes" -eq 0 ]; then
-    action="rewrite $count commit(s) on $branch"
+    action="rewrite $rewrite commit(s) on $branch"
     [ "$push" -eq 0 ] || action="$action and force-push to $remote/$remote_branch"
     [ -t 0 ] || die "not a terminal · pass --yes to $action"
     printf '%s? [y/N] ' "$action"
@@ -114,8 +141,8 @@ backup="backup/$branch-$(date +%Y%m%d%H%M%S)"
 git branch "$backup"
 echo "backup branch: $backup"
 
-# --force-rebase rewrites every commit even when nothing moves, so each gets a
-# fresh signature; --committer-date-is-author-date keeps the dates;
+# --force-rebase rewrites every commit in the range even when nothing moves, so
+# each gets a fresh signature; --committer-date-is-author-date keeps the dates;
 # --rebase-merges keeps merge commits.
 echo "re-signing…"
 if ! git rebase --quiet --force-rebase --gpg-sign --rebase-merges \
@@ -130,8 +157,8 @@ fi
 
 echo "result:"
 show_status
-bad="$(git log --format='%G?' "$range" | grep -cvE '^[GU]$' || true)"
-[ "$bad" -eq 0 ] || die "$bad commit(s) don't show a good signature · nothing pushed (undo: git reset --hard $backup)"
+bad="$(git log --format='%G?' "$rewrite_range" | grep -cvE '^[GU]$' || true)"
+[ "$bad" -eq 0 ] || die "$bad rewritten commit(s) don't show a good signature · nothing pushed (undo: git reset --hard $backup)"
 
 if [ "$push" -eq 1 ]; then
     echo "force-pushing to ${remote}/${remote_branch}…"

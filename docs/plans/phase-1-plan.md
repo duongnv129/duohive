@@ -1,39 +1,18 @@
-# DuoHive Phase 0 and Phase 1 Implementation Plan
+# DuoHive Phase 1 Implementation Plan — Org and agents
 
-**Status:** Done 2026-10-04 · every task built and reviewed (results in [bench-results.md](bench-results.md)); decisions made during execution are folded into the tasks and decision log below.
+**Status:** Done 2026-10-04 · every task built and reviewed (results in [bench-results.md](bench-results.md)); decisions made during execution are folded into the tasks and decision log.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the DuoHive workspace, verify the tmux and CLI mechanisms with spikes, then deliver Phase 1: you can define an org (teams, roles, agents), start and stop standing agents on Claude Code and OpenCode in `tmux -L duohive`, see their status live in a minimal org tree, edit the org through forms, and run a basic `duohive bench` at 10 agents.
+**Goal:** You can define an org (teams, roles, agents), start and stop standing agents on Claude Code and OpenCode in `tmux -L duohive`, see their status live in a minimal org tree, edit the org through forms, and run a basic `duohive bench` at 10 agents.
+
+**Companion plan:** [phase-0-plan.md](phase-0-plan.md) (Tasks 1–5: workspace and spikes S0–S2). Task numbers run across both plans. "Global Constraints" in this plan means [phase-0-plan.md § Global Constraints](phase-0-plan.md#global-constraints), which applies here in full.
 
 **Architecture:** Seven crates with inward-only dependencies (TD §3.4). `duohive-core` holds the domain, the port traits and a sans-I/O engine. The engine is one task that owns all state, takes `Command`s and adapter `Input`s, and publishes `Event`s (TD §3.2–3.3). Adapters (tmux runtime, CLI adapters, SQLite/TOML store, hook listener) run as their own tasks and reach the core only through channels or the port traits. The TUI renders events and sends commands.
 
 **Tech Stack:** Rust 1.99.0 (edition 2024), tokio 1.53, ratatui =0.30.2, crossterm =0.29.0, rusqlite 0.40 (bundled SQLite, WAL), toml 1.1, serde 1, serde_json 1, thiserror 2, tracing 0.1 + tracing-subscriber 0.3 + tracing-appender 0.2, shell-words 1.1, getrandom 0.4, libc 0.2, insta 1.49, tempfile 3. tmux 3.2 or newer. Versions checked on the crates.io index (2026-10-03): every pin is the latest stable release (patch updates come through `Cargo.lock` and Dependabot); the highest MSRVs are ratatui 0.30.2 (1.88), toml 1.1 and getrandom 0.4 (1.85), all below the 1.99 toolchain.
 
 **Spec:** [docs/product/prd.md](../product/prd.md) (what), [docs/ux/ui-spec.md](../ux/ui-spec.md) (how it looks), [docs/design/technical-design.md](../design/technical-design.md) (how it is built), [docs/plans/v1-roadmap.md](v1-roadmap.md) (order). When they disagree, the PRD decides *what*, the UI/UX spec decides *how it looks*, and the TD decides *how it's built*. Section references below are "TD §4.2", "UI §2.1", "PRD Org model".
-
-## Global Constraints
-
-- Toolchain `1.99.0` in `rust-toolchain.toml`; `rust-version = "1.99"`; `edition = "2024"`; licence `Apache-2.0`.
-- Crates: `duohive-core`, `duohive-tmux`, `duohive-cli`, `duohive-store`, `duohive-tui`, `duohive-mcp`, `duohive` (binary). Dependency rule: `duohive-core` depends on no `duohive-*` crate; `duohive-tmux`, `duohive-cli`, `duohive-store`, `duohive-tui`, `duohive-mcp` depend only on `duohive-core`; only `duohive` depends on all of them.
-- `duohive-core` does no I/O: no filesystem, process, socket or terminal access (tokio `sync`/`time` only, for the driver loop).
-- Ratatui and crossterm pinned with `=`; upgraded on purpose only.
-- Errors: `thiserror` per crate; no `unwrap`/`expect` outside tests (clippy `unwrap_used`, `expect_used` = deny; allowed in `#[cfg(test)]` code by `clippy.toml`, and in `duohive-core`'s test helpers by `#[cfg(any(test, feature = "testkit"))] #[allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")] pub mod testkit;` in `lib.rs`, since `clippy.toml`'s test allowances don't cover feature-gated modules; the `test` arm lets `cargo test -p duohive-core` compile without `--features testkit`). Errors become events shown on rows (TD §8), never only in a log.
-- Logging: `tracing` to `<data_dir>/logs/`, never the terminal.
-- Data access only through the `Store` port; SQLite via `rusqlite`; migrations append-only.
-- Paths (D18): config dir `$XDG_CONFIG_HOME/duohive` else `~/.config/duohive`; data dir `$XDG_DATA_HOME/duohive` else `~/.local/share/duohive`; `DUOHIVE_CONFIG_DIR` / `DUOHIVE_DATA_DIR` override both (tests, bench). Files: `org.toml`, `settings.toml` (config dir); `state.db`, `run.sock`, `run/<agent>/`, `logs/` (data dir).
-- tmux: DuoHive's own server `tmux -L duohive` (overridable by `DUOHIVE_TMUX_SOCKET`), one session `duohive`, one window per agent; tmux ≥ 3.2 required.
-- The user's global CLI configuration is never modified; every hook, instruction and setting is passed per launch from `<data_dir>/run/<agent>/`. DuoHive passes no auto-approve flags of its own (TD §2).
-- States (PRD, UI §2.1): `stopped ○`, `starting ◌`, `working ●`, `waiting ◆`, `finished ✓`, `idle ◦`, `errored ✕`; `quiet ◷` overlay on working and starting only; `~` marks a screen-read state. Rows say "waiting"; definitions say "waiting on you".
-- Quiet threshold default 5 minutes, from `settings.toml` (`quiet_after_minutes`, minimum 1, D19).
-- Duo goes straight to idle after a turn and is never "finished".
-- Needs you = waiting, quiet and errored agents (cards arrive in phase 3), oldest first by the time each entered that state; a quiet agent is ordered by the start of its silence (D13).
-- Copy: sentence case; agent names are monospace identifiers, never title-cased; "Give work" is the only term for handing over a task; colour is never the only signal.
-- Tests: unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket (`duohive-test-<random>`), never on `duohive`. No test calls `std::env::set_var` (unsafe in edition 2024, and the workspace denies `unsafe_code`): code that reads the environment takes a `HashMap<String, String>` (`Paths::from_vars`, `run_hook`), and tests that run the built binary set variables with `Command::env`.
-- Test-first applies to every task except Tasks 1b, 2–5 and 30, which are infrastructure, spikes and acceptance with no code under test. They are validated instead by: Task 2, `install-tmux.sh` printing the requested `tmux -V` locally and `actionlint` passing on `ci.yml`; Tasks 3–5, a spike report whose every subsection holds measured values and names the fixture or log that proves it; Task 30, the recorded bench output and the author's working day checked against the state table.
-- Supported CLIs: Claude Code and OpenCode only. Codex is deferred to after v1 (PRD What We're NOT Building); nothing in this plan builds, detects or tests it.
-- Commits: conventional (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`), never a `Co-Authored-By` line; do not push.
-- Spike code is throwaway: it lives under `spikes/`, is excluded from the workspace, and nothing in `crates/` imports it. Recorded fixtures (hook payloads, screen captures) are data and go to `crates/duohive-cli/tests/fixtures/`.
 
 ## Review Focus
 
@@ -85,7 +64,7 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 | # | Decision |
 |---|---|
 | D1 | **Per-launch tokens are generated in phase 1.** Hooks authenticate with them (TD §4.1, §6.1), even though the roadmap lists tokens under phase 3. Phase 3 adds tool rights on top. Token = 32 random bytes, lowercase hex. |
-| D2 | **Three transitions the TD §4.2 table lacks:** `starting → waiting` (trust or login prompt at launch), `waiting → finished/idle` (the turn ends after the user declines), `finished/idle → working` (a new turn the user typed straight into the pane). A hook takes each where the CLI has one. As TD §4.2 allows for any transition, a settled screen read takes each only when the adapter has no hook for it (`needs_input`, `turn_end`, `busy` respectively), marked `~`: screen needs-input while starting → waiting, screen at-rest while waiting → finished/idle, screen busy while finished/idle → working. Exception for waiting: while an agent is waiting, a settled screen read applies whatever the hook coverage (at-rest → finished/idle, busy → working), because Claude Code hooks no answer to an approval prompt (spike S1: a declined prompt fires no hook at all, and an accepted long-running tool fires its next hook only when it ends). OpenCode reports the answer (`permission.replied`, spike S2), where the exception is harmless. Another exception: a start-up prompt (Claude Code's workspace trust, a login) appears before the CLI can fire any hook, so a needs-input screen while starting moves the agent to waiting whatever the adapter's hook coverage. A starting agent whose CLI can show a start-up prompt (the adapter's `startup_prompts()`, from Sn.8) is read once before the start timeout fires (Task 13), whatever its hook coverage, so a trust or login prompt shows as `~◆ waiting` rather than a timeout error. |
+| D2 | **Three transitions the TD §4.2 table lacked** (added to it 2026-10-05): `starting → waiting` (trust or login prompt at launch), `waiting → finished/idle` (the turn ends after the user declines), `finished/idle → working` (a new turn the user typed straight into the pane). A hook takes each where the CLI has one. As TD §4.2 allows for any transition, a settled screen read takes each only when the adapter has no hook for it (`needs_input`, `turn_end`, `busy` respectively), marked `~`: screen needs-input while starting → waiting, screen at-rest while waiting → finished/idle, screen busy while finished/idle → working. Exception for waiting: while an agent is waiting, a settled screen read applies whatever the hook coverage (at-rest → finished/idle, busy → working), because Claude Code hooks no answer to an approval prompt (spike S1: a declined prompt fires no hook at all, and an accepted long-running tool fires its next hook only when it ends). OpenCode reports the answer (`permission.replied`, spike S2), where the exception is harmless. Another exception: a start-up prompt (Claude Code's workspace trust, a login) appears before the CLI can fire any hook, so a needs-input screen while starting moves the agent to waiting whatever the adapter's hook coverage. A starting agent whose CLI can show a start-up prompt (the adapter's `startup_prompts()`, from Sn.8) is read once before the start timeout fires (Task 13), whatever its hook coverage, so a trust or login prompt shows as `~◆ waiting` rather than a timeout error. |
 | D3 | **Prompt stacking format:** levels joined by a blank line, each under a Markdown heading: `# Org`, `# Team: <name>`, `# Role: <name>`, `# Agent: <name>`. Empty or whitespace-only levels are left out. |
 | D4 | **Names:** agent names match `^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$`, are unique across the org, and may not equal Duo's name. Team names are unique; role names are unique within their parent (team, or the root). Team and role names: 1–40 characters, trimmed, no control characters, no `›`. |
 | D5 | **Duo's directory** is the user's home directory. Phase 1 starts Duo as an ordinary agent with the org prompt only; Duo's fixed prompt and MCP tools arrive in phase 3. |
@@ -116,182 +95,6 @@ Each is pinned here once; tasks refer to it. Each is also listed for the author 
 | D30 | **Launches before the first `CliInventory` are queued.** `StartAgent` and `GiveWork` launches that arrive before detection finishes wait, in order, in the engine and run when `CliInventory` arrives; the agent's row is unchanged until then. Detection takes at most one `--version` timeout (2 s) after the first frame, so the wait is short and nothing is lost. Task 11. |
 | D31 | **tmux socket and session:** the server is `tmux -L duohive` unless `DUOHIVE_TMUX_SOCKET` names another socket (tests, the bench and the smoke run use their own, so they never touch the user's agents); the session is always `duohive`. The attach hint (D7) uses the socket in use. Tasks 16, 19, 23. |
 | D32 | **Give work to a starting agent is refused** (`GiveWorkRefused { state: Starting }`, nothing sent), like working and waiting: a starting agent already has its launch task, and a paste sent before the CLI's input box exists is lost (spike S2). TD §5.1 and §6.2 were edited to list starting. Task 11. |
-
----
-
-# Phase 0 — Foundations and spikes
-
-### Task 1: Workspace, toolchain, licence and the dependency rule
-
-**Files:**
-- Create: `Cargo.toml`, `rust-toolchain.toml`, `rustfmt.toml`, `clippy.toml`, `LICENSE`, `.gitignore`
-- Create: `crates/<each of the 7 crates>/Cargo.toml` and `src/lib.rs` (`crates/duohive/src/main.rs` too)
-- Test: `crates/duohive/tests/dependency_rule.rs`
-
-**Interfaces:**
-- Produces: the seven crates, empty; workspace dependency versions (Tech Stack) in `[workspace.dependencies]`; `[workspace.lints]` inherited by every crate (`[lints] workspace = true`); `duohive-core` feature `testkit`.
-
-- [x] **Step 1: Write the failing test** `crates/duohive/tests/dependency_rule.rs`. It reads each `crates/*/Cargo.toml` with `toml` (dev-dependency) and collects `[dependencies]` keys starting with `duohive`.
-
-```rust
-#[test]
-fn crates_depend_inward_only() {
-    let deps = workspace_duohive_deps(); // BTreeMap<String, BTreeSet<String>>
-    assert_eq!(deps["duohive-core"], set(&[]));
-    for c in ["duohive-tmux", "duohive-cli", "duohive-store", "duohive-tui", "duohive-mcp"] {
-        assert_eq!(deps[c], set(&["duohive-core"]), "{c}");
-    }
-    assert_eq!(deps["duohive"], set(&["duohive-core", "duohive-tmux", "duohive-cli",
-        "duohive-store", "duohive-tui", "duohive-mcp"]));
-    assert_eq!(deps.len(), 7);
-}
-```
-
-- [x] **Step 2: Run it and see it fail.** `cargo test -p duohive --test dependency_rule` → FAIL (no workspace yet, or missing crates).
-
-- [x] **Step 3: Create the workspace.**
-  - First re-check the MSRVs: `cargo info <crate>@<version>` for each Tech Stack pin shows a `rust-version` ≤ 1.99 (checked when this plan was written; see Tech Stack). Lower a pin only if one fails.
-  - `rust-toolchain.toml`: `channel = "1.99.0"`, `components = ["rustfmt", "clippy"]`.
-  - Root `Cargo.toml`: `members = ["crates/*"]`, `exclude = ["spikes"]`, `resolver = "3"`, `[workspace.package]` with `edition = "2024"`, `rust-version = "1.99"`, `license = "Apache-2.0"`.
-  - `[workspace.lints.rust] unsafe_code = "deny"`; `[workspace.lints.clippy] unwrap_used = "deny"`, `expect_used = "deny"`, `dbg_macro = "deny"`, `print_stdout = "deny"`, `print_stderr = "deny"` (the TUI and subcommands that must print use a local `#[expect(clippy::print_stdout)]` with a reason).
-  - `clippy.toml`: `allow-unwrap-in-tests = true`, `allow-expect-in-tests = true`, `allow-print-in-tests = true`.
-  - `rustfmt.toml`: `max_width = 100` (stable options only).
-  - `LICENSE`: the Apache-2.0 text from `https://www.apache.org/licenses/LICENSE-2.0.txt`, unmodified.
-  - `.gitignore`: `/target`, `spikes/**/target`, `*.profraw`.
-  - Each crate's `Cargo.toml` declares exactly the `duohive-*` dependencies in the test; `duohive-core` has `[features] testkit = []`.
-  - `duohive-store`, `duohive-cli`, `duohive-tui` and `duohive` add `duohive-core = { workspace = true, features = ["testkit"] }` under `[dev-dependencies]` (their tests use `example_org()`, `StubAdapter` and the fake ports); `duohive-tmux` and `duohive-mcp` don't. The dependency-rule test reads `[dependencies]` only, so these don't count.
-
-- [x] **Step 4: Run the checks.** `cargo test --workspace --all-features` → PASS; `cargo fmt --all --check` → no output; `cargo clippy --workspace --all-targets --all-features -- -D warnings` → no warnings.
-
-- [x] **Step 5: Commit.** `git add -A && git commit -m "chore: cargo workspace with seven crates, toolchain and licence"`
-
-### Task 1b: Repo hygiene — Makefile, supply-chain and spelling checks, community files
-
-Brings the repo to the baseline of well-run Rust projects (ripgrep, ratatui, uv, helix, zellij), so every later task inherits one way to format, lint, test and contribute. Infrastructure: no code under test, validated by Step 3.
-
-**Files:**
-- Create: `Makefile`, `deny.toml`, `_typos.toml`, `.editorconfig`
-- Create: `README.md` (replaces the empty staged file), `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`, `AGENTS.md`, `CLAUDE.md`
-- Create: `.github/pull_request_template.md`, `.github/ISSUE_TEMPLATE/bug_report.yml`, `.github/ISSUE_TEMPLATE/feature_request.yml`, `.github/ISSUE_TEMPLATE/config.yml`, `.github/dependabot.yml`
-
-**Interfaces:**
-- Produces: `make check` = the local gate (`fmt-check`, `lint`, `test`, `deny`, `typos`), running exactly the commands CI runs (Task 2), so a green `make check` predicts a green CI. Later tasks' "run the checks" steps may use `make check`.
-
-- [x] **Step 1: Makefile and tool configs.**
-  - `Makefile`: `.DEFAULT_GOAL := help`; every target `.PHONY` and carrying a `## description` that `make help` prints. Targets and their exact commands:
-    - `fmt`: `cargo fmt --all`
-    - `fmt-check`: `cargo fmt --all --check`
-    - `lint`: `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`
-    - `test`: `cargo test --workspace --all-features --locked`
-    - `deny`: `cargo deny check`
-    - `typos`: `typos`
-    - `check`: depends on `fmt-check lint test deny typos`
-    - `cov`: `cargo llvm-cov --workspace --all-features --html` (report only; the 80% gate is added once phase 1 has code)
-    - `doc`: `cargo doc --workspace --no-deps --all-features`
-    - `tools`: `cargo install --locked cargo-deny typos-cli cargo-llvm-cov` and `rustup component add llvm-tools-preview`
-    - `clean`: `cargo clean`
-    - `deny` and `typos` first test for their binary and, when it is missing, fail with `<tool> not found · run make tools`.
-  - `deny.toml` (cargo-deny ≥ 0.18 schema): `[graph] all-features = true`; `[advisories]` defaults (vulnerable and unmaintained crates fail); `[licenses] allow = ["Apache-2.0", "MIT", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib"]`, `confidence-threshold = 0.9`; `[bans] multiple-versions = "warn"`, `wildcards = "deny"`; `[sources] unknown-registry = "deny"`, `unknown-git = "deny"`. Workspace crates set `publish = false` until phase 5, so their own licence is not checked as a dependency.
-  - `_typos.toml`: excludes `target/`, `*.lock`, `crates/duohive-cli/tests/fixtures/`, `docs/ux/ui-spec.md` mock-ups only if they trip it (add `[default.extend-words]` entries instead where a word is intentional).
-  - `.editorconfig`: `root = true`; `*`: `charset = utf-8`, `end_of_line = lf`, `insert_final_newline = true`, `trim_trailing_whitespace = true`, `indent_style = space`, `indent_size = 4`; `*.{yml,yaml,toml,md,json}`: `indent_size = 2`; `Makefile`: `indent_style = tab`; `*.md`: `trim_trailing_whitespace = false`.
-
-- [x] **Step 2: Community and agent files.**
-  - `README.md`: name and one-line pitch from the PRD vision; status badge line (CI); "Status: pre-alpha, phase 0" note; what DuoHive is (3–5 bullets from the PRD: org of standing agents, live status at a glance, Duo the manager agent, Claude Code and OpenCode, one lightweight process); requirements (tmux ≥ 3.2, Rust 1.99 to build); build and run (`cargo build --release`, `make check`); links to `docs/README.md`, `CONTRIBUTING.md`, `LICENSE`; licence line "Apache-2.0". No screenshots or install commands that don't exist yet.
-  - `CONTRIBUTING.md`: dev setup (`rustup` picks the toolchain from `rust-toolchain.toml`, `make tools`), the workflow (test first, `make check` before every commit), conventional commit types (`feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`), the docs' precedence (PRD → UI spec → TD), the dependency rule (TD §3.4), the Global Constraints that bite contributors (no `unwrap`/`expect` outside tests, no `unsafe`, `duohive-core` does no I/O, no `std::env::set_var` in tests, tmux tests on a throwaway socket).
-  - `CODE_OF_CONDUCT.md`: Contributor Covenant 2.1, verbatim from `https://www.contributor-covenant.org/version/2/1/code_of_conduct/code_of_conduct.md`, with the contact set to `duongnv129@gmail.com`.
-  - `SECURITY.md`: supported versions (latest only, pre-1.0); report privately via GitHub security advisories or `duongnv129@gmail.com`, not public issues; scope notes (per-launch tokens, hook socket, the user's CLI configuration is never modified).
-  - `CHANGELOG.md`: Keep a Changelog 1.1.0 format with an `## [Unreleased]` section listing the workspace and repo setup.
-  - `AGENTS.md`: guidance for coding agents working on this repo: read order (`docs/README.md`, then the plan task), `make check` is the gate, Global Constraints summary, commit rules (conventional, never a `Co-Authored-By` line, never push), the dependency rule. `CLAUDE.md` contains one line, `@AGENTS.md`, so both agents read the same file.
-  - `.github/pull_request_template.md`: summary, linked plan task, test plan checklist (`make check` passes, tests added first), docs updated if behaviour changed.
-  - Issue forms (YAML): `bug_report.yml` (DuoHive version, OS, tmux version, CLI and version, steps, expected, actual, `duohive` log excerpt), `feature_request.yml` (problem, proposal, alternatives), `config.yml` with `blank_issues_enabled: false`.
-  - `.github/dependabot.yml`: `version: 2`; ecosystems `cargo` (directory `/`) and `github-actions` (directory `/`), both `interval: weekly`, grouped minor and patch updates. Ratatui and crossterm are ignored for automatic updates (pinned with `=`, upgraded on purpose: Global Constraints).
-
-- [x] **Step 3: Validate.** `make help` lists every target; `make tools` (once); `make check` passes; `typos` passes over the whole repo, docs included (fix real typos in the docs; whitelist intentional words in `_typos.toml`); `actionlint` has nothing to say about `dependabot.yml` (it isn't a workflow; check it with `yq . .github/dependabot.yml` instead) and the issue forms parse with `yq`.
-
-- [x] **Step 4: Commit.** `git add -A && git commit -m "chore: makefile, cargo-deny, typos, editorconfig and community files"`
-
-### Task 2: CI on macOS and Linux against tmux 3.2a and latest
-
-**Files:**
-- Create: `.github/workflows/ci.yml`, `.github/scripts/install-tmux.sh`, `.github/tmux-latest`
-
-**Interfaces:**
-- Produces: `install-tmux.sh <version>` installs tmux `<version>` into `$HOME/.local/tmux-<version>` and prints `tmux -V`; later tasks' tmux integration tests run in this matrix.
-
-- [x] **Step 1: Write the script.** `install-tmux.sh <version>`: on Linux `sudo apt-get update && sudo apt-get install -y libevent-dev libncurses-dev bison pkg-config`; on macOS `brew install libevent ncurses pkg-config bison`; download `https://github.com/tmux/tmux/releases/download/<version>/tmux-<version>.tar.gz`, `./configure --prefix=$HOME/.local/tmux-<version> && make -j && make install`, append the `bin` dir to `"${GITHUB_PATH:-/dev/null}"` (so a local run, where `GITHUB_PATH` is unset, doesn't fail). Exit non-zero if the resulting `tmux -V` doesn't print `tmux <version>`. `.github/tmux-latest` holds `3.7c`.
-
-- [x] **Step 2: Check the script locally.** `bash .github/scripts/install-tmux.sh 3.2a && ~/.local/tmux-3.2a/bin/tmux -V` → `tmux 3.2a`.
-
-- [x] **Step 3: Write `ci.yml`.** Triggers: `push`, `pull_request`. Job `lint` (ubuntu-24.04): `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. Job `deny` (ubuntu-24.04): `EmbarkStudios/cargo-deny-action@v2` with `command: check`. Job `typos` (ubuntu-24.04): `crate-ci/typos` pinned to a release tag. These run the same checks as `make check` (Task 1b). Job `test`: matrix `os: [ubuntu-24.04, macos-14]` × `tmux: ["3.2a", "latest"]`; resolve `latest` from `.github/tmux-latest`; cache `~/.local/tmux-*` keyed by OS and version; run the script, then `cargo test --workspace --all-features --locked` (the same flags as Task 29's local gate). Use `actions/checkout@v4`, `Swatinem/rust-cache@v2`; the toolchain comes from `rust-toolchain.toml`.
-
-- [x] **Step 4: Validate the workflow syntax.** `actionlint .github/workflows/ci.yml` (install with `brew install actionlint`) → no output.
-
-- [x] **Step 5: Commit.** `git add -A && git commit -m "ci: fmt, clippy and tests on macOS and Linux with tmux 3.2a and latest"`
-
-### Task 3: Spike S0 — tmux activity for silenced panes at 100 windows
-
-Deliverable: `docs/plans/spike-report.md` section **S0** with the headings below, plus a TD §4.1 update if the mechanism changes. Throwaway code in `spikes/s0-tmux-activity/` (a shell script and, if needed, a tiny standalone Rust or Python reader); it is never imported by `crates/`.
-
-**Files:**
-- Create: `spikes/s0-tmux-activity/README.md` (states "throwaway"), `spikes/s0-tmux-activity/run.sh`
-- Create: `docs/plans/spike-report.md` (with an S0 section and empty S1 and S2 headings)
-- Modify (only if the mechanism changes): `docs/design/technical-design.md` §4.1, §13
-
-**Interfaces:**
-- Produces, for Task 18–19: report section **S0.4 Formats** (the exact `%subscription-changed` line for a window subscription and a pane subscription, the `%window-close` and `%exit` lines, the client flags accepted by `refresh-client -f` on 3.2a), and **S0.5 Decision**: `subscribe` or `poll`, and the silencing method `no-output` or `pause` (D25), with the exact commands DuoHive sends.
-
-- [x] **Step 1: Write `run.sh <tmux-binary> <windows> <seconds> <silence>`** (`<silence>` is `no-output` or `pause`). It starts a throwaway server `-L duohive-s0-$$`, sets `remain-on-exit on`, creates session `duohive` with a keeper window (`tail -f /dev/null`), then `<windows>` windows: one third noisy (`while :; do date; sleep 0.1; done`), one third bursty (10 s of output every 30 s), one third idle (`cat`). It attaches one control client `tmux -L … -C attach -t =duohive` and silences every pane: with `no-output`, `refresh-client -f no-output,ignore-size`; with `pause`, `refresh-client -f pause-after=1,ignore-size` and then `refresh-client -A '%<pane>:pause'` for every pane. It then sends `refresh-client -B 'act:@*:#{window_activity}'`, `refresh-client -B 'dead:%*:#{pane_dead} #{pane_dead_status}'`, and timestamps every line it reads into `out/<version>-<silence>-notifications.log`. It samples `ps -o %cpu=,rss=` for the tmux server and the reader every second into `out/<version>-<silence>-cpu.csv`. It also opens one dedicated window running `sh -c 'sleep 20; exit 3'` (outside the mix), whose pane dies with status 3 at t ≈ 20 s, for the `pane_dead_status` check.
-
-- [x] **Step 2: Run on both versions with both silencing methods.** `bash .github/scripts/install-tmux.sh 3.2a`, then `./run.sh ~/.local/tmux-3.2a/bin/tmux 100 120 no-output`, `… pause`, and the same two with `$(which tmux)` (latest). Also run `poll` mode (the same windows, no subscriptions, `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` once a second) for the cost comparison.
-
-- [x] **Step 3: Write the report S0** with these headings and measured values:
-  - **S0.1 Setup:** machine, OS, tmux versions, window mix.
-  - **S0.2 Reports for silenced panes:** for each silencing method (`no-output`, `pause`), do `act` reports keep arriving for windows whose output is not sent? Median and p95 delay from a change to its report; reports per window per second (expected ≤ 1). For `pause`, whether panes stay paused (no `%continue` without a request) and whether a new window must be paused explicitly.
-  - **S0.3 Cost:** tmux server and reader CPU % and RSS at 100 windows, idle and noisy, for `subscribe` with each silencing method vs `poll`; and with no control client at all (baseline).
-  - **S0.4 Formats:** the exact lines (see Interfaces). Whether `pane_dead_status` arrives for the `exit 3` window.
-  - **S0.5 Decision:** `subscribe` if, on both 3.2a and latest, reports arrive for silenced windows with median delay ≤ 1.1 s and the reader's CPU at 100 noisy windows is no more than `poll`'s; else `poll`. Silencing (D25): the method under which reports keep arriving on both versions at the lower tmux server + reader CPU at 100 noisy windows; on a tie, `no-output` (one command, nothing to do per new window). Record the exact commands for the chosen method, including what a new window needs.
-  - **S0.6 TD changes:** none, or the exact edit made.
-
-- [x] **Step 4: Update the TD** only if S0.5 differs from TD §4.1 (fallback chosen, or a different flag): edit §4.1's tmux-activity row and the S0 bullet, and §13's settle-mechanism row. Name the chosen silencing method in §4.1 in place of "chosen by spike S0".
-
-- [x] **Step 5: Commit.** `git add -A && git commit -m "docs: spike S0 tmux activity subscriptions at 100 windows"`
-
-### Tasks 4–5: Spikes S1–S2 — Claude Code, OpenCode
-
-One task per CLI, same procedure and the same report headings, so Tasks 20–21 can cite them. Pinned versions for this plan: **Claude Code 2.1.288**, **OpenCode 1.18.34** (the versions `claude --version` and `opencode --version` reported on 2026-10-03; if a newer one is installed at execution, use it and record which).
-
-| Task | CLI | Report section | Throwaway dir | Fixtures dir |
-|---|---|---|---|---|
-| 4 | Claude Code | S1 | `spikes/s1-claude/` | `crates/duohive-cli/tests/fixtures/claude/<version>/` |
-| 5 | OpenCode | S2 | `spikes/s2-opencode/` | `crates/duohive-cli/tests/fixtures/opencode/<version>/` |
-
-**Interfaces:**
-- Produces, per CLI, report subsections with these exact numbers (`Sn.k`), consumed by Tasks 20–21:
-  - **Sn.1 Version:** the `--version` output and the version-string regex.
-  - **Sn.2 Standing instructions:** the flag or file mechanism, verified by a sentinel ("reply with the word HIVE-SENTINEL if you can read this").
-  - **Sn.3 Hooks:** a table mapping CLI hook/event → DuoHive event (`session-start`, `busy`, `needs-input`, `turn-end`, `session-end`) with any matcher; how the payload arrives (stdin, which `duohive hook` reads; any other way goes to Sn.13); the per-launch file that configures them; which of the five have no hook (this becomes the adapter's `HookCoverage`).
-  - **Sn.4 Last reply:** where the last reply is (payload field, transcript path and format, session log) and the extraction rule.
-  - **Sn.5 MCP:** the per-launch MCP mechanism, verified by listing a dummy stdio server's tool (for phase 3).
-  - **Sn.6 Model and effort:** the flags, and how to list models and efforts at runtime, or "no listing" (for phase 4).
-  - **Sn.7 Screens:** captures (`capture-pane -p -J`) of: at rest, working, an approval prompt, any start-up prompt (trust, login, update notice); the distinguishing text for each (these become `read_screen` rules, matched against the screen with trailing blank rows dropped and each line's trailing whitespace trimmed, as `capture-pane` pads both).
-  - **Sn.8 Ready:** what signals the CLI is ready, with and without a first prompt; what start-up prompts can appear.
-  - **Sn.9 Quit:** the keys or command that exit with status 0 and fire the end hook (if any).
-  - **Sn.10 Paste:** whether `paste-buffer -p` of a multi-line task followed by `Enter` submits it as one turn; what the submit key is.
-  - **Sn.11 Approvals untouched:** with DuoHive's launch command, a file write still prompts; no approval-bypass flag is passed.
-  - **Sn.12 Global config untouched:** checksums of the CLI's global config files (`~/.claude/settings.json`, `~/.config/opencode/*`) before and after a full launch–turn–quit cycle are equal.
-  - **Sn.13 Fallbacks and TD changes:** missing mechanisms, the fallback used (a temporary file in `run/<agent>/`, or screen reading), and the TD §5.2 edit made.
-
-For each of Tasks 4 and 5:
-
-- [x] **Step 1: Write the throwaway launcher** `spikes/sN-<cli>/launch.sh <agent> <task?>` that builds the per-launch files in `/tmp/duohive-spike/run/<agent>/`, starts the CLI in a window of `tmux -L duohive-spike`, and points every hook at `spikes/sN-<cli>/record-hook.sh <agent> <event>`, which writes its stdin and arguments to `fixtures/…/hooks/<event>-<n>.json`. Starting points from the TD §5.2 table: Claude Code `--append-system-prompt`, `--settings <file>` (hooks `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `Notification`, `Stop`, `SessionEnd`), `--mcp-config`, `--model`, `--effort`; OpenCode an agent definition and plugin selected via `OPENCODE_CONFIG` (and/or `OPENCODE_CONFIG_DIR`).
-
-- [x] **Step 2: Run the scenarios** and record fixtures: start with no task; start with a task; a turn that asks for approval (ask it to create a file), answered yes; one answered no; a turn that ends normally; quit with the Sn.9 keys; a crash (`kill -9` the CLI). Save screen captures for Sn.7 into `screens/<name>.txt` and replies into `replies/`.
-
-- [x] **Step 3: Write report section Sn** with all thirteen subsections filled in. Every table row names the fixture file that proves it.
-
-- [x] **Step 4: Update the TD** §5.2 row for that CLI (and §6.5 if reply extraction differs) wherever a mechanism changed; add the fallback to §5.2's notes if one was needed.
-
-- [x] **Step 5: Commit.** `git add -A && git commit -m "docs: spike SN <cli> launch, hooks and replies"`
 
 ---
 
@@ -718,7 +521,7 @@ Behaviour:
 - **Give work on finished/idle:** `runtime.paste(agent, task, adapter.submit_keys())`, trigger `NewWork` → working, `from_screen = false`.
 - **Give work on working/waiting:** `GiveWorkRefused { agent, state }`, nothing sent (TD §5.1; the "send as message" offer is phase 3's inbox).
 - **StartAgent on a running agent:** `CommandRejected { reason: "<agent> is already running" }`.
-- **StopAgent:** running → `stopping = true`, `runtime.stop(agent, adapter.quit_keys(), stop_grace)`; the state changes when the window goes (Task 12). Errored → `Stop` → stopped, `runtime.kill(agent, window)` when it still has a window. Stopped → no-op.
+- **StopAgent** (TD §5.5, stop keys measured 2026-10-04): running → `stopping = true`. A waiting agent gets no keys, since a key could answer its open prompt: `runtime.kill(agent, window)` at once. Any other running state → `runtime.stop(agent, [Escape] + adapter.quit_keys(), stop_grace)`: `Escape` first declines a prompt that opened meanwhile. The state changes when the window goes (Task 12). Errored → `Stop` → stopped, `runtime.kill(agent, window)` when it still has a window. Stopped → no-op.
 - **ViewAgent:** finished → `Viewed` → idle; otherwise no-op.
 - `StartFailed { reason }` → `LaunchFailed` → errored with `reason`; `last_task` kept for retry.
 - `CliInventory` → record presence, then run the queued launches in order (D30). `DirInventory` → cache the statuses and emit `OrgChanged { org, problems }` with each agent's directory problem (D26).
@@ -745,7 +548,8 @@ Behaviour:
 #[test] fn untested_version_sets_notice() { /* Found "2.3.0", tested ["2.1"] → AgentNoticeChanged "notice: claude 2.3 untested (tested up to 2.1)"; still launches */ }
 #[test] fn start_failed_errors_and_keeps_task() { /* StartFailed "branch exists" → Errored with that reason; last_task == Some(task) */ }
 #[test] fn dir_inventory_reports_missing_directories() { /* D26: before DirInventory, problems has no billing-api entry; DirInventory [(~/code/billing expanded, Missing)] → OrgChanged problems[billing-api] == "✕ ~/code/billing not found · e to fix" */ }
-#[test] fn stop_running_sends_quit_keys_with_grace() { /* calls == [Stop(a, [Text("/exit"), Enter], 5s)]; state unchanged until window goes */ }
+#[test] fn stop_running_sends_quit_keys_with_grace() { /* working agent → calls == [Stop(a, [Escape, Text("/exit"), Enter], 5s)] with the stub's quit keys; state unchanged until window goes */ }
+#[test] fn stop_waiting_kills_without_keys() { /* waiting agent → calls == [Kill(a, window)]; no Stop, no keys */ }
 #[test] fn stop_errored_goes_stopped() { /* Stopped; error cleared; Kill(agent, its window) called when it has one */ }
 #[test] fn view_finished_goes_idle() { /* squad-2 finished; ViewAgent → AgentStatusChanged{ squad-2, Idle }; ViewAgent on idle squad-1 → no events */ }
 #[test] fn store_failure_is_reported_not_fatal() { /* FakeStore fail_next_save → CommandRejected "couldn't save state: …"; status still Starting */ }
@@ -1191,7 +995,7 @@ Mechanics:
   exec <sh_quote(program)> <sh_quote(arg)> …
   ```
   then `new-window -d -t =duohive: -n <agent> -P -F '#{window_id}' <tmux_quote(&format!("sh {}", sh_quote(launch.sh path)))?>` (the inner `sh_quote` keeps a data dir with spaces one word; a `QuoteError` → `StartFailed`), then `set-option -w -t <id> @duohive_agent <agent>` → `Started` (no per-window silencing command: `no-output` covers new windows, S0.2). Any failure → `StartFailed { reason }`.
-- **stop:** `send-keys -t <id>` each key (`Text` with `-l`), then after `grace`, if the window still exists, `kill-window -t <id>`. `WindowClose` (`%unlinked-window-close` or `%window-close`, treated the same; S0.4) → `WindowGone { agent, window }`.
+- **stop:** `send-keys -t <id>` each key (`Text` with `-l`), pausing 150 ms between two keys (`KEY_PAUSE`; sent back to back, a TUI reads them as one burst, TD §5.5), then after `grace`, if the window still exists, `kill-window -t <id>`. `WindowClose` (`%unlinked-window-close` or `%window-close`, treated the same; S0.4) → `WindowGone { agent, window }`.
 - **kill:** `kill-window -t <window>` for exactly the window given, never by agent name, so killing an old window can't touch a relaunched one.
 - **paste:** `tmux -L <socket> load-buffer -b <buffer_name> -` as a separate process with the text on stdin (no command-line length or newline limits), then `paste-buffer -d -p -b <buffer_name> -t <id>`, then the submit keys. Failure → `PasteFailed`.
 - **capture:** `capture-pane -p -J -t <id>` → `Screen { text }` (body lines joined with `\n`).
@@ -1252,13 +1056,13 @@ Each adapter:
   - OpenCode (S2): one config `LaunchFile` (`opencode.json`: `instructions`, `plugin`, `mcp` from phase 3, and effort as `agent.build.variant`; **no** `permission` key, S2.11) named by `OPENCODE_CONFIG` in `env`, plus the plugin asset written as a second `LaunchFile` and loaded as `file://<run_dir>/opencode-plugin.js`. Model as `--model=<m>`; `--agent=build` unless `spec.agent.flags` already contain `--agent` (the user's choice; only agents the plugin's `config` hook composes are guarded); the task as one `--prompt=<task>` argument (no `--`: the positional argument is the project directory, S2.8). The plugin runs `duohive hook` as an argv (no shell), so instead of `hook_command`'s string it gets `spec.hook_exe` and the agent name through `env`. The plugin (written with `node:child_process` and `node:fs` only, which Bun also provides, so it runs under Bun in OpenCode and under Node in tests):
     - **Events:** maps S2.3's rows; sends `session-start` once, on the first `catalog.updated` after it loads, or on the first prompt's event (`session.created` or `chat.message`) if that comes first, or 3 s after load if neither comes (S2.8: a paste at the plugin's load is lost; the 3 s is read from an optional env var so tests can shorten it); sends `busy` only on change; adds `duohive_last_reply` to `turn-end` by S2.4's rule.
     - **Approvals (TD §2, S2.11):** its `config` hook makes `edit` and `bash` `ask` where the user's resolved value is `allow` or absent at the top level, or `allow` in an `agent.<name>.permission`; `ask`, `deny` and every pattern other than `*` stay as the user wrote them; a string shorthand `"permission": "allow"` is read as `{"*": "allow"}`. A static `permission` key is not used: it replaces the user's value and can turn their `deny` into `ask`.
-    - **Never disturb OpenCode (Review Focus 1):** every hook returns at once; deliveries go on one internal promise chain, in event order, never awaited by OpenCode's hooks; a spawn that throws (a missing exe throws synchronously), rejects or exits non-zero is caught and dropped, and nothing is ever thrown into OpenCode; the child's stdout and stderr are ignored; a delivery still running after 2 s is killed and the chain goes on; `dispose` waits for the chain for at most 1 s, then sends `session-end` with a synchronous spawn bounded at 1 s (S2.3: an async child started in `dispose` may not run).
+    - **Never disturb OpenCode (Review Focus 1):** every hook returns at once; deliveries go on one internal promise chain, in event order, never awaited by OpenCode's hooks; a spawn that throws (a missing exe throws synchronously), rejects or exits non-zero is caught and dropped, and nothing is ever thrown into OpenCode; the child's stdout and stderr are ignored; a delivery still running after 10 s is killed and the chain goes on (`DELIVERY_LIMIT_MS`; a loaded machine can take seconds to start one, so a shorter limit dropped real hooks, TD §5.2); `dispose` waits for the chain for at most 1 s, then sends `session-end` with a synchronous spawn bounded at 1 s (S2.3: an async child started in `dispose` may not run).
 - `coverage`: exactly the Sn.3 table (a DuoHive event with no hook → `false`); `last_reply` per Sn.4.
 - `parse_hook`: DuoHive event name → `HookSignal` (Sn.3); `turn-end` extracts the reply per Sn.4 (for Claude Code, from the `Stop` payload's `last_assistant_message`, S1.4; when that field is missing, from `"duohive_last_reply"`, which `enrich_hook` fills from the transcript; for OpenCode, from `"duohive_last_reply"`, which the plugin adds to the `session.idle` payload, S2.4, so its `enrich_hook` stays the no-op).
 - `read_screen`: the Sn.7 distinguishing strings → `ScreenState`, matched after the same normalisation as the fake adapter's (Task 27): trailing blank rows dropped, each line's trailing whitespace trimmed, rules read from the last non-empty line upward; the last reply line where Sn.4 says there is no hook.
 - `startup_prompts`: true when Sn.8 lists any start-up prompt (Claude Code's workspace trust is one).
 - `detect`: `probe_version(self.kind())`.
-- `quit_keys` per Sn.9; `submit_keys` per Sn.10.
+- `quit_keys` per Sn.9 and the 2026-10-04 stop-key measurements (TD §5.5): Claude Code `[CtrlC, Text("/exit"), Enter]` (the `C-c` clears a prompt that `Escape` put back in the input box), OpenCode `[Text("/exit"), Enter]`; `submit_keys` per Sn.10.
 - `tested_versions`: the Sn.1 major.minor.
 
 > Reading a transcript is file I/O, so `parse_hook` stays pure: the adapter's `enrich_hook` (Task 10 trait, default no-op) runs in the hook listener before forwarding; where Sn.4 says the reply lives in a file, it reads it and inserts `"duohive_last_reply"` into the payload, and `parse_hook` reads that field. For Claude Code the reply is in the payload (S1.4), so `enrich_hook` reads the transcript (S1.4's extraction rule) only for a `turn-end` payload with no `last_assistant_message`; this fallback is the one adapter call that reads a file, and it runs in the hook listener task, not the engine (Task 22).
@@ -1326,7 +1130,7 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
 ```
 `run_hook`: token from `DUOHIVE_TOKEN` in `env` (missing → exit 0); paths from `Paths::from_vars(env)` (never the process environment directly, so tests pass a map). Payload, when `stdin_is_terminal` is false: a helper thread reads stdin to EOF (cap 4 MiB) and sends the bytes over a channel; the main thread waits with `recv_timeout(300 ms)`; on timeout (a CLI that leaves stdin open and silent) it proceeds with the bytes read so far, which the helper shares through an `Arc<Mutex<Vec<u8>>>`, and never joins the blocked thread (the process exits). Empty → `null`; `stdin_is_terminal` → `null` (Claude Code hooks and the OpenCode plugin both write JSON to stdin); non-JSON → wrapped as `{"raw": "<text>"}`. Connect to `run_sock()` with a 200 ms deadline: std's `UnixStream::connect` has no timeout, so a helper thread connects and sends the stream over a channel, and the main thread `recv_timeout(200 ms)`s (std only, no `unsafe`); then `set_write_timeout(150 ms)` and write one JSON line. If that fails, `open_db(state_db, 200 ms)` and `insert_pending_hook`. Worst case 300 + 200 + 150 + 200 = 850 ms plus process start, under 1 s (Review Focus 1). If that fails, append one line to `logs/hook.log` and stop. Nothing is ever written to stdout or stderr; the exit code is always 0.
 
-`bind`: if the socket path exists and a connect succeeds → `AlreadyRunning`; if it exists and connect fails → remove it (stale); bind, then `chmod 0600`. `serve`: per connection, read lines (max 1 MiB; longer lines are dropped with a warning), parse `HookMessage`, look up the agent's CLI, call `enrich_hook`, send `Input::Hook` to the core (and to `tap` when set — the bench uses it).
+`bind`: take the exclusive instance lock on `run.lock` beside the socket (`take_lock`, `File::try_lock`, opened close-on-exec); held by another instance → `AlreadyRunning` ("another DuoHive is already running (run.lock is held)"). With the lock held, any socket file at the path is stale (a crash) and is removed; bind, then `chmod 0600`. A connect probe is not used: it would race (TD §7). `serve`: per connection, read lines (max 1 MiB; longer lines are dropped with a warning), parse `HookMessage`, look up the agent's CLI, call `enrich_hook`, send `Input::Hook` to the core (and to `tap` when set — the bench uses it).
 
 - [x] **Step 1: Write the failing tests.**
 
@@ -1347,8 +1151,8 @@ pub type AgentClis = Arc<std::sync::RwLock<HashMap<String, CliKind>>>;   // agen
     /* run the built binary (env!("CARGO_BIN_EXE_duohive")) with: no token; garbage stdin; data dir unwritable (chmod 0500);
        socket path is a regular file. Each: exit status 0, stdout and stderr empty, finished in < 1 s */
 }
-#[test] fn second_instance_refused() { /* bind twice → AlreadyRunning */ }
-#[test] fn stale_socket_replaced() { /* leave a socket file with no listener → bind succeeds */ }
+#[test] fn second_instance_refused() { /* bind twice → AlreadyRunning (the first holds run.lock) */ }
+#[test] fn stale_socket_replaced() { /* leave a socket file and no lock holder → bind succeeds */ }
 #[test] fn socket_is_owner_only() { /* mode == 0o600 */ }
 #[tokio::test] async fn oversized_line_dropped() { /* write a 2 MiB line then a valid line → the core channel receives exactly one Input::Hook (the valid one) */ }
 #[tokio::test] async fn listener_enriches_before_forwarding() { /* StubAdapter enrich inserts a field; core receives it */ }
@@ -1793,10 +1597,11 @@ pub async fn run_app_main() -> std::process::ExitCode;
 - [x] **Step 3: Mark the phase.** Update the roadmap's Phase 1 row and the TD where needed.
 - [x] **Step 4: Commit.** `git add -A && git commit -m "docs: phase 1 bench results and acceptance"`
 
+
 ---
 
 ## Self-review notes
 
-- **Spec coverage:** roadmap Phase 0 (workspace, toolchain, licence, CI, S0, S1 Claude Code, S2 OpenCode) → Tasks 1–5; Phase 1 core domain → 6–8, engine (command/event loop, full state machine, Give work by state, quiet, Needs you) → 9–15, store (`org.toml`, `settings.toml`, `state.db`) → 16–17, tmux runtime → 18–19, adapters (Claude Code, OpenCode) and `duohive hook` → 20–22, minimal TUI with live status and forms → 23–25, real ports → 26, fake CLI and headless system → 27, basic `bench` → 28, wiring → 29, done-when → 30. TD §8 rows in scope: CLI missing/untested (11), launch fails (11), crash (12), Duo fails (12, 23), tmux missing (23, 29), `org.toml` invalid (14, 16, 23), directory missing (8, 11, 23), hook silent → `~` then quiet (12–13). Restart and reconnect: 15, 23 (`Reconnecting to N agents…`), 27 (`shutdown`, `EnrichingStore`), 29. Out of scope by phase: worktrees, Give work dialog, agent pane, alerts (2); MCP, inbox, Duo prompt, cards, task to a role (3); templates, model picker, key editor, `?` map, mouse, and TD §8's "No agent CLI installed" full-screen message, which belongs to first-run setup (4; D28). Out of v1: a Codex adapter and its spike (deferred to after v1).
-- **Size:** 30 tasks: 5 in Phase 0 (Tasks 1–5) and 25 in Phase 1 (Tasks 6–30).
+- **Spec coverage:** roadmap Phase 1 core domain → 6–8, engine (command/event loop, full state machine, Give work by state, quiet, Needs you) → 9–15, store (`org.toml`, `settings.toml`, `state.db`) → 16–17, tmux runtime → 18–19, adapters (Claude Code, OpenCode) and `duohive hook` → 20–22, minimal TUI with live status and forms → 23–25, real ports → 26, fake CLI and headless system → 27, basic `bench` → 28, wiring → 29, done-when → 30. TD §8 rows in scope: CLI missing/untested (11), launch fails (11), crash (12), Duo fails (12, 23), tmux missing (23, 29), `org.toml` invalid (14, 16, 23), directory missing (8, 11, 23), hook silent → `~` then quiet (12–13). Restart and reconnect: 15, 23 (`Reconnecting to N agents…`), 27 (`shutdown`, `EnrichingStore`), 29. Out of scope by phase: worktrees, Give work dialog, agent pane, alerts (2); MCP, inbox, Duo prompt, cards, task to a role (3); templates, model picker, key editor, `?` map, mouse, and TD §8's "No agent CLI installed" full-screen message, which belongs to first-run setup (4; D28). Out of v1: a Codex adapter and its spike (deferred to after v1).
+- **Size:** 25 tasks (Tasks 6–30).
 - **Proportion:** signatures, rules and tests only; bodies appear only for the launch script and the bench output format, which the specs and signatures don't determine.

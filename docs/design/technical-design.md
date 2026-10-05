@@ -111,12 +111,15 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | starting | The CLI is ready and has a task | working |
 | starting | The CLI is ready with no task (`s`) | idle |
 | starting | Launch fails: CLI missing, pane dies, or not ready within the timeout | errored |
+| starting | A start-up prompt (workspace trust, login) before any hook | waiting |
 | working | The CLI asks for approval or input | waiting |
 | waiting | The user answers | working |
+| waiting | The turn ends after the user declines | finished (idle for Duo) |
 | working | Turn ends (any agent but Duo) | finished |
 | working | Turn ends (Duo) | idle |
 | finished | The user selects the agent (`ViewAgent`) | idle |
 | finished, idle | New work: a task as the next turn, or a delivered message | working |
+| finished, idle | A turn the user typed straight into the pane | working |
 | any running state | Unexpected exit (non-zero status or no status (killed by a signal), or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
 | errored | Stopped (`s`, or by Duo) | stopped |
@@ -370,9 +373,9 @@ Errors are shown where they apply, never only in a log.
 | PRD phase | Built here |
 |---|---|
 | 1. Org and agents | Spike S0 and the adapter spikes (S1 Claude Code, S2 OpenCode); `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli` (the Claude Code and OpenCode adapters); a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
-| 2. One screen | `duohive-tui`: agent pane (watch and type), Needs you, notifications, Give work with the worktree option; the UI/UX improvement pass at the end |
-| 3. Duo and messaging | `duohive-mcp` and tokens, inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
-| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor |
+| 2. One screen | `duohive-tui`: three-pane layout, agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option; the `PaneView`, `Notifier` and `Git` ports and their adapters; the UI/UX improvement pass at the end |
+| 3. Duo and messaging | `duohive-mcp` and token-checked tool rights (tokens exist since phase 1), inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
+| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor, theme `auto` and the accessibility re-check |
 | 5. Open-source launch | The pre-launch UX check, CI release gate, `cargo-dist` release, docs |
 
 ## 13. Risks
