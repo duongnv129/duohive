@@ -5,7 +5,7 @@ DuoHive is a Rust/Ratatui terminal app that manages standing AI coding agents as
 ## Read order
 
 1. `docs/README.md`, then the doc it points to for your task.
-2. The task in `docs/plans/phase-0-1-plan.md` and its Global Constraints section.
+2. The task in the current phase's plan in `docs/plans/` (see the roadmap) and its Global Constraints section. Phase 0's [Global Constraints](docs/plans/phase-0-plan.md#global-constraints) apply to every phase.
 
 ## The gate
 
