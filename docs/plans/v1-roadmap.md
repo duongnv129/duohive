@@ -1,7 +1,7 @@
 # DuoHive v1 — Roadmap
 
 **Status:** Approved 2026-10-03 · Living document · Phases 0 and 1 done 2026-10-04.
-Sources: [PRD](../product/prd.md) · [UI/UX spec](../ux/ui-spec.md) · [Technical design](../design/technical-design.md). Each phase gets its own detailed, test-first plan in `docs/plans/` when it starts: [phase 0–1](phase-0-1-plan.md) (done) · [phase 2](phase-2-plan.md) (full) · outlines for [phase 3](phase-3-plan.md), [phase 4](phase-4-plan.md) and [phase 5](phase-5-plan.md), expanded when each starts. [Traceability](v1-traceability.md) maps every requirement to its phase and task.
+Sources: [PRD](../product/prd.md) · [UI/UX spec](../ux/ui-spec.md) · [Technical design](../design/technical-design.md). Each phase gets its own detailed, test-first plan in `docs/plans/` when it starts: [phase 0](phase-0-plan.md) and [phase 1](phase-1-plan.md) (done) · [phase 2](phase-2-plan.md) (full) · outlines for [phase 3](phase-3-plan.md), [phase 4](phase-4-plan.md) and [phase 5](phase-5-plan.md), expanded when each starts. [Traceability](v1-traceability.md) maps every requirement to its phase and task.
 v1 supports two agent CLIs, Claude Code and OpenCode; Codex is deferred to after v1 (PRD What We're NOT Building).
 
 ## Conventions (set in the first commit; there is no earlier code)

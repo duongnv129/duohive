@@ -8,7 +8,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 
 | Notation | Means | Where |
 |---|---|---|
-| `T6`, `D16` | A task or decision of phases 0–1 | [phase-0-1-plan](phase-0-1-plan.md) |
+| `T1`–`T5` | A task of phase 0 | [phase-0-plan](phase-0-plan.md) |
+| `T6`–`T30`, `D16` | A task or decision of phase 1 | [phase-1-plan](phase-1-plan.md) |
 | `2.5`, `P2-D8` | A task or decision of phase 2 | [phase-2-plan](phase-2-plan.md) |
 | `3.4` | A task of phase 3 | [phase-3-plan](phase-3-plan.md) |
 | `4.3` | A task of phase 4 | [phase-4-plan](phase-4-plan.md) |
