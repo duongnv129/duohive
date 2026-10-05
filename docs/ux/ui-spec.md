@@ -1,6 +1,6 @@
 # DuoHive — UI/UX Spec
 
-**Status:** Draft v1 · **Last updated:** 2026-10-03
+**Status:** Draft v1 · **Last updated:** 2026-10-05
 Living document, updated in place. It is the source of truth for what every screen looks like and how it behaves. The [PRD](../product/prd.md) says what DuoHive does and why; the [technical design](../design/technical-design.md) says how it is built.
 
 ---
@@ -971,4 +971,4 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 The screens are checked against the PRD's [UX principles](../product/prd.md#ux-principles) twice:
 
 1. **After phase 2:** during phase 2 the author keeps a **friction log** (anything slow, confusing or missed). At the end of the phase, the UI/UX improvement pass fixes the top items and re-checks every screen.
-2. **Before launch:** a second check covers the phase 3–4 screens (Duo's chat and cards, task to a role, first-run templates, Settings and the key-binding editor).
+2. **Before launch:** a second check covers the phase 3–4 screens (Duo's chat and cards, task to a role, first-run templates, Settings' Keys and Org rows and the key-binding editor).
