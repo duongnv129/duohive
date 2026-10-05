@@ -34,7 +34,8 @@
 - Tests: unit tests beside the code; `insta` snapshots for TUI frames and launch commands; tmux integration tests on a throwaway socket (`duohive-test-<random>`), never on `duohive`. No test calls `std::env::set_var` (unsafe in edition 2024, and the workspace denies `unsafe_code`): code that reads the environment takes a `HashMap<String, String>` (`Paths::from_vars`, `run_hook`), and tests that run the built binary set variables with `Command::env`.
 - Test-first applies to every task except Tasks 1b, 2–5 and 30, which are infrastructure, spikes and acceptance with no code under test. They are validated instead by: Task 2, `install-tmux.sh` printing the requested `tmux -V` locally and `actionlint` passing on `ci.yml`; Tasks 3–5, a spike report whose every subsection holds measured values and names the fixture or log that proves it; Task 30, the recorded bench output and the author's working day checked against the state table.
 - Supported CLIs: Claude Code and OpenCode only. Codex is deferred to after v1 (PRD What We're NOT Building); nothing in this plan builds, detects or tests it.
-- Commits: conventional (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`), never a `Co-Authored-By` line; do not push.
+- Commits: conventional (`feat:`, `fix:`, `docs:`, `test:`, `chore:`, `ci:`, `refactor:`, `perf:`), never a `Co-Authored-By` line; do not push.
+- `unsafe`: denied workspace-wide; the one exception is `crates/duohive/src/bench/measure.rs` (`getrusage`, `getloadavg`), each block under `#[expect(unsafe_code, reason = "…")]` (Task 28).
 - Spike code is throwaway: it lives under `spikes/`, is excluded from the workspace, and nothing in `crates/` imports it. Recorded fixtures (hook payloads, screen captures) are data and go to `crates/duohive-cli/tests/fixtures/`.
 
 

@@ -1,6 +1,6 @@
 # DuoHive — UI/UX Spec
 
-**Status:** Draft v1 · **Last updated:** 2026-10-03
+**Status:** Draft v1 · **Last updated:** 2026-10-05
 Living document, updated in place. It is the source of truth for what every screen looks like and how it behaves. The [PRD](../product/prd.md) says what DuoHive does and why; the [technical design](../design/technical-design.md) says how it is built.
 
 ---

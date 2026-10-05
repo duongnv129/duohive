@@ -329,10 +329,10 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | # | Phase | Delivers | Status | Depends |
 |---|---|---|---|---|
 | 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | done 2026-10-04 | – |
-| 2 | One screen | Agent pane (watch and type), Needs you, notifications and their Settings, Give work with the worktree option; the UI/UX improvement pass at the end | next | 1 |
+| 2 | One screen | Three-pane layout; agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option; the UI/UX improvement pass at the end | next | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents on the release benchmark, first-run setup with templates (Agent Squad needs task to a role, phase 3), model and effort picker, key and mouse completeness, the key-binding editor, theme `auto` and the accessibility re-check | pending | 3 |
-| 5 | Open-source launch | The pre-launch UX check of the phase 3–4 screens, README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
+| 5 | Open-source launch | The pre-launch UX check of the phase 3–4 screens, the CI release gate, README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
 
 - **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status, and `bench` reports the basic numbers at 10 agents.
 - **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent; a friction log is kept during use, and the UI/UX improvement pass runs at the end of the phase. Done when a day's work needs no `tmux attach`.

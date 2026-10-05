@@ -9,7 +9,7 @@ Sources: [PRD](../product/prd.md) (Delivery Phases row 5, Success Metrics, Key H
 
 ## Constraints carried from earlier phases
 
-- Every Global Constraint in [phase-2-plan.md](phase-2-plan.md) still applies.
+- Every Global Constraint of [phase 0](phase-0-plan.md#global-constraints) and [phase 2](phase-2-plan.md) still applies, as do decisions D1–D32, P2-D1–P2-D21, P4-D1, and the phase 3–4 open-question answers recorded when those phases are expanded.
 - Release targets are gated on Apple M-series. Linux numbers are reported but never block a release (PRD Success Metrics, TD §10).
 - The licence is Apache-2.0, and the repo stays the author's own (PRD Decisions Log: Distribution).
 - Positioning leads with "Duo + your Engineer Factory", not "Hive" (PRD Decisions Log: Branding).

@@ -37,7 +37,7 @@ New in this phase:
 **Spec:**
 - [PRD](../product/prd.md): One screen; Lifecycle: Worktrees; UX principles; Delivery Phases row 2.
 - [UI/UX spec](../ux/ui-spec.md): §2–§5 and §8.
-- [Technical design](../design/technical-design.md): §3, §4.2, §4.3, §5.1, §5.3 and §7–§9.
+- [Technical design](../design/technical-design.md): §3, §4.2, §4.3, §5.1, §5.3, §6.3 and §7–§9.
 - [Roadmap](v1-roadmap.md): row 2.
 - [Roadmap: Planning](v1-roadmap.md#planning) and [traceability](v1-traceability.md).
 
@@ -52,11 +52,12 @@ New in this phase:
   - no `std::env::set_var` in tests;
   - tmux tests run on a throwaway socket, never on `duohive`;
   - conventional commits, with no `Co-Authored-By` line, and never push.
-- **Phase 1 decisions D1–D32 ([phase-1-plan.md](phase-1-plan.md)) stay in force.** Four change here:
+- **Phase 1 decisions D1–D32 ([phase-1-plan.md](phase-1-plan.md)) stay in force.** Five change here:
   - D7 (the phase-1 layout) is replaced by P2-D3;
   - D8 (the phase-1 keys) is extended by P2-D9;
   - D15 is done here (alerts arrive in phase 2);
-  - D16's "dialog arrives in phase 2" is done here.
+  - D16's "dialog arrives in phase 2" is done here;
+  - D31's attach hint lapses with D7. `AppConfig.tmux_socket` and `RenderCtx.tmux_socket`, which only fed it, are removed in Task 2.5.
 - **Every commit passes `make check`:** format, clippy `-D warnings`, tests, `cargo deny` and `typos`.
   - A task that changes a shared type updates every construction and match site in the same commit; its Files list names them.
   - New `Event` variants are added in Task 2.2 and ignored by the TUI until the task that renders them.
@@ -97,7 +98,7 @@ New in this phase:
   | Branch | `duohive/<agent>/<task-id>` |
   | Base | `origin`'s default branch, else the local default (P2-D17), fetched quietly before each check |
   | Merges detected | normal, rebase and squash |
-  | Checked | when the agent finishes, after start-up (after the first frame), when the list opens, every 10 minutes, and when its agent stops (P2-D6) |
+  | Checked | when the agent finishes, after start-up (after the first frame), when the list opens, and every 10 minutes |
   | Removed automatically | only when merged **and** clean **and** not in use |
 
 - **Alerts (TD §4.2, UI §4.1.4):**
@@ -167,6 +168,17 @@ crates/duohive/tests/{e2e.rs,git.rs,bench.rs}
 docs/plans/spike-report.md (S3) · docs/plans/friction-log.md (new) · docs/plans/bench-results.md (Phase 2)
 ```
 
+## Author decisions
+
+These decisions change or narrow PRD wording. Each takes its default unless the author says otherwise before the task that builds it:
+
+| Decision | What it changes | Built in |
+|---|---|---|
+| P2-D11 | While a typed-in task is being confirmed (at most 5 s), a further Give work to that finished or idle agent is refused, which narrows the PRD's "finished or idle: types the task in". Phase 3 (3.7) also leaves such an agent out of "free" for task to a role | 2.12 |
+| P2-D20 | While a worktree is being created for an agent, `StartAgent` and `GiveWork` for it are refused, which narrows the PRD's "stopped (or errored): starts a fresh session with the task". Phase 3 (3.7) also leaves such an agent out of "free" | 2.12 |
+| P2-D13 | Settings (You, Attention, Look) ships in phase 2, not phase 4 | 2.17 |
+| P2-D18 | An alert click doesn't raise the terminal window | 2.10 |
+
 ## Decisions this plan makes where the specs are silent
 
 | # | Decision |
@@ -176,12 +188,12 @@ docs/plans/spike-report.md (S3) · docs/plans/friction-log.md (new) · docs/plan
 | P2-D3 | **The phase-2 layout is UI §3 in full** and replaces D7. The side pane's summaries move into the agent pane in UI §4.1.2's shape, with phase-2 copy where a feature is still missing:<br>• **Role summary:** the last line is `e edit`; `space give work to this role · e edit` returns in 3.11.<br>• **Empty org and empty role:** they keep D7's text, without "ask Duo"; it returns in 3.9.<br>• **Stopped agent:** `○ stopped · space to give work`, as the spec.<br>• **The attach hint is dropped.**<br>• **Chat-pane resizing** (`ctrl+↑`/`ctrl+↓`) is clamped between the size UI §3 gives the chat and the size that leaves the agent pane 6 rows. |
 | P2-D4 | **One live stream at a time.** The stream opens 100 ms after the selection settles on a running agent, and closes when the selection moves or the agent pane is hidden. A move within those 100 ms cancels the pending open. |
 | P2-D5 | **The viewed window is resized** to the agent pane's inner size when it is viewed, zoomed or restored (`resize-window`, verified by S3.5). A window that stops being viewed keeps its last size. |
-| P2-D6 | **"In use"** (the extra check when an agent stops is proposed to the author. If they approve, Task 2.20 edits the PRD Lifecycle "checked" list and UI §4.9. If they decline, the stop trigger is dropped from 2.13 and the 10-minute check covers it) means the agent is running and its current session was launched in that worktree. `SessionRow.worktree` records it, so a restart keeps it. In-use worktrees are never removed, automatically or by hand: `d` shows `<agent> is running in it · stop it first`. A check runs when the owning agent stops. This pins the PRD's "keeps it while the work is in progress", and Task 2.13 edits TD §5.3 to say so. |
+| P2-D6 | **"In use"** means the agent is running and its current session was launched in that worktree. `SessionRow.worktree` records it, so a restart keeps it. In-use worktrees are never removed, automatically or by hand; `d` shows `<agent> is running in it · stop it first`. Once the agent stops, the next check in the PRD's list removes it: when the list opens, or the 10-minute timer. This pins the PRD's "keeps it while the work is in progress", and Task 2.13 edits TD §5.3 to say so. |
 | P2-D7 | **Task ids and branches.** The slug is D11's slug of the task's first line, cut to 32 characters, or `task` when empty. The task id is the slug (cut to 28 characters when a suffix is needed, with a trailing `-` stripped), made unique among this agent's worktree rows with `-2`, `-3`, and so on. The branch is `duohive/<agent>/<task-id>`. When git reports that the branch already exists (a kept unmerged branch, or anything else), the engine tries the next suffix, up to 9 attempts. After that, the row error is `couldn't create worktree: branch exists · space`. An existing branch is never reused or reset. |
-| P2-D8 | **The phase-2 chat pane.** It is drawn at UI §3 sizes, titled `⬢ Duo · <state>`, with an input.<br>• **`enter`** sends the line as `GiveWork { agent: Duo, run: Directory }`.<br>• **A refusal** (Duo starting, working or waiting) shows `Duo is <state word> · send again when it is at rest`, and the text stays in the input.<br>• **`GiveWorkNotTaken` for Duo** puts the text back in the input with P2-D11's note.<br>• **History:** in-memory `you` lines, and Duo's replies taken at each Duo turn end (`AgentStatusChanged` to idle, with the reply current then), stamped like `10:05`.<br>A line starting with `@agent` goes to Duo as written, since routing arrives with the inbox. Phase 3 (3.9) replaces this pane. |
-| P2-D9 | **Phase-2 keys:**<br>• `tab`/`shift+tab` move focus.<br>• `space` gives work, in the org pane and the agent pane.<br>• `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or role it folds.<br>• `←`/`→` fold and unfold; `z` zooms; `w` opens worktrees; `,` opens Settings.<br>• `ctrl+↑`/`ctrl+↓` resize the chat.<br>• Needs you: `↑↓` and `enter`.<br>• Agent pane: `enter`/`ctrl+q`, `PgUp`/`PgDn`.<br>Still phase 4: `?`, `f`, `m`, the mouse and the key-binding editor. Footers leave out `? help` until phase 4. |
+| P2-D8 | **The phase-2 chat pane.** It is drawn at UI §3 sizes, titled `⬢ Duo · <state>`, with an input.<br>• **`enter`** sends the line as `GiveWork { agent: Duo, run: Directory }`.<br>• **A refusal** (Duo starting, working or waiting) shows `<Duo's name> is <state word> · send again when it is at rest`, and the text stays in the input.<br>• **`GiveWorkNotTaken` for Duo** puts the text back in the input with P2-D11's note.<br>• **History:** in-memory `you` lines, and Duo's replies taken at each Duo turn end (`AgentStatusChanged` to idle, with the reply current then), stamped like `10:05`.<br>A line starting with `@agent` goes to Duo as written, since routing arrives with the inbox. Phase 3 (3.9) replaces this pane. |
+| P2-D9 | **Phase-2 keys:**<br>• `tab`/`shift+tab` move focus.<br>• `space` gives work, in the org pane and the agent pane.<br>• `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or role it folds.<br>• `←`/`→` fold and unfold; `z` zooms; `w` opens worktrees; `,` opens Settings.<br>• `ctrl+↑`/`ctrl+↓` resize the chat.<br>• Needs you: `↑↓` and `enter`.<br>• Agent pane: `enter`/`ctrl+q`, `PgUp`/`PgDn`.<br>Still phase 4: `?`, `f`, `m`, the mouse and the key-binding editor. The footers and the header leave out `? help` until phase 4. |
 | P2-D10 | **Phase-2 Give work goes to agents only.**<br>• **`space` on a role:** shows `select an agent to give work`.<br>• **On a team, or on Duo (in the tree or the agent pane):** shows `space gives work to an agent or a role`, as UI §4.5 has it.<br>• **The busy dialog** reads `<agent> is <state word>. Give work when it is at rest.`, with Give work disabled.<br>Task to a role and **Send as message instead** arrive in 3.11. |
-| P2-D11 | **A typed-in task counts as taken only when the agent leaves rest.** This narrows the PRD's "finished or idle: types the task in" for the few seconds a delivery is pending; it is listed for the author in the hand-off. This changes TD §4.2's row "finished, idle → New work → working". The paste no longer fires `NewWork`. A `busy` or prompt-submit hook does, or a `~` busy read for hookless coverage.<br>• **Until then:** the agent stays finished or idle, with `delivery_pending`. A further Give work is refused as `GiveWorkRefused { state, pending: true }`, shown as `<agent> is still taking the last task`.<br>• **No sign within 5 s:** the engine publishes `GiveWorkNotTaken { agent, task, reason: "no sign it started" }`. `RuntimeEvent::PasteFailed` gives the same event, with its reason.<br>• **The TUI** shows `<agent> didn't take the task · space to try again`, and Give work opens pre-filled (Duo: P2-D8).<br>Task 2.12 edits TD §4.2, §5.1 and §6.3. Phase 3's inbox delivery uses the same rule. |
+| P2-D11 | **A typed-in task counts as taken only when the agent leaves rest.** This narrows the PRD's "finished or idle: types the task in" for the few seconds a delivery is pending; it is listed under "Author decisions" above. This changes TD §4.2's row "finished, idle → New work → working". The paste no longer fires `NewWork`. A `busy` or prompt-submit hook does, or a `~` busy read for hookless coverage.<br>• **Until then:** the agent stays finished or idle, with `delivery_pending`. A further Give work is refused as `GiveWorkRefused { state, pending: true }`, shown as `<agent> is still taking the last task`.<br>• **No sign within 5 s:** the engine publishes `GiveWorkNotTaken { agent, task, reason: "no sign it started" }`. `RuntimeEvent::PasteFailed` gives the same event, with its reason.<br>• **The TUI** shows `<agent> didn't take the task · space to try again`, and Give work opens pre-filled (Duo: P2-D8).<br>Task 2.12 edits TD §4.2, §5.1 and §6.3. Phase 3's inbox delivery uses the same rule. |
 | P2-D12 | **Scrolling back.** `PgUp` freezes a snapshot (`capture-pane -e -p -S -<n>`, at most 2 000 lines), and the pane title gains `· scrolled`. `PgDn` past the bottom, or `enter` to type, returns to live. |
 | P2-D13 | **Settings moves into phase 2** because alerts ship here, and the PRD, TD §4.2 and UI §4.1.4 say each alert kind "can be turned off in Settings". The `,` screen has UI §4.10's You, Attention and Look groups. The Keys and Org rows arrive in phase 4. Theme `auto` keeps phase 1's rendering, dark, until 4.9. Roadmap row 2 and UI §8 item 2 were edited to match on 2026-10-05. |
 | P2-D14 | **No alerts for replayed history.** From `start_up` until `Reconnected`, state changes publish no `Alert`. |
@@ -190,6 +202,8 @@ docs/plans/spike-report.md (S3) · docs/plans/friction-log.md (new) · docs/plan
 | P2-D17 | **Base and fresh branches.** With an `origin` remote, the base is `origin`'s default (from `refs/remotes/origin/HEAD`, else `git ls-remote --symref origin HEAD`). Without one, or offline with neither known, the local default is the first that exists of `init.defaultBranch`, `main`, `master`; with none, the check is `CheckFailed("no default branch")`. Each row stores `created_from`, the base commit its branch was created on. A branch with no commits after `created_from` is `NotMerged { files_changed: 0 }`, never merged. This test runs before the merge tests, and a merged branch always has the agent's commits after `created_from`, so normal merges are still detected. |
 | P2-D18 | **An alert click selects the agent but doesn't raise the terminal window.** UI §4.1.4 says a click "focuses the terminal and selects the agent". Neither notifier can name the window that runs DuoHive, so raising it is left out, and Task 2.20 edits UI §4.1.4 to match. |
 | P2-D19 | **Mixed sizes in UI §3.** Width and height each pick a row of the layout table, and the smaller row applies: 130×30 uses the 100–119 × 30 row, and 110×24 the 80–99 × 24 row. A size below 80 wide or 24 tall gets the too-small screen. |
+| P2-D20 | **One worktree creation at a time per agent.** From `Git::create` until `Created` (including the up to 9 retries), `StartAgent` and `GiveWork` for that agent are refused with `<agent> is getting a worktree ready`. TD §4.2 has no state for this, so the agent keeps its state; Task 2.12 adds the guard to TD §5.3. |
+| P2-D21 | **A failed worktree creation leaves an errored agent errored.** TD §5.3 and UI §4.12 say "the agent stays stopped", which covers stopped agents. An errored agent stays errored, with the creation error as its reason, so no new state edge is added. Task 2.13 adds this to TD §5.3. |
 
 ---
 
@@ -201,7 +215,7 @@ This is a spike: the code is throwaway, under `spikes/s3/`, with no code under t
 
 **Files:**
 - Create `spikes/s3/`.
-- Modify `docs/plans/spike-report.md` (new section S3) and `docs/design/technical-design.md` (§3.1 ports, §4.1 source 2, §4.3 "No pane streams").
+- Modify `docs/plans/spike-report.md` (new section S3) and `docs/design/technical-design.md` (§3.1 ports: add `PaneView`, and the `Ids` and `DirProbe` ports phase 1 built; §4.1 source 2; §4.3 "No pane streams").
 
 - [ ] **Step 1: Build each P2-D2 candidate.** Run each against 100 noisy windows (S0's generator) on tmux 3.2a and the latest tmux, and record:
 
@@ -213,9 +227,9 @@ This is a spike: the code is throwaway, under `spikes/s3/`, with no code under t
   | S3.4 | Colour, cursor and alternate-screen fidelity in `vt100` `=0.16.2`, on Claude Code and OpenCode screens recorded live; save the byte captures as fixtures for Task 2.4 |
   | S3.5 | That `resize-window` on the viewed window works with the server's `window-size` setting, and that the CLI redraws |
   | S3.6 | The cost of `capture-pane -e -S -2000` |
-  | S3.8 | Whether Claude Code shows its workspace-trust dialog in a new worktree path; if so, note it as a phase-2 risk for Task 2.19 |
+  | S3.7 | Whether Claude Code shows its workspace-trust dialog in a new worktree path; if so, note it as a phase-2 risk for Task 2.19 |
 
-- [ ] **Step 2: Choose.** Pick the candidate with p95 echo under 50 ms and the lowest S3.2. Record the choice and its exact tmux commands as S3.7.
+- [ ] **Step 2: Choose.** Pick the candidate with p95 echo under 50 ms and the lowest S3.2. Record the choice and its exact tmux commands as S3.8.
 - [ ] **Step 3: Update the TD** with P2-D1 and P2-D2. Validation: every S3 subsection holds measured values and names its log.
 - [ ] **Step 4: Commit.** `docs: spike S3 live pane view`
 
@@ -228,7 +242,10 @@ This is a spike: the code is throwaway, under `spikes/s3/`, with no code under t
   - `crates/duohive/src/system.rs` (`Ports {` gets `NoNotifier`, `NoGit`);
   - every `Command::GiveWork` site: `crates/duohive-core/src/{event.rs, engine/harness.rs, engine/mod.rs, engine/lifecycle.rs}`, `crates/duohive/src/bench/mod.rs`, `crates/duohive/tests/e2e.rs`;
   - every `GiveWorkRefused` site (it gains `pending`): `crates/duohive-core/src/{event.rs, engine/lifecycle.rs, engine/lifecycle/tests.rs}`, `crates/duohive-tui/src/{model.rs, input/tests.rs}`;
-  - `crates/duohive-tui/src/model.rs` (the new `Event` arms do nothing for now).
+  - `crates/duohive-tui/src/model.rs` (the new `Event` arms do nothing for now);
+  - every `AgentView {` site: `crates/duohive-core/src/{event.rs, engine/mod.rs}`, `crates/duohive-tui/src/{fixtures.rs, model.rs, forms/tests/mod.rs}`;
+  - every `Snapshot {` site: `crates/duohive-core/src/{event.rs, engine/mod.rs}`, `crates/duohive-tui/src/{model.rs, app/tests.rs, render/screen_tests.rs}`;
+  - `crates/duohive/src/system.rs`: `SystemOptions` keeps `#[derive(Debug)]`, so `Notifier` and `Git` take `Debug` as a supertrait.
 
 **Interfaces — Produces:**
 
@@ -259,8 +276,8 @@ pub trait PaneView: Send + Sync {
     fn send(&self, stream: StreamId, input: PaneInput) -> Result<(), ViewError>;
     fn scrollback(&self, stream: StreamId, lines: u16) -> Result<tokio::sync::oneshot::Receiver<Vec<u8>>, ViewError>;
 }
-pub trait Notifier: Send { fn available(&self) -> bool; fn notify(&mut self, alert: &Alert); }
-pub trait Git: Send { fn create(&mut self, req: CreateWorktree); fn check(&mut self, req: CheckWorktree); fn remove(&mut self, req: RemoveWorktree); }
+pub trait Notifier: Send + std::fmt::Debug { fn available(&self) -> bool; fn notify(&mut self, alert: &Alert); }
+pub trait Git: Send + std::fmt::Debug { fn create(&mut self, req: CreateWorktree); fn check(&mut self, req: CheckWorktree); fn remove(&mut self, req: RemoveWorktree); }
 pub struct CreateWorktree { pub agent: AgentName, pub task: TaskId, pub repo: PathBuf, pub path: PathBuf, pub branch: String }
 pub struct CheckWorktree  { pub agent: AgentName, pub task: TaskId, pub repo: PathBuf, pub path: PathBuf, pub branch: String,
                             pub created_from: String }                     // the base commit the branch was created on (P2-D17)
@@ -278,7 +295,11 @@ pub struct NoGit;       impl Git for NoGit { /* answers nothing; used until 2.14
 // command.rs:    GiveWork { agent, task, run: RunIn }
 // event.rs:      Alert(Alert), AlertsUnavailable, AlertClicked { agent }, GiveWorkNotTaken { agent, task, reason },
 //                Worktrees(Vec<WorktreeRow>) (WorktreeRow is a placeholder struct here, filled in by 2.11);
-//                GiveWorkRefused gains `pending: bool`; AgentView gains `worktree: Option<TaskId>` (None until 2.12 sets it)
+//                GiveWorkRefused gains `pending: bool`;
+//                AgentView gains `worktree: Option<TaskId>` and `delivery_pending: bool` (None/false until 2.12 sets them);
+//                AgentRunChanged { agent, worktree: Option<TaskId>, delivery_pending: bool } keeps them current after start-up
+//                (the TUI's model.rs applies it to its AgentView; 2.12 emits it)
+//                Snapshot gains `worktrees: Vec<WorktreeRow>` (empty until 2.13 fills it)
 ```
 
 **Testkit:**
@@ -290,8 +311,8 @@ pub struct NoGit;       impl Git for NoGit { /* answers nothing; used until 2.14
   - `fakes_record_calls`: each fake returns its calls in order, for example `FakeGit` after `create` then `check` → `[Create(..), Check(..)]`.
   - `null_ports_do_nothing`: `NoNotifier.available()` is false, and `NoGit` produces no input.
   - Round trips through `serde_json`, equal after decoding: `git_events_round_trip_json`, `pane_types_round_trip_json`, `new_events_round_trip_json`.
-  - `give_work_defaults_to_directory_at_call_sites`: compiles, and the existing e2e still passes.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features ports`
+  - `existing_call_sites_give_work_in_directory`: the bench's and the e2e's `GiveWork` carry `run: RunIn::Directory` (asserted on the bench's sent command).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features; cargo test -p duohive --lib bench`
 - [ ] **Step 3: Implement.** Add the types, the null implementations, the fakes and the call-site updates.
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: pane view, notifier and git ports`
@@ -303,7 +324,7 @@ pub struct NoGit;       impl Git for NoGit { /* answers nothing; used until 2.14
 - Modify `lib.rs`.
 
 **Interfaces:**
-- Consumes `PaneView` (Task 2.2) and the S3.7 commands (Task 2.1).
+- Consumes `PaneView` (Task 2.2) and the S3.8 commands (Task 2.1).
 - Produces `pub struct TmuxPaneView` with `TmuxPaneView::new(cfg: &TmuxConfig) -> Result<Self, TmuxError>`, which implements `PaneView`.
 
 **Behaviour:**
@@ -334,8 +355,8 @@ pub struct NoGit;       impl Git for NoGit { /* answers nothing; used until 2.14
   - `closed_when_window_dies`: `kill-window` → the stream's last chunk is `Closed`, and the receiver then ends.
   - `send_to_stale_stream_fails`: kill the window and start a new one for the same agent → `send` on the old id returns `Err(Closed)`, and the new pane receives nothing.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tmux --test view`
-- [ ] **Step 3: Implement** with the S3.7 commands.
-- [ ] **Step 4: Run, see PASS** on the latest tmux and on 3.2a: `PATH=$HOME/.local/tmux-3.2a/bin:$PATH cargo test -p duohive-tmux --test view`
+- [ ] **Step 3: Implement** with the S3.8 commands.
+- [ ] **Step 4: Run, see PASS** on the latest tmux and on 3.2a: `PATH=$HOME/.local/tmux-3.2a/bin:$PATH cargo test -p duohive-tmux --test view`, then `make check`
 - [ ] **Step 5: Commit.** `feat: live pane view over tmux`
 
 ### Task 2.4: TUI — the terminal widget
@@ -370,7 +391,7 @@ impl TermView {
   - `resize_keeps_bottom_lines`.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui term_view`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui term_view`
+- [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: terminal widget for the agent pane`
 
 ### Task 2.5: TUI — three panes, focus, folding and the phase-2 chat pane
@@ -378,6 +399,7 @@ impl TermView {
 **Files:**
 - Create `crates/duohive-tui/src/focus.rs`, `render/agent_pane.rs` (moving the summaries out of `side_pane.rs`, which is deleted) and `render/chat_pane.rs`.
 - Modify `render/mod.rs`, `render/header.rs`, `model.rs`, `input.rs` and `tree.rs`.
+- Remove the attach hint's socket plumbing (D31, P2-D3): `AppConfig.tmux_socket` (`app.rs`) and `RenderCtx.tmux_socket` (`render/mod.rs`), with their sites in `crates/duohive-tui/src/{fixtures.rs, app/tests.rs}`, `crates/duohive/src/startup.rs`, and `crates/duohive/src/bench/{observe.rs, mod.rs}` (`Observer::new` drops its `tmux_socket` parameter).
 
 **Interfaces — Produces:**
 
@@ -405,6 +427,7 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
 | Focus | Footer |
 |---|---|
 | Org | `tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom` |
+| Org, compact layout (80–99 columns) | `tab pane · ↑↓ move · space give work`, as UI §4.1's compact mock, without `? help` (P2-D9) |
 | Needs you | `↑↓ move · enter go to agent` |
 | Agent (Selected mode) | `enter type · z zoom · PgUp/PgDn scroll · space give work` |
 | Chat | `enter send · alt+enter new line · tab pane` |
@@ -418,7 +441,7 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
   - Focus:
     - `tab_cycles_org_needs_you_agent_chat`, including an empty Needs you;
     - `shift_tab_reverses`;
-    - `focused_pane_has_heavy_border`.
+    - `focused_pane_has_heavy_border`: the focused pane's corner is `┏`, every other pane's is `┌`.
   - Layout and size:
     - `chat_grows_to_12_rows_while_typing_at_120x36`;
     - `ctrl_arrows_resize_chat_within_p2_d3_bounds`;
@@ -426,7 +449,7 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
     - `shrink_order_drops_replies_then_connectors`;
     - `mixed_sizes_take_the_smaller_row`: 130×30 gives a 50-column org and a 6-row chat; 110×24 gives a 32-column org and a 4-row chat.
   - Folding and footer:
-    - `fold_hides_children_and_shows_count`;
+    - `fold_hides_children_and_shows_count`: folding QA hides `pay-qa`, and the compact row reads `▸ QA (1)`;
     - `footer_matches_focused_pane`.
   - Chat pane:
     - `chat_enter_gives_work_to_duo`: sends `GiveWork { agent: Duo, run: Directory }`;
@@ -434,9 +457,10 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
     - `chat_not_taken_returns_text`;
     - `letter_keys_type_in_chat`: `q`, `w`, `,`, `z` and `s` with the chat focused go into the input, and none quits or opens anything.
   - Copy: `role_summary_has_phase_2_footer`, `empty_org_keeps_d7_text`.
+  - `reconnecting_state_in_agent_pane`: while reconnecting, the agent pane reads `Reconnecting to N agents…` (moved from the deleted side pane, replacing `reconnecting_state_in_side_pane`).
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui`. The old side-pane snapshots are replaced; the reviewer checks the diff against UI §4.1.2 and P2-D3.
+- [ ] **Step 4: Run, see PASS.** `make check`. The old side-pane snapshots are replaced; the reviewer checks the diff against UI §4.1.2 and P2-D3.
 - [ ] **Step 5: Commit.** `feat: three-pane layout, focus and folding`
 
 ### Task 2.6: TUI — Needs you you can act on
@@ -455,14 +479,14 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
 
 - [ ] **Step 1: Write the failing tests.**
   - `enter_selects_agent_and_focuses_agent_pane`: selection is the agent, focus is `Agent`/`Selected`, and `Send(ViewAgent)` was emitted.
-  - `enter_unfolds_parents`.
+  - `enter_unfolds_parents`: with Payments folded, `enter` on `billing-api` in Needs you leaves Payments and Backend unfolded and `billing-api` selected.
   - `cursor_follows_agent_across_reorder`.
-  - `cursor_moves_to_neighbour_when_item_leaves`.
+  - `cursor_moves_to_neighbour_when_item_leaves`: the cursor on row 2 of 3; row 2 leaves → the cursor is on the new row 2; the last row leaves → the cursor is on the new last row.
   - `header_count_equals_list`.
   - Snapshot `needs_you_focused_80x24` / `_160x48`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui needs_you`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui needs_you`
+- [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: act on Needs you`
 
 ### Task 2.7: TUI — the agent pane (live terminal, Selected and Typing, scrolling)
@@ -477,6 +501,7 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
 - Consumes `PaneView` and `PaneStream` (Task 2.2), `TermView` (Task 2.4) and `TmuxPaneView` (Task 2.3).
 - `AppConfig` gains `pane_view: Arc<dyn PaneView>`.
 - Produces `pub fn key_to_input(k: KeyEvent) -> Option<PaneInput>`.
+- Files also: `crates/duohive-core/src/cli_kind.rs` (`CliKind::short()`), and `model.rs` applies `Event::AgentRunChanged`.
 
 **Behaviour:**
 - **Title:**
@@ -486,6 +511,8 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
   | An agent in a worktree | `<agent> · <CLI> · worktree <task-id>` |
   | Any other agent | `<agent> · <CLI> · <dir>` |
   | Duo | `⬢ Duo · <CLI> · your manager agent` |
+
+  `<CLI>` is the short name UI §4.1 shows: `Claude` or `OpenCode`. Forms keep `CliKind::display()` (`Claude Code`). A new `CliKind::short()` gives it, in `crates/duohive-core/src/cli_kind.rs`.
 
   `· TYPING` is added while typing, and `· scrolled` while scrolled back.
 - **The stream:**
@@ -502,21 +529,22 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
 
 - [ ] **Step 1: Write the failing tests.**
   - `typing_forwards_every_key_but_ctrl_q`: `q`, `esc`, `tab`, `ctrl+c`, `?`, `space`, `↑`, `F5` and `alt+x` give their `PaneInput`. `ctrl+q` gives nothing, and the mode becomes Selected.
-  - `typing_ends_when_window_dies`: on `Closed`, the mode becomes Selected and the footer note reads `<agent> stopped`.
+  - `typing_ends_when_window_dies`: on `Closed`, the mode becomes Selected and the footer note reads `<agent>'s session ended` (a stop or a crash).
   - `paste_while_typing_is_bracketed`.
   - Stream lifecycle:
     - `stream_opens_after_100ms_settle_and_only_one`;
     - `stream_closes_on_selection_change`;
     - `resize_follows_pane_size`.
   - `pgup_enters_scrolled_snapshot_and_pgdn_returns_live`.
-  - `title_shows_worktree_or_directory`: `AgentView.worktree = Some("retry-loop")` → `· worktree retry-loop`; `None` → `· <dir>`.
-  - `stopped_agent_shows_give_work_hint`.
-  - `focusing_finished_agent_sends_view`.
+  - `title_uses_short_cli_name`: a Claude agent's title is `pay-qa · Claude · ~/code/pay-qa`.
+  - `title_shows_worktree_or_directory`: after `AgentRunChanged { worktree: Some("retry-loop") }` the title has `· worktree retry-loop`; with `None`, `· <dir>`.
+  - `stopped_agent_shows_give_work_hint`: the pane holds `○ stopped · space to give work`.
+  - `focusing_finished_agent_sends_view`: `tab` into the agent pane on a finished agent emits `Send(ViewAgent)`; on an idle agent, nothing.
   - Snapshots, `_80x24` / `_160x48`:
     - `agent_pane_typing`;
     - `duo_waiting_prompt`;
     - `role_summary`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui agent_pane && cargo test -p duohive-tui keys_out`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: live agent pane with typing and scrollback`
@@ -542,7 +570,7 @@ pub struct ChatLines { pub lines: Vec<ChatLine> }    // P2-D8
   - Snapshot `zoomed_80x24` / `_160x48`.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui zoom`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui zoom`
+- [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: zoom the agent pane`
 
 ### Task 2.9: Core — alerts
@@ -582,7 +610,7 @@ pub fn alert_for(agent: &AgentName, is_duo: bool, before: &Status, after: &Statu
   - `click_becomes_event`.
   - `body_is_last_reply_or_empty`.
   - TUI: `alert_click_selects_agent`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features alerts && cargo test -p duohive-tui alert`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features alerts; cargo test -p duohive-tui alert`
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: desktop alert triggers`
@@ -592,14 +620,15 @@ pub fn alert_for(agent: &AgentName, is_duo: bool, before: &Status, after: &Statu
 **Files:**
 - Create `crates/duohive/src/notifier.rs`.
 - Modify:
-  - `real_ports.rs` and `system.rs`, where `NoNotifier` is replaced by `DesktopNotifier`. `SystemOptions` gains `notifier: Option<Box<dyn Notifier>>`, an override every test sets to `FakeNotifier`, so tests never post real alerts. The other `SystemOptions` sites set it too: `crates/duohive/tests/{system.rs, app.rs, e2e.rs}`, `crates/duohive/src/{startup.rs, bench/mod.rs}`;
+  - `real_ports.rs` and `system.rs`, where `NoNotifier` is replaced by `DesktopNotifier`. `SystemOptions` gains `notifier: Option<Box<dyn Notifier>>`, an override every test sets to `FakeNotifier`, so tests never post real alerts; `startup.rs` passes `None` (the real notifier), and the bench passes `Some(Box::new(NoNotifier))`. The sites: `crates/duohive/tests/{system.rs, app.rs, e2e.rs}`, `crates/duohive/src/{startup.rs, bench/mod.rs}`;
   - the TUI's `model.rs` and `render/header.rs`, for the footer note.
 
 **Interfaces — Produces:**
 - `pub struct DesktopNotifier`, implementing `Notifier`, with:
 
   ```rust
-  DesktopNotifier::detect(path_env: &HashMap<String, String>, tx: mpsc::Sender<Input>, timeout: Duration) -> Self
+  DesktopNotifier::detect(platform: Platform, path_env: &HashMap<String, String>, tx: mpsc::Sender<Input>, timeout: Duration) -> Self
+  // Platform { MacOs, Linux } is passed in (std::env::consts::OS in production), so every test runs on both CI legs
   ```
 
   The production timeout is 30 s.
@@ -618,7 +647,7 @@ pub fn alert_for(agent: &AgentName, is_duo: bool, before: &Status, after: &Statu
   - `click_sends_alert_clicked`: a fake `notify-send` script on a temp `PATH` prints `open`.
   - `child_killed_after_timeout`: timeout 200 ms.
   - TUI: `alerts_unavailable_note_once`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --lib notifier && cargo test -p duohive-tui alerts_unavailable`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --lib notifier; cargo test -p duohive-tui alerts_unavailable`
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: desktop notifier for macOS and Linux`
@@ -631,6 +660,7 @@ pub fn alert_for(agent: &AgentName, is_duo: bool, before: &Status, after: &Statu
   - `Store` gains three methods;
   - `SessionRow` gains `worktree`.
 - Modify `testkit.rs` (`FakeStore`) and `crates/duohive-store/src/{db.rs, sqlite_store.rs, paths.rs}`.
+- Modify `crates/duohive-core/src/validate.rs`: D11's private `slug(&NodeName)` becomes `pub(crate) fn slug(&str)`, which `task_slug` reuses.
 - Modify `crates/duohive/src/system/enriching_store.rs`, which implements `Store`.
 - Update every `SessionRow {` site: `crates/duohive-core/src/{ports.rs, engine/mod.rs, engine/reconnect/tests.rs, engine/org_edit/tests.rs}` and `crates/duohive-store/{src/sqlite_store.rs, tests/state_db.rs}`.
 
@@ -670,7 +700,7 @@ ALTER TABLE sessions ADD COLUMN worktree TEXT;
   - `worktree_rows_round_trip`: a row of every `WorktreeState` saves and loads back equal.
   - `session_worktree_round_trips`.
   - `migration_3_applies_on_v2_db`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features worktree && cargo test -p duohive-store`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features worktree; cargo test -p duohive-store`
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: worktree records and migration 3`
@@ -684,7 +714,9 @@ ALTER TABLE sessions ADD COLUMN worktree TEXT;
   - `crates/duohive-core/src/adapter.rs`;
   - `crates/duohive-cli/src/{claude.rs, fake.rs, hooks_json.rs, lib.rs}`;
   - `crates/duohive-cli/src/opencode_tests.rs`.
-- Modify `docs/design/technical-design.md` §4.2 (the "finished, idle" row), §5.1 and §6.3 ("Delivery moves the recipient to working" becomes "Delivery counts once the recipient leaves rest", P2-D11).
+- Modify `crates/duohive-core/src/testkit.rs`: the stub adapter's `launch` prefers `spec.cwd`, as `launch_cwd` does, so the engine tests see the worktree path.
+- Emit `Event::AgentRunChanged` whenever an agent's `worktree` or `delivery_pending` changes.
+- Modify `docs/design/technical-design.md` §4.2 (the "finished, idle" row), §5.1, §5.3 (P2-D20) and §6.3 ("Delivery moves the recipient to working" becomes "Delivery counts once the recipient leaves rest", P2-D11).
 
 **Interfaces — Produces:**
 
@@ -697,23 +729,26 @@ LaunchSpec { …, cwd: Option<PathBuf> }       // launch_cwd(spec) prefers it
 | Agent state | Run | What happens |
 |---|---|---|
 | stopped, errored | `Directory` | A fresh launch, as before |
-| stopped, errored | `NewWorktree` | 1. When the launch runs, the engine probes the agent's own directory, as D26 has every launch do. It must be a git repo, else `CommandRejected("new worktree needs a git repo; <dir> isn't one")`.<br>2. The engine picks a `task_id`, saves an `Unchecked` row and calls `Git::create`.<br>3. `Created(Ok((base, from)))` → store `base` and `created_from = from`, then launch with `cwd = Some(path)`, `SessionRow.worktree = Some(task)` and `AgentView.worktree = Some(task)`, and set the row to `InUse`.<br>4. `Created(Err(BranchExists))` → retry with the next suffix, up to 9 attempts (P2-D7).<br>5. Any other error, or 9 attempts used → delete the row; the agent stays as it was (stopped, or errored with this error replacing the old one), with row error `couldn't create worktree: <e> · space`; `last_task` keeps the task |
+| stopped, errored | `NewWorktree` | While the worktree is being created (P2-D20), `StartAgent` and `GiveWork` for this agent are refused.<br>1. When the launch runs, the engine probes the agent's own directory, as D26 has every launch do. It must be a git repo, else `CommandRejected("new worktree needs a git repo; <dir> isn't one")`.<br>2. The engine picks a `task_id`, saves an `Unchecked` row and calls `Git::create`.<br>3. `Created(Ok((base, from)))` → store `base` and `created_from = from`, then launch with `cwd = Some(path)`, `SessionRow.worktree = Some(task)` and `AgentView.worktree = Some(task)`, and set the row to `InUse`. `AgentView.delivery_pending` is true from a next-turn paste until it is taken or reported not taken (P2-D11).<br>4. `Created(Err(BranchExists))` → retry with the next suffix, up to 9 attempts (P2-D7).<br>5. Any other error, or 9 attempts used → delete the row; a stopped agent stays stopped (TD §5.3) and an errored agent stays errored with this as its reason (P2-D21), with row error `couldn't create worktree: <e> · space`; `last_task` keeps the task |
 | finished, idle | either | The task is typed in where the session already runs, under P2-D11 |
 
 - [ ] **Step 1: Write the failing tests.**
   - `worktree_give_work_creates_then_launches_in_it`: after `Created(Ok)`, the `RuntimeCall::Start` cwd is the worktree path and the session row's `worktree` is `Some`.
   - `existing_branch_takes_next_suffix_then_errors`.
   - `worktree_creation_failure_keeps_task_and_stays_stopped`.
+  - `errored_agent_stays_errored_on_creation_failure`: the row's reason becomes `couldn't create worktree: …`.
+  - `start_during_worktree_creation_refused`: `StartAgent` and a second `GiveWork` before `Created` → `CommandRejected("<agent> is getting a worktree ready")`, and no `GitCall::Create` or `RuntimeCall::Start` is added.
   - `worktree_needs_git_repo`.
   - `next_turn_ignores_run_choice`.
+  - `run_changed_published`: a worktree launch and a next-turn paste each publish `AgentRunChanged` with the new values, and taking the task publishes it again with `delivery_pending: false`.
   - `next_turn_stays_at_rest_until_taken`: after the paste the state is unchanged, and a `busy` hook moves it to working.
   - `second_give_work_refused_while_pending`.
   - `untaken_paste_reported_after_5s`.
   - `tilde_busy_read_confirms_for_hookless`.
   - `paste_failed_reported`.
   - `launch_cwd_prefers_spec_cwd` (in `duohive-cli`).
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features lifecycle && cargo test -p duohive-cli launch_cwd`
-- [ ] **Step 3: Implement**, and edit TD §4.2, §5.1 and §6.3.
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features lifecycle; cargo test -p duohive-cli launch_cwd`
+- [ ] **Step 3: Implement**, and edit TD §4.2, §5.1, §5.3 and §6.3.
 - [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: give work in a new worktree, confirmed delivery`
 
@@ -723,8 +758,9 @@ LaunchSpec { …, cwd: Option<PathBuf> }       // launch_cwd(spec) prefers it
 - Create `crates/duohive-core/src/engine/worktrees.rs`.
 - Modify:
   - `command.rs` (`CheckWorktrees`, `DeleteWorktree`);
+  - `engine/mod.rs` (command dispatch, `Input::Git` `Checked`/`Removed` handling, `Snapshot.worktrees`);
   - `engine/{timers.rs, reconnect.rs, org_edit.rs, lifecycle.rs}`;
-  - `docs/design/technical-design.md` §5.3 (P2-D6, P2-D7's branch `duohive/<agent>/<task-id>`, P2-D16, P2-D17) and §7 (the worktrees table and `sessions.worktree`).
+  - `docs/design/technical-design.md` §5.3 (P2-D6, P2-D7's branch `duohive/<agent>/<task-id>`, P2-D16, P2-D17, P2-D21) §8 (worktree creation fails: P2-D21) and §7 (the worktrees table and `sessions.worktree`).
 
 **Interfaces — Produces:**
 
@@ -736,7 +772,6 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
 
 **When checks run** (TD §5.3): `Git::check` for each row that isn't removing, when:
 - its agent enters finished;
-- its agent stops;
 - the first `DirInventory` arrives (after the first frame, D26);
 - a `CheckWorktrees` command arrives;
 - the 10-minute timer fires.
@@ -745,7 +780,7 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
 
 | Result | New state |
 |---|---|
-| In use (its agent's live session runs in it) | Stays `InUse` whatever the merge result (P2-D16); it is checked again when the session stops |
+| In use (its agent's live session runs in it) | Stays `InUse` whatever the merge result (P2-D16); after the session stops, the next trigger above checks it again |
 | `Merged` and 0 dirty | `Merged`, then `Removing`, then `Git::remove { delete_branch: true, force: false }`; `Removed(Ok)` deletes the row |
 | `Merged` and dirty | `MergedDirty` |
 | `NotMerged` | `NotMerged` |
@@ -763,11 +798,11 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
 - Deleting an agent, role or team keeps its rows.
 
 - [ ] **Step 1: Write the failing tests.**
-  - `checks_on_finish_stop_startup_open_and_every_10_minutes`: each trigger issues one `GitCall::Check` per eligible row.
+  - `checks_on_finish_startup_open_and_every_10_minutes`: each trigger issues one `GitCall::Check` per row that isn't removing; stopping an agent issues none.
   - `merged_clean_unused_is_removed`: `Checked { Merged(Squash), dirty 0 }` → `GitCall::Remove { delete_branch: true, force: false }`; `Removed(Ok)` → the row is gone from `Worktrees`.
-  - `never_removes_dirty_unmerged_or_in_use`.
-  - `in_use_survives_restart`.
-  - `removed_after_session_stops`.
+  - `never_removes_dirty_unmerged_or_in_use`: `Checked` results of `NotMerged`, `Merged` with 2 dirty files, and `Merged` clean on an in-use row issue no `GitCall::Remove`.
+  - `in_use_survives_restart`: a session row with `worktree = Some(t)` and a live window → after `start_up`, the row is `InUse`, and a `Merged` clean result removes nothing.
+  - `removed_after_session_stops`: stop the agent, then `CheckWorktrees` → `Merged` clean → `GitCall::Remove`.
   - `manual_remove_needs_confirm_unless_merged_clean`.
   - `confirmed_remove_forces_and_keeps_branch`.
   - `in_use_remove_refused`.
@@ -822,8 +857,8 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
     - `offline_fetch_uses_local_refs`, with `origin` removed.
   - Branches and removal:
     - `existing_branch_is_an_error_not_reused`: returns `BranchExists`, and the existing branch tip is unchanged;
-    - `remove_refuses_paths_outside_worktrees_dir`;
-    - `remove_without_force_keeps_dirty_worktree`;
+    - `remove_refuses_paths_outside_worktrees_dir`: a request for `<tmp>/elsewhere` and one for `<worktrees>/../x` each return `Removed(Err)`, and both directories still exist;
+    - `remove_without_force_keeps_dirty_worktree`: `force: false` on a worktree with an untracked file → `Removed(Err)`, and the file is still there;
     - `create_then_remove_round_trip`.
   - `same_repo_requests_run_in_order`.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test git`
@@ -835,7 +870,7 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
 
 **Files:**
 - Create `crates/duohive-tui/src/forms/give_work.rs`.
-- Modify `forms/mod.rs`, `input.rs` and `model.rs`.
+- Modify `forms/mod.rs`, `input.rs`, `model.rs` and `tree.rs` (`AGENT_ERROR_HINT`, the errored-row hint, and its tests).
 
 **Opening** (UI §4.5, P2-D10, P2-D11):
 - `space` on an agent opens the dialog, in the org pane or the agent pane in Selected mode.
@@ -851,9 +886,10 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
   | stopped, errored | `Run  ( ) new worktree   (•) <dir>   agent default: directory\|worktree`, pre-set from the resolved `worktree` default; then `Starts a fresh session.` The worktree radio is disabled, with the reason under it, when the directory isn't a git repo |
   | finished, idle | `Run  in worktree <id>, as the next turn of <agent>'s session`, or `in <dir>, …` |
   | starting, working, waiting | P2-D10's busy text, with Give work disabled |
-  | finished or idle with a delivery pending (P2-D11) | `<agent> is still taking the last task`, with Give work disabled |
+  | finished or idle with `AgentView.delivery_pending` (P2-D11) | `<agent> is still taking the last task`, with Give work disabled |
 
 - **`enter`** sends `GiveWork { agent, task, run }`.
+- **The errored row's hint** returns to UI §4.12's `exited unexpectedly (code N) · space retry · s stop`, now that `space` gives work (phase 1 left out `space retry`, T23).
 - **`GiveWorkNotTaken`** reopens the dialog pre-filled, with P2-D11's note.
 
 - [ ] **Step 1: Write the failing tests.**
@@ -871,12 +907,13 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
     - `errored_title_shows_errored`;
     - `next_turn_variant_shows_where_it_runs`;
     - `busy_variant_refuses`;
-    - `pending_variant_says_still_taking`;
-    - `not_taken_reopens_prefilled`.
+    - `pending_variant_says_still_taking`: after `AgentRunChanged { delivery_pending: true }`, `space` opens the pending variant;
+    - `not_taken_reopens_prefilled`;
+    - `errored_row_hint_offers_space_retry`: an errored agent's second line ends `· space retry · s stop`.
   - Snapshots of the three variants, `_80x24` / `_160x48`.
 - [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui give_work`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui give_work`
+- [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: give work dialog`
 
 ### Task 2.16: TUI — the worktree list (`w`) and worktree copy elsewhere
@@ -929,9 +966,9 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
     - `stop_dialog_mentions_worktree`;
     - `name_read_only_with_worktrees`.
   - Snapshot `worktrees_80x24` / `_160x48`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui worktrees`
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
 - [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `cargo test -p duohive-tui worktrees`
+- [ ] **Step 4: Run, see PASS.** `make check`
 - [ ] **Step 5: Commit.** `feat: worktree list`
 
 ### Task 2.17: TUI — Settings (`,`)
@@ -986,7 +1023,7 @@ Command::DeleteWorktree { agent: AgentName, task: TaskId, confirmed: bool }   //
     1. Give work with `NewWorktree` on a temp repo that has a bare origin;
     2. the agent finishes;
     3. the test squash-merges the branch into the origin default;
-    4. stop the agent;
+    4. stop the agent, then send `CheckWorktrees`;
     5. `Worktrees` no longer lists the worktree, and its directory is gone.
   - `e2e_alert_on_waiting`.
   - `e2e_not_taken_reported`: a fake agent that ignores pastes → `GiveWorkNotTaken` within 6 s.
@@ -1014,7 +1051,7 @@ This is acceptance, with no code under test.
   - `--effort=` on a real turn;
   - a task starting with `/` on OpenCode;
   - a Claude turn that runs on past `Escape`;
-  - S3.8, the trust dialog in a new worktree path.
+  - S3.7, the trust dialog in a new worktree path.
 
   If the trust dialog appears, decide with the author whether to accept the `~◆ waiting` it shows or to pre-trust per launch, which must never touch global config.
 - [ ] **Step 4: Commit.** `docs: phase 2 friction log and live checks`
@@ -1026,9 +1063,8 @@ This is validated by snapshot diffs and the checklist below.
 **Files:**
 - Fixes as found, each with a test or snapshot.
 - Docs:
-  - `docs/ux/ui-spec.md`: changed screens, §4.1.4 (P2-D18) and §4.9's "Checked" list (P2-D6's check on stop, if approved);
-  - `docs/product/prd.md` Lifecycle "checked" list (P2-D6, if approved);
-  - `docs/design/technical-design.md` §12: row 2 gains Settings (P2-D13), plus anything else phase 2 changed;
+  - `docs/ux/ui-spec.md`: §4.12 (P2-D21, an errored agent stays errored), §3 (P2-D19, mixed sizes), §4.1.2 (P2-D12, `· scrolled`), §4.1.4 (P2-D18), §4.2 (P2-D15), §4.5 (P2-D11's pending variant and not-taken note), §4.9 (P2-D16's state words; P2-D6's in-use refusal), plus any screen the pass changes;
+  - `docs/design/technical-design.md` §12: check row 2 against what phase 2 built;
   - `docs/plans/v1-roadmap.md`: row 2 is marked done, and row 3 becomes next;
   - `docs/product/prd.md`: the status in Delivery Phases row 2;
   - `docs/README.md`;
@@ -1036,7 +1072,7 @@ This is validated by snapshot diffs and the checklist below.
 
 - [ ] **Step 1: Fix the top friction-log items.**
   - Every severity-1 item, then severity-2 items by count.
-  - Also fix the carried item "long agent names cut in the middle in the 50-column pane".
+  - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.
   - Each fix starts with a failing test or snapshot.
 - [ ] **Step 2: Re-check every screen** against the six PRD UX principles:
   - at 80×24, 100×30 and 160×48;
