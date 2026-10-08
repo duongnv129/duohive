@@ -368,3 +368,103 @@ fn give_work_snapshots() {
         }
     }
 }
+
+fn send(m: &mut UiModel, task: &str) {
+    space(m);
+    type_text(m, task);
+    assert_eq!(key(m, plain(KeyCode::Enter)).len(), 1);
+    assert_eq!(m.dialog, None);
+}
+
+#[test]
+fn rejected_give_work_comes_back_with_its_text() {
+    let mut m = with_worktree_default(stopped_model(), true);
+    send(&mut m, "go");
+    m.apply(Event::CommandRejected {
+        reason: "billing-api is getting a worktree ready".into(),
+    });
+    assert_eq!(dialog(&m).task.text(), "go");
+    assert_eq!(dialog(&m).run, RunIn::NewWorktree);
+    assert_eq!(
+        dialog(&m).note.as_deref(),
+        Some("billing-api is getting a worktree ready")
+    );
+}
+
+#[test]
+fn refused_give_work_comes_back_with_its_text() {
+    let mut m = model_in(AgentState::Idle);
+    send(&mut m, "x");
+    m.apply(Event::GiveWorkRefused {
+        agent: n("billing-api"),
+        state: AgentState::Working,
+        pending: false,
+    });
+    assert_eq!(dialog(&m).task.text(), "x");
+    assert_eq!(dialog(&m).note.as_deref(), Some("billing-api is working"));
+}
+
+#[test]
+fn sent_memory_ends_when_the_agent_leaves_rest() {
+    let mut m = model_in(AgentState::Idle);
+    send(&mut m, "x");
+    m.apply(Event::AgentStatusChanged {
+        agent: n("billing-api"),
+        status: status(AgentState::Working, mins(0)),
+    });
+    m.apply(Event::CommandRejected {
+        reason: "unrelated".into(),
+    });
+    assert_eq!(m.dialog, None);
+    assert_eq!(m.footer_note.as_deref(), Some("unrelated"));
+}
+
+fn not_taken(m: &mut UiModel) {
+    m.apply(Event::GiveWorkNotTaken {
+        agent: n("billing-api"),
+        task: "again".into(),
+        reason: "no sign it started".into(),
+    });
+}
+
+#[test]
+fn not_taken_under_another_dialog_waits_for_space() {
+    let mut m = stopped_model();
+    update(&mut m, Action::Delete);
+    assert!(matches!(m.dialog, Some(Dialog::Confirm(_))));
+    not_taken(&mut m);
+    assert!(matches!(m.dialog, Some(Dialog::Confirm(_))));
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("billing-api didn't take the task · space to try again")
+    );
+    key(&mut m, plain(KeyCode::Esc));
+    assert_eq!(m.dialog, None);
+    space(&mut m);
+    assert_eq!(dialog(&m).task.text(), "again");
+}
+
+#[test]
+fn not_taken_never_takes_typing_or_a_chat_draft() {
+    let mut m = model_in(AgentState::Idle);
+    m.live_agent = Some(n("billing-api"));
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = AgentMode::Typing;
+    not_taken(&mut m);
+    assert_eq!(m.dialog, None);
+    assert!(m.footer_note.is_some());
+    m.focus.agent_mode = AgentMode::Selected;
+    space(&mut m);
+    assert_eq!(dialog(&m).task.text(), "again");
+
+    let mut m = model_in(AgentState::Idle);
+    m.focus.pane = Pane::Chat;
+    m.chat_input = LineEdit::new("draft");
+    not_taken(&mut m);
+    assert_eq!(m.dialog, None);
+    assert_eq!(m.chat_input.text(), "draft");
+    assert!(m.footer_note.is_some());
+    m.focus.pane = Pane::Org;
+    space(&mut m);
+    assert_eq!(dialog(&m).task.text(), "again");
+}

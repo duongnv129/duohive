@@ -1,5 +1,6 @@
 //! `space`: opening Give work, and its keys (UI §4.5, P2-D10).
 
+use duohive_core::command::Command;
 use duohive_core::org::NodeKey;
 
 use super::{Action, UiEffect};
@@ -19,7 +20,12 @@ pub(super) fn open(m: &mut UiModel) -> Vec<UiEffect> {
         NodeKey::Team(_) => AGENT_OR_ROLE,
         NodeKey::Role(_) => SELECT_AGENT,
         NodeKey::Agent(a) => {
-            let g = GiveWork::new(&m.org, a, m.view(a), "", m.dirs.probe(), &m.home);
+            let task = match m.give_later.take() {
+                Some((later, task)) if later == *a => task,
+                _ => String::new(),
+            };
+            m.give_sent = None;
+            let g = GiveWork::new(&m.org, a, m.view(a), &task, m.dirs.probe(), &m.home);
             m.dialog = Some(Dialog::GiveWork(Box::new(g)));
             return Vec::new();
         }
@@ -36,6 +42,11 @@ pub(super) fn action(m: &mut UiModel, mut g: Box<GiveWork>, a: Action) -> Vec<Ui
             Vec::new()
         }
         GiveOutcome::Close => Vec::new(),
-        GiveOutcome::Send(cmd) => vec![UiEffect::Send(*cmd)],
+        GiveOutcome::Send(cmd) => {
+            if let Command::GiveWork { agent, task, run } = cmd.as_ref() {
+                m.give_sent = Some((agent.clone(), task.clone(), *run));
+            }
+            vec![UiEffect::Send(*cmd)]
+        }
     }
 }
