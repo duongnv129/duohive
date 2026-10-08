@@ -31,8 +31,10 @@ use crate::server::{self, TmuxConfig, TmuxError};
 /// Chunks a stream holds before its bytes wait in the worker's backlog.
 const STREAM_CAPACITY: usize = 256;
 
-/// Bytes a stream may fall behind by before it is closed.
-const MAX_BACKLOG: usize = 8 * 1024 * 1024;
+/// Bytes a stream may fall behind by before it is closed: 1 MiB, so a stalled
+/// UI can't push DuoHive past its 20 MB memory target (about 2 MB of headroom
+/// with a live view, Phase 2 bench).
+const MAX_BACKLOG: usize = 1024 * 1024;
 
 /// How long the worker waits for the reply to a lookup or an open.
 const CALL_TIMEOUT: Duration = Duration::from_secs(15);

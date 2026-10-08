@@ -31,6 +31,19 @@ fn paths(tmp: &Path) -> Paths {
     paths
 }
 
+/// Kills the test's own tmux server (its throwaway socket only) on drop, also
+/// when the test panics.
+struct KillServer(String);
+
+impl Drop for KillServer {
+    fn drop(&mut self) {
+        let _ = Command::new("tmux")
+            .args(["-f", "/dev/null", "-L", &self.0, "kill-server"])
+            .env_remove("TMUX")
+            .output();
+    }
+}
+
 /// Runs the app with `paths`, no terminal, and `path` as `PATH`.
 fn run_app(tmp: &Path, paths: &Paths, path: &str) -> Output {
     Command::new(BIN)
@@ -69,6 +82,7 @@ fn missing_tmux_exits_1_with_a_message() {
 async fn a_second_instance_is_refused() {
     let tmp = tempfile::tempdir().unwrap();
     let paths = paths(tmp.path());
+    let server = KillServer(paths.tmux_socket.clone());
     let first = start_system(
         &paths,
         Arc::new(fake_adapters(Path::new(BIN))),
@@ -91,10 +105,7 @@ async fn a_second_instance_is_refused() {
             .unwrap()
     };
     first.shutdown().await;
-    let _ = Command::new("tmux")
-        .args(["-f", "/dev/null", "-L", &paths.tmux_socket, "kill-server"])
-        .env_remove("TMUX")
-        .output();
+    drop(server);
     assert_eq!(out.status.code(), Some(1), "{out:?}");
     assert_eq!(
         String::from_utf8(out.stderr.clone()).unwrap(),

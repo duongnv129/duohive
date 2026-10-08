@@ -144,6 +144,8 @@ fn bench_with_live_view() {
     // The other nine panes stay silenced on the view's client.
     assert_eq!(view["foreign_output_lines"], 0, "{json}");
     assert_eq!(json["control_client"], true, "{json}");
+    // Counted by its own pid, never by a guess.
+    assert!(view["client_pid"].as_u64().is_some(), "{json}");
     assert_eq!(view["client_counted"], true, "{json}");
     assert!(
         json["hook_to_screen_ms"]["p50"].as_f64().unwrap() > 0.0,
