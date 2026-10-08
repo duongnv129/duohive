@@ -78,6 +78,7 @@ async fn a_second_instance_is_refused() {
             home: tmp.path().join("home"),
             notifier: Some(Box::new(NoNotifier)),
             git: Some(Box::new(NoGit)),
+            git_env: Vec::new(),
         },
     )
     .await

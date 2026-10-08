@@ -1,6 +1,7 @@
 //! Command-line parsing (hand-rolled).
 
 use crate::bench::BenchArgs;
+use crate::fake_agent::BenchAgentArgs;
 
 /// What the command line asks for.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -14,14 +15,10 @@ pub enum Cli {
         /// DuoHive's event name.
         event: String,
     },
-    /// `duohive bench-agent [--no-hooks] [--task <text>]` (hidden): the fake CLI.
-    BenchAgent {
-        /// Fire hooks (unless `--no-hooks`).
-        hooks: bool,
-        /// The first turn's task, verbatim.
-        task: Option<String>,
-    },
-    /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--json]`.
+    /// `duohive bench-agent [--no-hooks] [--ignore-input] [--task <text>]` (hidden):
+    /// the fake CLI.
+    BenchAgent(BenchAgentArgs),
+    /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--view] [--json]`.
     Bench(BenchArgs),
     /// `duohive --help` (or `-h`): print [`USAGE`].
     Help,
@@ -32,8 +29,9 @@ pub const USAGE: &str = "\
 usage: duohive                 run DuoHive (your agents keep running in tmux after you quit)
        duohive hook <agent> <event>
                                forward one CLI hook (agent CLIs call this; prints nothing)
-       duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--json]
+       duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--view] [--json]
                                measure CPU, memory and hook latency with fake agents
+                               (--view holds one live pane stream open throughout)
        duohive --help          show this
 ";
 
@@ -54,7 +52,7 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
 }
 
 const BENCH_RUN_USAGE: &str =
-    "usage: duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--json]";
+    "usage: duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--view] [--json]";
 
 /// The bench's flags in any order; counts must be numbers, agents and turns at least 1.
 fn parse_bench(args: &[String]) -> Result<BenchArgs, String> {
@@ -68,6 +66,7 @@ fn parse_bench(args: &[String]) -> Result<BenchArgs, String> {
         };
         match arg.as_str() {
             "--json" => out.json = true,
+            "--view" => out.view = true,
             "--agents" => out.agents = count(number()?)?,
             "--turns" => out.turns = count(number()?)?,
             "--idle-secs" => out.idle_secs = number()?,
@@ -88,24 +87,28 @@ fn count(n: u64) -> Result<u32, String> {
         .ok_or_else(|| BENCH_RUN_USAGE.to_owned())
 }
 
-const BENCH_USAGE: &str = "usage: duohive bench-agent [--no-hooks] [--task <text>]";
+const BENCH_USAGE: &str =
+    "usage: duohive bench-agent [--no-hooks] [--ignore-input] [--task <text>]";
 
-/// `[--no-hooks] [--task <text>]` in any order; the task is taken verbatim,
-/// even when it starts with `-`.
+/// `[--no-hooks] [--ignore-input] [--task <text>]` in any order; the task is
+/// taken verbatim, even when it starts with `-`.
 fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
-    let mut hooks = true;
-    let mut task = None;
+    let mut out = BenchAgentArgs {
+        hooks: true,
+        ..BenchAgentArgs::default()
+    };
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
-            "--no-hooks" if hooks => hooks = false,
-            "--task" if task.is_none() => {
-                task = Some(rest.next().ok_or(BENCH_USAGE)?.clone());
+            "--no-hooks" if out.hooks => out.hooks = false,
+            "--ignore-input" if !out.ignore_input => out.ignore_input = true,
+            "--task" if out.task.is_none() => {
+                out.task = Some(rest.next().ok_or(BENCH_USAGE)?.clone());
             }
             _ => return Err(BENCH_USAGE.to_owned()),
         }
     }
-    Ok(Cli::BenchAgent { hooks, task })
+    Ok(Cli::BenchAgent(out))
 }
 
 #[cfg(test)]
@@ -131,27 +134,27 @@ mod tests {
 
     #[test]
     fn args_parse_bench_agent() {
+        let agent = |hooks, ignore_input, task: Option<&str>| {
+            Ok(Cli::BenchAgent(BenchAgentArgs {
+                hooks,
+                ignore_input,
+                task: task.map(str::to_owned),
+            }))
+        };
         assert_eq!(
             parse_args(&s(["bench-agent", "--no-hooks"])),
-            Ok(Cli::BenchAgent {
-                hooks: false,
-                task: None
-            })
+            agent(false, false, None)
         );
         assert_eq!(
             parse_args(&s(["bench-agent", "--task", "-rf a b"])),
-            Ok(Cli::BenchAgent {
-                hooks: true,
-                task: Some("-rf a b".into())
-            })
+            agent(true, false, Some("-rf a b"))
         );
+        assert_eq!(parse_args(&s(["bench-agent"])), agent(true, false, None));
         assert_eq!(
-            parse_args(&s(["bench-agent"])),
-            Ok(Cli::BenchAgent {
-                hooks: true,
-                task: None
-            })
+            parse_args(&s(["bench-agent", "--task", "t", "--ignore-input"])),
+            agent(true, true, Some("t"))
         );
+        assert!(parse_args(&s(["bench-agent", "--ignore-input", "--ignore-input"])).is_err());
         assert!(parse_args(&s(["bench-agent", "--task"])).is_err());
         assert!(parse_args(&s(["bench-agent", "--frob"])).is_err());
     }
@@ -184,7 +187,16 @@ mod tests {
                 agents: 2,
                 idle_secs: 2,
                 turns: 1,
+                view: false,
                 json: false
+            }))
+        );
+        assert_eq!(
+            parse_args(&s(["bench", "--view", "--agents", "10"])),
+            Ok(Cli::Bench(BenchArgs {
+                agents: 10,
+                view: true,
+                ..Default::default()
             }))
         );
         assert!(parse_args(&s(["bench", "--agents"])).is_err());

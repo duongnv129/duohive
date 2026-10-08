@@ -106,6 +106,7 @@ pub async fn run_app_main() -> ExitCode {
         home: home.clone(),
         notifier: None,
         git: None,
+        git_env: Vec::new(),
     };
     let start = start_system(&paths, Arc::new(real_adapters()), opts);
     let (started, quit_early) = finish_start(start, signals.recv()).await;

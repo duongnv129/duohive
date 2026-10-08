@@ -14,6 +14,7 @@ mod enriching_store;
 pub use enriching_store::EnrichingStore;
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::future::Future;
 use std::io;
 use std::path::PathBuf;
@@ -69,6 +70,10 @@ pub struct SystemOptions {
     /// Replaces git: tests that don't exercise worktrees set [`NoGit`](duohive_core::ports::NoGit).
     /// `None` runs the `git` binary ([`GitCli`]).
     pub git: Option<Box<dyn Git>>,
+    /// Added to every git child's environment when `git` is `None`: the app
+    /// passes none; tests point `HOME` and `GIT_CONFIG_GLOBAL` at a temp dir,
+    /// so the user's global git config is never read or written.
+    pub git_env: Vec<(OsString, OsString)>,
 }
 
 /// The system could not start.
@@ -194,6 +199,7 @@ pub async fn start_system(
     let home = opts.home;
     let notifier_override = opts.notifier;
     let git_override = opts.git;
+    let git_env = opts.git_env;
     let hook_exe = std::env::current_exe().map_err(StartError::Exe)?;
     let agents = AgentClis::default();
     let files = {
@@ -252,7 +258,7 @@ pub async fn start_system(
         Box::new(GitCli::new(
             paths.worktrees_dir(),
             inputs_tx.clone(),
-            Vec::new(),
+            git_env,
         ))
     });
     let ports = Ports {
@@ -399,8 +405,9 @@ fn boxed(f: impl Future<Output = ()> + Send + 'static) -> Task {
     Box::pin(f)
 }
 
-/// DuoHive's tmux server for `paths` (D31).
-pub(crate) fn tmux_config(paths: &Paths) -> TmuxConfig {
+/// DuoHive's tmux server for `paths` (D31): the system's runtime and the live
+/// pane view both connect with it.
+pub fn tmux_config(paths: &Paths) -> TmuxConfig {
     TmuxConfig {
         tmux_bin: PathBuf::from("tmux"),
         socket: paths.tmux_socket.clone(),

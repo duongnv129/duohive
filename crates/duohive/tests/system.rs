@@ -104,6 +104,7 @@ fn opts() -> SystemOptions {
         home: std::env::temp_dir(),
         notifier: Some(Box::new(NoNotifier)),
         git: Some(Box::new(NoGit)),
+        git_env: Vec::new(),
     }
 }
 

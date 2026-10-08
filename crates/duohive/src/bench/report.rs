@@ -4,6 +4,8 @@ use std::fmt;
 
 use serde_json::{Value, json};
 
+use super::LiveViewUse;
+
 /// p50, p95 and max of a set of samples.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Percentiles {
@@ -98,6 +100,8 @@ pub struct BenchOutcome {
     pub tmux_server: Option<ServerUse>,
     /// Whether the control client's CPU and memory are inside the report's figures.
     pub control_client: bool,
+    /// `--view`: the live stream held open over the run.
+    pub live_view: Option<LiveViewUse>,
     /// How many hooks were timed (the percentiles rest on these).
     pub hook_samples: usize,
     /// The bench's pid (its tmux socket is `duohive-bench-<pid>`).
@@ -176,10 +180,11 @@ impl fmt::Display for BenchOutcome {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.report)?;
         let set = if self.report.agents <= 10 { 10 } else { 100 };
-        let client = if self.control_client {
-            "this process + its tmux control client"
-        } else {
-            "this process only (control client not found)"
+        let viewing = self.live_view.as_ref().is_some_and(|v| v.client_counted);
+        let client = match (self.control_client, viewing) {
+            (true, true) => "this process + its tmux control and view clients",
+            (true, false) => "this process + its tmux control client",
+            (false, _) => "this process only (control client not found)",
         };
         writeln!(f, "{:<LABEL_WIDTH$}DuoHive = {client}", "counted")?;
         if self.report.platform.starts_with("linux") {
@@ -188,6 +193,9 @@ impl fmt::Display for BenchOutcome {
                 "{:<LABEL_WIDTH$}Linux ps counts CPU in whole seconds: tmux processes' CPU is coarse",
                 "note"
             )?;
+        }
+        if let Some(v) = &self.live_view {
+            writeln!(f, "{:<LABEL_WIDTH$}{}", "live view", describe_view(v))?;
         }
         if let Some(s) = &self.tmux_server {
             writeln!(
@@ -217,6 +225,28 @@ impl fmt::Display for BenchOutcome {
     }
 }
 
+/// One line on the live stream: what it streamed, whether it stayed open, and
+/// whether the other panes stayed silent on its client.
+fn describe_view(v: &LiveViewUse) -> String {
+    let open = match &v.closed {
+        None => "open to the end".to_owned(),
+        Some(reason) => format!("CLOSED ({reason})"),
+    };
+    let client = if v.client_counted {
+        "its client counted"
+    } else {
+        "its client not found"
+    };
+    format!(
+        "{} stream on {} · {open} · {:.1} KB in {} chunks · {} lines from other panes · {client}",
+        v.streams_opened,
+        v.agent,
+        v.bytes as f64 / 1024.0,
+        v.chunks,
+        v.foreign_output_lines
+    )
+}
+
 impl BenchOutcome {
     /// The run as JSON (`--json`).
     pub fn to_json(&self) -> Value {
@@ -236,6 +266,16 @@ impl BenchOutcome {
             },
             "hook_samples": self.hook_samples,
             "control_client": self.control_client,
+            "live_view": self.live_view.as_ref().map(|v| json!({
+                "agent": v.agent,
+                "streams_opened": v.streams_opened,
+                "open_at_end": v.open_at_end,
+                "closed": v.closed,
+                "chunks": v.chunks,
+                "bytes": v.bytes,
+                "foreign_output_lines": v.foreign_output_lines,
+                "client_counted": v.client_counted,
+            })),
             "tmux_server": self.tmux_server.map(|s| json!({ "cpu_pct": s.cpu_pct, "rss_mb": s.rss_mb })),
             "pid": self.pid,
         })
