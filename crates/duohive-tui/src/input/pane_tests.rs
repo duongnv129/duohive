@@ -2,7 +2,7 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use duohive_core::command::Command;
-use duohive_core::event::Event;
+use duohive_core::event::{Event, Snapshot};
 use duohive_core::names::NodeName;
 use duohive_core::org::{NodeKey, RoleKey};
 use duohive_core::status::AgentState;
@@ -452,4 +452,105 @@ fn engine_order_reply_then_idle_shows_the_new_reply() {
     let screen = crate::fixtures::render_lines(&m, &crate::fixtures::ctx(), 120, 36).join("\n");
     assert!(screen.contains("Duo   this turn's reply"), "{screen}");
     assert!(!screen.contains("last turn's reply"), "{screen}");
+}
+
+fn needs_item(name: &str, mins_ago: u64) -> duohive_core::event::NeedsYouItem {
+    duohive_core::event::NeedsYouItem {
+        agent: n(name),
+        state: AgentState::Waiting,
+        quiet: false,
+        since: crate::fixtures::ago(mins(mins_ago)),
+        excerpt: None,
+    }
+}
+
+fn set_needs_you(m: &mut UiModel, names: &[&str]) {
+    let items = names
+        .iter()
+        .enumerate()
+        .map(|(i, name)| needs_item(name, 10 - u64::try_from(i).unwrap_or(0)))
+        .collect();
+    m.apply(Event::NeedsYouChanged(items));
+}
+
+#[test]
+fn enter_selects_agent_and_focuses_agent_pane() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::NeedsYou;
+    m.focus.needs_you_cursor = 1;
+    let effects = press(&mut m, code(KeyCode::Enter));
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, crate::focus::AgentMode::Selected);
+    assert_eq!(
+        effects,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("billing-api")
+        })]
+    );
+}
+
+#[test]
+fn enter_unfolds_parents() {
+    let mut m = spec_model();
+    m.folded.insert(NodeKey::Team(nn("Payments")));
+    m.folded.insert(NodeKey::Role(RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("Backend"),
+    }));
+    m.focus.pane = Pane::NeedsYou;
+    m.focus.needs_you_cursor = 1;
+    press(&mut m, code(KeyCode::Enter));
+    assert!(m.folded.is_empty());
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+}
+
+#[test]
+fn enter_on_an_empty_list_does_nothing() {
+    let mut m = spec_model();
+    m.needs_you.clear();
+    m.focus.pane = Pane::NeedsYou;
+    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
+    assert_eq!(m.focus.pane, Pane::NeedsYou);
+}
+
+#[test]
+fn cursor_follows_agent_across_reorder() {
+    let mut m = spec_model();
+    set_needs_you(&mut m, &["squad-3", "billing-api", "auth-service"]);
+    m.focus.needs_you_cursor = 1;
+    set_needs_you(&mut m, &["auth-service", "squad-3", "billing-api"]);
+    assert_eq!(m.focus.needs_you_cursor, 2);
+}
+
+#[test]
+fn cursor_moves_to_neighbour_when_item_leaves() {
+    let mut m = spec_model();
+    set_needs_you(&mut m, &["squad-3", "billing-api", "auth-service"]);
+    m.focus.needs_you_cursor = 1;
+    set_needs_you(&mut m, &["squad-3", "auth-service"]);
+    assert_eq!(m.focus.needs_you_cursor, 1);
+    m.focus.needs_you_cursor = 1;
+    set_needs_you(&mut m, &["squad-3"]);
+    assert_eq!(m.focus.needs_you_cursor, 0);
+    set_needs_you(&mut m, &[]);
+    assert_eq!(m.focus.needs_you_cursor, 0);
+}
+
+#[test]
+fn cursor_follows_agent_across_a_snapshot() {
+    let mut m = spec_model();
+    set_needs_you(&mut m, &["squad-3", "billing-api"]);
+    m.focus.needs_you_cursor = 1;
+    let s = Snapshot {
+        org: m.org.clone(),
+        agents: m.agents.clone(),
+        needs_you: vec![needs_item("billing-api", 9), needs_item("squad-3", 5)],
+        org_error: None,
+        settings_error: None,
+        reconnecting: 0,
+        worktrees: Vec::new(),
+    };
+    m.apply(Event::Snapshot(Box::new(s)));
+    assert_eq!(m.focus.needs_you_cursor, 0);
 }

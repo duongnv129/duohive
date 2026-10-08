@@ -349,3 +349,33 @@ fn chat_times_are_local() {
     assert!(utc_5.contains("22:05 you   east"), "{utc_5}");
     assert!(utc_5.contains("20:00 you   west"), "{utc_5}");
 }
+
+#[test]
+fn header_count_equals_list() {
+    let mut m = spec_model();
+    for extra in 0..3_usize {
+        let wide = render_lines(&m, &ctx(), 160, 48).join("\n");
+        let compact = render_lines(&m, &ctx(), 80, 24).join("\n");
+        let count = m.needs_you.len();
+        assert!(wide.contains(&format!("◆ {count} need you")), "{wide}");
+        assert!(compact.contains(&format!("◆ {count}")), "{compact}");
+        assert!(wide.contains(&format!("Needs you ({count})")), "{wide}");
+        let mut item = m.needs_you[0].clone();
+        item.agent = n("auth-service");
+        m.needs_you.push(item);
+        assert_eq!(m.needs_you.len(), 2 + extra + 1);
+    }
+}
+
+#[test]
+fn needs_you_focused_snapshots() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::NeedsYou;
+    m.focus.needs_you_cursor = 1;
+    for (name, w, h) in [
+        ("needs_you_focused_80x24", 80, 24),
+        ("needs_you_focused_160x48", 160, 48),
+    ] {
+        insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
+    }
+}
