@@ -12,7 +12,6 @@ use crate::launch::WindowId;
 use crate::ports::RuntimeEvent;
 use crate::status::AgentState;
 use crate::testkit::{RuntimeCall, StubAdapter, n};
-use crate::worktree::TaskId;
 
 fn hook(agent: &str, event: &str) -> Input {
     Input::Hook(HookMessage {
@@ -43,11 +42,7 @@ fn not_taken(events: &[Event]) -> Vec<(String, String)> {
     events
         .iter()
         .filter_map(|e| match e {
-            Event::GiveWorkNotTaken {
-                task: TaskId(task),
-                reason,
-                ..
-            } => Some((task.clone(), reason.clone())),
+            Event::GiveWorkNotTaken { task, reason, .. } => Some((task.clone(), reason.clone())),
             _ => None,
         })
         .collect()
