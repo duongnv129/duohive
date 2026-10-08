@@ -64,9 +64,20 @@ impl TermView {
         let width = old_cols.min(cols);
         for (i, row) in screen.rows_formatted(0, width).enumerate() {
             let i = u16::try_from(i).unwrap_or(u16::MAX);
-            if i < drop || i >= old_rows {
+            if i < drop || i >= old_rows.min(drop + rows) {
                 continue;
             }
+            // A wide glyph cut at the new edge would wrap into the next row.
+            let splits_wide =
+                width < old_cols && screen.cell(i, width - 1).is_some_and(vt100::Cell::is_wide);
+            let row = if splits_wide {
+                screen
+                    .rows_formatted(0, width - 1)
+                    .nth(usize::from(i))
+                    .unwrap_or(row)
+            } else {
+                row
+            };
             seed.extend_from_slice(format!("\x1b[{};1H", i - drop + 1).as_bytes());
             seed.extend_from_slice(&row);
             seed.extend_from_slice(b"\x1b[m");
