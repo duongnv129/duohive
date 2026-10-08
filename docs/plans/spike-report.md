@@ -722,6 +722,13 @@ So Claude Code trusts a worktree through the repository it belongs to: an observ
   - **One connection:** keys, `resize-window` and the capture all go over (b)'s connection.
   - **Nothing outside it:** (b) needs no FIFO or `cat` per view, and doesn't take the pane's single `pipe-pane` slot.
 
+**Choice rule.** The brief's rule is to pick the candidate with a p95 echo under 50 ms and the lowest S3.2. Applied as written:
+- **Echo:** (b) and (c) pass.
+- **S3.2:** the brief defines it as the extra CPU of one noisy pane over S0's baseline, and that is what the isolated runs measure. There, (b) is ahead on 3.2a (+0.08 against +0.12) and level on 3.7c (+0.09 against +0.09).
+- **The 100-window cells**, where (c) looks lower (−1.64 to +0.12 against +0.60 to +0.78), don't decide it: they sit inside the server's ±1.5-point swing between phases.
+- **Ruling:** with S3.2 tied, the tie is broken by first-frame alignment and the single connection (above), so (b) stands (controller ruling).
+- **Fallback:** (c). It would be contained in `duohive-tmux`, behind `PaneView`, with no change to the port.
+
 **Commands** (the viewer connection; `%P` is the viewed pane, `@W` its window):
 
 1. **Connect** once, beside the main connection, and keep the connection:
