@@ -39,7 +39,7 @@ use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, transition};
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
-use crate::worktree::TaskId;
+use crate::worktree::{TaskId, WorktreeRow};
 
 /// Timings and places the engine needs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -214,6 +214,12 @@ pub struct Engine {
     replaying: bool,
     /// Rows of running agents no org names (controller ruling B).
     held: Held,
+    /// The worktree rows last published in `Worktrees` (and `Snapshot`).
+    worktrees_shown: Vec<WorktreeRow>,
+    /// A worktree row, or whether one is in use, may have changed since.
+    worktrees_stale: bool,
+    /// When the 10-minute worktree check is next due (TD §5.3).
+    worktree_check_due: Millis,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -244,6 +250,9 @@ impl Engine {
             reconnect: None,
             replaying: false,
             held: Held::default(),
+            worktrees_shown: Vec::new(),
+            worktrees_stale: false,
+            worktree_check_due: now + timers::WORKTREE_CHECK_EVERY,
             cfg,
             ports,
             adapters,
@@ -257,9 +266,11 @@ impl Engine {
     }
 
     /// Handles one input and returns the events it caused, ending with
-    /// `NeedsYouChanged` when the Needs you list changed.
+    /// `Worktrees` when the worktree rows changed and `NeedsYouChanged` when
+    /// the Needs you list changed.
     pub fn handle(&mut self, input: Input) -> Vec<Event> {
         let mut out = self.dispatch(input);
+        self.publish_worktrees(&mut out);
         self.publish_needs_you(&mut out);
         out
     }
@@ -296,8 +307,18 @@ impl Engine {
                 task,
                 result,
             }) => self.on_created(&agent, &task, result),
-            // Checks and removals: Task 2.13.
-            Input::Git(GitEvent::Checked { .. } | GitEvent::Removed { .. }) => Vec::new(),
+            Input::Git(GitEvent::Checked {
+                agent,
+                task,
+                merge,
+                dirty_files,
+                base,
+            }) => self.on_checked(&agent, &task, merge, dirty_files, base),
+            Input::Git(GitEvent::Removed {
+                agent,
+                task,
+                result,
+            }) => self.on_removed(&agent, &task, result),
             Input::AlertClicked { agent } => vec![Event::AlertClicked { agent }],
             Input::Tick => self.on_tick(),
             Input::Runtime(RuntimeEvent::Inventory(windows)) => self.on_inventory(&windows),
@@ -315,6 +336,16 @@ impl Engine {
             Command::ViewAgent { agent } => self.view_agent(&agent),
             Command::EditOrg(edit) => self.edit_org(edit),
             Command::ReloadOrg => self.reload_org(),
+            Command::CheckWorktrees => {
+                let mut out = Vec::new();
+                self.check_worktrees(None, &mut out);
+                out
+            }
+            Command::DeleteWorktree {
+                agent,
+                task,
+                confirmed,
+            } => self.delete_worktree(&agent, &task, confirmed),
             Command::UpdateSettings(s) => self.update_settings(s),
             // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
@@ -348,7 +379,7 @@ impl Engine {
             org_error: self.org_error.clone(),
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
-            worktrees: Vec::new(),
+            worktrees: self.worktrees_shown.clone(),
         }
     }
 
@@ -418,6 +449,11 @@ impl Engine {
             return false;
         };
         let before = rt.status.clone();
+        if before.state.is_running() != to.is_running() {
+            // Whether a session runs in a worktree may have changed (P2-D6).
+            self.worktrees_stale = true;
+        }
+        let rt = self.rt_mut(agent);
         rt.status = Status {
             state: to,
             quiet: false,
@@ -453,6 +489,10 @@ impl Engine {
         } else {
             self.save_row(agent, out);
         }
+        // TD §5.3: an agent's worktrees are checked when it finishes.
+        if to == AgentState::Finished {
+            self.check_worktrees(Some(agent), out);
+        }
         true
     }
 
@@ -468,6 +508,9 @@ impl Engine {
         let before = (rt.worktree.clone(), rt.delivery.is_some());
         f(rt);
         let after = (rt.worktree.clone(), rt.delivery.is_some());
+        if after.0 != before.0 {
+            self.worktrees_stale = true;
+        }
         if after != before {
             let (worktree, delivery_pending) = after;
             out.push(Event::AgentRunChanged {

@@ -21,7 +21,7 @@ use crate::validate::{FieldError, next_agent_names, validate};
 
 /// Why every edit is refused while `org.toml` doesn't parse.
 const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
-/// Why a rename of a running (or errored) agent is refused.
+/// Why a rename of a running (or errored) agent, or one with worktrees, is refused.
 const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees";
 
 impl Engine {
@@ -31,6 +31,9 @@ impl Engine {
             return reject(ORG_FILE_BROKEN);
         }
         if let Err(reason) = self.check_edit(&edit) {
+            return reject(reason);
+        }
+        if let Err(reason) = self.check_rename_worktrees(&edit) {
             return reject(reason);
         }
         let org = match preview_edit(&self.org, &edit) {
@@ -139,6 +142,22 @@ impl Engine {
             }
             _ => Ok(()),
         }
+    }
+
+    /// A rename is refused while the agent has any worktree row: rows, paths
+    /// and branches are keyed by its name. A delete keeps them (Task 2.13).
+    fn check_rename_worktrees(&mut self, edit: &OrgEdit) -> Result<(), String> {
+        let renamed = match edit {
+            OrgEdit::EditAgent { key, draft } if draft.name != *key => key.clone(),
+            OrgEdit::EditOrgDefaults { duo, .. } if duo.name != self.org.duo.name => {
+                self.org.duo.name.clone()
+            }
+            _ => return Ok(()),
+        };
+        if self.has_worktrees(&renamed)? {
+            return Err(RENAME_WHILE_STOPPED.to_owned());
+        }
+        Ok(())
     }
 
     /// The agents `edit` renames or deletes.

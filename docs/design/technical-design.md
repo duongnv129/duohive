@@ -199,14 +199,17 @@ A fresh launch:
 ### 5.3 Worktrees
 
 - **Location:** `~/.local/share/duohive/worktrees/<agent>/<task-id>`.
-- **Branch:** `duohive/<agent>/<task-slug>`, from the base branch below.
-- **Base branch:** `origin`'s default branch (`refs/remotes/origin/HEAD`) when the repo has a remote, else the local default branch. Before a check, DuoHive fetches that branch quietly; offline, it uses what it has.
+- **Branch:** `duohive/<agent>/<task-id>` (P2-D7), from the base branch below. The task id is the slug of the task's first line, cut to 32 characters (`task` when empty), made unique among the agent's worktrees with `-2`, `-3`, and so on.
+- **Base branch (P2-D17):** `origin`'s default branch (`refs/remotes/origin/HEAD`, else `git ls-remote --symref origin HEAD`) when the repo has a remote, else the local default branch: the first that exists of `init.defaultBranch`, `main`, `master`; with none, the check fails with `no default branch`. Before a check, DuoHive fetches that branch quietly; offline, it uses what it has. Each worktree records `created_from`, the base commit its branch was created on: a branch with no commits after it is not merged (0 files changed), never merged, so a fresh worktree is never removed.
 - **Merge detection:** a normal merge when the branch tip is an ancestor of the base (`git merge-base --is-ancestor`); a rebase merge when every branch commit has an equivalent on the base (`git cherry`); a squash merge when one synthetic commit of the branch's whole change, on the merge base, has an equivalent on the base (`git commit-tree`, then `git cherry`).
-- **When checked:** when the agent finishes, after start-up (after the first frame), when the worktree list opens, and every 10 minutes.
-- **Removal:** only when merged **and** clean (no uncommitted changes). Everything else stays and is listed; removing a worktree that isn't merged and clean asks first.
+- **When checked:** when the agent finishes (that agent's worktrees), after start-up (the first directory inventory, after the first frame), when the worktree list opens (`CheckWorktrees`), and every 10 minutes (a timer only while there are worktrees). Every worktree is checked except one being removed or one still being created (P2-D20: its `Created` answer owns it).
+- **In use (P2-D6):** a worktree is in use while its agent is running and its current session was launched in it. The session row stores the worktree (`sessions.worktree`), so a restart keeps it in use; once the agent stops, the next check above decides.
+- **States (P2-D16):** `not checked yet` until the first check; then, by the check: in use (whatever the merge result), not merged (with files changed), merged with uncommitted changes, merged and clean (the instant before removing), removing, or `couldn't check · <reason>` when git can't tell (an unknown result never counts as merged). A failed removal is kept, as `couldn't check · couldn't remove: <reason>`, and checked again; a removal a restart cut short is checked again, never assumed done.
+- **Removal:** automatically only when merged **and** clean (no uncommitted changes) **and** not in use; the worktree and its branch go. Everything else stays and is listed. By hand (`DeleteWorktree`): refused while in use (`<agent> is running in it · stop it first`); merged and clean goes with its branch; anything else needs confirming, and is then forced with its branch kept, so unmerged commits stay on it.
+- **Org edits:** an agent with any worktree can't be renamed (rows, paths and branches carry its name); deleting an agent, role or team keeps its worktrees, still checked and listed.
 - **One creation at a time (P2-D20):** from the request to git until its answer (including the retries below), `StartAgent` and Give work for that agent are refused with `<agent> is getting a worktree ready`. The agent keeps its state meanwhile; §4.2 has no state for this.
 - **Task ids and retries (P2-D7):** a branch git reports as existing is never reused or reset; the engine tries the next suffix (`-2`, `-3`, …), up to 9 attempts.
-- **Creation failure:** the row is dropped; the agent stays stopped, the error goes on its row (`couldn't create worktree: <e> · space`), and the task is kept for retry.
+- **Creation failure:** the row is dropped; a stopped agent stays stopped and an errored one stays errored (P2-D21), with the error on its row (`couldn't create worktree: <e> · space`), and the task is kept for retry.
 
 ### 5.4 Task to a role
 
@@ -295,7 +298,8 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 - **Hand edits:** `org.toml` is re-read on start and on reload (`o`). A file that doesn't parse shows its line and error, and the last good org stays in use. A hand edit never kills a live session: a reload that would remove a running agent is refused like a broken file (banner `<agent> is running · stop it, then press o to reload`), and a start-up where a running agent's session has no agent in the loaded org starts on that org without marking it last-good, keeps the session row, refuses edits and shows a banner until the agent is added back or stopped; a later reload that names it adopts it.
 - **Single instance:** DuoHive holds an exclusive lock (`File::try_lock`) on `<data_dir>/run.lock` for the life of the hook listener, so a second instance exits at once; a probe that connects to `run.sock` would race. The lock is taken before any agent is spawned, so a spawned child can't inherit it.
 - **Quit and shutdown:** `q`, SIGINT, SIGTERM and SIGHUP all quit with the agents left running. Shutdown stops the hook listener first (a hook then falls back to `pending_hooks` in the database), then drains the hook inputs the core still has queued into `pending_hooks`, and releases `run.lock` last; a second signal exits at once, and the whole shutdown is time-bounded. Hooks stored this way are replayed in order of `sent_at_ms`, the time `duohive hook` stamped when it fired (then by id), not the time they were stored. Live hooks can also arrive out of order (the listener serves connections concurrently), so the core keeps, per launch, the newest `sent_at_ms` it applied: a hook stamped earlier than that still records its reply but moves no state (a `sent_at_ms` of 0, unknown, applies as it comes).
-- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it.
+- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
+- **Worktrees table:** one row per worktree, keyed by agent and task: `repo`, `path`, `branch`, `created_at`, `created_from` (the base commit, P2-D17), `state` (§5.3), `checked_at` and `base`. A row is written before git is asked to create the worktree and deleted once git has removed it (or creation failed); deleting an agent keeps its rows.
 - **Logs:** log files are created `0600`; `hook.log` rotates once, to `hook.log.1`, at 1 MiB.
 - **Validation:** agent names must be unique; the tree has up to three levels (team → role → agent), and teams are optional; every CLI must be supported. Each error names the field.
 - **Missing directory:** makes only that agent invalid, with the error on its row; the rest of the org loads and runs.
@@ -347,7 +351,7 @@ Errors are shown where they apply, never only in a log.
 | tmux missing or older than 3.2 | Full-screen message with install steps |
 | `org.toml` invalid | Line and error; last good org kept |
 | Directory missing | Only that agent is invalid, with the error on its row |
-| Worktree creation fails | Error on the agent's row; it stays stopped and the task is kept |
+| Worktree creation fails | Error on the agent's row; a stopped agent stays stopped and an errored one stays errored (P2-D21); the task is kept |
 | Hook silent | Status falls back to screen reading (`~`), then to quiet |
 | Message undeliverable | `dropped` with the reason |
 | Worktree not merged or dirty | Kept and listed |

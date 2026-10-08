@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
 use crate::settings::Settings;
-use crate::worktree::RunIn;
+use crate::worktree::{RunIn, TaskId};
 
 /// A request to the engine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,6 +36,18 @@ pub enum Command {
     },
     /// Change the org.
     EditOrg(OrgEdit),
+    /// Check every worktree now (the list opened; TD §5.3).
+    CheckWorktrees,
+    /// Remove a worktree by hand. Distinct from the `RemoveWorktree` port request:
+    /// anything but merged and clean needs `confirmed` (P2-D6).
+    DeleteWorktree {
+        /// Its agent.
+        agent: AgentName,
+        /// Its task.
+        task: TaskId,
+        /// The user confirmed removing a worktree that isn't merged and clean.
+        confirmed: bool,
+    },
     /// Re-read `org.toml`.
     ReloadOrg,
     /// Apply new settings.

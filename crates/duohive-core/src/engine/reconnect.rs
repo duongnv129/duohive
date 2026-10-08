@@ -71,6 +71,10 @@ impl Engine {
         self.needs_you_shown = self.needs_you();
         self.replaying = true;
         self.ports.runtime.inventory();
+        // The restored sessions say which worktrees are in use (P2-D6).
+        self.reset_removing(&mut out);
+        self.worktrees_stale = true;
+        self.publish_worktrees(&mut out);
         out.insert(0, Event::Snapshot(Box::new(self.snapshot())));
         self.alerts_unavailable(&mut out);
         out
