@@ -88,6 +88,8 @@ pub enum Action {
     StopTyping,
     /// `z`: zoom the selected agent, or restore.
     Zoom,
+    /// `space`: Give work to the selected agent.
+    GiveWork,
 }
 
 /// What the app loop does after an action.
@@ -119,7 +121,7 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if m.typing() {
         return Some(agent::typing_key(k));
     }
-    if matches!(m.dialog, Some(Dialog::Form(_))) {
+    if matches!(m.dialog, Some(Dialog::Form(_) | Dialog::GiveWork(_))) {
         return form_key(k);
     }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
@@ -163,7 +165,7 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Form(_)) | None => panes::pane_key(m.focus.pane, k.code),
+        Some(Dialog::Form(_) | Dialog::GiveWork(_)) | None => panes::pane_key(m.focus.pane, k.code),
     }
 }
 
@@ -178,6 +180,7 @@ fn tree_key(code: KeyCode) -> Option<Action> {
         KeyCode::Char('v') => Some(Action::ToggleReplies),
         KeyCode::Char('o') => Some(Action::OpenOrgFile),
         KeyCode::Char('z') => Some(Action::Zoom),
+        KeyCode::Char(' ') => Some(Action::GiveWork),
         _ => None,
     }
 }
@@ -219,6 +222,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             chooser_action(m, c, a);
             return Vec::new();
         }
+        Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         None => {}
     }
     if m.zoomed_agent().is_some()
@@ -299,6 +303,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             vec![UiEffect::Send(Command::UpdateSettings(m.settings.clone()))]
         }
         Action::OpenOrgFile => vec![UiEffect::OpenEditor(m.org_toml.clone())],
+        Action::GiveWork => give_work::open(m),
         _ => Vec::new(),
     }
 }
@@ -314,6 +319,7 @@ pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
             f.paste(text, &m.org);
             f.probe_dir(&m.org, m.dirs.probe(), &m.home);
         }
+        Some(Dialog::GiveWork(g)) => g.paste(text),
         None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
         _ => {}
     }
@@ -576,6 +582,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 }
 
 mod agent;
+mod give_work;
 mod panes;
 
 #[cfg(test)]

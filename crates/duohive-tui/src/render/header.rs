@@ -123,6 +123,7 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             format!(" {HINT}{newline}")
         }
         (None, Some(Dialog::Chooser(_))) => format!(" {CHOOSER_HINT}"),
+        (None, Some(Dialog::GiveWork(g))) => format!(" {}", g.hint()),
         (None, _) => match m.focus.pane {
             Pane::Org if compact => ORG_KEYS_COMPACT,
             Pane::Org => ORG_KEYS,

@@ -25,6 +25,7 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, d: &Dialog, p: &Palette) -> Opt
         Dialog::Confirm(c) => draw_confirm(buf, area, c, p),
         Dialog::Form(f) => return super::form::draw_form(buf, area, f, p),
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
+        Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, p),
     }
     None
 }

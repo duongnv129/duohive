@@ -32,6 +32,7 @@ pub(super) fn agent_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             start_typing(m);
             Vec::new()
         }
+        Action::GiveWork => super::give_work::open(m),
         Action::PageUp => vec![UiEffect::Scroll { up: true }],
         Action::PageDown => vec![UiEffect::Scroll { up: false }],
         _ => Vec::new(),

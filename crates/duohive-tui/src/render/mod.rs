@@ -4,6 +4,7 @@ mod agent_pane;
 mod chat_pane;
 mod dialog;
 mod form;
+mod give_work;
 mod header;
 mod needs_you;
 mod org_pane;

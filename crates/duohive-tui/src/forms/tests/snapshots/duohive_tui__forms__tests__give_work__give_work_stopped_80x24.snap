@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 0 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ──────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments                   ┃│   ○ stopped · space to give work             │
+┃   ▾ Backend                  ┃│                                              │
+┃     auth-service     ○   1d  ┃│                                              │
+┃▌    billing-api      ○   3m  ┃│                                              │
+┃   ▾ QA                       ┃│                                              │
+┃ ┌─ Give work · billing-api · ○ stopped ────────────────────────────────────┐ │
+┃ │ Task ▌[ Add retry cases for PAY-88. AC: 3 tries, jitter, no double cha ] │ │
+┃ │       [ rge.__________________________________________________________ ] │ │
+┃ │ Run   ( ) new worktree   (•) ~/code/billing   agent default: directory   │ │
+┃ │ Starts a fresh session.                                                  │ │
+┃ │                     enter give · alt+enter new line · tab run · esc      │ │
+┃ └──────────────────────────────────────────────────────────────────────────┘ │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter give · alt+enter new line · tab run · esc
