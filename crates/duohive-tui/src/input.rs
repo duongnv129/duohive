@@ -7,6 +7,7 @@ use duohive_core::command::{Command, OrgEdit};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, Role, RoleKey};
 use duohive_core::status::AgentState;
+use duohive_core::view::PaneInput;
 
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
@@ -77,6 +78,14 @@ pub enum Action {
     ChatGrow,
     /// `ctrl+↓`: a shorter chat.
     ChatShrink,
+    /// `PgUp` in the agent pane: scroll back.
+    PageUp,
+    /// `PgDn` in the agent pane: scroll forward, and past the bottom back to live.
+    PageDown,
+    /// A key typed in Typing mode, for the agent.
+    Type(KeyEvent),
+    /// `ctrl+q` in Typing mode.
+    StopTyping,
 }
 
 /// What the app loop does after an action.
@@ -88,6 +97,13 @@ pub enum UiEffect {
     Quit,
     /// Hand the terminal to `$EDITOR` on this file, then reload the org.
     OpenEditor(PathBuf),
+    /// Send input to the live stream the agent pane shows.
+    Pane(PaneInput),
+    /// Scroll the agent pane's scrollback (P2-D12).
+    Scroll {
+        /// `PgUp`; else `PgDn`.
+        up: bool,
+    },
 }
 
 /// The action for a key press, given what has focus; `None` for keys with no meaning here.
@@ -97,6 +113,9 @@ pub enum UiEffect {
 pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
+    }
+    if m.typing() {
+        return Some(agent::typing_key(k));
     }
     if matches!(m.dialog, Some(Dialog::Form(_))) {
         return form_key(k);
@@ -202,7 +221,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match a {
         Action::Tab | Action::BackTab => {
             panes::move_focus(m, a == Action::Tab);
-            return Vec::new();
+            return agent::view_if_finished(m);
         }
         Action::ChatGrow | Action::ChatShrink => {
             panes::resize_chat(m, a == Action::ChatGrow);
@@ -225,7 +244,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             }
             Vec::new()
         }
-        Pane::Agent => Vec::new(),
+        Pane::Agent => agent::agent_action(m, a),
         Pane::Chat => chat_action(m, a),
     }
 }
@@ -245,7 +264,11 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         Action::Enter => {
             panes::enter(m);
-            Vec::new()
+            if m.focus.pane == Pane::Agent {
+                agent::view_if_finished(m)
+            } else {
+                Vec::new()
+            }
         }
         Action::StartStop => start_stop(m),
         Action::Delete => delete(m),
@@ -260,9 +283,12 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     }
 }
 
-/// Pasted text goes to the open form's focused field, or to the focused chat input;
-/// elsewhere it is dropped.
-pub fn paste(m: &mut UiModel, text: &str) {
+/// Pasted text goes to the agent while typing (as a bracketed paste), to the open form's
+/// focused field, or to the focused chat input; elsewhere it is dropped.
+pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
+    if m.typing() {
+        return vec![UiEffect::Pane(PaneInput::Paste(text.to_owned()))];
+    }
     match &mut m.dialog {
         Some(Dialog::Form(f)) => {
             f.paste(text, &m.org);
@@ -271,6 +297,7 @@ pub fn paste(m: &mut UiModel, text: &str) {
         None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
         _ => {}
     }
+    Vec::new()
 }
 
 /// `y`, `n`, `enter`, `esc` and `tab` in a confirmation; one a form asked goes back to it.
@@ -528,8 +555,11 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
     }))
 }
 
+mod agent;
 mod panes;
 
+#[cfg(test)]
+mod agent_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

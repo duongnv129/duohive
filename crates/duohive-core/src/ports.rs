@@ -196,7 +196,10 @@ pub trait Store: Send {
 
 /// A live view of one agent's pane. Opening a stream closes any other.
 pub trait PaneView: Send + Sync {
-    /// Streams `agent`'s pane at `size`; the first chunk is a `Reset`.
+    /// Streams `agent`'s pane at `size`. The first chunk is a `Reset`, or, when the agent
+    /// has no window (`"<agent> is not running"`) or the view can't stream it, a
+    /// `Closed`, which is then the only chunk: that case is `Ok`, not
+    /// [`ViewError::NotRunning`].
     fn open(&self, agent: &AgentName, size: PaneSize) -> Result<PaneStream, ViewError>;
     /// Resizes the pane to follow the view.
     fn resize(&self, stream: StreamId, size: PaneSize) -> Result<(), ViewError>;
@@ -345,6 +348,41 @@ impl Git for NoGit {
     fn create(&mut self, _req: CreateWorktree) {}
     fn check(&mut self, _req: CheckWorktree) {}
     fn remove(&mut self, _req: RemoveWorktree) {}
+}
+
+/// A [`PaneView`] with no live view behind it: every stream closes before its first
+/// `Reset`, and every other call fails with [`ViewError::Closed`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoPaneView;
+
+impl PaneView for NoPaneView {
+    fn open(&self, _agent: &AgentName, _size: PaneSize) -> Result<PaneStream, ViewError> {
+        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        // A fresh channel has room for one chunk.
+        let _ = tx.try_send(crate::view::PaneChunk::Closed {
+            reason: "the live view isn't available".to_owned(),
+        });
+        Ok(PaneStream {
+            id: StreamId(0),
+            rx,
+        })
+    }
+
+    fn resize(&self, _stream: StreamId, _size: PaneSize) -> Result<(), ViewError> {
+        Err(ViewError::Closed)
+    }
+
+    fn send(&self, _stream: StreamId, _input: PaneInput) -> Result<(), ViewError> {
+        Err(ViewError::Closed)
+    }
+
+    fn scrollback(
+        &self,
+        _stream: StreamId,
+        _lines: u16,
+    ) -> Result<tokio::sync::oneshot::Receiver<Vec<u8>>, ViewError> {
+        Err(ViewError::Closed)
+    }
 }
 
 #[cfg(test)]
@@ -548,6 +586,33 @@ mod tests {
             view.send(stream.id, PaneInput::Key(PaneKey::Enter)),
             Err(ViewError::Closed)
         );
+    }
+
+    #[test]
+    fn no_pane_view_streams_close_before_any_reset() {
+        let view = NoPaneView;
+        let size = PaneSize { cols: 80, rows: 24 };
+        let mut stream = view.open(&n("a"), size).unwrap();
+        assert!(matches!(stream.rx.try_recv(), Ok(PaneChunk::Closed { .. })));
+        assert!(stream.rx.try_recv().is_err());
+        assert_eq!(view.resize(stream.id, size), Err(ViewError::Closed));
+        assert_eq!(
+            view.send(stream.id, PaneInput::Text("x".into())),
+            Err(ViewError::Closed)
+        );
+        assert!(view.scrollback(stream.id, 10).is_err());
+    }
+
+    #[test]
+    fn fake_pane_view_knows_when_a_stream_is_dropped() {
+        let view = FakePaneView::default();
+        let size = PaneSize { cols: 80, rows: 24 };
+        let stream = view.open(&n("a"), size).unwrap();
+        let id = stream.id;
+        assert!(view.receiving(id));
+        drop(stream);
+        assert!(!view.receiving(id));
+        assert!(!view.receiving(StreamId(99)));
     }
 
     #[test]

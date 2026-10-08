@@ -127,10 +127,21 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             Pane::Org if compact => ORG_KEYS_COMPACT,
             Pane::Org => ORG_KEYS,
             Pane::NeedsYou => NEEDS_YOU_KEYS,
+            Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
             Pane::Agent => AGENT_KEYS,
             Pane::Chat => CHAT_KEYS,
         }
         .to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
+}
+
+/// Typing mode's footer (UI §4.1.2).
+fn typing_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
+    let agent = m
+        .selected_agent()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let text = format!(" TYPING · every key goes to {agent}, ctrl+c too · ctrl+q stop typing");
+    put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.attention));
 }

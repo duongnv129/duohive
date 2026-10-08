@@ -492,6 +492,12 @@ impl FakePaneView {
         }
     }
 
+    /// Whether `stream` is open and its receiver is still held (the viewer hasn't dropped it).
+    pub fn receiving(&self, stream: StreamId) -> bool {
+        let st = self.state.lock().unwrap();
+        st.streams.get(&stream).is_some_and(|tx| !tx.is_closed())
+    }
+
     /// Ends `stream` with a `Closed` chunk; later calls on it fail with `Closed`.
     pub fn close(&self, stream: StreamId, reason: &str) {
         let tx = self.state.lock().unwrap().streams.remove(&stream);

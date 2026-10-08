@@ -16,6 +16,7 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
 use duohive_core::org::Org;
+use duohive_core::ports::PaneView;
 use duohive_core::settings::Settings;
 use duohive_core::status::AgentState;
 use duohive_core::time::Millis;
@@ -31,8 +32,9 @@ pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
 use crate::input::{UiEffect, map_key, paste, update};
+use crate::live::{Live, next_chunk, next_scrollback};
 use crate::model::{SharedDirs, UiModel};
-use crate::render::{RenderCtx, chat_extra_limit, render};
+use crate::render::{RenderCtx, chat_extra_limit, render_live};
 use crate::theme::palette_for;
 
 /// At most 30 frames a second.
@@ -67,6 +69,8 @@ pub struct AppConfig {
     /// How many agents are running, Duo included, kept current by the app so the
     /// caller can say so after a quit (they keep running in tmux).
     pub running: Arc<AtomicUsize>,
+    /// The live view of the selected agent's pane (P2-D1).
+    pub pane_view: Arc<dyn PaneView>,
 }
 
 impl fmt::Debug for AppConfig {
@@ -380,8 +384,13 @@ pub(crate) async fn run_loop<B: Backend>(
         last_draw: None,
         spinner_next: None,
     };
+    let mut live = Live::new(Arc::clone(&cfg.pane_view), cfg.no_color);
     loop {
+        live.sync(&mut m, Instant::now());
         let wake = clock.next_wake(&m);
+        let open_at = live.open_at();
+        let (streaming, scrolling) = (live.streaming(), live.scrolling_back());
+        let (stream, scrollback) = live.waits();
         tokio::select! {
             () = signals.recv() => return Ok(()),
             event = events.recv() => {
@@ -398,7 +407,11 @@ pub(crate) async fn run_loop<B: Backend>(
                 }
                 InputEvent::Paste(text) => {
                     let before = m.clone();
-                    paste(&mut m, &text);
+                    for effect in paste(&mut m, &text) {
+                        if let UiEffect::Pane(input) = effect {
+                            live.send(input);
+                        }
+                    }
                     clock.dirty |= m != before;
                 }
                 InputEvent::Key(k) => {
@@ -416,6 +429,11 @@ pub(crate) async fn run_loop<B: Backend>(
                         match effect {
                             UiEffect::Quit => return Ok(()),
                             UiEffect::Send(c) => send(&commands, c).await?,
+                            UiEffect::Pane(input) => live.send(input),
+                            UiEffect::Scroll { up } => {
+                                live.scroll(up, &mut m);
+                                clock.dirty = true;
+                            }
                             UiEffect::OpenEditor(path) => {
                                 let editor = cfg.editor.as_deref();
                                 let cmd = editor_command(editor, &path);
@@ -434,9 +452,16 @@ pub(crate) async fn run_loop<B: Backend>(
                     }
                 }
             },
+            chunk = next_chunk(stream), if streaming => {
+                clock.dirty |= live.on_chunk(chunk, &mut m);
+            }
+            bytes = next_scrollback(scrollback), if scrolling => {
+                clock.dirty |= live.on_scrollback(bytes, &mut m);
+            }
+            () = sleep_until(open_at), if open_at.is_some() => live.open_due(&m),
             () = sleep_until(wake), if wake.is_some() => {
                 if clock.on_wake(&m) {
-                    draw(terminal, &m, &cfg, clock.spinner)?;
+                    draw(terminal, &m, &cfg, &live, clock.spinner)?;
                     clock.dirty = false;
                     clock.last_draw = Some(Instant::now());
                     if let Some(tx) = first_frame.take() {
@@ -504,6 +529,7 @@ fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     m: &UiModel,
     cfg: &AppConfig,
+    live: &Live,
     spinner: usize,
 ) -> Result<(), TuiError> {
     if cfg.halted.load(Ordering::SeqCst) {
@@ -517,10 +543,12 @@ fn draw<B: Backend>(
         utc_offset_secs: cfg.utc_offset_secs,
     };
     terminal
-        .draw(|f| render(f, m, &ctx))
+        .draw(|f| render_live(f, m, &ctx, live.screen()))
         .map(|_| ())
         .map_err(|e| TuiError::Terminal(e.to_string()))
 }
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod tests;

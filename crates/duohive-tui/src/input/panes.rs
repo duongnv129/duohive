@@ -24,8 +24,14 @@ pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
             KeyCode::Enter => Some(Action::Enter),
             _ => None,
         },
-        // The live terminal and its keys arrive in Task 2.7.
-        Pane::Agent | Pane::Chat => None,
+        // Typing mode is mapped before this (it takes every key).
+        Pane::Agent => match code {
+            KeyCode::Enter => Some(Action::Enter),
+            KeyCode::PageUp => Some(Action::PageUp),
+            KeyCode::PageDown => Some(Action::PageDown),
+            _ => None,
+        },
+        Pane::Chat => None,
     }
 }
 

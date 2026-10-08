@@ -315,7 +315,7 @@ fn running_agent_pane_shows_its_state_and_no_attach_hint() {
     let mut m = spec_model();
     m.agents.get_mut(&n("auth-service")).unwrap().status = status(AgentState::Working, mins(2));
     let text = render_lines(&m, &ctx(), 120, 36).join("\n");
-    assert!(text.contains("┌─ auth-service · Claude Code ─"), "{text}");
+    assert!(text.contains("┌─ auth-service · Claude ─"), "{text}");
     assert!(text.contains("│    ● working"), "{text}");
     assert!(!text.contains("attach"));
 }

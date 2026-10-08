@@ -3,7 +3,7 @@ source: crates/duohive-tui/src/render/pane_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
-┌─ Org ──────────────────────────────────────────┐┌─ auth-service · Claude Code ───────────────────────────────────────────────────────────────────────────────┐
+┌─ Org ──────────────────────────────────────────┐┌─ auth-service · Claude ────────────────────────────────────────────────────────────────────────────────────┐
 │ ⬢ Duo · your manager agent    ◦ idle       1m  ││                                                                                                            │
 │ ├─ ▣ Payments                 ● 1 ◆ 1          ││    ● working                                                                                               │
 │ │  ├─ ◇ Backend               ● 1 ◆ 1          ││                                                                                                            │

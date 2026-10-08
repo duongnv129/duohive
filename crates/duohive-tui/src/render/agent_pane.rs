@@ -1,5 +1,5 @@
-//! The agent pane: the selected node's summary (UI §4.1.2, P2-D3). The live terminal
-//! arrives in Task 2.7.
+//! The agent pane: the selected agent's live terminal, or the selected node's summary
+//! (UI §4.1.2, P2-D3).
 
 use duohive_core::cli_kind::CliKind;
 use duohive_core::inherit::{inherited_for, resolve};
@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
-use super::{RenderCtx, draw_box, fg, pane_style};
+use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style};
 use crate::focus::Pane;
 use crate::format::{marker, one_line, status_glyph, status_word, truncate_end, width};
 use crate::model::UiModel;
@@ -19,7 +19,7 @@ use crate::theme::Palette;
 use crate::tree::roll_up_counts;
 
 const EMPTY_ORG: &str = "Your org is empty · n to add a team, role or agent";
-const STOPPED: &str = "○ stopped · s to start";
+const STOPPED: &str = "○ stopped · space to give work";
 const ERRORED: &str = "✕ errored · s to stop";
 /// The padding cell inside the border (UI §3).
 const PAD: &str = " ";
@@ -32,7 +32,13 @@ const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
 /// The rows a full team or role summary takes.
 const SUMMARY_ROWS: usize = 6;
 
-pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
+pub(super) fn draw(
+    buf: &mut Buffer,
+    r: Rect,
+    m: &UiModel,
+    ctx: &RenderCtx,
+    live: Option<LiveScreen<'_>>,
+) {
     let p = &ctx.palette;
     let cells = usize::from(r.width.saturating_sub(2));
     let rows = usize::from(r.height.saturating_sub(2));
@@ -40,6 +46,12 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
     let (border_lines, border, inside) = pane_style(p, m.focus.pane == Pane::Agent);
     draw_box(buf, r, &title, border_lines, border, inside);
     if r.width < 5 || r.height < 3 {
+        return;
+    }
+    if let Some(s) = live.filter(|s| shown_agent(m) == Some(s.agent)) {
+        let cursor = m.typing() && !m.scrolled;
+        s.term
+            .render_from(live_area(r), buf, s.first_row, cursor, s.no_color);
         return;
     }
     // From the border's inside; each line starts with `PAD` itself.
@@ -52,6 +64,27 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .render(inner, buf);
+}
+
+/// Where the live terminal goes in the pane `r`: inside the border and the padding cell
+/// on each side (UI §3).
+pub(super) fn live_area(r: Rect) -> Rect {
+    Rect {
+        x: r.x.saturating_add(2),
+        y: r.y.saturating_add(1),
+        width: r.width.saturating_sub(4),
+        height: r.height.saturating_sub(2),
+    }
+}
+
+/// The agent whose pane is shown: none while reconnecting, with an empty org, or with a
+/// team or role selected.
+fn shown_agent(m: &UiModel) -> Option<&AgentName> {
+    let empty = m.org.teams.is_empty() && m.org.roles.is_empty();
+    if m.reconnecting > 0 || empty {
+        return None;
+    }
+    m.selected_agent()
 }
 
 /// The pane's title and body for the current state and selection.
@@ -144,11 +177,40 @@ fn message(text: &str, color: ratatui::style::Color) -> Vec<Line<'static>> {
     ]
 }
 
-/// Title `<agent> · <CLI>`; body: its state, and how to start or stop it when not running.
+/// `<agent> · <CLI> · worktree <task-id>` or `· <dir>`; Duo's `⬢ <name> · <CLI> · your
+/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12).
+fn agent_title(m: &UiModel, name: &AgentName) -> String {
+    let resolved = resolve(&m.org, name).ok();
+    let cli = resolved
+        .as_ref()
+        .map_or(m.org.defaults.cli, |r| r.cli)
+        .short();
+    let mut title = if m.org.is_duo(name) {
+        format!("⬢ {name} · {cli} · your manager agent")
+    } else {
+        let place = match &m.view(name).worktree {
+            Some(task) => Some(format!("worktree {}", task.0)),
+            None => resolved.and_then(|r| r.directory),
+        };
+        match place {
+            Some(place) => format!("{name} · {cli} · {place}"),
+            None => format!("{name} · {cli}"),
+        }
+    };
+    if m.typing() {
+        title.push_str(" · TYPING");
+    }
+    if m.scrolled {
+        title.push_str(" · scrolled");
+    }
+    title
+}
+
+/// The title, and as the body (until the live terminal shows) its state; how to give it
+/// work or stop it when not running.
 fn agent(m: &UiModel, ctx: &RenderCtx, name: &AgentName) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
-    let cli = resolve(&m.org, name).map_or(m.org.defaults.cli, |r| r.cli);
-    let title = format!("{name} · {}", cli.display());
+    let title = agent_title(m, name);
     let state = m.view(name).status.state;
     let body = match state {
         AgentState::Stopped => message(STOPPED, p.fg_muted),
