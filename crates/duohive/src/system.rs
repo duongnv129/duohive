@@ -13,6 +13,7 @@ mod enriching_store;
 
 pub use enriching_store::EnrichingStore;
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::path::PathBuf;
@@ -28,7 +29,7 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
-use duohive_core::ports::{NoGit, NoNotifier, OrgFileError, Store, StoreError};
+use duohive_core::ports::{NoGit, NoNotifier, Notifier, OrgFileError, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
@@ -36,6 +37,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::hook_listener::{AgentClis, HookListener, InstanceLock, ListenerError};
+use crate::notifier::{ALERT_TIMEOUT, DesktopNotifier, Platform};
 use crate::real_ports::{FsDirProbe, RandomIds, SystemClock};
 use detection::{detect_all, first_found, run_detection};
 
@@ -60,6 +62,9 @@ pub struct SystemOptions {
     /// The home directory `~` expands to and Duo works in (D5), read from the
     /// environment by the caller; empty is [`StartError::NoHome`].
     pub home: PathBuf,
+    /// Replaces the desktop notifier: tests and the bench set it so none posts a
+    /// real alert. `None` detects the system's own ([`DesktopNotifier::detect`]).
+    pub notifier: Option<Box<dyn Notifier>>,
 }
 
 /// The system could not start.
@@ -183,6 +188,7 @@ pub async fn start_system(
         return Err(StartError::NoHome);
     }
     let home = opts.home;
+    let notifier_override = opts.notifier;
     let hook_exe = std::env::current_exe().map_err(StartError::Exe)?;
     let agents = AgentClis::default();
     let files = {
@@ -233,13 +239,17 @@ pub async fn start_system(
 
     let (inputs_tx, inputs_rx) = mpsc::channel(INPUT_QUEUE);
     let runtime = TmuxRuntime::connect(tmux_config(paths), inputs_tx.clone()).await?;
+    let notifier = match notifier_override {
+        Some(notifier) => notifier,
+        None => detect_notifier(inputs_tx.clone()).await,
+    };
     let ports = Ports {
         runtime: Box::new(runtime),
         store: Box::new(store),
         clock: Box::new(SystemClock),
         ids: Box::new(RandomIds),
         dirs: Arc::new(FsDirProbe),
-        notifier: Box::new(NoNotifier),
+        notifier,
         git: Box::new(NoGit),
     };
     let cfg = EngineConfig {
@@ -301,6 +311,25 @@ pub async fn start_system(
         supervisors,
         lock,
     })
+}
+
+/// The system's own notifier, or none where the platform has no support.
+/// `notify-send --help` blocks, so detection runs off the executor.
+async fn detect_notifier(inputs: mpsc::Sender<Input>) -> Box<dyn Notifier> {
+    let Some(platform) = Platform::current() else {
+        return Box::new(NoNotifier);
+    };
+    let path_env: HashMap<String, String> = std::env::var("PATH")
+        .map(|path| HashMap::from([("PATH".to_owned(), path)]))
+        .unwrap_or_default();
+    let detect = move || DesktopNotifier::detect(platform, &path_env, inputs, ALERT_TIMEOUT);
+    match tokio::task::spawn_blocking(detect).await {
+        Ok(notifier) => Box::new(notifier),
+        Err(e) => {
+            tracing::warn!(error = %e, "desktop alert detection failed");
+            Box::new(NoNotifier)
+        }
+    }
 }
 
 /// What start-up reads from disk.

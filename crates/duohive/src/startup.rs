@@ -104,6 +104,7 @@ pub async fn run_app_main() -> ExitCode {
         tap: None,
         first_frame: Some(first_frame),
         home: home.clone(),
+        notifier: None,
     };
     let start = start_system(&paths, Arc::new(real_adapters()), opts);
     let (started, quit_early) = finish_start(start, signals.recv()).await;

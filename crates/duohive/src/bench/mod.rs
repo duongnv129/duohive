@@ -20,6 +20,7 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
+use duohive_core::ports::NoNotifier;
 use duohive_core::status::AgentState;
 use duohive_core::worktree::RunIn;
 use duohive_store::{Paths, save_org};
@@ -122,6 +123,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             tap: Some(tap_tx),
             first_frame: None,
             home: env.home(),
+            notifier: Some(Box::new(NoNotifier)),
         },
     );
     let handle = tokio::select! {

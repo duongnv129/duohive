@@ -27,6 +27,7 @@ use duohive_core::command::{Command, OrgEdit};
 use duohive_core::event::{Event, Snapshot};
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
+use duohive_core::ports::NoNotifier;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::n;
 use duohive_core::worktree::RunIn;
@@ -116,6 +117,7 @@ impl Env {
             tap: None,
             first_frame: None,
             home: self.home.clone(),
+            notifier: Some(Box::new(NoNotifier)),
         }
     }
 
