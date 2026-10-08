@@ -130,21 +130,5 @@ pub(super) fn needs_you_move(m: &mut UiModel, down: bool) {
 /// and focuses the agent pane in Selected mode (UI §4.1.3).
 pub(super) fn needs_you_enter(m: &mut UiModel) -> Option<AgentName> {
     let agent = m.needs_you.get(m.focus.needs_you_cursor)?.agent.clone();
-    if m.org.is_duo(&agent) {
-        m.selected = NodeKey::Duo;
-    } else {
-        let loc = m.org.find_agent(&agent)?;
-        let team = loc.team.map(|t| t.name.clone());
-        if let Some(t) = &team {
-            m.folded.remove(&NodeKey::Team(t.clone()));
-        }
-        m.folded.remove(&NodeKey::Role(RoleKey {
-            team,
-            role: loc.role.name.clone(),
-        }));
-        m.selected = NodeKey::Agent(agent.clone());
-    }
-    m.focus.pane = Pane::Agent;
-    m.focus.agent_mode = AgentMode::Selected;
-    Some(agent)
+    m.reveal_agent(&agent).then_some(agent)
 }

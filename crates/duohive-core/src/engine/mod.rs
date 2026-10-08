@@ -1,6 +1,7 @@
 //! The sans-I/O engine (TD §3.3): one owner of all state. It takes commands and
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
+mod alerts;
 mod driver;
 #[cfg(test)]
 mod harness;
@@ -190,6 +191,8 @@ pub struct Engine {
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
     reconnect: Option<Reconnect>,
+    /// Start-up is replaying history: no alerts until `Reconnected` (P2-D14).
+    replaying: bool,
     /// Rows of running agents no org names (controller ruling B).
     held: Held,
     cfg: EngineConfig,
@@ -220,6 +223,7 @@ impl Engine {
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
+            replaying: false,
             held: Held::default(),
             cfg,
             ports,
@@ -388,6 +392,7 @@ impl Engine {
         let Some(to) = transition(rt.status.state, trigger) else {
             return false;
         };
+        let before = rt.status.clone();
         rt.status = Status {
             state: to,
             quiet: false,
@@ -408,6 +413,7 @@ impl Engine {
             agent: agent.clone(),
             status,
         });
+        self.alert_after(agent, &before, out);
         if to == AgentState::Stopped {
             self.delete_row(agent, out);
         } else {

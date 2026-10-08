@@ -69,8 +69,10 @@ impl Engine {
             reconnecting: u32::try_from(running).unwrap_or(u32::MAX),
         });
         self.needs_you_shown = self.needs_you();
+        self.replaying = true;
         self.ports.runtime.inventory();
         out.insert(0, Event::Snapshot(Box::new(self.snapshot())));
+        self.alerts_unavailable(&mut out);
         out
     }
 
@@ -151,6 +153,7 @@ impl Engine {
         let items = self.needs_you();
         self.needs_you_shown.clone_from(&items);
         out.push(Event::NeedsYouChanged(items));
+        self.replaying = false;
         out.push(Event::Reconnected);
     }
 

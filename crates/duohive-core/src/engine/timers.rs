@@ -74,9 +74,11 @@ impl Engine {
         }
         if let Some(since) = quiet_since {
             let rt = self.rt_mut(agent);
+            let before = rt.status.clone();
             rt.status.quiet = true;
             rt.status.quiet_since = Some(since);
             self.report_status(agent, out);
+            self.alert_after(agent, &before, out);
         }
     }
 
