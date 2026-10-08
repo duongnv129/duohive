@@ -235,11 +235,12 @@ impl UiModel {
             Event::AlertClicked { agent } => {
                 self.reveal_agent(&agent);
             }
+            // The engine publishes this once per session (UI §4.1.4).
+            Event::AlertsUnavailable => {
+                self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
+            }
             // The desktop notice and worktrees reach the screen in later tasks.
-            Event::Alert(_)
-            | Event::AlertsUnavailable
-            | Event::GiveWorkNotTaken { .. }
-            | Event::Worktrees(_) => {}
+            Event::Alert(_) | Event::GiveWorkNotTaken { .. } | Event::Worktrees(_) => {}
         }
         true
     }
@@ -406,6 +407,9 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     delivery_pending: false,
 };
 
+/// The footer note when the system has no desktop notifier (UI §4.1.4).
+const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -418,6 +422,16 @@ mod tests {
 
     use super::*;
     use crate::fixtures::{NOW, mins, spec_model, status};
+
+    #[test]
+    fn alerts_unavailable_note_once() {
+        let mut m = spec_model();
+        m.apply(Event::AlertsUnavailable);
+        assert_eq!(m.footer_note.as_deref(), Some("desktop alerts unavailable"));
+        m.footer_note = None;
+        m.apply(Event::Reconnected);
+        assert_eq!(m.footer_note, None);
+    }
 
     #[test]
     fn alert_click_selects_agent() {

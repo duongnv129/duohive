@@ -14,6 +14,7 @@ use std::sync::Arc;
 use duohive::args::USAGE;
 use duohive::system::{SystemOptions, start_system};
 use duohive_cli::fake::fake_adapters;
+use duohive_core::ports::NoNotifier;
 use duohive_store::Paths;
 
 const BIN: &str = env!("CARGO_BIN_EXE_duohive");
@@ -75,6 +76,7 @@ async fn a_second_instance_is_refused() {
             tap: None,
             first_frame: None,
             home: tmp.path().join("home"),
+            notifier: Some(Box::new(NoNotifier)),
         },
     )
     .await
