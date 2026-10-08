@@ -77,7 +77,7 @@ fn remove(m: &mut UiModel, l: WorktreeList) -> Vec<UiEffect> {
             row.branch,
             why_asked(&row.state)
         ),
-        "Uncommitted changes in it are lost. The branch is kept.".to_owned(),
+        "Everything in it that isn't committed is lost, including untracked and ignored files. The branch is kept.".to_owned(),
     ];
     let Dialog::Confirm(c) = confirm("Remove worktree?", lines, "Remove", delete(true)) else {
         return Vec::new();
@@ -96,6 +96,9 @@ fn why_asked(state: &WorktreeState) -> String {
             format!("It isn't merged ({}).", files_changed(*n))
         }
         WorktreeState::MergedDirty => "It has uncommitted changes.".to_owned(),
+        WorktreeState::CheckFailed(r) if r.starts_with("couldn't remove") => {
+            "Its earlier removal failed.".to_owned()
+        }
         WorktreeState::CheckFailed(_) => "It couldn't be checked.".to_owned(),
         _ => "It hasn't been checked yet.".to_owned(),
     }

@@ -73,20 +73,13 @@ fn empty_list_says_so() {
 #[test]
 fn unchecked_rows_have_no_check_line_age() {
     let mut m = listed();
-    m.worktrees = vec![WorktreeRowExt::unchecked()];
+    m.worktrees = vec![duohive_core::worktree::WorktreeRow {
+        checked_at: None,
+        base: None,
+        ..worktree_row("squad-1", "readme", S::Unchecked)
+    }];
     let text = render_lines(&m, &ctx(), 100, 30).join("\n");
     assert!(text.contains("not checked yet"));
-}
-
-struct WorktreeRowExt;
-impl WorktreeRowExt {
-    fn unchecked() -> duohive_core::worktree::WorktreeRow {
-        duohive_core::worktree::WorktreeRow {
-            checked_at: None,
-            base: None,
-            ..worktree_row("squad-1", "readme", S::Unchecked)
-        }
-    }
 }
 
 #[test]
@@ -95,4 +88,15 @@ fn worktrees_snapshots() {
     for (name, w, h) in [("worktrees_80x24", 80, 24), ("worktrees_160x48", 160, 48)] {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
+}
+
+#[test]
+fn check_age_follows_the_render_clock() {
+    let m = listed();
+    let mut later = ctx();
+    later.now =
+        crate::fixtures::ago(std::time::Duration::ZERO) + std::time::Duration::from_secs(7 * 60);
+    let at = |c: &crate::render::RenderCtx| render_lines(&m, c, 120, 30).join("\n");
+    assert!(at(&ctx()).contains("checked 3m ago"));
+    assert!(at(&later).contains("checked 10m ago"));
 }
