@@ -86,6 +86,8 @@ pub enum Action {
     Type(KeyEvent),
     /// `ctrl+q` in Typing mode.
     StopTyping,
+    /// `z`: zoom the selected agent, or restore.
+    Zoom,
 }
 
 /// What the app loop does after an action.
@@ -175,6 +177,7 @@ fn tree_key(code: KeyCode) -> Option<Action> {
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('v') => Some(Action::ToggleReplies),
         KeyCode::Char('o') => Some(Action::OpenOrgFile),
+        KeyCode::Char('z') => Some(Action::Zoom),
         _ => None,
     }
 }
@@ -218,7 +221,20 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         None => {}
     }
+    if m.zoomed_agent().is_some()
+        && matches!(
+            a,
+            Action::Tab | Action::BackTab | Action::ChatGrow | Action::ChatShrink
+        )
+    {
+        // The zoomed pane is the only pane.
+        return Vec::new();
+    }
     match a {
+        Action::Zoom => {
+            panes::toggle_zoom(m);
+            return agent::view_if_finished(m);
+        }
         Action::Tab | Action::BackTab => {
             panes::move_focus(m, a == Action::Tab);
             return agent::view_if_finished(m);
@@ -564,3 +580,5 @@ mod agent_tests;
 mod pane_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod zoom_tests;

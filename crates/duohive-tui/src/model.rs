@@ -133,6 +133,8 @@ pub struct UiModel {
     /// The agent whose live terminal the pane shows (its stream has delivered a `Reset`);
     /// kept by the app loop. Typing needs it.
     pub live_agent: Option<AgentName>,
+    /// `z`: the selected agent's pane fills the screen (UI §4.2).
+    pub zoomed: bool,
 }
 
 impl UiModel {
@@ -162,6 +164,7 @@ impl UiModel {
             screen: Rect::default(),
             scrolled: false,
             live_agent: None,
+            zoomed: false,
         }
     }
 
@@ -241,6 +244,11 @@ impl UiModel {
         self.dialog.is_none()
             && self.focus.pane == crate::focus::Pane::Agent
             && self.focus.agent_mode == crate::focus::AgentMode::Typing
+    }
+
+    /// The agent whose pane fills the screen: the selected agent while `z` has zoomed.
+    pub fn zoomed_agent(&self) -> Option<&AgentName> {
+        self.zoomed.then(|| self.selected_agent()).flatten()
     }
 
     /// The agent a selection shows: Duo's name for Duo, `None` for teams and roles.

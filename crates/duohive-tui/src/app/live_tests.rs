@@ -209,6 +209,34 @@ async fn resize_follows_pane_size() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn zoom_resizes_the_viewed_window_and_restore_resizes_back() {
+    let view = FakePaneView::default();
+    let m = resting_model();
+    let small = size_at(&m, 100, 30);
+    let big = PaneSize {
+        cols: 100 - 4,
+        rows: 30 - 4,
+    };
+    run_with(m, &view, async |h: &mut Harness| {
+        open_duo(&view, "x").await;
+        h.input.send(key('z')).await.unwrap();
+        sleep(10).await;
+        assert_eq!(
+            view.calls().last(),
+            Some(&PaneCall::Resize(StreamId(1), big))
+        );
+        h.input.send(key('z')).await.unwrap();
+        sleep(10).await;
+        assert_eq!(
+            view.calls().last(),
+            Some(&PaneCall::Resize(StreamId(1), small))
+        );
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn typing_ends_when_window_dies() {
     let view = FakePaneView::default();
     let lines = run_with(resting_model(), &view, async |h: &mut Harness| {

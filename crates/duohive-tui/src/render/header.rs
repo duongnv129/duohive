@@ -137,7 +137,7 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
 }
 
 /// Typing mode's footer (UI §4.1.2).
-fn typing_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
+pub(super) fn typing_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
     let agent = m
         .selected_agent()
         .map(ToString::to_string)

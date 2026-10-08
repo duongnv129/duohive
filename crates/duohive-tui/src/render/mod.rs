@@ -8,6 +8,7 @@ mod header;
 mod needs_you;
 mod org_pane;
 mod screens;
+mod zoom;
 
 use duohive_core::names::AgentName;
 use duohive_core::settings::Settings;
@@ -21,7 +22,7 @@ use ratatui::style::{Color, Style};
 
 pub use screens::{BlockingScreen, render_blocking};
 
-use crate::focus::{Pane, chat_extra_max_below, layout_below, shows_replies};
+use crate::focus::{Pane, chat_extra_max_below, layout_below, shows_replies, zoom_area};
 use crate::format::width;
 use crate::model::UiModel;
 use crate::term_view::TermView;
@@ -91,6 +92,9 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
         return;
     };
     let l = l.with_needs_you(m.needs_you.len());
+    let zoomed = m
+        .zoomed_agent()
+        .and_then(|a| Some((a, zoom_area(area, banner_rows)?)));
     for (i, line) in banners.iter().enumerate() {
         let y = area.y + u16::try_from(i).unwrap_or(u16::MAX);
         put(buf, area.x, y, line, usize::from(area.width), fg(p.error));
@@ -100,6 +104,15 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
         height: 1,
         ..area
     };
+    if let Some((agent, pane)) = zoomed {
+        zoom::draw_header(buf, row(area.y + banner_rows), agent, p);
+        zoom::draw_footer(buf, row(area.bottom() - 1), m, p);
+        agent_pane::draw(buf, pane, m, ctx, live);
+        if let Some(Some(at)) = m.dialog.as_ref().map(|d| dialog::draw(buf, area, d, p)) {
+            frame.set_cursor_position(at);
+        }
+        return;
+    }
     header::draw_header(buf, row(area.y + banner_rows), m, ctx, l.compact);
     header::draw_footer(buf, row(area.bottom() - 1), m, p, l.compact);
     let replies = ctx.settings.show_last_reply && shows_replies(area);
@@ -130,7 +143,11 @@ pub fn live_size(m: &UiModel) -> Option<PaneSize> {
     let rows = u16::try_from(banners).unwrap_or(u16::MAX);
     let typing = m.focus.pane == Pane::Chat;
     let l = layout_below(m.screen, rows, m.chat_rows_extra, typing)?;
-    let inner = agent_pane::live_area(l.agent);
+    let pane = match m.zoomed_agent() {
+        Some(_) => zoom_area(m.screen, rows)?,
+        None => l.agent,
+    };
+    let inner = agent_pane::live_area(pane);
     (inner.width > 0 && inner.height > 0).then_some(PaneSize {
         cols: inner.width,
         rows: inner.height,
@@ -277,3 +294,5 @@ mod pane_tests;
 mod screen_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod zoom_tests;
