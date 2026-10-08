@@ -461,6 +461,7 @@ struct FakePaneState {
     next_id: u64,
     streams: HashMap<StreamId, tokio::sync::mpsc::Sender<PaneChunk>>,
     scrollback: Vec<u8>,
+    not_ready: bool,
 }
 
 /// Chunks a [`FakePaneView`] stream holds before a push is dropped.
@@ -477,6 +478,11 @@ impl FakePaneView {
     /// Calls so far, oldest first.
     pub fn calls(&self) -> Vec<PaneCall> {
         self.state.lock().unwrap().calls.clone()
+    }
+
+    /// What later `ready` calls answer (`true` until set).
+    pub fn set_ready(&self, ready: bool) {
+        self.state.lock().unwrap().not_ready = !ready;
     }
 
     /// What every later `scrollback` answers.
@@ -554,6 +560,10 @@ impl PaneView for FakePaneView {
         let (tx, rx) = tokio::sync::oneshot::channel();
         tx.send(self.state.lock().unwrap().scrollback.clone()).ok();
         Ok(rx)
+    }
+
+    fn ready(&self) -> bool {
+        !self.state.lock().unwrap().not_ready
     }
 }
 

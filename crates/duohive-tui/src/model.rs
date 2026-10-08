@@ -130,6 +130,9 @@ pub struct UiModel {
     pub screen: Rect,
     /// The agent pane shows a frozen scrollback snapshot (P2-D12), not the live terminal.
     pub scrolled: bool,
+    /// The agent whose live terminal the pane shows (its stream has delivered a `Reset`);
+    /// kept by the app loop. Typing needs it.
+    pub live_agent: Option<AgentName>,
 }
 
 impl UiModel {
@@ -158,6 +161,7 @@ impl UiModel {
             chat_sent: None,
             screen: Rect::default(),
             scrolled: false,
+            live_agent: None,
         }
     }
 

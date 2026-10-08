@@ -11,6 +11,9 @@ const MAX_F_KEY: u8 = 12;
 /// `ctrl+<char>` and `alt+<char>` become named keys; other characters are sent as text,
 /// with shift already applied by the terminal. Leaving Typing mode (`ctrl+q`) is decided
 /// before this is called.
+///
+/// Limitation: `PaneKey` has no ctrl+alt key (tmux's `C-M-x`), so `ctrl+alt+x` is sent
+/// as `ctrl+x`, the alt dropped.
 pub fn key_to_input(k: KeyEvent) -> Option<PaneInput> {
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
     let alt = k.modifiers.contains(KeyModifiers::ALT);
@@ -107,6 +110,14 @@ mod tests {
                 Some(PaneInput::Key(PaneKey::F(12))),
             ),
             (k(KeyCode::F(13), none), None),
+            // `PaneKey` has no ctrl+alt: the ctrl wins (see `key_to_input`).
+            (
+                k(
+                    KeyCode::Char('x'),
+                    KeyModifiers::CONTROL | KeyModifiers::ALT,
+                ),
+                Some(PaneInput::Key(PaneKey::Ctrl('x'))),
+            ),
             (k(KeyCode::CapsLock, none), None),
         ];
         for (key, want) in cases {

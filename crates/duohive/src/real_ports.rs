@@ -53,9 +53,9 @@ impl Ids for RandomIds {
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
 /// A [`PaneView`] whose real view arrives later: tmux's view client takes a few seconds
-/// to attach, and the first frame doesn't wait for it. Until [`Self::set`] (and for
-/// good, if the attach fails) it acts as [`NoPaneView`]: every stream closes before
-/// its first `Reset`, so the agent pane shows summaries.
+/// to attach, and the first frame doesn't wait for it. Until [`Self::set`] it isn't
+/// [`PaneView::ready`] (the TUI waits and asks again) and acts as [`NoPaneView`]; if the
+/// attach fails it stays so, and the agent pane keeps its summaries.
 #[derive(Default)]
 pub struct LatePaneView {
     inner: OnceLock<Arc<dyn PaneView>>,
@@ -95,6 +95,11 @@ impl PaneView for LatePaneView {
     ) -> Result<oneshot::Receiver<Vec<u8>>, ViewError> {
         self.view().scrollback(stream, lines)
     }
+
+    /// Ready once the real view has been set.
+    fn ready(&self) -> bool {
+        self.inner.get().is_some_and(|v| v.ready())
+    }
 }
 
 /// Stat-only directory probe. It walks up the ancestors, so a directory inside
@@ -133,12 +138,14 @@ mod tests {
 
         let late = LatePaneView::default();
         let size = PaneSize { cols: 80, rows: 24 };
+        assert!(!late.ready());
         let mut stream = late.open(&n("a"), size).unwrap();
         assert!(matches!(stream.rx.try_recv(), Ok(PaneChunk::Closed { .. })));
         assert_eq!(late.resize(stream.id, size), Err(ViewError::Closed));
 
         let fake = FakePaneView::default();
         late.set(Arc::new(fake.clone()));
+        assert!(late.ready());
         let stream = late.open(&n("a"), size).unwrap();
         late.resize(stream.id, size).unwrap();
         late.send(stream.id, PaneInput::Text("x".into())).unwrap();
