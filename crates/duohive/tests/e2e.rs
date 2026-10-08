@@ -286,9 +286,23 @@ async fn e2e_start_work_finish_view() {
         is_state(e, &a, AgentState::Finished)
     })
     .await;
+    // P2-D11: the paste leaves the agent idle; its busy hook moves it to working.
     assert_eq!(
         moves(&turn, &a),
         [AgentState::Working, AgentState::Finished]
+    );
+    let run = |e: &Event| match e {
+        Event::AgentRunChanged {
+            agent,
+            delivery_pending,
+            ..
+        } if *agent == a => Some(*delivery_pending),
+        _ => None,
+    };
+    assert_eq!(
+        turn.iter().filter_map(run).collect::<Vec<_>>(),
+        [true, false],
+        "{turn:#?}"
     );
     let reply = |e: &Event| match e {
         Event::LastReplyChanged { agent, reply } if *agent == a => reply.clone(),
@@ -490,28 +504,32 @@ async fn e2e_hookless_agent_gets_tilde_states() {
     let idle = started.iter().rev().find_map(|e| status_of(e, &a)).unwrap();
     assert!(idle.from_screen, "{idle:?}");
 
+    // P2-D11: the paste leaves it idle until a `~` busy read, taken on the turn's
+    // first activity; a slow (3 s) turn is still running when that read lands.
     send(
         &h,
         Command::GiveWork {
             agent: a.clone(),
-            task: "say hi".into(),
+            task: "say hi slowly".into(),
             run: RunIn::Directory,
         },
     )
     .await;
-    events_until(&mut h, START, "working", |e| {
+    let taken = events_until(&mut h, START, "working", |e| {
         is_state(e, &a, AgentState::Working)
     })
     .await;
+    let working = taken.iter().rev().find_map(|e| status_of(e, &a)).unwrap();
+    assert!(working.from_screen, "{working:?}");
     let working_at = Instant::now();
     let turn = events_until(&mut h, START, "finished", |e| {
         is_state(e, &a, AgentState::Finished)
     })
     .await;
-    // The 1 s turn, the 1.5 s settle, then at most 2 s to read the screen.
+    // The rest of the 3 s turn, the 1.5 s settle, then at most 2 s to read the screen.
     let took = working_at.elapsed();
     assert!(
-        took < Duration::from_millis(4500),
+        took < Duration::from_millis(6500),
         "finished after {took:?}"
     );
     let finished = turn.iter().rev().find_map(|e| status_of(e, &a)).unwrap();
@@ -593,7 +611,7 @@ async fn e2e_restart_reconnects() {
         is_state(e, &a, AgentState::Working)
     })
     .await;
-    // The task has reached the agent (Working is reported as it is sent).
+    // The task has reached the agent: P2-D11 reports Working only on its busy hook.
     let (window_a, _) = &windows;
     eventually(Duration::from_secs(10), "the slow turn under way", || {
         env.tmux(&["capture-pane", "-p", "-t", window_a])

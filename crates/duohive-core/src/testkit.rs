@@ -412,11 +412,13 @@ impl CliAdapter for StubAdapter {
         if let Some(reason) = &self.launch_error {
             return Err(LaunchError::Invalid(reason.clone()));
         }
-        let cwd = spec
-            .agent
-            .directory
-            .as_deref()
-            .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home));
+        // As `launch_cwd` does: the spec's own `cwd` (a new worktree) first.
+        let cwd = spec.cwd.clone().unwrap_or_else(|| {
+            spec.agent
+                .directory
+                .as_deref()
+                .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home))
+        });
         Ok(LaunchCommand {
             program: self.kind.binary().to_owned(),
             args,

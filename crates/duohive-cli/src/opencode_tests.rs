@@ -39,6 +39,7 @@ fn spec(task: Option<&str>) -> LaunchSpec {
         run_dir: RUN_DIR.into(),
         hook_exe: "/usr/local/bin/duohive".into(),
         home: "/home/u".into(),
+        cwd: None,
     }
 }
 

@@ -365,6 +365,7 @@ mod tests {
             run_dir: "/data/duohive/run/squad-1".into(),
             hook_exe: "/usr/local/bin/duohive".into(),
             home: "/home/u".into(),
+            cwd: None,
         }
     }
 
