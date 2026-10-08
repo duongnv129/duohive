@@ -8,6 +8,7 @@ use super::{LIGHT, draw_box, fg, put};
 use crate::format::{width, wrap_words};
 use crate::model::{Confirm, Dialog, UiModel};
 use crate::theme::Palette;
+use duohive_core::time::Millis;
 
 /// The mock-ups' dialog width; narrower screens get the screen less a margin.
 const WIDTH: u16 = 64;
@@ -25,6 +26,7 @@ pub(super) fn draw(
     area: Rect,
     d: &Dialog,
     m: &UiModel,
+    now: Millis,
     p: &Palette,
 ) -> Option<Position> {
     match d {
@@ -32,7 +34,7 @@ pub(super) fn draw(
         Dialog::Form(f) => return super::form::draw_form(buf, area, f, p),
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
         Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, p),
-        Dialog::Worktrees(l) => super::worktrees::draw(buf, area, l, m, p),
+        Dialog::Worktrees(l) => super::worktrees::draw(buf, area, l, m, now, p),
     }
     None
 }

@@ -111,7 +111,11 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
         zoom::draw_header(buf, row(area.y + banner_rows), agent, p);
         zoom::draw_footer(buf, row(area.bottom() - 1), m, p);
         agent_pane::draw(buf, pane, m, ctx, live);
-        if let Some(Some(at)) = m.dialog.as_ref().map(|d| dialog::draw(buf, area, d, m, p)) {
+        if let Some(Some(at)) = m
+            .dialog
+            .as_ref()
+            .map(|d| dialog::draw(buf, area, d, m, ctx.now, p))
+        {
             frame.set_cursor_position(at);
         }
         return;
@@ -123,7 +127,7 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
     agent_pane::draw(buf, l.agent, m, ctx, live);
     let chat_cursor = chat_pane::draw(buf, l.chat, m, ctx, l.compact);
     let cursor = match &m.dialog {
-        Some(d) => dialog::draw(buf, area, d, m, p),
+        Some(d) => dialog::draw(buf, area, d, m, ctx.now, p),
         None => chat_cursor,
     };
     if let Some(at) = cursor {

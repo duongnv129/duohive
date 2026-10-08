@@ -19,9 +19,9 @@ const PREFIX: u16 = 3;
 const FOCUS: &str = "▌";
 /// The longest an Agent column grows.
 const AGENT_MAX: usize = 16;
-/// The least a Branch column keeps when the State words need room.
 /// Cells kept between Branch and State.
 const BRANCH_GAP: usize = 2;
+/// The least a Branch column keeps when the State words need room.
 const BRANCH_MIN: usize = 12;
 /// Border, header, a blank row, the check line, the hint, border.
 const CHROME_ROWS: u16 = 6;
@@ -88,7 +88,14 @@ fn columns(rows: &[WorktreeRow], room: usize) -> (usize, usize, usize) {
 }
 
 /// Draws the list centred over `area`.
-pub(super) fn draw(buf: &mut Buffer, area: Rect, l: &WorktreeList, m: &UiModel, p: &Palette) {
+pub(super) fn draw(
+    buf: &mut Buffer,
+    area: Rect,
+    l: &WorktreeList,
+    m: &UiModel,
+    now: Millis,
+    p: &Palette,
+) {
     let w = WIDTH.min(area.width.saturating_sub(MARGIN));
     let h = u16::try_from(m.worktrees.len().max(1))
         .unwrap_or(u16::MAX)
@@ -193,7 +200,7 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, l: &WorktreeList, m: &UiModel, 
         buf,
         x + 1,
         r.bottom() - 3,
-        &check_line(&m.worktrees, m.now),
+        &check_line(&m.worktrees, now),
         room.saturating_sub(1),
         muted,
     );

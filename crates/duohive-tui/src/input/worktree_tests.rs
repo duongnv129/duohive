@@ -196,3 +196,32 @@ fn edit_locks_the_name_of_an_agent_with_a_worktree_row() {
     let name = f.field(crate::forms::FieldId::Name).unwrap();
     assert_eq!(name.kind, crate::forms::FieldKind::ReadOnly);
 }
+
+#[test]
+fn enter_on_the_focused_cancel_cancels() {
+    let mut m = open();
+    cursor_to(&mut m, 2);
+    press(&mut m, key('d'));
+    let out = press(&mut m, KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+    assert_eq!(out, []);
+    assert!(matches!(m.dialog, Some(Dialog::Worktrees(_))));
+}
+
+#[test]
+fn a_failed_removal_is_described_as_one() {
+    let mut m = open();
+    m.worktrees = vec![worktree_row(
+        "pay-qa",
+        "x",
+        WorktreeState::CheckFailed("couldn't remove: busy".to_owned()),
+    )];
+    press(&mut m, key('d'));
+    let Some(Dialog::Confirm(c)) = &m.dialog else {
+        panic!("no confirmation");
+    };
+    assert!(
+        c.lines[0].ends_with("Its earlier removal failed."),
+        "{:?}",
+        c.lines
+    );
+}

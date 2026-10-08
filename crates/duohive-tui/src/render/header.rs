@@ -109,9 +109,6 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
     }
 }
 
-/// The footer under the worktree list (the list draws its own full hint).
-const WORKTREES_HINT: &str = "↑↓ move · esc back";
-
 /// The footer: the note when one is set, else the keys of the dialog or focused pane.
 pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, compact: bool) {
     let text = match (&m.footer_note, &m.dialog) {
@@ -126,7 +123,11 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             format!(" {HINT}{newline}")
         }
         (None, Some(Dialog::Chooser(_))) => format!(" {CHOOSER_HINT}"),
-        (None, Some(Dialog::Worktrees(_))) => format!(" {WORKTREES_HINT}"),
+        (None, Some(Dialog::Worktrees(_))) =>
+        // The list draws its own hint (UI §4.9); a note still shows.
+        {
+            String::new()
+        }
         (None, Some(Dialog::GiveWork(g))) => format!(" {}", g.hint()),
         (None, _) => match m.focus.pane {
             Pane::Org if compact => ORG_KEYS_COMPACT,
