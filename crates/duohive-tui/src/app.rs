@@ -29,11 +29,10 @@ use tokio::time::Instant;
 
 pub use terminal::{restore_terminal, run_app, show_blocking};
 
-use crate::focus::chat_extra_max;
 use crate::format::age_of;
 use crate::input::{UiEffect, map_key, paste, update};
 use crate::model::{SharedDirs, UiModel};
-use crate::render::{RenderCtx, render};
+use crate::render::{RenderCtx, chat_extra_limit, render};
 use crate::theme::palette_for;
 
 /// At most 30 frames a second.
@@ -52,6 +51,8 @@ pub struct AppConfig {
     pub org_toml: PathBuf,
     /// The settings at start-up.
     pub settings: Settings,
+    /// The local time zone's offset from UTC, in seconds, for chat times.
+    pub utc_offset_secs: i32,
     /// `NO_COLOR` is set.
     pub no_color: bool,
     /// The value of `$EDITOR`, read by the caller; `None` or blank runs `vi`.
@@ -73,6 +74,7 @@ impl fmt::Debug for AppConfig {
         f.debug_struct("AppConfig")
             .field("org_toml", &self.org_toml)
             .field("settings", &self.settings)
+            .field("utc_offset_secs", &self.utc_offset_secs)
             .field("no_color", &self.no_color)
             .field("editor", &self.editor)
             .field("home", &self.home)
@@ -450,7 +452,7 @@ pub(crate) async fn run_loop<B: Backend>(
 /// Records the terminal's size, which bounds the chat's resizing (P2-D3).
 fn set_screen(m: &mut UiModel, w: u16, h: u16) {
     m.screen = Rect::new(0, 0, w, h);
-    m.chat_rows_extra = m.chat_rows_extra.min(chat_extra_max(m.screen));
+    m.chat_rows_extra = m.chat_rows_extra.min(chat_extra_limit(m));
 }
 
 async fn sleep_until(at: Option<Instant>) {
@@ -512,6 +514,7 @@ fn draw<B: Backend>(
         spinner,
         palette: palette_for(m.settings.theme, cfg.no_color),
         settings: m.settings.clone(),
+        utc_offset_secs: cfg.utc_offset_secs,
     };
     terminal
         .draw(|f| render(f, m, &ctx))

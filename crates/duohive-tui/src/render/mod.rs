@@ -19,7 +19,7 @@ use ratatui::style::{Color, Style};
 
 pub use screens::{BlockingScreen, render_blocking};
 
-use crate::focus::{Pane, layout_below, shows_replies};
+use crate::focus::{Pane, chat_extra_max_below, layout_below, shows_replies};
 use crate::format::width;
 use crate::model::UiModel;
 use crate::theme::Palette;
@@ -35,6 +35,8 @@ pub struct RenderCtx {
     pub palette: Palette,
     /// Reduce motion and last-reply visibility come from here.
     pub settings: Settings,
+    /// The local time zone's offset from UTC, in seconds, for chat times.
+    pub utc_offset_secs: i32,
 }
 
 impl RenderCtx {
@@ -80,6 +82,14 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
     if let Some(at) = cursor {
         frame.set_cursor_position(at);
     }
+}
+
+/// The most rows `ctrl+↑` can add to the chat at the model's screen size, counting the
+/// banners above the header as [`render`] draws them (P2-D3).
+pub(crate) fn chat_extra_limit(m: &UiModel) -> i16 {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    chat_extra_max_below(m.screen, rows)
 }
 
 /// The border lines and inside style for a pane, heavy and on `bg.panel` when it has focus.

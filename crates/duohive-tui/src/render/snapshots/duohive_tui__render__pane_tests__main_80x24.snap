@@ -3,14 +3,14 @@ source: crates/duohive-tui/src/render/pane_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
  DuoHive  ● 2 · ◆ 2                                                             
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ─────────────────┐
-┃ ⬢ Duo                ◦   1m  ┃│                                              │
-┃ ▾ Payments           ● 1 ◆ 1 ┃│    ● working                                 │
-┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
-┃▌    auth-service     ●   2m  ┃│                                              │
-┃     billing-api      ◆   4m  ┃│                                              │
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting         │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ Defaults  CLI inherit: Claude Code · model   │
+┃▌  ▾ Backend          ● 1 ◆ 1 ┃│(none)                                        │
+┃     auth-service     ●   2m  ┃│           worktrees inherit: off             │
+┃     billing-api      ◆   4m  ┃│ Prompt    (none)                             │
 ┃   ▾ QA                       ┃│                                              │
-┃     pay-qa           ○   1d  ┃│                                              │
+┃     pay-qa           ○   1d  ┃│ e edit                                       │
 ┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
 ┃     squad-1         ~●   1m  ┃│                                              │
 ┃     squad-2          ✓   3m  ┃│                                              │

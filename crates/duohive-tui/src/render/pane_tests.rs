@@ -25,8 +25,13 @@ fn char_at(lines: &[String], x: u16, y: u16) -> char {
 }
 
 /// The spec model with a short chat history, as UI §4.1 draws it.
+/// The spec model with a role selected, so the agent pane holds a summary.
 fn spec_with_chat() -> UiModel {
     let mut m = spec_model();
+    m.selected = NodeKey::Role(RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("Backend"),
+    });
     let at = duohive_core::time::Millis(10 * 3_600_000 + 5 * 60_000);
     m.chat.lines = vec![
         ChatLine {
@@ -313,4 +318,34 @@ fn running_agent_pane_shows_its_state_and_no_attach_hint() {
     assert!(text.contains("┌─ auth-service · Claude Code ─"), "{text}");
     assert!(text.contains("│    ● working"), "{text}");
     assert!(!text.contains("attach"));
+}
+
+#[test]
+fn chat_times_are_local() {
+    let mut m = spec_model();
+    let at = |h: u64, min: u64| duohive_core::time::Millis((h * 60 + min) * 60_000);
+    m.chat.lines = vec![
+        ChatLine {
+            at: at(3, 5),
+            who: Who::You,
+            text: "east".to_owned(),
+        },
+        ChatLine {
+            at: at(1, 0),
+            who: Who::You,
+            text: "west".to_owned(),
+        },
+    ];
+    let text = |offset: i32| {
+        let mut c = ctx();
+        c.utc_offset_secs = offset;
+        render_lines(&m, &c, 120, 36).join("\n")
+    };
+    let utc7 = text(7 * 3_600);
+    assert!(utc7.contains("10:05 you   east"), "{utc7}");
+    assert!(utc7.contains("08:00 you   west"), "{utc7}");
+    // A negative offset wraps to the previous day.
+    let utc_5 = text(-5 * 3_600);
+    assert!(utc_5.contains("22:05 you   east"), "{utc_5}");
+    assert!(utc_5.contains("20:00 you   west"), "{utc_5}");
 }

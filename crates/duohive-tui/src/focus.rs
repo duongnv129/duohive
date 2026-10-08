@@ -179,9 +179,8 @@ pub(crate) fn layout_below(
 ) -> Option<Layout> {
     let size = Size::of(area)?;
     let top = area.y + banners + 1;
-    let avail = area.height.saturating_sub(banners + CHROME_ROWS);
-    let base = size.chat_rows();
-    let most = avail.saturating_sub(MIN_AGENT_ROWS).max(base);
+    let avail = available_rows(area, banners);
+    let (base, most) = chat_bounds(size, avail);
     let extra = u16::try_from(chat_rows_extra.max(0)).unwrap_or(0);
     let wanted = base.saturating_add(extra);
     let wanted = if chat_typing {
@@ -206,12 +205,29 @@ pub(crate) fn layout_below(
 /// The most rows `ctrl+↑` can add to the chat at `area` (P2-D3): up to where the agent
 /// pane keeps 6 rows.
 pub fn chat_extra_max(area: Rect) -> i16 {
+    chat_extra_max_below(area, 0)
+}
+
+/// [`chat_extra_max`] with `banners` rows taken above the header, as [`layout_below`] counts
+/// them.
+pub(crate) fn chat_extra_max_below(area: Rect, banners: u16) -> i16 {
     let Some(size) = Size::of(area) else {
         return 0;
     };
-    let avail = area.height.saturating_sub(CHROME_ROWS);
-    let most = avail.saturating_sub(MIN_AGENT_ROWS);
-    i16::try_from(most.saturating_sub(size.chat_rows())).unwrap_or(i16::MAX)
+    let (base, most) = chat_bounds(size, available_rows(area, banners));
+    i16::try_from(most - base).unwrap_or(i16::MAX)
+}
+
+/// The rows between the header and the footer.
+fn available_rows(area: Rect, banners: u16) -> u16 {
+    area.height.saturating_sub(banners + CHROME_ROWS)
+}
+
+/// The chat's rows before `ctrl+↑`, and the most it may take: what leaves the agent pane
+/// 6 rows, never less than the base.
+fn chat_bounds(size: Size, avail: u16) -> (u16, u16) {
+    let base = size.chat_rows();
+    (base, avail.saturating_sub(MIN_AGENT_ROWS).max(base))
 }
 
 #[cfg(test)]

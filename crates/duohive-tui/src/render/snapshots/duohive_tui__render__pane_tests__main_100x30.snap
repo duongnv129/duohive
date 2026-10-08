@@ -3,14 +3,14 @@ source: crates/duohive-tui/src/render/pane_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                    
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ───────────────────┐
-┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                   │
-┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                │
-┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                │
-┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ──────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting           │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ Defaults  CLI inherit: Claude Code · model     │
+┃▌│  ├─ ◇ Backend               ● 1 ◆ 1          ┃│(none)                                          │
+┃ │  │  ├─ auth-service         ● working    2m  ┃│           worktrees inherit: off               │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│ Prompt    (none)                               │
 ┃ │  └─ ◇ QA                                     ┃│                                                │
-┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│ e edit                                         │
 ┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
 ┃    ├─ squad-1                ~● working    1m  ┃│                                                │
 ┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │

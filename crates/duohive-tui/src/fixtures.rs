@@ -141,6 +141,7 @@ pub fn ctx() -> RenderCtx {
             reduce_motion: true,
             ..Settings::default()
         },
+        utc_offset_secs: 0,
     }
 }
 

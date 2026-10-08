@@ -14,7 +14,7 @@ use crate::model::UiModel;
 const PROMPT: &str = "❯ ";
 const YOU: &str = "you";
 const MS_PER_MINUTE: u64 = 60_000;
-const MINUTES_PER_DAY: u64 = 1_440;
+const MINUTES_PER_DAY: i64 = 1_440;
 /// Blank cells after the speaker's name: 3, or 2 when compact (UI §4.1's mocks).
 const WIDE_GAP: usize = 3;
 const COMPACT_GAP: usize = 2;
@@ -83,7 +83,7 @@ fn history_rows(
                 Who::You => (YOU.to_owned(), p.fg_muted),
                 Who::Duo => (m.org.duo.name.to_string(), p.accent_duo),
             };
-            let head = format!("{} ", clock(line.at));
+            let head = format!("{} ", clock(line.at, ctx.utc_offset_secs));
             let indent = width(&head) + who_cells;
             let text_cells = cells.saturating_sub(indent).max(1);
             let wrapped: Vec<String> = line
@@ -110,8 +110,10 @@ fn history_rows(
         .collect()
 }
 
-/// `10:05`: the time of day, in UTC.
-fn clock(at: Millis) -> String {
-    let minutes = (at.0 / MS_PER_MINUTE) % MINUTES_PER_DAY;
+/// `10:05`: the local time of day, `offset_secs` east of UTC.
+fn clock(at: Millis, offset_secs: i32) -> String {
+    let utc = i64::try_from(at.0 / MS_PER_MINUTE).unwrap_or(0);
+    let local = utc + i64::from(offset_secs / 60);
+    let minutes = local.rem_euclid(MINUTES_PER_DAY);
     format!("{:02}:{:02}", minutes / 60, minutes % 60)
 }

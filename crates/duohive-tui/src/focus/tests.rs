@@ -2,7 +2,7 @@
 
 use ratatui::layout::Rect;
 
-use super::{Focus, Pane, chat_extra_max, layout};
+use super::{Focus, Pane, chat_extra_max, chat_extra_max_below, layout, layout_below};
 
 fn area(w: u16, h: u16) -> Rect {
     Rect::new(0, 0, w, h)
@@ -79,4 +79,13 @@ fn below_80x24_there_is_no_layout() {
     assert!(layout(area(79, 24), 0, false).is_none());
     assert!(layout(area(80, 23), 0, false).is_none());
     assert!(layout(area(80, 24), 0, false).is_some());
+}
+
+#[test]
+fn chat_extra_max_and_layout_agree_with_banners() {
+    let a = area(120, 36);
+    assert_eq!(chat_extra_max_below(a, 0), chat_extra_max(a));
+    assert_eq!(chat_extra_max_below(a, 2), 20);
+    let l = layout_below(a, 2, chat_extra_max_below(a, 2), false).unwrap();
+    assert_eq!((l.chat.height, l.agent.height), (26, 6));
 }
