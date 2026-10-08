@@ -20,7 +20,7 @@ use ratatui::layout::Rect;
 
 use crate::chat::{self, ChatLines};
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit};
+use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -35,6 +35,8 @@ pub enum Dialog {
     GiveWork(Box<GiveWork>),
     /// DuoHive's worktrees (UI §4.9).
     Worktrees(WorktreeList),
+    /// Personal settings (UI §4.10).
+    Settings(SettingsState),
 }
 
 /// The worktree list's own state; its rows are `UiModel::worktrees`.

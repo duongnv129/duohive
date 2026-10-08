@@ -9,6 +9,7 @@ mod header;
 mod needs_you;
 mod org_pane;
 mod screens;
+mod settings;
 mod worktrees;
 mod zoom;
 
@@ -299,6 +300,8 @@ mod live_tests;
 mod pane_tests;
 #[cfg(test)]
 mod screen_tests;
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
