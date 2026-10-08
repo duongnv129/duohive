@@ -1,0 +1,14 @@
+---
+source: crates/duohive-tui/src/term_view/tests.rs
+expression: dump(&buf)
+---
+00|red bold rgb|
+01|世 界 x iinv|
+02||
+03||
+--- styles
+00 00..03 fg=Some(Indexed(1)) bg=Some(Reset) mod=NONE
+00 04..08 fg=Some(Reset) bg=Some(Indexed(4)) mod=BOLD | ITALIC | UNDERLINED
+00 09..12 fg=Some(Rgb(1, 2, 3)) bg=Some(Reset) mod=NONE
+01 06..07 fg=Some(Indexed(200)) bg=Some(Reset) mod=NONE
+01 07..10 fg=Some(Indexed(200)) bg=Some(Reset) mod=REVERSED

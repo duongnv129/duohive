@@ -1,0 +1,61 @@
+---
+source: crates/duohive-tui/src/term_view/tests.rs
+expression: "dump(&draw(&v, 80, 20, true, false))"
+---
+00||
+01|     Access 1k tokens of past research & decisions for just 171t. Use the|
+02|     claude-mem skill to access memories by ID.|
+03||
+04|     View Observations Live @ http://localhost:37777|
+05|     ✨  30 Day Free Trial — memory runs off-plan. Get up to 100% more usage from|
+06|     your plan https://cmem.ai/pro?from=session-start|
+07||
+08|❯ Reply with the single word OK and use no tools.|
+09|  ⎿  Async hook SessionStart completed|
+10||
+11|⏺ OK|
+12||
+13|✻ Crunched for 2s · done 12:14 AM|
+14|  tmux focus-events off · add 'set -g focus-events on' to ~/.tmux.conf and re…|
+15|────────────────────────────────────────────────────────────────────────────────|
+16|❯|
+17|────────────────────────────────────────────────────────────────────────────────|
+18|   Model: Haiku 5.5  v2.1.294  Ctx: 83.1k  ⎇ no git  (no git)  In: 2  Out...|
+19|  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle) · ← 2 agents|
+--- styles
+01 05..74 fg=Some(Indexed(246)) bg=Some(Reset) mod=DIM
+02 05..47 fg=Some(Indexed(246)) bg=Some(Reset) mod=DIM
+04 05..52 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+05 05..06 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+05 07..80 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+06 05..53 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+08 00..02 fg=Some(Indexed(246)) bg=Some(Indexed(237)) mod=NONE
+08 02..49 fg=Some(Indexed(231)) bg=Some(Indexed(237)) mod=NONE
+08 49..80 fg=Some(Reset) bg=Some(Indexed(237)) mod=NONE
+09 00..16 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+09 16..28 fg=Some(Indexed(246)) bg=Some(Reset) mod=BOLD
+09 28..38 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+11 00..01 fg=Some(Indexed(231)) bg=Some(Reset) mod=NONE
+13 00..01 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+13 02..33 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+14 02..78 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+15 00..80 fg=Some(Indexed(244)) bg=Some(Reset) mod=NONE
+16 02..03 fg=Some(Reset) bg=Some(Reset) mod=REVERSED
+17 00..80 fg=Some(Indexed(244)) bg=Some(Reset) mod=NONE
+18 02..03 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 03..19 fg=Some(Indexed(37)) bg=Some(Reset) mod=BOLD
+18 19..21 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 21..29 fg=Some(Indexed(106)) bg=Some(Reset) mod=BOLD
+18 29..31 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 31..41 fg=Some(Indexed(110)) bg=Some(Reset) mod=BOLD
+18 41..43 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 43..51 fg=Some(Indexed(102)) bg=Some(Reset) mod=BOLD
+18 51..53 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 53..61 fg=Some(Indexed(178)) bg=Some(Reset) mod=BOLD
+18 61..63 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 63..68 fg=Some(Indexed(67)) bg=Some(Reset) mod=BOLD
+18 68..70 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+18 70..76 fg=Some(Indexed(188)) bg=Some(Reset) mod=BOLD
+19 02..14 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE
+19 15..30 fg=Some(Indexed(220)) bg=Some(Reset) mod=NONE
+19 30..64 fg=Some(Indexed(246)) bg=Some(Reset) mod=NONE

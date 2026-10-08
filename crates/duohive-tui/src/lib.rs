@@ -6,6 +6,7 @@ pub mod forms;
 pub mod input;
 pub mod model;
 pub mod render;
+pub mod term_view;
 pub mod theme;
 pub mod tree;
 
@@ -26,5 +27,6 @@ pub use forms::{Chooser, Field, FieldId, FieldKind, Form, FormOutcome, LineEdit}
 pub use input::{Action, UiEffect, map_key, paste, update};
 pub use model::{Confirm, Dialog, SharedDirs, UiModel};
 pub use render::{BlockingScreen, RenderCtx, render, render_blocking};
+pub use term_view::TermView;
 pub use theme::{Palette, palette_for};
 pub use tree::{TreeRow, TreeRowKind, tree_rows};
