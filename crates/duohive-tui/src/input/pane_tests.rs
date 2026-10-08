@@ -301,7 +301,7 @@ fn chat_not_taken_returns_text() {
     assert_eq!(m.chat_input.text(), "run the tests");
     assert_eq!(
         m.footer_note.as_deref(),
-        Some("Duo didn't take the task · space to try again")
+        Some("Duo didn't take the task · enter to send again")
     );
 }
 
@@ -355,4 +355,75 @@ fn duo_turn_end_adds_its_reply_to_chat() {
         status: status(AgentState::Idle, mins(0)),
     });
     assert_eq!(m.chat.lines.len(), 1);
+}
+
+#[test]
+fn paste_goes_into_the_focused_chat() {
+    let mut m = chat_focused();
+    type_text(&mut m, "a");
+    super::paste(&mut m, "b c\nd");
+    assert_eq!(m.chat_input.text(), "ab c\nd");
+    // Elsewhere, with no form open, a paste is dropped as before.
+    let mut m = spec_model();
+    super::paste(&mut m, "x");
+    assert_eq!(m.chat_input.text(), "");
+}
+
+#[test]
+fn returned_task_goes_back_before_newly_typed_text() {
+    let mut m = chat_focused();
+    type_text(&mut m, "run the tests");
+    press(&mut m, code(KeyCode::Enter));
+    type_text(&mut m, "and lint");
+    m.apply(Event::GiveWorkNotTaken {
+        agent: n("Duo"),
+        task: TaskId("run-the-tests".to_owned()),
+        reason: "no sign it started".to_owned(),
+    });
+    assert_eq!(m.chat_input.text(), "run the tests\nand lint");
+    assert!(m.chat.lines.is_empty());
+}
+
+#[test]
+fn same_reply_on_a_later_turn_is_kept() {
+    let mut m = chat_focused();
+    let reply = "done.";
+    m.apply(Event::LastReplyChanged {
+        agent: n("Duo"),
+        reply: Some(reply.to_owned()),
+    });
+    // Duo launching (starting → idle) is not a turn: nothing joins the history.
+    set_duo(&mut m, AgentState::Starting);
+    m.apply(Event::AgentStatusChanged {
+        agent: n("Duo"),
+        status: status(AgentState::Idle, mins(0)),
+    });
+    assert!(m.chat.lines.is_empty());
+    for _ in 0..2 {
+        m.apply(Event::AgentStatusChanged {
+            agent: n("Duo"),
+            status: status(AgentState::Working, mins(0)),
+        });
+        m.apply(Event::AgentStatusChanged {
+            agent: n("Duo"),
+            status: status(AgentState::Idle, mins(0)),
+        });
+    }
+    let texts: Vec<&str> = m.chat.lines.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(texts, [reply, reply]);
+}
+
+#[test]
+fn chat_resizing_leaves_room_for_banners() {
+    let mut m = spec_model();
+    m.screen = Rect::new(0, 0, 120, 36);
+    m.org_error = Some(duohive_core::ports::OrgFileError {
+        line: Some(1),
+        message: "bad".to_owned(),
+    });
+    for _ in 0..40 {
+        press(&mut m, ctrl(KeyCode::Up));
+    }
+    // One banner row: 36 - banner - header - footer - 6 agent rows - 6 chat rows.
+    assert_eq!(m.chat_rows_extra, 21);
 }

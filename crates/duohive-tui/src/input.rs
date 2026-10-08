@@ -253,11 +253,16 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     }
 }
 
-/// Pasted text goes to the open form's focused field; elsewhere it is dropped.
+/// Pasted text goes to the open form's focused field, or to the focused chat input;
+/// elsewhere it is dropped.
 pub fn paste(m: &mut UiModel, text: &str) {
-    if let Some(Dialog::Form(f)) = &mut m.dialog {
-        f.paste(text, &m.org);
-        f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+    match &mut m.dialog {
+        Some(Dialog::Form(f)) => {
+            f.paste(text, &m.org);
+            f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+        }
+        None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
+        _ => {}
     }
 }
 

@@ -4,8 +4,9 @@ use crossterm::event::KeyCode;
 use duohive_core::org::{NodeKey, RoleKey};
 
 use super::Action;
-use crate::focus::{AgentMode, Pane, chat_extra_max};
+use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
+use crate::render::chat_extra_limit;
 
 /// The action for a key in a pane other than the chat (which types).
 pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
@@ -40,7 +41,7 @@ pub(super) fn move_focus(m: &mut UiModel, forward: bool) {
 /// rows (P2-D3).
 pub(super) fn resize_chat(m: &mut UiModel, grow: bool) {
     let step = if grow { 1 } else { -1 };
-    let max = chat_extra_max(m.screen);
+    let max = chat_extra_limit(m);
     m.chat_rows_extra = m.chat_rows_extra.saturating_add(step).clamp(0, max.max(0));
 }
 

@@ -134,10 +134,11 @@ pub(crate) fn refused(m: &mut UiModel, state: AgentState, pending: bool) {
     take_back(m);
 }
 
-/// Duo showed no sign of starting the task (P2-D11): the text goes back into the input.
+/// Duo showed no sign of starting the task (P2-D11): the text goes back into the input,
+/// where `enter` sends it again (in the chat, `space` types a space).
 pub(crate) fn not_taken(m: &mut UiModel) {
     m.footer_note = Some(format!(
-        "{} didn't take the task · space to try again",
+        "{} didn't take the task · enter to send again",
         m.org.duo.name
     ));
     take_back(m);
@@ -151,32 +152,28 @@ pub(crate) fn duo_status_changed(m: &mut UiModel, before: AgentState) {
         // Duo took the task: nothing to put back any more.
         m.chat_sent = None;
     }
-    if before == AgentState::Idle || status.state != AgentState::Idle {
+    // One reply per turn: a turn ends when a working or waiting Duo goes idle. Launching
+    // (starting → idle) is not a turn, so an old reply isn't repeated then.
+    let turn_ended = matches!(before, AgentState::Working | AgentState::Waiting)
+        && status.state == AgentState::Idle;
+    if !turn_ended {
         return;
     }
     let Some(reply) = m.view(&duo).last_reply.clone() else {
         return;
     };
-    let repeat = m
-        .chat
-        .lines
-        .iter()
-        .rev()
-        .find(|l| l.who == Who::Duo)
-        .is_some_and(|l| l.text == reply);
-    if !repeat {
-        push(
-            &mut m.chat,
-            ChatLine {
-                at: status.since,
-                who: Who::Duo,
-                text: reply,
-            },
-        );
-    }
+    push(
+        &mut m.chat,
+        ChatLine {
+            at: status.since,
+            who: Who::Duo,
+            text: reply,
+        },
+    );
 }
 
-/// Puts the last sent text back into an empty input and drops its history line.
+/// Puts the last sent text back into the input, before anything typed since (on a line of
+/// its own), and drops its history line.
 fn take_back(m: &mut UiModel) {
     let Some(text) = m.chat_sent.take() else {
         return;
@@ -189,9 +186,12 @@ fn take_back(m: &mut UiModel) {
     {
         m.chat.lines.remove(i);
     }
-    if m.chat_input.text().is_empty() {
-        m.chat_input = LineEdit::new(&text);
-    }
+    let typed = m.chat_input.text();
+    m.chat_input = if typed.is_empty() {
+        LineEdit::new(&text)
+    } else {
+        LineEdit::new(&format!("{text}\n{typed}"))
+    };
 }
 
 fn busy(duo: &AgentName, state: AgentState) -> String {

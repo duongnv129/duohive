@@ -35,6 +35,7 @@ use duohive_tui::{
 };
 use tokio::sync::{Notify, oneshot};
 
+use crate::local_time::utc_offset_secs;
 use crate::logging::init_logging;
 use crate::real_ports::FsDirProbe;
 use crate::system::{StartError, SystemOptions, start_system, tmux_config};
@@ -124,6 +125,7 @@ pub async fn run_app_main() -> ExitCode {
         let cfg = AppConfig {
             org_toml: paths.org_toml(),
             settings: handle.settings.clone(),
+            utc_offset_secs: utc_offset_secs(var(&env, "TZ")),
             no_color: var(&env, "NO_COLOR").is_some(),
             editor: env.get("EDITOR").cloned(),
             dirs: Arc::new(FsDirProbe),

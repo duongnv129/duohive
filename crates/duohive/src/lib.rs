@@ -6,6 +6,7 @@ pub mod bench;
 pub mod fake_agent;
 pub mod hook_cmd;
 pub mod hook_listener;
+pub mod local_time;
 pub mod logging;
 pub mod real_ports;
 pub mod startup;

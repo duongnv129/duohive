@@ -84,6 +84,7 @@ impl Observer {
                 spinner: 0,
                 palette: Palette::dark(),
                 settings: Settings::default(),
+                utc_offset_secs: 0,
             },
             dirty: false,
             last_frame: None,
