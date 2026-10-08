@@ -450,6 +450,40 @@ fn hook_move_clears_tilde() {
     assert!(!h.rt("pay-qa").status.from_screen);
 }
 
+/// Where the first `LastReplyChanged` and the first `AgentStatusChanged` sit in `events`.
+fn reply_and_move_at(events: &[Event]) -> (usize, usize) {
+    let at = |f: fn(&Event) -> bool| events.iter().position(f).expect("event present");
+    (
+        at(|e| matches!(e, Event::LastReplyChanged { .. })),
+        at(|e| matches!(e, Event::AgentStatusChanged { .. })),
+    )
+}
+
+#[test]
+fn turn_end_reply_precedes_its_status_change() {
+    // A hook turn end: the reply is current when the state change lands (P2-D8).
+    let mut h = Harness::new();
+    running(&mut h, "pay-qa", "@1", AgentState::Working);
+    let ev = h.input(hook_with(
+        "pay-qa",
+        "tok-1",
+        "turn-end",
+        serde_json::json!({"last_reply": "Ready for review"}),
+    ));
+    let (reply, moved) = reply_and_move_at(&ev);
+    assert!(reply < moved, "{ev:#?}");
+    // A screen read that ends the turn and carries the reply: the same order.
+    let mut h = with_coverage(HookCoverage {
+        last_reply: false,
+        turn_end: false,
+        ..FULL
+    });
+    running(&mut h, "pay-qa", "@1", AgentState::Working);
+    let ev = h.input(screen("pay-qa", "Done: 3 files\nREST"));
+    let (reply, moved) = reply_and_move_at(&ev);
+    assert!(reply < moved, "{ev:#?}");
+}
+
 #[test]
 fn screen_last_reply_used_only_without_hook_reply() {
     let mut h = with_coverage(HookCoverage {

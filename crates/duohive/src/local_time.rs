@@ -66,7 +66,13 @@ mod tests {
 
     #[test]
     fn a_fixed_zone_gives_its_offset() {
+        // Needs `date` and tzdata on the host; without them every zone reads as UTC (0), and
+        // `parse_offset`'s tests above cover the parsing.
+        let east = utc_offset_secs(Some("Etc/GMT-7"));
+        if east == 0 {
+            return;
+        }
+        assert_eq!(east, 25_200);
         assert_eq!(utc_offset_secs(Some("UTC")), 0);
-        assert_eq!(utc_offset_secs(Some("Etc/GMT-7")), 25_200);
     }
 }

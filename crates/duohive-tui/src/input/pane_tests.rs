@@ -427,3 +427,29 @@ fn chat_resizing_leaves_room_for_banners() {
     // One banner row: 36 - banner - header - footer - 6 agent rows - 6 chat rows.
     assert_eq!(m.chat_rows_extra, 21);
 }
+
+#[test]
+fn engine_order_reply_then_idle_shows_the_new_reply() {
+    // The engine sends a turn's reply before its status change (P2-D8).
+    let mut m = chat_focused();
+    m.agents.get_mut(&n("Duo")).unwrap().last_reply = Some("last turn's reply".to_owned());
+    set_duo(&mut m, AgentState::Working);
+    let events = [
+        Event::LastReplyChanged {
+            agent: n("Duo"),
+            reply: Some("this turn's reply".to_owned()),
+        },
+        Event::AgentStatusChanged {
+            agent: n("Duo"),
+            status: status(AgentState::Idle, mins(0)),
+        },
+    ];
+    for e in events {
+        m.apply(e);
+    }
+    let texts: Vec<&str> = m.chat.lines.iter().map(|l| l.text.as_str()).collect();
+    assert_eq!(texts, ["this turn's reply"]);
+    let screen = crate::fixtures::render_lines(&m, &crate::fixtures::ctx(), 120, 36).join("\n");
+    assert!(screen.contains("Duo   this turn's reply"), "{screen}");
+    assert!(!screen.contains("last turn's reply"), "{screen}");
+}
