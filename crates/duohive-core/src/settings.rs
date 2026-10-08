@@ -49,7 +49,7 @@ pub struct Settings {
     pub quiet_after_minutes: u32,
     /// Desktop alerts.
     pub alerts: AlertSettings,
-    /// Show each agent's last reply in the side pane.
+    /// Show each agent's last reply under its row in the tree.
     pub show_last_reply: bool,
     /// Reduce motion.
     pub reduce_motion: bool,

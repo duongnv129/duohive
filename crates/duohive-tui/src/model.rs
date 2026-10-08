@@ -1,6 +1,6 @@
 //! The UI's copy of engine state, updated from events.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,7 +15,11 @@ use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use duohive_core::validate::{DirProbe, DirStatus};
 
-use crate::forms::{Chooser, Form};
+use ratatui::layout::Rect;
+
+use crate::chat::{self, ChatLines};
+use crate::focus::Focus;
+use crate::forms::{Chooser, Form, LineEdit};
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,6 +114,20 @@ pub struct UiModel {
     pub dirs: SharedDirs,
     /// The home directory `~` expands to.
     pub home: PathBuf,
+    /// Which pane has focus.
+    pub focus: Focus,
+    /// Folded teams and roles.
+    pub folded: BTreeSet<NodeKey>,
+    /// Rows `ctrl+↑` added to the chat, within P2-D3's bounds.
+    pub chat_rows_extra: i16,
+    /// The chat history (P2-D8).
+    pub chat: ChatLines,
+    /// The chat input.
+    pub chat_input: LineEdit,
+    /// The last text the chat sent, put back if Duo doesn't take it.
+    pub chat_sent: Option<String>,
+    /// The terminal's size, which bounds the chat's resizing.
+    pub screen: Rect,
 }
 
 impl UiModel {
@@ -130,6 +148,13 @@ impl UiModel {
             org_toml: PathBuf::new(),
             dirs: SharedDirs(Arc::new(NoProbe)),
             home: PathBuf::new(),
+            focus: Focus::default(),
+            folded: BTreeSet::new(),
+            chat_rows_extra: 0,
+            chat: ChatLines::default(),
+            chat_input: LineEdit::default(),
+            chat_sent: None,
+            screen: Rect::default(),
         }
     }
 
@@ -145,7 +170,12 @@ impl UiModel {
                 }
             }
             Event::AgentStatusChanged { agent, status } => {
-                return self.update_view(&agent, |v| v.status = status);
+                let before = self.view(&agent).status.state;
+                let changed = self.update_view(&agent, |v| v.status = status);
+                if changed && self.org.is_duo(&agent) {
+                    chat::duo_status_changed(self, before);
+                }
+                return changed;
             }
             Event::LastReplyChanged { agent, reply } => {
                 return self.update_view(&agent, |v| v.last_reply = reply);
@@ -153,14 +183,32 @@ impl UiModel {
             Event::AgentNoticeChanged { agent, notice } => {
                 return self.update_view(&agent, |v| v.notice = notice);
             }
-            Event::NeedsYouChanged(items) => self.needs_you = items,
+            Event::NeedsYouChanged(items) => {
+                self.needs_you = items;
+                let last = self.needs_you.len().saturating_sub(1);
+                self.focus.needs_you_cursor = self.focus.needs_you_cursor.min(last);
+            }
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => match &mut self.dialog {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
                 _ => self.footer_note = Some(reason),
             },
+            // Phase 2 gives Duo work only from the chat (P2-D8, P2-D10).
+            Event::GiveWorkRefused {
+                agent,
+                state,
+                pending,
+            } if self.org.is_duo(&agent) => chat::refused(self, state, pending),
+            Event::GiveWorkRefused {
+                agent,
+                pending: true,
+                ..
+            } => self.footer_note = Some(chat::still_taking(&agent)),
             Event::GiveWorkRefused { agent, state, .. } => {
                 self.footer_note = Some(format!("{agent} is {}", state.word()));
+            }
+            Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
+                chat::not_taken(self);
             }
             Event::Reconnected => self.reconnecting = 0,
             Event::AgentRunChanged {
@@ -255,6 +303,15 @@ impl UiModel {
     fn keep_selection_valid(&mut self) {
         if !self.has_node(&self.selected) {
             self.selected = NodeKey::Duo;
+        }
+        let gone: Vec<NodeKey> = self
+            .folded
+            .iter()
+            .filter(|k| !self.has_node(k))
+            .cloned()
+            .collect();
+        for key in gone {
+            self.folded.remove(&key);
         }
     }
 }

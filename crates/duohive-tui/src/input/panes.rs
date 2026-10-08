@@ -1,0 +1,95 @@
+//! Keys for the main screen's panes: focus, folding and Needs you (UI §4.11, P2-D9).
+
+use crossterm::event::KeyCode;
+use duohive_core::org::{NodeKey, RoleKey};
+
+use super::Action;
+use crate::focus::{AgentMode, Pane, chat_extra_max};
+use crate::model::UiModel;
+
+/// The action for a key in a pane other than the chat (which types).
+pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
+    match pane {
+        Pane::Org => match code {
+            KeyCode::Left => Some(Action::Left),
+            KeyCode::Right => Some(Action::Right),
+            KeyCode::Enter => Some(Action::Enter),
+            code => super::tree_key(code),
+        },
+        Pane::NeedsYou => match code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            _ => None,
+        },
+        // The live terminal and its keys arrive in Task 2.7.
+        Pane::Agent | Pane::Chat => None,
+    }
+}
+
+/// `tab` and `shift+tab` between panes; the agent pane always starts in Selected mode.
+pub(super) fn move_focus(m: &mut UiModel, forward: bool) {
+    m.focus.pane = if forward {
+        m.focus.next()
+    } else {
+        m.focus.prev()
+    };
+    m.focus.agent_mode = AgentMode::Selected;
+}
+
+/// `ctrl+↑` / `ctrl+↓`: between UI §3's size and the size that leaves the agent pane 6
+/// rows (P2-D3).
+pub(super) fn resize_chat(m: &mut UiModel, grow: bool) {
+    let step = if grow { 1 } else { -1 };
+    let max = chat_extra_max(m.screen);
+    m.chat_rows_extra = m.chat_rows_extra.saturating_add(step).clamp(0, max.max(0));
+}
+
+/// `←` folds a team or role, or moves from an agent to its role.
+pub(super) fn fold(m: &mut UiModel) {
+    match &m.selected {
+        NodeKey::Team(_) | NodeKey::Role(_) => {
+            m.folded.insert(m.selected.clone());
+        }
+        NodeKey::Agent(a) => {
+            if let Some(loc) = m.org.find_agent(a) {
+                m.selected = NodeKey::Role(RoleKey {
+                    team: loc.team.map(|t| t.name.clone()),
+                    role: loc.role.name.clone(),
+                });
+            }
+        }
+        NodeKey::Duo => {}
+    }
+}
+
+/// `→` unfolds the selected team or role.
+pub(super) fn unfold(m: &mut UiModel) {
+    m.folded.remove(&m.selected);
+}
+
+/// `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or
+/// role it folds or unfolds (P2-D9).
+pub(super) fn enter(m: &mut UiModel) {
+    match &m.selected {
+        NodeKey::Team(_) | NodeKey::Role(_) => {
+            if !m.folded.remove(&m.selected) {
+                m.folded.insert(m.selected.clone());
+            }
+        }
+        NodeKey::Agent(_) | NodeKey::Duo => {
+            m.focus.pane = Pane::Agent;
+            m.focus.agent_mode = AgentMode::Selected;
+        }
+    }
+}
+
+/// `↑↓` in Needs you move its cursor within the list.
+pub(super) fn needs_you_move(m: &mut UiModel, down: bool) {
+    let last = m.needs_you.len().saturating_sub(1);
+    let at = m.focus.needs_you_cursor;
+    m.focus.needs_you_cursor = if down {
+        (at + 1).min(last)
+    } else {
+        at.saturating_sub(1)
+    };
+}
