@@ -78,6 +78,7 @@ fn claude_idle_80x20() {
 
 #[test]
 fn opencode_approval_80x20() {
+    // The fixture is OpenCode's slash menu: S3.4 has no approval capture.
     let v = from_fixture(OPENCODE_MENU);
     insta::assert_snapshot!(dump(&draw(&v, 80, 20, true, false)));
 }
@@ -92,6 +93,8 @@ fn colours_and_wide_chars() {
     let buf = draw(&v, 20, 4, false, false);
     assert_eq!(buf[(0, 1)].symbol(), "世");
     assert_eq!(buf[(2, 1)].symbol(), "界");
+    assert_eq!(buf[(1, 1)].symbol(), " ");
+    assert_eq!(buf[(3, 1)].symbol(), " ");
     assert_eq!(buf[(4, 1)].symbol(), "x");
     insta::assert_snapshot!(dump(&buf));
 }
@@ -174,4 +177,47 @@ fn resize_keeps_bottom_lines() {
     assert_eq!(rows, ["l3", "l4", "l5"]);
     v.resize(size(6, 3));
     assert_eq!(row_text(&draw(&v, 6, 3, false, false), 2).trim_end(), "l5");
+}
+
+fn rows_of(v: &TermView, cols: u16, rows: u16) -> Vec<String> {
+    let buf = draw(v, cols, rows, false, false);
+    (0..rows)
+        .map(|y| row_text(&buf, y).trim_end().to_owned())
+        .collect()
+}
+
+#[test]
+fn resize_with_cursor_mid_screen_drops_nothing() {
+    let mut v = TermView::new(size(10, 20));
+    v.apply(&bytes(b"l1\r\nl2\r\nl3\r\nl4"));
+    v.resize(size(10, 10));
+    let rows = rows_of(&v, 10, 10);
+    assert_eq!(&rows[..4], ["l1", "l2", "l3", "l4"]);
+}
+
+#[test]
+fn resize_on_the_alternate_screen_keeps_it() {
+    let mut v = TermView::new(size(10, 4));
+    v.apply(&bytes(b"main\x1b[?1049h\x1b[Ha1\r\na2\r\na3\r\na4"));
+    v.resize(size(10, 2));
+    assert_eq!(rows_of(&v, 10, 2), ["a3", "a4"]);
+    assert!(v.parser.screen().alternate_screen());
+}
+
+#[test]
+fn resize_ignores_an_app_scroll_region() {
+    let mut v = TermView::new(size(10, 6));
+    v.apply(&bytes(
+        b"\x1b[Hh1\r\nr2\r\nr3\r\nr4\r\nr5\r\nf6\x1b[2;4r\x1b[6;1H",
+    ));
+    v.resize(size(10, 3));
+    assert_eq!(rows_of(&v, 10, 3), ["r4", "r5", "f6"]);
+}
+
+#[test]
+fn clipped_wide_glyph_is_blanked() {
+    let mut v = TermView::new(size(6, 1));
+    v.apply(&bytes("ab世".as_bytes()));
+    let buf = draw(&v, 3, 1, false, false);
+    assert_eq!(row_text(&buf, 0), "ab ");
 }

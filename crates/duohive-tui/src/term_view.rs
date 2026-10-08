@@ -39,21 +39,45 @@ impl TermView {
         }
     }
 
-    /// Resizes the terminal. Shrinking drops the top lines, so the bottom
-    /// ones stay.
+    /// Resizes the terminal. Content scrolls up only as far as needed to
+    /// keep the cursor row visible, so the bottom lines stay.
+    ///
+    /// When rows must go, the screen is rebuilt in a fresh parser from the
+    /// kept rows, so a scroll region or the alternate screen cannot corrupt
+    /// the result. The hidden primary screen and other modes (mouse, bracketed
+    /// paste) are not carried over;
+    /// a `Reset` follows a real resize.
     pub fn resize(&mut self, size: PaneSize) {
-        let size = PaneSize {
-            cols: size.cols.max(1),
-            rows: size.rows.max(1),
-        };
-        let (rows, _) = self.parser.screen().size();
-        if size.rows < rows {
-            let drop = rows - size.rows;
-            let (row, col) = self.parser.screen().cursor_position();
-            self.parser.process(format!("\x1b[{drop}S").as_bytes());
-            self.move_cursor(col, row.saturating_sub(drop));
+        let (cols, rows) = (size.cols.max(1), size.rows.max(1));
+        let screen = self.parser.screen();
+        let (old_rows, old_cols) = screen.size();
+        let (cursor_row, cursor_col) = screen.cursor_position();
+        let drop = (cursor_row + 1).saturating_sub(rows);
+        if drop == 0 {
+            self.parser.screen_mut().set_size(rows, cols);
+            return;
         }
-        self.parser.screen_mut().set_size(size.rows, size.cols);
+        let mut seed: Vec<u8> = Vec::new();
+        if screen.alternate_screen() {
+            seed.extend_from_slice(b"\x1b[?1049h");
+        }
+        let width = old_cols.min(cols);
+        for (i, row) in screen.rows_formatted(0, width).enumerate() {
+            let i = u16::try_from(i).unwrap_or(u16::MAX);
+            if i < drop || i >= old_rows {
+                continue;
+            }
+            seed.extend_from_slice(format!("\x1b[{};1H", i - drop + 1).as_bytes());
+            seed.extend_from_slice(&row);
+            seed.extend_from_slice(b"\x1b[m");
+        }
+        if screen.hide_cursor() {
+            seed.extend_from_slice(b"\x1b[?25l");
+        }
+        let mut next = vt100::Parser::new(rows, cols, 0);
+        next.process(&seed);
+        self.parser = next;
+        self.move_cursor(cursor_col.min(cols - 1), cursor_row - drop);
     }
 
     /// Draws the screen into `area`, clipped to the terminal's size.
@@ -67,8 +91,9 @@ impl TermView {
         let area = area.intersection(buf.area);
         let (cursor_row, cursor_col) = screen.cursor_position();
         let draw_cursor = show_cursor && !screen.hide_cursor();
-        for dy in 0..area.height.min(rows) {
-            for dx in 0..area.width.min(cols) {
+        let (draw_rows, draw_cols) = (area.height.min(rows), area.width.min(cols));
+        for dy in 0..draw_rows {
+            for dx in 0..draw_cols {
                 let Some(cell) = screen.cell(dy, dx) else {
                     continue;
                 };
@@ -81,7 +106,9 @@ impl TermView {
                 }
                 let target = &mut buf[(area.x + dx, area.y + dy)];
                 target.reset();
-                let text = if cell.is_wide_continuation() || !cell.has_contents() {
+                // A wide glyph whose second half is clipped would overflow.
+                let clipped = cell.is_wide() && dx + 1 >= draw_cols;
+                let text = if clipped || cell.is_wide_continuation() || !cell.has_contents() {
                     " "
                 } else {
                     cell.contents()
