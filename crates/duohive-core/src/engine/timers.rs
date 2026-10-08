@@ -7,12 +7,19 @@ use crate::event::{Event, NeedsYouItem};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
 use crate::time::Millis;
+use crate::worktree::RunIn;
 
 /// D6: a starting agent's screen is read this long before its start timeout.
 const PRE_READ_LEAD: Duration = Duration::from_secs(5);
+/// P2-D11: how long a next-turn paste waits for a sign the agent took it.
+pub(super) const DELIVERY_WAIT: Duration = Duration::from_secs(5);
+/// P2-D11's reason when no sign came in time.
+const NO_SIGN: &str = "no sign it started";
 
 impl Engine {
     /// `Activity`: a new activity time ends any quiet and schedules a settle read.
+    /// While a delivery waits on an agent with no busy hook, the screen is also read
+    /// at once: a turn's output rarely settles, and a `~` busy read confirms it (P2-D11).
     pub(super) fn on_activity(&mut self, agent: &AgentName, at_secs: u64) -> Vec<Event> {
         if !self.agents.contains_key(agent) || !self.state_of(agent).is_running() {
             return Vec::new();
@@ -25,6 +32,14 @@ impl Engine {
         rt.last_activity_secs = Some(at_secs);
         rt.last_signal_at = rt.last_signal_at.max(Millis(at_secs.saturating_mul(1000)));
         rt.settle_due = Some(settle_due);
+        let confirm = rt.delivery.is_some()
+            && !self
+                .with_running_adapter(agent, |a| a.coverage().busy)
+                .unwrap_or(true);
+        if confirm {
+            self.ports.runtime.capture(agent);
+        }
+        let rt = self.rt_mut(agent);
         let mut out = Vec::new();
         if rt.status.quiet {
             rt.status.quiet = false;
@@ -34,7 +49,8 @@ impl Engine {
         out
     }
 
-    /// A timer is due: zero exits past their grace, start timeouts, screen reads and quiet.
+    /// A timer is due: zero exits past their grace, start timeouts, screen
+    /// reads, quiet and deliveries waiting past `DELIVERY_WAIT`.
     pub(super) fn on_tick(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
         let mut out = self.expire_exits();
@@ -46,6 +62,12 @@ impl Engine {
     }
 
     fn tick_agent(&mut self, agent: &AgentName, now: Millis, out: &mut Vec<Event>) {
+        let Some(rt) = self.agents.get(agent) else {
+            return;
+        };
+        if rt.delivery.as_ref().is_some_and(|d| d.due <= now) {
+            out.extend(self.not_taken(agent, NO_SIGN.to_owned()));
+        }
         let Some(rt) = self.agents.get(agent) else {
             return;
         };
@@ -97,7 +119,7 @@ impl Engine {
         if stopping {
             self.change(agent, &Trigger::Stop, None, out);
             if restart {
-                out.extend(self.launch_or_queue(agent.clone(), None));
+                out.extend(self.launch_or_queue(agent.clone(), None, RunIn::Directory));
             }
             return;
         }
@@ -175,7 +197,8 @@ impl Engine {
     }
 
     /// When the next timer is due: settle reads, start timeouts, pre-timeout
-    /// reads, zero exits waiting for their end hook, and quiet thresholds.
+    /// reads, zero exits waiting for their end hook, quiet thresholds and
+    /// deliveries waiting for a sign they were taken.
     /// Each is cleared or acted on by the `Tick` that reaches it.
     pub fn next_deadline(&self) -> Option<Millis> {
         let quiet_after = self.settings.quiet_after();
@@ -188,6 +211,7 @@ impl Engine {
                     self.pre_read_at(agent, rt),
                     rt.exit_pending.as_ref().map(|p| p.due),
                     quiet_at(rt, quiet_after),
+                    rt.delivery.as_ref().map(|d| d.due),
                 ]
             })
             .flatten()

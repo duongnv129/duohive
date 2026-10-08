@@ -1,10 +1,11 @@
-//! Starting, stopping, viewing and giving work (TD §5.1, §5.5; D24, D26, D27, D30).
+//! Starting, stopping, viewing and giving work (TD §5.1, §5.5; D24, D26, D27, D30, P2-D11).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::{Engine, reject};
+use super::timers::DELIVERY_WAIT;
+use super::{Delivery, Engine, reject};
 use crate::adapter::{CliAdapter, CliPresence, untested_notice};
 use crate::cli_kind::CliKind;
 use crate::command::Command;
@@ -14,7 +15,7 @@ use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
 use crate::validate::{DirStatus, agent_problem};
-use crate::worktree::RunIn;
+use crate::worktree::{RunIn, TaskId};
 
 impl Engine {
     /// `StartAgent`: a fresh launch with no task, from stopped or errored.
@@ -22,22 +23,44 @@ impl Engine {
         if !self.knows(&agent) {
             return reject(format!("no agent named {agent}"));
         }
+        if self.creating_worktree(&agent) {
+            return reject(getting_ready(&agent));
+        }
         if self.state_of(&agent).is_running() {
             return reject(format!("{agent} is already running"));
         }
-        self.launch_or_queue(agent, None)
+        self.launch_or_queue(agent, None, RunIn::Directory)
     }
 
-    /// `GiveWork` by state (TD §5.1). `_run` is ignored until worktrees land.
-    pub(super) fn give_work(&mut self, agent: AgentName, task: String, _run: RunIn) -> Vec<Event> {
+    /// `GiveWork` by state (TD §5.1). `run` applies to a fresh launch only: a
+    /// finished or idle agent takes the task where its session already runs.
+    pub(super) fn give_work(&mut self, agent: AgentName, task: String, run: RunIn) -> Vec<Event> {
         if !self.knows(&agent) {
             return reject(format!("no agent named {agent}"));
         }
         if task.trim().is_empty() {
             return reject("the task is empty");
         }
+        if self.creating_worktree(&agent) {
+            return reject(getting_ready(&agent));
+        }
         match self.state_of(&agent) {
-            AgentState::Stopped | AgentState::Errored => self.launch_or_queue(agent, Some(task)),
+            AgentState::Stopped | AgentState::Errored => {
+                self.launch_or_queue(agent, Some(task), run)
+            }
+            // P2-D11: one delivery at a time.
+            state @ (AgentState::Finished | AgentState::Idle)
+                if self
+                    .agents
+                    .get(&agent)
+                    .is_some_and(|rt| rt.delivery.is_some()) =>
+            {
+                vec![Event::GiveWorkRefused {
+                    agent,
+                    state,
+                    pending: true,
+                }]
+            }
             AgentState::Finished | AgentState::Idle => self.type_next_turn(&agent, task),
             // Starting has no input box yet; working and waiting are busy.
             state @ (AgentState::Starting | AgentState::Working | AgentState::Waiting) => {
@@ -133,25 +156,36 @@ impl Engine {
         }]
     }
 
-    /// Queues a launch until the first `CliInventory` (D30), else runs it.
-    /// The queued command runs through `on_command` again, so its state is re-checked.
-    pub(super) fn launch_or_queue(&mut self, agent: AgentName, task: Option<String>) -> Vec<Event> {
+    /// Queues a launch until the first `CliInventory` (D30), else runs it: in
+    /// the agent's directory, or in a new worktree when `run` asks for one and
+    /// there is a task. The queued command keeps `run` and runs through
+    /// `on_command` again, so its state is re-checked.
+    pub(super) fn launch_or_queue(
+        &mut self,
+        agent: AgentName,
+        task: Option<String>,
+        run: RunIn,
+    ) -> Vec<Event> {
         if self.cli.is_none() {
             self.queued_launches.push(match task {
                 None => Command::StartAgent { agent },
-                Some(task) => Command::GiveWork {
-                    agent,
-                    task,
-                    run: RunIn::Directory,
-                },
+                Some(task) => Command::GiveWork { agent, task, run },
             });
             return Vec::new();
         }
-        self.launch(&agent, task)
+        match (task, run) {
+            (Some(task), RunIn::NewWorktree) => self.begin_worktree(&agent, task),
+            (task, _) => self.launch(&agent, task, None),
+        }
     }
 
-    /// A fresh launch (TD §5.1).
-    fn launch(&mut self, agent: &AgentName, task: Option<String>) -> Vec<Event> {
+    /// A fresh launch (TD §5.1), in `worktree`'s path when given.
+    pub(super) fn launch(
+        &mut self,
+        agent: &AgentName,
+        task: Option<String>,
+        worktree: Option<(TaskId, PathBuf)>,
+    ) -> Vec<Event> {
         let r = match resolve(&self.org, agent) {
             Ok(r) => r,
             Err(e) => return reject(e.message),
@@ -177,12 +211,14 @@ impl Engine {
         if let Some(old) = self.rt_mut(agent).window.take() {
             self.ports.runtime.kill(agent, &old);
         }
+        let (worktree, cwd) = worktree.unzip();
         let spec = LaunchSpec {
             agent: r,
             task: task.clone(),
             run_dir: self.cfg.data_dir.join("run").join(agent.as_str()),
             hook_exe: self.cfg.hook_exe.clone(),
             home,
+            cwd,
         };
         let mut cmd = match adapter.launch(&spec) {
             Ok(cmd) => cmd,
@@ -215,6 +251,11 @@ impl Engine {
         rt.exit_pending = None;
         rt.settle_due = None;
         rt.last_activity_secs = None;
+        // Saved on the session row by the change below, so a restart keeps it.
+        self.update_run(agent, &mut out, |rt| {
+            rt.worktree = worktree;
+            rt.delivery = None;
+        });
         self.change(agent, &Trigger::Launch, None, &mut out);
         let notice = untested_notice(cli.binary(), &version, adapter.tested_versions());
         let rt = self.rt_mut(agent);
@@ -229,7 +270,7 @@ impl Engine {
     }
 
     /// A launch that fails before any window: starting, then errored (D24).
-    fn launch_fails(
+    pub(super) fn launch_fails(
         &mut self,
         agent: &AgentName,
         task: Option<String>,
@@ -241,12 +282,15 @@ impl Engine {
         rt.token = None;
         rt.task_at_launch = task.is_some();
         rt.last_task = task;
+        self.update_run(agent, &mut out, |rt| rt.worktree = None);
         self.change(agent, &Trigger::Launch, None, &mut out);
         self.change(agent, &Trigger::LaunchFailed, Some(reason), &mut out);
         out
     }
 
-    /// Give work on finished or idle: the task becomes the next turn.
+    /// Give work on finished or idle: the task is typed in as the next turn. The
+    /// agent stays at rest until a sign it took the task (P2-D11): a busy or
+    /// prompt-submit hook, or a `~` busy read, moves it to working.
     fn type_next_turn(&mut self, agent: &AgentName, task: String) -> Vec<Event> {
         let submit = match self.with_running_adapter(agent, |a| a.submit_keys()) {
             Ok(keys) => keys,
@@ -255,10 +299,49 @@ impl Engine {
         self.ports.runtime.paste(agent, task.clone(), submit);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
-        rt.last_task = Some(task);
+        rt.last_task = Some(task.clone());
         rt.last_signal_at = now;
         let mut out = Vec::new();
-        self.change(agent, &Trigger::NewWork, None, &mut out);
+        self.update_run(agent, &mut out, |rt| {
+            rt.delivery = Some(Delivery {
+                task,
+                due: now + DELIVERY_WAIT,
+            });
+        });
+        self.save_row(agent, &mut out);
+        out
+    }
+
+    /// `PasteFailed`: a pending delivery is reported not taken, with the reason.
+    pub(super) fn on_paste_failed(&mut self, agent: &AgentName, reason: String) -> Vec<Event> {
+        if !self
+            .agents
+            .get(agent)
+            .is_some_and(|rt| rt.delivery.is_some())
+        {
+            tracing::debug!(%agent, reason, "paste failed with no delivery pending");
+            return Vec::new();
+        }
+        self.not_taken(agent, reason)
+    }
+
+    /// Ends `agent`'s pending delivery as not taken (P2-D11).
+    pub(super) fn not_taken(&mut self, agent: &AgentName, reason: String) -> Vec<Event> {
+        let mut out = Vec::new();
+        let mut task = None;
+        self.update_run(agent, &mut out, |rt| {
+            task = rt.delivery.take().map(|d| d.task)
+        });
+        if let Some(task) = task {
+            out.insert(
+                0,
+                Event::GiveWorkNotTaken {
+                    agent: agent.clone(),
+                    task: TaskId(task),
+                    reason,
+                },
+            );
+        }
         out
     }
 
@@ -279,8 +362,13 @@ impl Engine {
     }
 }
 
+/// P2-D20's refusal while `agent`'s worktree is being created.
+fn getting_ready(agent: &AgentName) -> String {
+    format!("{agent} is getting a worktree ready")
+}
+
 /// D24's row text for a CLI that is not installed.
-fn not_found(cli: CliKind) -> String {
+pub(super) fn not_found(cli: CliKind) -> String {
     format!(
         "{} not found · install it or change its CLI (e)",
         cli.binary()
@@ -288,6 +376,10 @@ fn not_found(cli: CliKind) -> String {
 }
 
 #[cfg(test)]
+mod delivery_tests;
+#[cfg(test)]
 mod stop_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod worktree_tests;

@@ -171,6 +171,7 @@ impl Engine {
         rt.task_at_launch = row.task_at_launch;
         rt.saw_end_hook = row.saw_end_hook;
         rt.last_task = row.last_task;
+        rt.worktree = row.worktree;
         rt.last_signal_at = now;
         rt.start_deadline = deadline;
         row.agent

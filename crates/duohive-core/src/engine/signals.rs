@@ -8,6 +8,7 @@ use crate::inherit::resolve;
 use crate::launch::WindowId;
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger, transition};
+use crate::worktree::RunIn;
 
 /// How an agent's window ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -309,7 +310,7 @@ impl Engine {
             ExitOutcome::Stopped => {
                 self.change(agent, &Trigger::Stop, None, &mut out);
                 if restart {
-                    out.extend(self.launch_or_queue(agent.clone(), None));
+                    out.extend(self.launch_or_queue(agent.clone(), None, RunIn::Directory));
                 }
             }
             ExitOutcome::Errored(reason) => {

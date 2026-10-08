@@ -125,7 +125,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | working | Turn ends (any agent but Duo) | finished |
 | working | Turn ends (Duo) | idle |
 | finished | The user selects the agent (`ViewAgent`) | idle |
-| finished, idle | New work: a task as the next turn, or a delivered message | working |
+| finished, idle | New work taken: a `busy` or prompt-submit hook after a task or message is typed in as the next turn, or a `~` busy read where the CLI has no busy hook. The paste alone moves nothing (P2-D11): the agent stays at rest, with the delivery pending, for at most 5 s | working |
 | finished, idle | A turn the user typed straight into the pane | working |
 | any running state | Unexpected exit (non-zero status or no status (killed by a signal), or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
@@ -166,7 +166,7 @@ The same path serves you, Duo, and a task given to a role. Giving work depends o
 | State | Giving work |
 |---|---|
 | stopped, errored | A fresh launch, below |
-| finished, idle | The task is typed into the existing session as its next turn (through the same paste path as inbox delivery, §6.3); it runs where the session already runs |
+| finished, idle | The task is typed into the existing session as its next turn (through the same paste path as inbox delivery, §6.3); it runs where the session already runs, whatever the Run choice. It counts as taken only when the agent leaves rest (§4.2, P2-D11). Until then the agent shows the delivery as pending and a further Give work is refused (`<agent> is still taking the last task`). With no sign within 5 s, or when the paste fails, the engine reports the task not taken and the TUI offers it again. While a delivery is pending on an agent with no busy hook, each new activity also reads the screen at once, since a turn's output rarely settles |
 | starting, working, waiting | Refused; the caller is offered "send as message instead" (§6.3). A starting agent already carries its launch task, and a paste sent before the CLI's input box exists is lost |
 
 A fresh launch:
@@ -174,7 +174,7 @@ A fresh launch:
 1. **Resolve settings:**
    - **Prompt:** stacked as org, then team, then role, then agent, each under a heading naming its level.
    - **Directory, CLI, flags, model, effort, worktree default:** the nearest value up the tree wins, ending at the org defaults in `org.toml`.
-2. **Choose where it runs:** the agent's directory, or a new worktree (§5.3).
+2. **Choose where it runs:** the agent's directory, or a new worktree (§5.3). A new worktree needs the agent's directory to be in a git repo (`new worktree needs a git repo; <dir> isn't one`); the launch waits for git to create it, then runs there (`LaunchSpec.cwd`), and the session row records the worktree's task so a restart still knows it is in use.
 3. **Build the command:** `CliAdapter::launch(spec)` produces the command line and environment:
    - the standing instructions, the hooks, the MCP config and the model and effort;
    - any extra flags;
@@ -204,7 +204,9 @@ A fresh launch:
 - **Merge detection:** a normal merge when the branch tip is an ancestor of the base (`git merge-base --is-ancestor`); a rebase merge when every branch commit has an equivalent on the base (`git cherry`); a squash merge when one synthetic commit of the branch's whole change, on the merge base, has an equivalent on the base (`git commit-tree`, then `git cherry`).
 - **When checked:** when the agent finishes, after start-up (after the first frame), when the worktree list opens, and every 10 minutes.
 - **Removal:** only when merged **and** clean (no uncommitted changes). Everything else stays and is listed; removing a worktree that isn't merged and clean asks first.
-- **Creation failure:** the agent stays stopped, the error goes on its row, and the task is kept for retry.
+- **One creation at a time (P2-D20):** from the request to git until its answer (including the retries below), `StartAgent` and Give work for that agent are refused with `<agent> is getting a worktree ready`. The agent keeps its state meanwhile; §4.2 has no state for this.
+- **Task ids and retries (P2-D7):** a branch git reports as existing is never reused or reset; the engine tries the next suffix (`-2`, `-3`, …), up to 9 attempts.
+- **Creation failure:** the row is dropped; the agent stays stopped, the error goes on its row (`couldn't create worktree: <e> · space`), and the task is kept for retry.
 
 ### 5.4 Task to a role
 
@@ -246,7 +248,7 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 
 ### 6.3 Inbox
 
-- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt. It is pasted through a tmux buffer named for the delivering process. Delivery moves the recipient to working.
+- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt. It is pasted through a tmux buffer named for the delivering process. Delivery counts once the recipient leaves rest (P2-D11): a `busy` or prompt-submit hook, or a `~` busy read for a CLI with no busy hook, moves it to working; the paste alone does not. With no sign within 5 s, or a failed paste, it is not delivered.
 - **To a stopped agent:**
   - **the user's own `@agent` message** starts the agent with the message as its task;
   - **a message from another agent** waits, with status `queued · stopped`, until the agent is started and at rest.

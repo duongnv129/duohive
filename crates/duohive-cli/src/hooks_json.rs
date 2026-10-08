@@ -52,6 +52,7 @@ mod tests {
             run_dir: "/run/squad-1".into(),
             hook_exe: hook_exe.into(),
             home: "/h".into(),
+            cwd: None,
         }
     }
 
