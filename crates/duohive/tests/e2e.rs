@@ -59,9 +59,10 @@ fn random_hex() -> String {
     format!("{:016x}", h.finish())
 }
 
-/// Temp config, data and home dirs plus a throwaway tmux socket, killed on drop.
-/// Alerts go to a [`FakeNotifier`], never the desktop; git is the real `git`
-/// with `HOME` and `GIT_CONFIG_GLOBAL` in the temp home.
+/// Temp config, data and home dirs plus a throwaway tmux socket, whose server
+/// (and every fake agent in it) is killed on drop. Alerts go to a
+/// [`FakeNotifier`], never the desktop; git is the real `git` with `HOME` and
+/// `GIT_CONFIG_GLOBAL` in the temp home.
 struct Env {
     tmp: tempfile::TempDir,
     paths: Paths,
@@ -156,6 +157,14 @@ impl Env {
     /// The alerts shown so far.
     fn alerts(&self) -> Vec<Alert> {
         self.alerts.lock().unwrap().clone()
+    }
+}
+
+impl Drop for Env {
+    /// Kills this test's own tmux server (its throwaway socket only), with the
+    /// fake agents in it, also when the test panics.
+    fn drop(&mut self) {
+        let _ = self.tmux(&["kill-server"]);
     }
 }
 
@@ -1058,4 +1067,35 @@ async fn e2e_not_taken_reported() {
         "{seen:#?}"
     );
     h.shutdown().await;
+}
+
+/// Whether a tmux server answers on `socket`.
+fn server_answers(socket: &str) -> bool {
+    StdCommand::new("tmux")
+        .args(["-f", "/dev/null", "-L", socket, "list-sessions"])
+        .env_remove("TMUX")
+        .output()
+        .unwrap()
+        .status
+        .success()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn env_drop_kills_its_tmux_server() {
+    let env = Env::new();
+    save_org(
+        &env.paths,
+        &org(&["e2e-1"], CliKind::Claude, CliKind::Claude, &env.work),
+    )
+    .unwrap();
+    let mut h = env.start().await;
+    start_agent(&mut h, &n("e2e-1")).await;
+    h.shutdown().await;
+    let socket = env.paths.tmux_socket.clone();
+    assert!(server_answers(&socket));
+    drop(env);
+    assert!(
+        !server_answers(&socket),
+        "the test's tmux server outlived it"
+    );
 }

@@ -9,6 +9,7 @@ use duohive_tmux::{TmuxConfig, TmuxPaneView};
 use duohive_tui::TermView;
 
 use super::BenchError;
+use super::measure::child_pids_matching;
 
 /// The size the bench views the pane at: a typical agent pane.
 const SIZE: PaneSize = PaneSize {
@@ -21,7 +22,7 @@ const SIZE: PaneSize = PaneSize {
 pub struct LiveViewUse {
     /// The agent viewed.
     pub agent: String,
-    /// Streams opened over the run: one.
+    /// Streams opened over the run (each `open` call counts).
     pub streams_opened: u32,
     /// Whether the stream was still open when the idle window ended.
     pub open_at_end: bool,
@@ -33,15 +34,33 @@ pub struct LiveViewUse {
     pub bytes: u64,
     /// `%output` lines the view's client got from other panes (should stay 0).
     pub foreign_output_lines: u64,
-    /// Whether the view's tmux client is inside DuoHive's CPU and memory.
+    /// The view's own tmux client, when it was found.
+    pub client_pid: Option<u32>,
+    /// Whether that client is inside DuoHive's CPU and memory.
     pub client_counted: bool,
 }
 
-/// The view, its one stream and the terminal it draws into.
+/// A pane view the bench can hold open: the port plus the view's diagnostics.
+pub trait Viewer: PaneView {
+    /// `%output` lines received from panes other than the viewed one.
+    fn foreign_output_lines(&self) -> u64 {
+        0
+    }
+}
+
+impl Viewer for TmuxPaneView {
+    fn foreign_output_lines(&self) -> u64 {
+        TmuxPaneView::foreign_output_lines(self)
+    }
+}
+
+/// The view, its stream and the terminal it draws into.
 pub struct LiveView {
     agent: AgentName,
-    view: TmuxPaneView,
-    stream: PaneStream,
+    view: Box<dyn Viewer>,
+    client_pid: Option<u32>,
+    stream: Option<PaneStream>,
+    opens: u32,
     term: TermView,
     chunks: u64,
     bytes: u64,
@@ -49,41 +68,81 @@ pub struct LiveView {
 }
 
 impl LiveView {
-    /// Attaches the view's client (off the async loop: it blocks) and opens
-    /// `agent`'s stream.
+    /// Attaches the view's client (off the async loop: it blocks), noting its
+    /// pid as the one new child on `socket`, and opens `agent`'s stream.
     ///
     /// # Errors
     /// The attach or the open fails.
-    pub async fn open(cfg: TmuxConfig, agent: AgentName) -> Result<Self, BenchError> {
+    pub async fn attach(
+        cfg: TmuxConfig,
+        socket: &str,
+        agent: AgentName,
+    ) -> Result<Self, BenchError> {
+        let before = child_pids_matching(socket);
         let view = tokio::task::spawn_blocking(move || TmuxPaneView::new(&cfg))
             .await
             .map_err(|e| BenchError::View(e.to_string()))?
             .map_err(|e| BenchError::View(e.to_string()))?;
-        let stream = view
-            .open(&agent, SIZE)
-            .map_err(|e| BenchError::View(e.to_string()))?;
-        Ok(Self {
+        let new: Vec<u32> = child_pids_matching(socket)
+            .into_iter()
+            .filter(|pid| !before.contains(pid))
+            .collect();
+        // Exactly one new client, or none counted: never a guess.
+        let client_pid = match new.as_slice() {
+            [pid] => Some(*pid),
+            _ => None,
+        };
+        let mut live = Self::new(Box::new(view), agent, client_pid);
+        live.open_stream()?;
+        Ok(live)
+    }
+
+    /// A view on `agent` with no stream open yet.
+    pub fn new(view: Box<dyn Viewer>, agent: AgentName, client_pid: Option<u32>) -> Self {
+        Self {
             agent,
             view,
-            stream,
+            client_pid,
+            stream: None,
+            opens: 0,
             term: TermView::new(SIZE),
             chunks: 0,
             bytes: 0,
             closed: None,
-        })
-    }
-
-    /// Whether the stream is still open.
-    pub fn is_open(&self) -> bool {
-        self.closed.is_none()
-    }
-
-    /// The next chunk; never resolves once the stream has closed.
-    pub async fn next(&mut self) -> Option<PaneChunk> {
-        if self.closed.is_some() {
-            return std::future::pending().await;
         }
-        self.stream.rx.recv().await
+    }
+
+    /// Opens (or reopens) the agent's stream; every call counts.
+    ///
+    /// # Errors
+    /// The view refuses the open.
+    pub fn open_stream(&mut self) -> Result<(), BenchError> {
+        let stream = self
+            .view
+            .open(&self.agent, SIZE)
+            .map_err(|e| BenchError::View(e.to_string()))?;
+        self.opens += 1;
+        self.stream = Some(stream);
+        self.closed = None;
+        Ok(())
+    }
+
+    /// The view's own tmux client, when it was found.
+    pub fn client_pid(&self) -> Option<u32> {
+        self.client_pid
+    }
+
+    /// Whether the stream is open.
+    pub fn is_open(&self) -> bool {
+        self.stream.is_some() && self.closed.is_none()
+    }
+
+    /// The next chunk; never resolves while no stream is open.
+    pub async fn next(&mut self) -> Option<PaneChunk> {
+        match (&mut self.stream, &self.closed) {
+            (Some(stream), None) => stream.rx.recv().await,
+            _ => std::future::pending().await,
+        }
     }
 
     /// Applies one chunk; `None` (the sender gone) closes the stream.
@@ -102,17 +161,18 @@ impl LiveView {
         self.term.apply(&chunk);
     }
 
-    /// What it did, with whether its client was counted.
-    pub fn usage(&self, client_counted: bool) -> LiveViewUse {
+    /// What it did; `client_counted` is left for the caller, who samples the clients.
+    pub fn usage(&self) -> LiveViewUse {
         LiveViewUse {
             agent: self.agent.as_str().to_owned(),
-            streams_opened: 1,
+            streams_opened: self.opens,
             open_at_end: self.is_open(),
             closed: self.closed.clone(),
             chunks: self.chunks,
             bytes: self.bytes,
             foreign_output_lines: self.view.foreign_output_lines(),
-            client_counted,
+            client_pid: self.client_pid,
+            client_counted: false,
         }
     }
 }
@@ -122,5 +182,25 @@ pub async fn next_chunk(live: Option<&mut LiveView>) -> Option<PaneChunk> {
     match live {
         Some(live) => live.next().await,
         None => std::future::pending().await,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use duohive_core::testkit::{FakePaneView, n};
+
+    use super::*;
+
+    impl Viewer for FakePaneView {}
+
+    #[tokio::test]
+    async fn usage_counts_every_open_and_names_the_client() {
+        let mut live = LiveView::new(Box::new(FakePaneView::default()), n("bench-1"), Some(42));
+        live.open_stream().unwrap();
+        assert_eq!(live.usage().streams_opened, 1);
+        live.open_stream().unwrap();
+        let usage = live.usage();
+        assert_eq!(usage.streams_opened, 2);
+        assert_eq!(usage.client_pid, Some(42));
     }
 }

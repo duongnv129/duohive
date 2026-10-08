@@ -274,6 +274,7 @@ impl BenchOutcome {
                 "chunks": v.chunks,
                 "bytes": v.bytes,
                 "foreign_output_lines": v.foreign_output_lines,
+                "client_pid": v.client_pid,
                 "client_counted": v.client_counted,
             })),
             "tmux_server": self.tmux_server.map(|s| json!({ "cpu_pct": s.cpu_pct, "rss_mb": s.rss_mb })),

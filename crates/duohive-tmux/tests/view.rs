@@ -351,3 +351,45 @@ async fn open_of_an_agent_with_no_window_closes() {
         Err(ViewError::Closed)
     );
 }
+
+/// A stream nobody reads closes once it falls 1 MiB behind (MAX_BACKLOG): a
+/// stalled UI can't grow DuoHive's memory past the bench's headroom.
+#[tokio::test]
+async fn stalled_stream_closes_after_one_mib() {
+    let mut f = fixture().await;
+    // About 3 MiB of output: well under the old 8 MiB cap, well over 1 MiB.
+    let (a, w) = f
+        .start(
+            "a",
+            "read x; head -c 3000000 /dev/zero | tr '\\0' x; echo; echo FLOOD-END; exec cat",
+        )
+        .await;
+    let mut s = opened(&f.view, &a, SIZE).await;
+    assert!(
+        f.srv
+            .tmux(&["send-keys", "-t", &w.0, "go", "Enter"])
+            .status
+            .success()
+    );
+    // Nobody reads while the pane floods.
+    let deadline = Instant::now() + SECS(60);
+    while !f
+        .srv
+        .tmux_out(&["capture-pane", "-p", "-t", &w.0])
+        .contains("FLOOD-END")
+    {
+        assert!(Instant::now() < deadline, "the flood never ended");
+        tokio::time::sleep(MS(100)).await;
+    }
+    let mut got = 0usize;
+    loop {
+        match next(&mut s.rx, SECS(10)).await {
+            Some(PaneChunk::Bytes(b)) => got += b.len(),
+            Some(PaneChunk::Closed { reason }) => {
+                assert_eq!(reason, "the view fell behind");
+                break;
+            }
+            other => panic!("expected the stream to close; got {other:?} after {got} bytes"),
+        }
+    }
+}

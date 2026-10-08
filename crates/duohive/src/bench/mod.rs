@@ -168,11 +168,13 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     // Interrupted or not: stop the agents, the system and the bench's tmux server.
     let (rss_client, rss_server) = (run.procs.client_peak_mb, run.procs.server_peak_mb);
     let control_client = !run.procs.clients.is_empty();
-    // The view's client is the second one found once the view has attached.
-    let live_view = run
-        .live
-        .as_ref()
-        .map(|live| live.usage(run.procs.clients.len() > 1));
+    // The view's client counts only when its own pid was found and sampled.
+    let live_view = run.live.as_ref().map(|live| LiveViewUse {
+        client_counted: live
+            .client_pid()
+            .is_some_and(|pid| run.procs.clients.contains(&pid)),
+        ..live.usage()
+    });
     run.finish().await;
     env.kill_tmux();
     let m = result?;
@@ -243,13 +245,6 @@ impl Procs {
             client_peak_mb: 0.0,
             server_peak_mb: 0.0,
         }
-    }
-
-    /// Finds the clients again (the live view's has joined), keeping the peaks.
-    fn refind(&mut self, socket: &str) {
-        let found = Self::find(socket);
-        self.clients = found.clients;
-        self.server = found.server.or(self.server);
     }
 
     /// Reads the clients (summed) and the server, keeping the largest resident
@@ -460,7 +455,8 @@ impl Run {
             .first()
             .cloned()
             .ok_or_else(|| BenchError::View("no agent to view".to_owned()))?;
-        let mut live = LiveView::open(tmux_config(&self.paths), agent).await?;
+        let socket = self.paths.tmux_socket.clone();
+        let mut live = LiveView::attach(tmux_config(&self.paths), &socket, agent).await?;
         let first = tokio::time::timeout(VIEW_WAIT, live.next())
             .await
             .map_err(|_| BenchError::Timeout("the live view's first chunk"))?;
@@ -468,8 +464,10 @@ impl Run {
         if !live.is_open() {
             return Err(BenchError::View("the stream closed at once".to_owned()));
         }
+        if let Some(pid) = live.client_pid() {
+            self.procs.clients.push(pid);
+        }
         self.live = Some(live);
-        self.procs.refind(&self.paths.tmux_socket);
         Ok(())
     }
 
@@ -665,6 +663,7 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
                 chunks: 12,
                 bytes: 2048,
                 foreign_output_lines: 0,
+                client_pid: Some(7),
                 client_counted: true,
             }),
             hook_samples: 4,
