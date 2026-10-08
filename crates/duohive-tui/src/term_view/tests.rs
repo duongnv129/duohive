@@ -221,3 +221,38 @@ fn clipped_wide_glyph_is_blanked() {
     let buf = draw(&v, 3, 1, false, false);
     assert_eq!(row_text(&buf, 0), "ab ");
 }
+
+#[test]
+fn resize_does_not_leak_rows_below_the_kept_window() {
+    let mut v = TermView::new(size(10, 20));
+    let mut text = String::new();
+    for n in 1..=19 {
+        let _ = write!(text, "l{n}\r\n");
+    }
+    text.push_str("l20\x1b[16;1H");
+    v.apply(&bytes(text.as_bytes()));
+    v.resize(size(10, 10));
+    let rows = rows_of(&v, 10, 10);
+    assert_eq!(rows[0], "l7");
+    assert_eq!(rows[9], "l16");
+}
+
+#[test]
+fn resize_does_not_wrap_a_wide_glyph_at_the_last_column() {
+    let mut v = TermView::new(size(6, 4));
+    v.apply(&bytes("abcd世\r\nrow2\r\nrow3\r\nrow4".as_bytes()));
+    v.resize(size(5, 2));
+    assert_eq!(rows_of(&v, 5, 2), ["row3", "row4"]);
+    let mut v = TermView::new(size(6, 3));
+    v.apply(&bytes("x\r\nabcd世\x1b[3;1Hlast".as_bytes()));
+    v.resize(size(5, 2));
+    assert_eq!(rows_of(&v, 5, 2), ["abcd", "last"]);
+}
+
+#[test]
+fn resize_wide_glyph_on_the_bottom_kept_row_does_not_scroll() {
+    let mut v = TermView::new(size(6, 3));
+    v.apply(&bytes("x\r\ny\r\nabcd世".as_bytes()));
+    v.resize(size(5, 2));
+    assert_eq!(rows_of(&v, 5, 2), ["y", "abcd"]);
+}
