@@ -120,7 +120,6 @@ fn harness() -> (Harness, Parts) {
 fn cfg(reduce_motion: bool) -> AppConfig {
     AppConfig {
         org_toml: PathBuf::from("/cfg/org.toml"),
-        tmux_socket: "duohive".to_owned(),
         settings: Settings {
             reduce_motion,
             ..Settings::default()

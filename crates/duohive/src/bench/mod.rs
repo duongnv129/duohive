@@ -131,7 +131,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             return Err(BenchError::Interrupted);
         }
     };
-    let observer = Observer::new(org, &env.paths.tmux_socket);
+    let observer = Observer::new(org);
     let mut run = Run {
         handle,
         tap,
@@ -618,7 +618,7 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
 
     #[test]
     fn a_newer_hook_replaces_an_older_one_for_the_same_agent() {
-        let mut obs = observe::Observer::new(Org::blank(CliKind::Claude), "sock");
+        let mut obs = observe::Observer::new(Org::blank(CliKind::Claude));
         let hook = |event: &str| HookMessage {
             token: String::new(),
             agent: "bench-1".to_owned(),

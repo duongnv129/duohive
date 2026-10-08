@@ -8,6 +8,8 @@ use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, Role, RoleKey};
 use duohive_core::status::AgentState;
 
+use crate::chat::{chat_action, chat_key};
+use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome};
 use crate::model::{Confirm, Dialog, UiModel};
@@ -67,8 +69,14 @@ pub enum Action {
     DeleteForward,
     /// `ctrl+s`: save the form.
     Save,
-    /// `alt+enter`: a newline in a prompt field.
+    /// `alt+enter`: a newline in a prompt field or the chat input.
     NewLine,
+    /// `enter` in a pane: act on the selection, or send the chat.
+    Enter,
+    /// `ctrl+↑`: a taller chat.
+    ChatGrow,
+    /// `ctrl+↓`: a shorter chat.
+    ChatShrink,
 }
 
 /// What the app loop does after an action.
@@ -94,6 +102,17 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         return form_key(k);
     }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    if m.dialog.is_none() {
+        match (ctrl, k.code) {
+            (true, KeyCode::Up) => return Some(Action::ChatGrow),
+            (true, KeyCode::Down) => return Some(Action::ChatShrink),
+            _ => {}
+        }
+        // The chat input always takes typed text (UI §5).
+        if m.focus.pane == Pane::Chat {
+            return chat_key(k);
+        }
+    }
     if ctrl {
         return (k.code == KeyCode::Char('c')).then_some(Action::Quit);
     }
@@ -123,7 +142,7 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Form(_)) | None => tree_key(k.code),
+        Some(Dialog::Form(_)) | None => panes::pane_key(m.focus.pane, k.code),
     }
 }
 
@@ -181,8 +200,46 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         None => {}
     }
     match a {
+        Action::Tab | Action::BackTab => {
+            panes::move_focus(m, a == Action::Tab);
+            return Vec::new();
+        }
+        Action::ChatGrow | Action::ChatShrink => {
+            panes::resize_chat(m, a == Action::ChatGrow);
+            return Vec::new();
+        }
+        _ => {}
+    }
+    match m.focus.pane {
+        Pane::Org => org_action(m, a),
+        Pane::NeedsYou => {
+            if matches!(a, Action::Up | Action::Down) {
+                panes::needs_you_move(m, a == Action::Down);
+            }
+            Vec::new()
+        }
+        Pane::Agent => Vec::new(),
+        Pane::Chat => chat_action(m, a),
+    }
+}
+
+/// An action in the org pane.
+fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    match a {
         Action::Up => select_next(m, false),
         Action::Down => select_next(m, true),
+        Action::Left => {
+            panes::fold(m);
+            Vec::new()
+        }
+        Action::Right => {
+            panes::unfold(m);
+            Vec::new()
+        }
+        Action::Enter => {
+            panes::enter(m);
+            Vec::new()
+        }
         Action::StartStop => start_stop(m),
         Action::Delete => delete(m),
         Action::New => new_here(m),
@@ -459,5 +516,9 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
     }))
 }
 
+mod panes;
+
+#[cfg(test)]
+mod pane_tests;
 #[cfg(test)]
 mod tests;

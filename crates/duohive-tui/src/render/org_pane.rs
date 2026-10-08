@@ -7,8 +7,9 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 
 use super::{
-    At, HEAVY, RenderCtx, draw_box, fg, glyph_color, needs_you, put, put_pieces, state_color,
+    At, RenderCtx, draw_box, fg, glyph_color, needs_you, pane_style, put, put_pieces, state_color,
 };
+use crate::focus::{Layout, Pane};
 use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_capped};
 use crate::model::UiModel;
 use crate::theme::Palette;
@@ -17,8 +18,6 @@ use crate::tree::{TreeRow, TreeRowKind, agent_right, tree_rows};
 /// The right column: the 16-cell state cell plus one blank, or 7 + 1 when compact.
 const WIDE_RIGHT: usize = 17;
 const COMPACT_RIGHT: usize = 8;
-/// Needs you takes at most a third of the pane's inside, and always shows one row.
-const NEEDS_YOU_SHARE: u16 = 3;
 /// An error or problem wraps onto at most this many lines.
 const MAX_PROBLEM_LINES: usize = 3;
 /// The age's cells at the end of a state cell.
@@ -33,34 +32,22 @@ struct Slot {
     label_width: usize,
 }
 
-pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
+pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
     let p = &ctx.palette;
-    let panel = Style::default().bg(p.bg_panel);
-    draw_box(buf, r, "Org", &HEAVY, fg(p.border_focus), panel);
-    if r.width < 6 || r.height < 4 {
+    let compact = l.compact;
+    let r = Rect {
+        height: l.org.height + l.needs_you.height,
+        ..l.org
+    };
+    let (lines, border, inside) = pane_style(p, m.focus.pane == Pane::Org);
+    draw_box(buf, r, "Org", lines, border, inside);
+    needs_you::draw(buf, l.needs_you, m, ctx, compact);
+    if r.width < 6 || l.org.height < 2 {
         return;
     }
-    let inside = r.height - 2;
-    let shown = u16::try_from(m.needs_you.len()).unwrap_or(u16::MAX);
-    let ny_rows = shown.min((inside / NEEDS_YOU_SHARE).max(1));
-    let tree_h = inside.saturating_sub(ny_rows + 1);
-    let sep_y = r.y + 1 + tree_h;
-    needs_you::draw(
-        buf,
-        Rect {
-            y: sep_y,
-            height: ny_rows + 1,
-            ..r
-        },
-        m,
-        ctx,
-        compact,
-    );
+    let tree_h = l.org.height - 1;
     let content = usize::from(r.width - 4);
-    let rows = wrap_problems(
-        tree_rows(m, compact, ctx.settings.show_last_reply, ctx.now),
-        content,
-    );
+    let rows = wrap_problems(tree_rows(m, compact, replies, ctx.now), content);
     let right = if compact { COMPACT_RIGHT } else { WIDE_RIGHT };
     let skip = scroll(&rows, &m.selected, usize::from(tree_h));
     for (i, row) in rows.iter().skip(skip).take(usize::from(tree_h)).enumerate() {

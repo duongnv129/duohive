@@ -123,7 +123,6 @@ pub async fn run_app_main() -> ExitCode {
     } else {
         let cfg = AppConfig {
             org_toml: paths.org_toml(),
-            tmux_socket: paths.tmux_socket.clone(),
             settings: handle.settings.clone(),
             no_color: var(&env, "NO_COLOR").is_some(),
             editor: env.get("EDITOR").cloned(),

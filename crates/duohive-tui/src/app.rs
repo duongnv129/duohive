@@ -22,12 +22,14 @@ use duohive_core::time::Millis;
 use duohive_core::validate::DirProbe;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
+use ratatui::layout::Rect;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
 
 pub use terminal::{restore_terminal, run_app, show_blocking};
 
+use crate::focus::chat_extra_max;
 use crate::format::age_of;
 use crate::input::{UiEffect, map_key, paste, update};
 use crate::model::{SharedDirs, UiModel};
@@ -48,8 +50,6 @@ const DEFAULT_EDITOR: &str = "vi";
 pub struct AppConfig {
     /// `org.toml`, opened by `o`.
     pub org_toml: PathBuf,
-    /// The tmux socket in use, for the attach hint (D31).
-    pub tmux_socket: String,
     /// The settings at start-up.
     pub settings: Settings,
     /// `NO_COLOR` is set.
@@ -72,7 +72,6 @@ impl fmt::Debug for AppConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppConfig")
             .field("org_toml", &self.org_toml)
-            .field("tmux_socket", &self.tmux_socket)
             .field("settings", &self.settings)
             .field("no_color", &self.no_color)
             .field("editor", &self.editor)
@@ -369,6 +368,9 @@ pub(crate) async fn run_loop<B: Backend>(
     m.org_toml = cfg.org_toml.clone();
     m.dirs = SharedDirs(Arc::clone(&cfg.dirs));
     m.home = cfg.home.clone();
+    if let Ok(size) = terminal.size() {
+        set_screen(&mut m, size.width, size.height);
+    }
     let mut clock = Clock {
         dirty: true,
         ready: false,
@@ -388,7 +390,10 @@ pub(crate) async fn run_loop<B: Backend>(
                 cfg.running.store(running_agents(&m), Ordering::Relaxed);
             }
             got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
-                InputEvent::Resize(..) => clock.dirty = true,
+                InputEvent::Resize(w, h) => {
+                    set_screen(&mut m, w, h);
+                    clock.dirty = true;
+                }
                 InputEvent::Paste(text) => {
                     let before = m.clone();
                     paste(&mut m, &text);
@@ -440,6 +445,12 @@ pub(crate) async fn run_loop<B: Backend>(
             }
         }
     }
+}
+
+/// Records the terminal's size, which bounds the chat's resizing (P2-D3).
+fn set_screen(m: &mut UiModel, w: u16, h: u16) {
+    m.screen = Rect::new(0, 0, w, h);
+    m.chat_rows_extra = m.chat_rows_extra.min(chat_extra_max(m.screen));
 }
 
 async fn sleep_until(at: Option<Instant>) {
@@ -501,7 +512,6 @@ fn draw<B: Backend>(
         spinner,
         palette: palette_for(m.settings.theme, cfg.no_color),
         settings: m.settings.clone(),
-        tmux_socket: cfg.tmux_socket.clone(),
     };
     terminal
         .draw(|f| render(f, m, &ctx))

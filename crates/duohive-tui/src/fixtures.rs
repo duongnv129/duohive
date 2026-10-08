@@ -131,7 +131,7 @@ pub fn spec_model() -> UiModel {
     m
 }
 
-/// Static glyphs (mock-ups draw `●`), dark palette, the default socket.
+/// Static glyphs (mock-ups draw `●`), dark palette.
 pub fn ctx() -> RenderCtx {
     RenderCtx {
         now: NOW,
@@ -141,7 +141,6 @@ pub fn ctx() -> RenderCtx {
             reduce_motion: true,
             ..Settings::default()
         },
-        tmux_socket: "duohive".to_owned(),
     }
 }
 

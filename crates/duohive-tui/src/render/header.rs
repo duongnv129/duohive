@@ -8,6 +8,7 @@ use ratatui::style::{Modifier, Style};
 
 use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
+use crate::focus::Pane;
 use crate::format::wrap_capped;
 use crate::forms::FieldKind;
 use crate::model::{Dialog, UiModel};
@@ -19,9 +20,14 @@ const MAX_BANNER_LINES: usize = 3;
 
 /// Added to a form's keys while a prompt field has focus.
 const NEWLINE_KEY: &str = " · alt+enter new line";
-/// Phase 1 keys (D8): no `? help`, no `space` until phase 2.
-const FOOTER_KEYS: &str =
-    " ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit";
+/// The focused pane's keys (P2-D9); `? help` arrives in phase 4.
+const ORG_KEYS: &str =
+    " tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom";
+/// The org pane's keys in the compact layout (UI §4.1's compact mock).
+const ORG_KEYS_COMPACT: &str = " tab pane · ↑↓ move · space give work";
+const NEEDS_YOU_KEYS: &str = " ↑↓ move · enter go to agent";
+const AGENT_KEYS: &str = " enter type · z zoom · PgUp/PgDn scroll · space give work";
+const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
 
 /// The banner lines for each broken file, `org.toml` first, wrapped to `cells` after a ` · `
 /// separator so the fix stays whole; continuation lines are indented under the text.
@@ -103,8 +109,8 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
     }
 }
 
-/// The footer: the note when one is set, else the keys.
-pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
+/// The footer: the note when one is set, else the keys of the dialog or focused pane.
+pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, compact: bool) {
     let text = match (&m.footer_note, &m.dialog) {
         (Some(note), _) => format!(" {note}"),
         // A form is typing: its keys, never the tree's (`q` types there).
@@ -117,7 +123,14 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
             format!(" {HINT}{newline}")
         }
         (None, Some(Dialog::Chooser(_))) => format!(" {CHOOSER_HINT}"),
-        (None, _) => FOOTER_KEYS.to_owned(),
+        (None, _) => match m.focus.pane {
+            Pane::Org if compact => ORG_KEYS_COMPACT,
+            Pane::Org => ORG_KEYS,
+            Pane::NeedsYou => NEEDS_YOU_KEYS,
+            Pane::Agent => AGENT_KEYS,
+            Pane::Chat => CHAT_KEYS,
+        }
+        .to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
 }

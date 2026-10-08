@@ -1,6 +1,8 @@
 //! The terminal UI: renders the engine's events and sends its commands.
 
 pub mod app;
+pub mod chat;
+pub mod focus;
 pub mod format;
 pub mod forms;
 pub mod input;
@@ -22,6 +24,8 @@ pub use app::{
     AppConfig, InputEvent, QuitSignals, TerminalHost, TuiError, editor_command, quits_blocking,
     restore_terminal, run_app, run_app_on, show_blocking,
 };
+pub use chat::{ChatLine, ChatLines, Who};
+pub use focus::{AgentMode, Focus, Layout, Pane, layout};
 pub use format::{format_age, state_cell, truncate_middle};
 pub use forms::{Chooser, Field, FieldId, FieldKind, Form, FormOutcome, LineEdit};
 pub use input::{Action, UiEffect, map_key, paste, update};

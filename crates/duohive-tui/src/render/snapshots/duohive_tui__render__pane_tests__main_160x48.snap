@@ -1,13 +1,12 @@
 ---
-source: crates/duohive-tui/src/render/tests.rs
-assertion_line: 291
-expression: "render_lines(&m, &ctx(), 160, 48).join(\"\\n\")"
+source: crates/duohive-tui/src/render/pane_tests.rs
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ───────────────────────────────────────────────────────────────────────────────┐
 ┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   attach:                                                                                                  │
-┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│tmux -L duohive attach -t duohive:auth-service                                                              │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                                                                               │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
 ┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
 ┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
 ┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
@@ -40,14 +39,14 @@ expression: "render_lines(&m, &ctx(), 160, 48).join(\"\\n\")"
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
 ┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
 ┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
 ┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 10:05 you   what's blocking the Payments team?                                                                                                               │
+│ 10:05 Duo   billing-api is waiting on a file-edit approval; auth-service is mid-test.                                                                        │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom
