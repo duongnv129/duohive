@@ -14,7 +14,7 @@ use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use duohive_core::validate::{DirProbe, DirStatus};
-use duohive_core::worktree::RunIn;
+use duohive_core::worktree::{RunIn, WorktreeRow};
 
 use ratatui::layout::Rect;
 
@@ -33,6 +33,15 @@ pub enum Dialog {
     Chooser(Chooser),
     /// Hand an agent a task (UI §4.5).
     GiveWork(Box<GiveWork>),
+    /// DuoHive's worktrees (UI §4.9).
+    Worktrees(WorktreeList),
+}
+
+/// The worktree list's own state; its rows are `UiModel::worktrees`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorktreeList {
+    /// The selected row.
+    pub cursor: usize,
 }
 
 /// A confirmation dialog (UI §4.8).
@@ -50,6 +59,8 @@ pub struct Confirm {
     pub on_yes: Command,
     /// The form that asked: cancel goes back to it, yes leaves it waiting for the engine.
     pub back: Option<Box<Form>>,
+    /// The worktree list that asked, with its cursor: cancel and yes go back to it.
+    pub back_list: Option<WorktreeList>,
 }
 
 /// The directory probe forms use; equal only to itself, so the model stays comparable.
@@ -144,6 +155,8 @@ pub struct UiModel {
     pub give_sent: Option<(AgentName, String, RunIn)>,
     /// A task that couldn't be put back yet; the next `space` on its agent opens it.
     pub give_later: Option<(AgentName, String, Option<RunIn>)>,
+    /// The worktrees the engine lists, as it last published them.
+    pub worktrees: Vec<WorktreeRow>,
 }
 
 impl UiModel {
@@ -177,6 +190,7 @@ impl UiModel {
             zoom_from: crate::focus::Pane::Org,
             give_sent: None,
             give_later: None,
+            worktrees: Vec::new(),
         }
     }
 
@@ -265,8 +279,9 @@ impl UiModel {
             Event::AlertsUnavailable => {
                 self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
             }
-            // The desktop notice and worktrees reach the screen in later tasks.
-            Event::Alert(_) | Event::Worktrees(_) => {}
+            Event::Worktrees(rows) => self.set_worktrees(rows),
+            // The desktop notice reaches the screen in a later task.
+            Event::Alert(_) => {}
         }
         true
     }
@@ -404,6 +419,18 @@ impl UiModel {
         self.needs_you = items;
     }
 
+    /// Replaces the worktree rows. An open list's cursor stays on the same row, or keeps its
+    /// row number when that row has gone, clamped to the last.
+    fn set_worktrees(&mut self, rows: Vec<WorktreeRow>) {
+        let key = |r: &WorktreeRow| (r.agent.clone(), r.task.clone());
+        if let Some(Dialog::Worktrees(l)) = &mut self.dialog {
+            let under = self.worktrees.get(l.cursor).map(key);
+            let same = under.and_then(|k| rows.iter().position(|r| key(r) == k));
+            l.cursor = same.unwrap_or(l.cursor).min(rows.len().saturating_sub(1));
+        }
+        self.worktrees = rows;
+    }
+
     fn apply_snapshot(&mut self, s: Snapshot) {
         self.org = s.org;
         self.agents = s.agents;
@@ -411,6 +438,7 @@ impl UiModel {
         self.org_error = s.org_error;
         self.settings_error = s.settings_error;
         self.reconnecting = s.reconnecting;
+        self.set_worktrees(s.worktrees);
         self.keep_selection_valid();
     }
 

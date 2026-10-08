@@ -514,6 +514,7 @@ pub(crate) fn confirm(title: String, lines: Vec<String>, yes: &str, edit: OrgEdi
         focus_yes: false,
         on_yes: Command::EditOrg(edit),
         back: None,
+        back_list: None,
     }
 }
 

@@ -129,6 +129,30 @@ fn clearing_a_field_restores_inherit() {
 }
 
 #[test]
+fn name_read_only_with_worktrees() {
+    let org = org();
+    let stopped = crate::fixtures::view(crate::fixtures::status(
+        AgentState::Stopped,
+        crate::fixtures::mins(1),
+    ));
+    let f = Form::edit_agent(
+        &org,
+        &n("billing-api"),
+        &stopped,
+        true,
+        &dirs(),
+        std::path::Path::new(HOME),
+    );
+    let name = f.field(FieldId::Name).unwrap();
+    assert_eq!(name.kind, FieldKind::ReadOnly);
+    assert_eq!(
+        name.note.as_deref(),
+        Some("rename only while stopped with no worktrees")
+    );
+    assert_eq!(f.footer, None);
+}
+
+#[test]
 fn rename_read_only_while_running() {
     let org = org();
     let mut f = edit_billing(&org, &running());
