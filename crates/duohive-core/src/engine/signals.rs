@@ -113,12 +113,13 @@ impl Engine {
         if transition(state, &trigger).is_none() {
             return false;
         }
-        let reply_event = self.take_reply(agent, reply);
+        // The reply goes out before the state change it came with, so a turn end lands
+        // with its reply already current (P2-D8).
+        out.extend(self.take_reply(agent, reply));
         self.change(agent, &trigger, None, out);
         if trigger == Trigger::NeedsInput {
             self.rt_mut(agent).waiting_prompt = prompt;
         }
-        out.extend(reply_event);
         true
     }
 
@@ -188,12 +189,13 @@ impl Engine {
         } else {
             self.take_reply(agent, signal.last_reply)
         };
-        let mut out = Vec::new();
+        let had_reply = reply_event.is_some();
+        // The reply goes out before the state change it came with (P2-D8).
+        let mut out: Vec<Event> = reply_event.into_iter().collect();
         let moved = trigger.is_some_and(|t| self.change_with(agent, &t, None, true, &mut out));
-        if !moved && reply_event.is_some() {
+        if !moved && had_reply {
             self.save_row(agent, &mut out);
         }
-        out.extend(reply_event);
         out
     }
 
