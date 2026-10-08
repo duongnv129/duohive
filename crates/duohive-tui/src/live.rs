@@ -10,9 +10,10 @@
 //!   typing the re-open waits until typing ends, so keys stay on the opened stream.
 //! - A stream that closes before any `Reset` means "not running": the summary stays, with
 //!   no note. One that closes after a `Reset` ends Typing mode with `<agent>'s session
-//!   ended`. Neither is opened again until the agent's status changes. A stream we let go
-//!   of (pane hidden, reconnecting, selection moved) closes quietly, and opens again when
-//!   it is wanted again.
+//!   ended`, as does the selected agent leaving running before its `Closed` arrives.
+//!   Neither is opened again until the agent's status changes. A stream we let go of
+//!   (pane hidden, reconnecting, selection moved) closes quietly, and opens again when it
+//!   is wanted again.
 //! - Nothing opens while the view isn't ready (still attaching); it is asked again every
 //!   [`READY_POLL`].
 
@@ -87,8 +88,8 @@ pub(crate) struct Live {
 enum Close {
     /// The stream closed itself: the window is gone, or was never there.
     Itself,
-    /// We let go of it: the selection moved, the pane is hidden, the app is
-    /// reconnecting, or the agent stopped.
+    /// We let go of it: the selection moved, the pane is hidden, or the app is
+    /// reconnecting.
     Quiet,
 }
 
@@ -143,9 +144,13 @@ impl Live {
         if let Some(open) = &self.stream
             && want.as_ref().map(|w| &w.0) != Some(&open.agent)
         {
-            // Moved away, hidden, reconnecting or no longer running: close quietly. Only
-            // the stream closing itself says the session ended.
-            self.end(m, Close::Quiet);
+            // Still selected but no longer running: its session ended, even when the
+            // status arrived before the stream's `Closed`. Moved away, hidden or
+            // reconnecting: close quietly.
+            let stopped = m.selected_agent() == Some(&open.agent)
+                && !m.view(&open.agent).status.state.is_running();
+            let how = if stopped { Close::Itself } else { Close::Quiet };
+            self.end(m, how);
             dirty = true;
         }
         match want {
@@ -508,6 +513,24 @@ mod tests {
             Some("auth-service's session ended")
         );
         assert!(!live.streaming());
+    }
+
+    #[test]
+    fn a_ready_null_view_leaves_nothing_armed() {
+        let mut live = Live::new(Arc::new(duohive_core::ports::NoPaneView), false);
+        let mut m = spec_model();
+        m.selected = NodeKey::Agent(n("auth-service"));
+        m.screen = Rect::new(0, 0, 120, 36);
+        let t = Instant::now();
+        live.sync(&mut m, t);
+        live.open_due(&mut m, t + SETTLE);
+        // The stream closes before any `Reset`: not running, no note, nothing to wake for.
+        live.sync(&mut m, t + SETTLE);
+        assert!(!live.streaming());
+        assert_eq!(live.open_at(), None);
+        assert_eq!(m.footer_note, None);
+        live.sync(&mut m, t + SETTLE * 10);
+        assert_eq!(live.open_at(), None);
     }
 
     #[test]

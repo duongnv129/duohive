@@ -466,3 +466,29 @@ async fn closed_around_a_resize_still_ends_typing_with_the_note() {
     .await;
     assert_eq!(lines.last().unwrap().trim_end(), " Duo's session ended");
 }
+
+#[tokio::test(start_paused = true)]
+async fn status_before_closed_still_says_the_session_ended() {
+    let view = FakePaneView::default();
+    let lines = run_with(resting_model(), &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "$ ").await;
+        focus_agent_pane(h).await;
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        sleep(10).await;
+        // The engine reports the stop before the stream's `Closed` arrives.
+        h.events
+            .send(Event::AgentStatusChanged {
+                agent: n("Duo"),
+                status: status(AgentState::Stopped, mins(0)),
+            })
+            .unwrap();
+        sleep(10).await;
+        view.close(id, "the window closed");
+        sleep(50).await;
+        // Typing ended: `q` quits.
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+    assert_eq!(lines.last().unwrap().trim_end(), " Duo's session ended");
+    assert!(!lines.join("\n").contains("TYPING"));
+}

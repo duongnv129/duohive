@@ -28,6 +28,7 @@ use std::task::Poll;
 use std::time::Duration;
 
 use duohive_cli::real_adapters;
+use duohive_core::ports::NoPaneView;
 use duohive_store::Paths;
 use duohive_tmux::{TmuxError, TmuxPaneView, TmuxVersion, tmux_version};
 use duohive_tui::{
@@ -183,23 +184,32 @@ pub async fn run_app_main() -> ExitCode {
 /// The live pane view: a [`LatePaneView`] that the tmux view client joins once it has
 /// attached. Attaching blocks for up to a few seconds and needs the session, which
 /// the started system has made, so it runs off the async loop and the first frame
-/// never waits for it. A failed attach is logged; the agent pane then keeps its
-/// summaries.
+/// never waits for it. A failed attach is logged and leaves a ready null view; the
+/// agent pane then keeps its summaries.
 fn attach_pane_view(paths: &Paths) -> Arc<LatePaneView> {
     let view = Arc::new(LatePaneView::default());
     let late = Arc::clone(&view);
     let cfg = tmux_config(paths);
     // Detached: the result lands in `late`, and the runtime's exit doesn't wait on it.
-    drop(tokio::task::spawn_blocking(
-        move || match TmuxPaneView::new(&cfg) {
-            Ok(v) => {
-                tracing::info!("live pane view attached");
-                late.set(Arc::new(v));
-            }
-            Err(e) => tracing::error!(error = %e, "live pane view unavailable"),
-        },
-    ));
+    drop(tokio::task::spawn_blocking(move || {
+        hand_over_view(&late, TmuxPaneView::new(&cfg));
+    }));
     view
+}
+
+/// Sets `late` to the attached view, or, when the attach failed, to [`NoPaneView`] (with
+/// the error logged): either way it becomes ready, so the TUI stops polling for it.
+fn hand_over_view(late: &LatePaneView, attached: Result<TmuxPaneView, TmuxError>) {
+    match attached {
+        Ok(v) => {
+            tracing::info!("live pane view attached");
+            late.set(Arc::new(v));
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "live pane view unavailable");
+            late.set(Arc::new(NoPaneView));
+        }
+    }
 }
 
 /// Runs `f` on `rt`, then shuts the runtime down waiting at most `grace` for blocking
@@ -379,6 +389,20 @@ mod tests {
     use tokio::sync::Notify;
 
     use super::*;
+
+    #[test]
+    fn a_failed_attach_ends_in_a_ready_null_view() {
+        use duohive_core::ports::PaneView;
+        use duohive_core::testkit::n;
+        use duohive_core::view::{PaneChunk, PaneSize};
+
+        let late = LatePaneView::default();
+        hand_over_view(&late, Err(TmuxError::Attach("no session".into())));
+        assert!(late.ready(), "the TUI must stop waiting for it");
+        let size = PaneSize { cols: 80, rows: 24 };
+        let mut stream = late.open(&n("a"), size).unwrap();
+        assert!(matches!(stream.rx.try_recv(), Ok(PaneChunk::Closed { .. })));
+    }
 
     #[test]
     fn still_running_line_names_the_count_and_socket() {
