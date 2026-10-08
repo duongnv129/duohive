@@ -85,7 +85,7 @@ Commands and events are plain serialisable enums. When the core moves into a bac
 | Crate | Contents |
 |---|---|
 | `duohive-core` | Domain, ports, engine. No I/O |
-| `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling) |
+| `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling); `PaneView` over a second control client (the viewed pane's stream, §4.3) |
 | `duohive-cli` | `CliAdapter` for Claude Code and OpenCode |
 | `duohive-store` | `Store` over SQLite, `org.toml` and `settings.toml` |
 | `duohive-tui` | Ratatui views, input, layout |
