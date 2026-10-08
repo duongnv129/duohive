@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 0 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · worktree flaky-date ─┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments                   ┃│    ✓ finished                                │
+┃   ▾ Backend                  ┃│                                              │
+┃     auth-service     ○   1d  ┃│                                              │
+┃▌    billing-api      ✓   3m  ┃│                                              │
+┃   ▾ QA                       ┃│                                              │
+┃     pay-qa           ○   1d  ┃│                                              │
+┃ ┌─ Give work · billing-api · ✓ finished ───────────────────────────────────┐ │
+┃ │ Task ▌[ Now make the date test run in UTC as well.____________________ ] │ │
+┃ │ Run   in worktree flaky-date, as the next turn of billing-api's session  │ │
+┃ │                               enter give · alt+enter new line · esc      │ │
+┃ └──────────────────────────────────────────────────────────────────────────┘ │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter give · alt+enter new line · esc

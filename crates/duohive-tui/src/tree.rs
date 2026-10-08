@@ -18,8 +18,12 @@ const FOLDED: &str = "▸ ";
 const EMPTY_ROLE: &str = "no agents yet · n to add one";
 /// Hint after an error on Duo's row (D17): Duo's CLI is set in Edit org.
 const DUO_ERROR_HINT: &str = " · e Edit org";
-/// Hint after an error on an agent's row (D16).
-const AGENT_ERROR_HINT: &str = " · s stop";
+/// Hint after an error on an agent's row (D16, UI §4.12): `space` gives work, which
+/// starts a fresh session.
+const AGENT_ERROR_HINT: &str = " · space retry · s stop";
+/// A reason the engine already ends with `· space` (a worktree that couldn't be created).
+const SPACE_SUFFIX: &str = " · space";
+const STOP_HINT: &str = " · s stop";
 const FIX_HINT: &str = " · e to fix";
 const HINT_SEP: &str = " · ";
 
@@ -245,12 +249,14 @@ impl Ctx<'_> {
             .as_deref()
             .filter(|_| s.state == AgentState::Errored);
         let line = if let Some(e) = error {
-            let hint = if is_duo {
-                DUO_ERROR_HINT
+            let text = if is_duo {
+                with_hint(e, DUO_ERROR_HINT)
+            } else if e.ends_with(SPACE_SUFFIX) {
+                format!("{e}{STOP_HINT}")
             } else {
-                AGENT_ERROR_HINT
+                with_hint(e, AGENT_ERROR_HINT)
             };
-            Some((TreeRowKind::Problem, with_hint(e, hint)))
+            Some((TreeRowKind::Problem, text))
         } else if let Some(p) = &view.problem {
             let p = if p.starts_with('✕') {
                 p.clone()

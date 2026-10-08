@@ -19,7 +19,7 @@ use ratatui::layout::Rect;
 
 use crate::chat::{self, ChatLines};
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, LineEdit};
+use crate::forms::{Chooser, Form, GiveWork, LineEdit};
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +30,8 @@ pub enum Dialog {
     Form(Box<Form>),
     /// What `n` can create here (UI §4.4.2).
     Chooser(Chooser),
+    /// Hand an agent a task (UI §4.5).
+    GiveWork(Box<GiveWork>),
 }
 
 /// A confirmation dialog (UI §4.8).
@@ -188,6 +190,7 @@ impl UiModel {
                 if changed && self.org.is_duo(&agent) {
                     chat::duo_status_changed(self, before);
                 }
+                self.sync_give_work(&agent);
                 return changed;
             }
             Event::LastReplyChanged { agent, reply } => {
@@ -221,16 +224,19 @@ impl UiModel {
             Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
                 chat::not_taken(self);
             }
+            Event::GiveWorkNotTaken { agent, task, .. } => self.reopen_give_work(&agent, &task),
             Event::Reconnected => self.reconnecting = 0,
             Event::AgentRunChanged {
                 agent,
                 worktree,
                 delivery_pending,
             } => {
-                return self.update_view(&agent, |v| {
+                let changed = self.update_view(&agent, |v| {
                     v.worktree = worktree;
                     v.delivery_pending = delivery_pending;
                 });
+                self.sync_give_work(&agent);
+                return changed;
             }
             Event::AlertClicked { agent } => {
                 self.reveal_agent(&agent);
@@ -240,9 +246,42 @@ impl UiModel {
                 self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
             }
             // The desktop notice and worktrees reach the screen in later tasks.
-            Event::Alert(_) | Event::GiveWorkNotTaken { .. } | Event::Worktrees(_) => {}
+            Event::Alert(_) | Event::Worktrees(_) => {}
         }
         true
+    }
+
+    /// The open Give work dialog follows its agent's state.
+    fn sync_give_work(&mut self, agent: &AgentName) {
+        let view = self.view(agent).clone();
+        if let Some(Dialog::GiveWork(g)) = &mut self.dialog
+            && &g.agent == agent
+        {
+            g.sync(&view);
+        }
+    }
+
+    /// The agent didn't take the task (P2-D11): Give work opens again with it in the box.
+    /// Another dialog stays; the footer says it instead.
+    fn reopen_give_work(&mut self, agent: &AgentName, task: &str) {
+        let known = self.org.find_agent(agent).is_some();
+        if !known {
+            return;
+        }
+        if self.dialog.is_some() {
+            self.footer_note = Some(format!("{agent} didn't take the task · space to try again"));
+            return;
+        }
+        let mut g = GiveWork::new(
+            &self.org,
+            agent,
+            self.view(agent),
+            task,
+            self.dirs.probe(),
+            &self.home,
+        );
+        g.note = Some(format!("{agent} didn't take the task · enter to try again"));
+        self.dialog = Some(Dialog::GiveWork(Box::new(g)));
     }
 
     /// Selects `agent`, unfolding its team and role, and focuses the agent pane in

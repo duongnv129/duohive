@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 0 working · ◆ 0 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
+┃ ├─ ▣ Payments                                  ┃│   ○ stopped · space to give work                                                                           │
+┃ │  ├─ ◇ Backend                                ┃│                                                                                                            │
+┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                                                                            │
+┃▌│  │  └─ billing-api          ○ stopped    3m  ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist                                ┃│                                                                                                            │
+┃    ├─ squad-1                 ○ stopped    1d  ┃│                                                                                                            │
+┃    ├─ squad-2                 ○ stopped    1d  ┃│                                                                                                            │
+┃    └─ squad-3                 ○ stopped    1d  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                  ┌─ Give work · billing-api · ○ stopped ──────────────────────────────────────────────────┐                                  │
+┃                                  │ Task ▌[ Add retry cases for PAY-88. AC: 3 tries, jitter, no double charge.__________ ] │                                  │
+┃                                  │ Run   ( ) new worktree   (•) ~/code/billing                agent default: directory    │                                  │
+┃                                  │ Starts a fresh session.                                                                │                                  │
+┃                                  │                                   enter give · alt+enter new line · tab run · esc      │                                  │
+┃                                  └────────────────────────────────────────────────────────────────────────────────────────┘                                  │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ enter give · alt+enter new line · tab run · esc

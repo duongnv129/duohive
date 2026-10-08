@@ -7,6 +7,7 @@
 mod agent;
 mod chooser;
 mod field;
+mod give_work;
 mod line_edit;
 mod org;
 mod role;
@@ -25,6 +26,7 @@ use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
 pub use field::{Field, FieldId, FieldKind, Look};
+pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
 
 use crate::input::Action;

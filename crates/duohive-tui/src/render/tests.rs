@@ -187,7 +187,11 @@ fn errors_on_rows_match_spec_4_12() {
     );
     assert_eq!(
         lines_under(&lines, "pay-api", 2),
-        ["   exited unexpectedly (code 1) ·", "   s stop"].map(|t| format!(" │  │   {t}"))
+        [
+            "   exited unexpectedly (code 1) ·",
+            "   space retry · s stop"
+        ]
+        .map(|t| format!(" │  │   {t}"))
     );
     assert_eq!(
         lines_under(&lines, "billing-api", 2),

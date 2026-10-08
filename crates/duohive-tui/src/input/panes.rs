@@ -28,6 +28,7 @@ pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
         Pane::Agent => match code {
             KeyCode::Enter => Some(Action::Enter),
             KeyCode::Char('z') => Some(Action::Zoom),
+            KeyCode::Char(' ') => Some(Action::GiveWork),
             KeyCode::PageUp => Some(Action::PageUp),
             KeyCode::PageDown => Some(Action::PageDown),
             _ => None,

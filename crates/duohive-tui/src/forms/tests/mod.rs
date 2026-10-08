@@ -17,6 +17,7 @@ use duohive_core::validate::{DirProbe, DirStatus};
 use ratatui::buffer::Buffer;
 
 mod agent;
+mod give_work;
 mod groups;
 mod keys;
 
