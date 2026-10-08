@@ -1,6 +1,7 @@
 //! Keys for the main screen's panes: focus, folding and Needs you (UI §4.11, P2-D9).
 
 use crossterm::event::KeyCode;
+use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, RoleKey};
 
 use super::Action;
@@ -20,6 +21,7 @@ pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
         Pane::NeedsYou => match code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
+            KeyCode::Enter => Some(Action::Enter),
             _ => None,
         },
         // The live terminal and its keys arrive in Task 2.7.
@@ -93,4 +95,27 @@ pub(super) fn needs_you_move(m: &mut UiModel, down: bool) {
     } else {
         at.saturating_sub(1)
     };
+}
+
+/// `enter` in Needs you: selects the agent under the cursor, unfolds its team and role,
+/// and focuses the agent pane in Selected mode (UI §4.1.3).
+pub(super) fn needs_you_enter(m: &mut UiModel) -> Option<AgentName> {
+    let agent = m.needs_you.get(m.focus.needs_you_cursor)?.agent.clone();
+    if m.org.is_duo(&agent) {
+        m.selected = NodeKey::Duo;
+    } else {
+        let loc = m.org.find_agent(&agent)?;
+        let team = loc.team.map(|t| t.name.clone());
+        if let Some(t) = &team {
+            m.folded.remove(&NodeKey::Team(t.clone()));
+        }
+        m.folded.remove(&NodeKey::Role(RoleKey {
+            team,
+            role: loc.role.name.clone(),
+        }));
+        m.selected = NodeKey::Agent(agent.clone());
+    }
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = AgentMode::Selected;
+    Some(agent)
 }

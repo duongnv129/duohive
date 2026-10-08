@@ -184,9 +184,7 @@ impl UiModel {
                 return self.update_view(&agent, |v| v.notice = notice);
             }
             Event::NeedsYouChanged(items) => {
-                self.needs_you = items;
-                let last = self.needs_you.len().saturating_sub(1);
-                self.focus.needs_you_cursor = self.focus.needs_you_cursor.min(last);
+                self.set_needs_you(items);
             }
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => match &mut self.dialog {
@@ -250,10 +248,21 @@ impl UiModel {
         }
     }
 
+    /// Replaces the Needs you list. The cursor stays on the same agent; when that agent
+    /// has left, it keeps its row number, clamped to the new last row (UI §4.1.3).
+    fn set_needs_you(&mut self, items: Vec<NeedsYouItem>) {
+        let at = self.focus.needs_you_cursor;
+        let under_cursor = self.needs_you.get(at).map(|i| i.agent.clone());
+        let same = under_cursor.and_then(|a| items.iter().position(|i| i.agent == a));
+        let last = items.len().saturating_sub(1);
+        self.focus.needs_you_cursor = same.unwrap_or(at).min(last);
+        self.needs_you = items;
+    }
+
     fn apply_snapshot(&mut self, s: Snapshot) {
         self.org = s.org;
         self.agents = s.agents;
-        self.needs_you = s.needs_you;
+        self.set_needs_you(s.needs_you);
         self.org_error = s.org_error;
         self.settings_error = s.settings_error;
         self.reconnecting = s.reconnecting;

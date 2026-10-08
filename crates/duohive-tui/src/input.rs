@@ -213,8 +213,15 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match m.focus.pane {
         Pane::Org => org_action(m, a),
         Pane::NeedsYou => {
-            if matches!(a, Action::Up | Action::Down) {
-                panes::needs_you_move(m, a == Action::Down);
+            match a {
+                Action::Up | Action::Down => panes::needs_you_move(m, a == Action::Down),
+                Action::Enter => {
+                    return panes::needs_you_enter(m)
+                        .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
+                        .into_iter()
+                        .collect();
+                }
+                _ => {}
             }
             Vec::new()
         }
