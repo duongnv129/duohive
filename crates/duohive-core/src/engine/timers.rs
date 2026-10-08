@@ -13,6 +13,8 @@ use crate::worktree::RunIn;
 const PRE_READ_LEAD: Duration = Duration::from_secs(5);
 /// P2-D11: how long a next-turn paste waits for a sign the agent took it.
 pub(super) const DELIVERY_WAIT: Duration = Duration::from_secs(5);
+/// TD §5.3: how often every worktree is checked.
+pub(super) const WORKTREE_CHECK_EVERY: Duration = Duration::from_secs(600);
 /// P2-D11's reason when no sign came in time.
 const NO_SIGN: &str = "no sign it started";
 
@@ -50,10 +52,15 @@ impl Engine {
     }
 
     /// A timer is due: zero exits past their grace, start timeouts, screen
-    /// reads, quiet and deliveries waiting past `DELIVERY_WAIT`.
+    /// reads, quiet, deliveries waiting past `DELIVERY_WAIT` and the 10-minute
+    /// worktree check.
     pub(super) fn on_tick(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
         let mut out = self.expire_exits();
+        if self.worktree_check_due <= now {
+            self.worktree_check_due = now + WORKTREE_CHECK_EVERY;
+            self.check_worktrees(None, &mut out);
+        }
         let agents: Vec<AgentName> = self.agents.keys().cloned().collect();
         for agent in agents {
             self.tick_agent(&agent, now, &mut out);
@@ -197,11 +204,13 @@ impl Engine {
     }
 
     /// When the next timer is due: settle reads, start timeouts, pre-timeout
-    /// reads, zero exits waiting for their end hook, quiet thresholds and
-    /// deliveries waiting for a sign they were taken.
+    /// reads, zero exits waiting for their end hook, quiet thresholds,
+    /// deliveries waiting for a sign they were taken, and, while there are
+    /// worktrees, the 10-minute check.
     /// Each is cleared or acted on by the `Tick` that reaches it.
     pub fn next_deadline(&self) -> Option<Millis> {
         let quiet_after = self.settings.quiet_after();
+        let worktree_check = (!self.worktrees_shown.is_empty()).then_some(self.worktree_check_due);
         self.agents
             .iter()
             .flat_map(|(agent, rt)| {
@@ -215,6 +224,7 @@ impl Engine {
                 ]
             })
             .flatten()
+            .chain(worktree_check)
             .min()
     }
 }

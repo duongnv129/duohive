@@ -1,19 +1,25 @@
-//! Worktrees: creating one for a launch (TD §5.3; P2-D7, P2-D20, P2-D21).
+//! Worktrees (TD §5.3): creating one for a launch (P2-D7, P2-D20, P2-D21),
+//! then checking and cleaning them up (P2-D6, P2-D16; Review Focus 2).
+//!
+//! Removal never loses work: a row is removed automatically only when its
+//! check says merged with no dirty files **and** no live session runs in it.
+//! A row being created (P2-D20) or being removed is never checked or removed.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-use super::lifecycle::not_found;
+use super::lifecycle::{getting_ready, not_found};
 use super::{Engine, reject};
 use crate::adapter::CliPresence;
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
 use crate::names::AgentName;
-use crate::ports::{CreateWorktree, GitError};
+use crate::ports::{CheckWorktree, CreateWorktree, GitError, RemoveWorktree};
 use crate::status::AgentState;
 use crate::validate::{DirStatus, agent_problem};
 use crate::worktree::{
-    BaseRef, TaskId, WorktreeRow, WorktreeState, branch_name, task_id, task_slug, worktree_path,
+    BaseRef, MergeState, TaskId, WorktreeRow, WorktreeState, branch_name, task_id, task_slug,
+    worktree_path,
 };
 
 /// P2-D7: how many branch names are tried before giving up.
@@ -118,6 +124,7 @@ impl Engine {
             branch: row.branch.clone(),
         });
         self.rt_mut(agent).creating = Some(Creating { task, attempt, row });
+        self.worktrees_stale = true;
         Ok(())
     }
 
@@ -179,11 +186,7 @@ impl Engine {
             },
             ..row
         };
-        if let Err(e) = self.ports.store.save_worktree(&row) {
-            out.push(Event::CommandRejected {
-                reason: format!("couldn't save state: {e}"),
-            });
-        }
+        self.store_row(&row, &mut out);
         out
     }
 
@@ -207,11 +210,281 @@ impl Engine {
 
     /// Deletes a worktree row; a failure is reported, not fatal.
     fn drop_worktree_row(&mut self, row: &WorktreeRow, out: &mut Vec<Event>) {
+        self.worktrees_stale = true;
         if let Err(e) = self.ports.store.delete_worktree(&row.agent, &row.task) {
             out.push(Event::CommandRejected {
                 reason: format!("couldn't save state: {e}"),
             });
         }
+    }
+}
+
+impl Engine {
+    /// Whether a live session runs in `row` (P2-D6): its agent is running and
+    /// its current session was launched there. `SessionRow.worktree` restores
+    /// this after a restart; a held row (a running agent no org names) counts.
+    fn in_use(&self, row: &WorktreeRow) -> bool {
+        let running = self.agents.get(&row.agent).is_some_and(|rt| {
+            rt.status.state.is_running() && rt.worktree.as_ref() == Some(&row.task)
+        });
+        running || self.held_in(&row.agent, &row.task)
+    }
+
+    /// Whether `row` is the one being created for its agent's next launch
+    /// (P2-D20). Its `Created` answer owns it: it is neither checked nor removed.
+    fn being_created(&self, row: &WorktreeRow) -> bool {
+        self.agents
+            .get(&row.agent)
+            .and_then(|rt| rt.creating.as_ref())
+            .is_some_and(|c| c.row.task == row.task)
+    }
+
+    /// Whether `agent` has any worktree row; renames are refused while it has.
+    pub(super) fn has_worktrees(&mut self, agent: &AgentName) -> Result<bool, String> {
+        let rows = self
+            .ports
+            .store
+            .load_worktrees()
+            .map_err(|e| format!("couldn't read worktrees: {e}"))?;
+        Ok(rows.iter().any(|row| row.agent == *agent))
+    }
+
+    /// Every worktree row; a failure is reported and reads as none.
+    fn worktree_rows(&mut self, out: &mut Vec<Event>) -> Vec<WorktreeRow> {
+        self.ports.store.load_worktrees().unwrap_or_else(|e| {
+            out.push(Event::CommandRejected {
+                reason: format!("couldn't read worktrees: {e}"),
+            });
+            Vec::new()
+        })
+    }
+
+    /// One row by agent and task.
+    fn worktree_row(
+        &mut self,
+        agent: &AgentName,
+        task: &TaskId,
+        out: &mut Vec<Event>,
+    ) -> Option<WorktreeRow> {
+        self.worktree_rows(out)
+            .into_iter()
+            .find(|row| row.agent == *agent && row.task == *task)
+    }
+
+    /// Saves `row` and marks the list for publishing; a failure is reported.
+    /// Returns whether it was saved.
+    fn store_row(&mut self, row: &WorktreeRow, out: &mut Vec<Event>) -> bool {
+        self.worktrees_stale = true;
+        match self.ports.store.save_worktree(row) {
+            Ok(()) => true,
+            Err(e) => {
+                out.push(Event::CommandRejected {
+                    reason: format!("couldn't save state: {e}"),
+                });
+                false
+            }
+        }
+    }
+
+    /// Asks git to check each row that isn't being removed or created; with
+    /// `only`, just that agent's rows (it entered finished). TD §5.3's
+    /// triggers: finished, the first `DirInventory`, `CheckWorktrees`, and
+    /// the 10-minute timer.
+    pub(super) fn check_worktrees(&mut self, only: Option<&AgentName>, out: &mut Vec<Event>) {
+        self.worktrees_stale = true;
+        for row in self.worktree_rows(out) {
+            let skip = row.state == WorktreeState::Removing
+                || self.being_created(&row)
+                || only.is_some_and(|a| *a != row.agent);
+            if skip {
+                continue;
+            }
+            self.ports.git.check(CheckWorktree {
+                agent: row.agent,
+                task: row.task,
+                repo: row.repo,
+                path: row.path,
+                branch: row.branch,
+                created_from: row.created_from,
+            });
+        }
+    }
+
+    /// `Checked`: in use stays `InUse` whatever the result (P2-D16); merged
+    /// with no dirty files is removed, keeping nothing; anything else is kept
+    /// and listed. `Unknown` is never merged.
+    pub(super) fn on_checked(
+        &mut self,
+        agent: &AgentName,
+        task: &TaskId,
+        merge: MergeState,
+        dirty_files: u32,
+        base: Option<BaseRef>,
+    ) -> Vec<Event> {
+        let mut out = Vec::new();
+        let Some(row) = self.worktree_row(agent, task, &mut out) else {
+            tracing::debug!(%agent, task = %task.0, "check answer for no worktree row");
+            return out;
+        };
+        if row.state == WorktreeState::Removing || self.being_created(&row) {
+            return out;
+        }
+        let state = if self.in_use(&row) {
+            WorktreeState::InUse
+        } else {
+            match merge {
+                MergeState::Merged(_) if dirty_files == 0 => WorktreeState::Removing,
+                MergeState::Merged(_) => WorktreeState::MergedDirty,
+                MergeState::NotMerged { files_changed } => {
+                    WorktreeState::NotMerged { files_changed }
+                }
+                MergeState::Unknown(reason) => WorktreeState::CheckFailed(reason),
+            }
+        };
+        let row = WorktreeRow {
+            state,
+            checked_at: Some(self.ports.clock.now()),
+            base: base.or(row.base),
+            ..row
+        };
+        // Removed only once the row says so, so a restart re-checks it.
+        if self.store_row(&row, &mut out) && row.state == WorktreeState::Removing {
+            self.ports.git.remove(remove_request(row, true, false));
+        }
+        out
+    }
+
+    /// `Removed`: the row goes; a failure keeps it, with the reason.
+    pub(super) fn on_removed(
+        &mut self,
+        agent: &AgentName,
+        task: &TaskId,
+        result: Result<(), String>,
+    ) -> Vec<Event> {
+        let mut out = Vec::new();
+        let Some(row) = self
+            .worktree_row(agent, task, &mut out)
+            .filter(|row| row.state == WorktreeState::Removing)
+        else {
+            tracing::debug!(%agent, task = %task.0, "removal answer for no row being removed");
+            return out;
+        };
+        match result {
+            Ok(()) => self.drop_worktree_row(&row, &mut out),
+            Err(reason) => {
+                let row = WorktreeRow {
+                    state: WorktreeState::CheckFailed(format!("couldn't remove: {reason}")),
+                    ..row
+                };
+                self.store_row(&row, &mut out);
+            }
+        }
+        out
+    }
+
+    /// `DeleteWorktree`, by hand (P2-D6): refused while in use; merged and
+    /// clean goes with its branch; anything else needs `confirmed`, and is
+    /// then forced with its branch kept, so unmerged work stays on it.
+    pub(super) fn delete_worktree(
+        &mut self,
+        agent: &AgentName,
+        task: &TaskId,
+        confirmed: bool,
+    ) -> Vec<Event> {
+        let mut out = Vec::new();
+        let Some(row) = self.worktree_row(agent, task, &mut out) else {
+            out.extend(reject(format!("no worktree {} for {agent}", task.0)));
+            return out;
+        };
+        let refusal = if self.being_created(&row) {
+            Some(getting_ready(agent))
+        } else if row.state == WorktreeState::Removing {
+            Some(format!("{} is being removed", row.branch))
+        } else if self.in_use(&row) {
+            Some(format!("{agent} is running in it · stop it first"))
+        } else if row.state != WorktreeState::Merged && !confirmed {
+            Some(format!(
+                "{} isn't merged and clean · confirm to remove it",
+                row.branch
+            ))
+        } else {
+            None
+        };
+        if let Some(reason) = refusal {
+            out.extend(reject(reason));
+            return out;
+        }
+        let clean = row.state == WorktreeState::Merged;
+        let row = WorktreeRow {
+            state: WorktreeState::Removing,
+            ..row
+        };
+        if self.store_row(&row, &mut out) {
+            self.ports.git.remove(remove_request(row, clean, !clean));
+        }
+        out
+    }
+
+    /// Start-up: a removal the restart cut short is checked again, never
+    /// assumed done.
+    pub(super) fn reset_removing(&mut self, out: &mut Vec<Event>) {
+        for row in self.worktree_rows(out) {
+            if row.state == WorktreeState::Removing {
+                let row = WorktreeRow {
+                    state: WorktreeState::Unchecked,
+                    ..row
+                };
+                self.store_row(&row, out);
+            }
+        }
+    }
+
+    /// Publishes `Worktrees` when the rows changed since the last one. First
+    /// each row's `InUse` is brought in line with the sessions: in use becomes
+    /// `InUse`, and a row no longer in use goes back to `Unchecked` until the
+    /// next check. Rows being created or removed keep their state.
+    pub(super) fn publish_worktrees(&mut self, out: &mut Vec<Event>) {
+        if !std::mem::take(&mut self.worktrees_stale) {
+            return;
+        }
+        let mut rows = self.worktree_rows(out);
+        for row in &mut rows {
+            if row.state == WorktreeState::Removing || self.being_created(row) {
+                continue;
+            }
+            let state = if self.in_use(row) {
+                WorktreeState::InUse
+            } else if row.state == WorktreeState::InUse {
+                WorktreeState::Unchecked
+            } else {
+                continue;
+            };
+            if row.state == state {
+                continue;
+            }
+            row.state = state;
+            let saved = row.clone();
+            self.store_row(&saved, out);
+        }
+        // Saving above marked the list stale again; these rows are current.
+        self.worktrees_stale = false;
+        if rows != self.worktrees_shown {
+            self.worktrees_shown.clone_from(&rows);
+            out.push(Event::Worktrees(rows));
+        }
+    }
+}
+
+/// The port request removing `row`.
+fn remove_request(row: WorktreeRow, delete_branch: bool, force: bool) -> RemoveWorktree {
+    RemoveWorktree {
+        agent: row.agent,
+        task: row.task,
+        repo: row.repo,
+        path: row.path,
+        branch: row.branch,
+        delete_branch,
+        force,
     }
 }
 
@@ -223,3 +496,6 @@ fn describe(e: &GitError) -> String {
         GitError::Other(reason) => reason.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -12,6 +12,7 @@ use crate::launch::WindowId;
 use crate::names::AgentName;
 use crate::ports::{LiveWindow, OrgFileError, SessionRow};
 use crate::status::AgentState;
+use crate::worktree::TaskId;
 
 /// Rows held for running agents no org names.
 #[derive(Debug, Default)]
@@ -29,6 +30,7 @@ impl Engine {
     /// Holds `rows`; unless `org.toml` has an error of its own, the banner names the first.
     pub(super) fn hold(&mut self, rows: Vec<SessionRow>, out: &mut Vec<Event>) {
         self.held.rows = rows;
+        self.worktrees_stale = true;
         if self.org_error.is_some() {
             return;
         }
@@ -49,6 +51,7 @@ impl Engine {
     /// held, the runtime is asked for its windows so a gone one is noticed.
     pub(in crate::engine) fn adopt_held(&mut self, out: &mut Vec<Event>) -> Option<OrgFileError> {
         let rows = std::mem::take(&mut self.held.rows);
+        self.worktrees_stale = true;
         let (named, still): (Vec<_>, Vec<_>) = rows.into_iter().partition(|r| self.knows(&r.agent));
         let adopting = !named.is_empty();
         for row in named {
@@ -94,6 +97,7 @@ impl Engine {
             }
             Exit::WindowGone => {
                 self.held.rows.remove(at);
+                self.worktrees_stale = true;
                 self.held.dead.remove(agent);
                 self.delete_row(agent, &mut out);
                 self.update_held_banner(&mut out);
@@ -103,6 +107,15 @@ impl Engine {
     }
 
     /// Whether `agent` is held.
+    /// Whether a held agent's live session runs in `task`'s worktree (P2-D6):
+    /// held rows are running agents, so their worktrees are in use.
+    pub(in crate::engine) fn held_in(&self, agent: &AgentName, task: &TaskId) -> bool {
+        self.held
+            .rows
+            .iter()
+            .any(|r| &r.agent == agent && r.worktree.as_ref() == Some(task))
+    }
+
     pub(super) fn is_held(&self, agent: &AgentName) -> bool {
         self.held.rows.iter().any(|r| &r.agent == agent)
     }
@@ -134,6 +147,7 @@ impl Engine {
             return Vec::new();
         }
         let rows = std::mem::take(&mut self.held.rows);
+        self.worktrees_stale = true;
         let (live, gone): (Vec<_>, Vec<_>) =
             rows.into_iter().partition(|r| is_live(windows, &r.agent));
         let mut out = Vec::new();

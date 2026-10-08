@@ -151,13 +151,19 @@ impl Engine {
             .collect()
     }
 
-    /// Caches directory statuses and reports each agent's problem (D26).
+    /// Caches directory statuses and reports each agent's problem (D26). The
+    /// first one, after the first frame, is start-up's worktree check (TD §5.3).
     pub(super) fn on_dir_inventory(&mut self, list: Vec<(PathBuf, DirStatus)>) -> Vec<Event> {
+        let first = self.dirs.is_none();
         self.dirs = Some(list.into_iter().collect());
-        vec![Event::OrgChanged {
+        let mut out = vec![Event::OrgChanged {
             org: Box::new(self.org.clone()),
             problems: self.problems(),
-        }]
+        }];
+        if first {
+            self.check_worktrees(None, &mut out);
+        }
+        out
     }
 
     /// Queues a launch until the first `CliInventory` (D30), else runs it: in
