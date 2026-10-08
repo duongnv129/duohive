@@ -107,3 +107,72 @@ fn sigterm_cleans_up_the_bench() {
     assert!(!status.success(), "an interrupted bench must not exit 0");
     assert!(!bench_socket_answers(pid), "tmux server left behind");
 }
+
+/// Review Focus 3: with one live stream held open the whole run, the bench still
+/// times hook → screen, and the view's tmux client counts as DuoHive.
+#[test]
+fn bench_with_live_view() {
+    let out = Command::new(BIN)
+        .args([
+            "bench",
+            "--agents",
+            "10",
+            "--idle-secs",
+            "2",
+            "--turns",
+            "1",
+            "--view",
+            "--json",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{:?}\n{}",
+        out.status,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["agents"], 10, "{json}");
+    let view = &json["live_view"];
+    assert_eq!(view["agent"], "bench-1", "{json}");
+    // One stream, opened once and still open at the end.
+    assert_eq!(view["streams_opened"], 1, "{json}");
+    assert_eq!(view["open_at_end"], true, "{json}");
+    assert!(view["bytes"].as_u64().unwrap() > 0, "{json}");
+    // The other nine panes stay silenced on the view's client.
+    assert_eq!(view["foreign_output_lines"], 0, "{json}");
+    assert_eq!(json["control_client"], true, "{json}");
+    assert_eq!(view["client_counted"], true, "{json}");
+    assert!(
+        json["hook_to_screen_ms"]["p50"].as_f64().unwrap() > 0.0,
+        "{json}"
+    );
+    assert!(json["hook_samples"].as_u64().unwrap() > 0, "{json}");
+}
+
+#[test]
+fn bench_without_view_has_no_live_view() {
+    let out = Command::new(BIN)
+        .args([
+            "bench",
+            "--agents",
+            "1",
+            "--idle-secs",
+            "1",
+            "--turns",
+            "1",
+            "--json",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(json["live_view"].is_null(), "{json}");
+}

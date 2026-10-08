@@ -11,7 +11,6 @@
 use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
 
 use duohive::git::GitCli;
@@ -21,6 +20,8 @@ use duohive_core::testkit::n;
 use duohive_core::worktree::{BaseRef, MergeKind, MergeState, TaskId};
 use tempfile::TempDir;
 use tokio::sync::mpsc;
+
+mod support;
 
 const ANSWER_WAIT: Duration = Duration::from_secs(60);
 
@@ -42,59 +43,21 @@ impl Fixture {
     /// `origin`'s own HEAD names `origin_head`; the repo has `main`.
     fn with_origin_head(origin_head: &str) -> Self {
         let tmp = tempfile::tempdir().unwrap();
-        let home = tmp.path().join("home");
-        fs::create_dir_all(&home).unwrap();
-        let global = home.join("gitconfig");
-        fs::write(&global, "").unwrap();
-        let env = vec![
-            (OsString::from("HOME"), home.into_os_string()),
-            (OsString::from("GIT_CONFIG_GLOBAL"), global.into_os_string()),
-            (OsString::from("GIT_CONFIG_NOSYSTEM"), OsString::from("1")),
-        ];
-        let origin = tmp.path().join("origin.git");
-        let repo = tmp.path().join("repo");
+        let env = support::isolated_git_env(&tmp.path().join("home"));
+        let (repo, origin) = support::repo_with_origin(&env, tmp.path(), origin_head);
         let worktrees = tmp.path().join("data").join("worktrees");
         fs::create_dir_all(&worktrees).unwrap();
-        let f = Self {
+        Self {
             tmp,
             repo,
             origin,
             worktrees,
             env,
-        };
-        f.git_in(
-            f.tmp.path(),
-            &["init", "--quiet", "--bare", "-b", origin_head, "origin.git"],
-        );
-        f.git_in(f.tmp.path(), &["init", "--quiet", "-b", "main", "repo"]);
-        f.git(&["config", "user.name", "Test"]);
-        f.git(&["config", "user.email", "test@example.com"]);
-        f.commit_file(&f.repo, "README", "hello\n", "initial");
-        f.git(&["remote", "add", "origin", f.origin.to_str().unwrap()]);
-        f.git(&["push", "--quiet", "origin", "main"]);
-        if origin_head != "main" {
-            f.git(&["push", "--quiet", "origin", &format!("main:{origin_head}")]);
         }
-        f.git(&["fetch", "--quiet", "origin"]);
-        f.git(&["remote", "set-head", "origin", "main"]);
-        f
     }
 
     fn git_in(&self, dir: &Path, args: &[&str]) -> String {
-        let out = Command::new("git")
-            .arg("-C")
-            .arg(dir)
-            .args(args)
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .output()
-            .unwrap();
-        assert!(
-            out.status.success(),
-            "git {args:?} failed: {}",
-            String::from_utf8_lossy(&out.stderr)
-        );
-        String::from_utf8(out.stdout).unwrap().trim().to_owned()
+        support::git_in(&self.env, dir, args)
     }
 
     fn git(&self, args: &[&str]) -> String {
@@ -102,26 +65,11 @@ impl Fixture {
     }
 
     fn git_ok(&self, args: &[&str]) -> bool {
-        Command::new("git")
-            .arg("-C")
-            .arg(&self.repo)
-            .args(args)
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
-            .output()
-            .unwrap()
-            .status
-            .success()
+        support::git_ok(&self.env, &self.repo, args)
     }
 
     fn commit_file(&self, dir: &Path, name: &str, body: &str, msg: &str) -> String {
-        let file = dir.join(name);
-        if let Some(parent) = file.parent() {
-            fs::create_dir_all(parent).unwrap();
-        }
-        fs::write(&file, body).unwrap();
-        self.git_in(dir, &["add", "-A"]);
-        self.git_in(dir, &["commit", "--quiet", "-m", msg]);
-        self.git_in(dir, &["rev-parse", "HEAD"])
+        support::commit_file(&self.env, dir, name, body, msg)
     }
 
     fn cli(&self) -> (GitCli, mpsc::Receiver<Input>) {
