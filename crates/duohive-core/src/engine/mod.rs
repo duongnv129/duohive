@@ -452,6 +452,7 @@ impl Engine {
             task_at_launch: rt.task_at_launch,
             saw_end_hook: rt.saw_end_hook,
             last_task: rt.last_task.clone(),
+            worktree: None,
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

@@ -149,9 +149,9 @@ pub fn agent_problem(r: &ResolvedAgent, _home: &Path, dir: Option<DirStatus>) ->
 
 /// Lowercase, spaces to `-`, other characters dropped, hyphen runs collapsed
 /// and ends trimmed (D11).
-fn slug(name: &NodeName) -> String {
-    let mut out = String::with_capacity(name.as_str().len());
-    for c in name.as_str().chars() {
+pub(crate) fn slug(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars() {
         let c = match c {
             c if c.is_whitespace() || c == '-' => '-',
             c if c.is_ascii_alphanumeric() => c.to_ascii_lowercase(),
@@ -187,7 +187,7 @@ pub fn next_agent_names(
     let slugs: Vec<String> = team
         .into_iter()
         .chain([role])
-        .map(slug)
+        .map(|n| slug(n.as_str()))
         .filter(|s| !s.is_empty())
         .collect();
     let full = slugs.join("-");

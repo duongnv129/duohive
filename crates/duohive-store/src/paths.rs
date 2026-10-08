@@ -102,6 +102,11 @@ impl Paths {
         self.data_dir.join("run").join(agent.as_str())
     }
 
+    /// Task worktrees, one directory per agent.
+    pub fn worktrees_dir(&self) -> PathBuf {
+        self.data_dir.join("worktrees")
+    }
+
     /// Log files.
     pub fn logs_dir(&self) -> PathBuf {
         self.data_dir.join("logs")
@@ -195,5 +200,6 @@ mod tests {
             PathBuf::from("/d/run/auth-service")
         );
         assert_eq!(p.logs_dir(), PathBuf::from("/d/logs"));
+        assert_eq!(p.worktrees_dir(), PathBuf::from("/d/worktrees"));
     }
 }

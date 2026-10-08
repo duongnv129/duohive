@@ -83,6 +83,7 @@ fn put_row(h: &mut Harness, agent: &str) {
         task_at_launch: false,
         saw_end_hook: false,
         last_task: None,
+        worktree: None,
     };
     let mut st = h.store.state.lock().unwrap();
     st.sessions.insert(n(agent), row);

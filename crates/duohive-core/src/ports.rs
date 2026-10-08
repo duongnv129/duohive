@@ -14,7 +14,7 @@ use crate::settings::Settings;
 use crate::status::Status;
 use crate::time::Millis;
 use crate::view::{PaneInput, PaneSize, PaneStream, StreamId, ViewError};
-use crate::worktree::{BaseRef, MergeState, TaskId};
+use crate::worktree::{BaseRef, MergeState, TaskId, WorktreeRow};
 
 /// The wall clock.
 pub trait Clock: Send {
@@ -162,6 +162,8 @@ pub struct SessionRow {
     pub saw_end_hook: bool,
     /// The last task given.
     pub last_task: Option<String>,
+    /// The task whose worktree the agent runs in.
+    pub worktree: Option<TaskId>,
 }
 
 /// A store failure.
@@ -187,6 +189,12 @@ pub trait Store: Send {
     fn save_session(&mut self, row: &SessionRow) -> Result<(), StoreError>;
     /// Removes an agent's session row.
     fn delete_session(&mut self, agent: &AgentName) -> Result<(), StoreError>;
+    /// All worktree rows.
+    fn load_worktrees(&mut self) -> Result<Vec<WorktreeRow>, StoreError>;
+    /// Inserts or replaces a worktree row, keyed by agent and task.
+    fn save_worktree(&mut self, row: &WorktreeRow) -> Result<(), StoreError>;
+    /// Removes a worktree row.
+    fn delete_worktree(&mut self, agent: &AgentName, task: &TaskId) -> Result<(), StoreError>;
     /// Hooks queued while DuoHive was closed, oldest first; deletes them.
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError>;
     /// Queues a hook DuoHive took but did not apply before shutting down, after
@@ -444,6 +452,7 @@ mod tests {
             task_at_launch: false,
             saw_end_hook: false,
             last_task: None,
+            worktree: None,
         }
     }
 

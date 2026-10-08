@@ -9,6 +9,7 @@ use duohive_core::ports::{SessionRow, Store};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::{example_org, n};
 use duohive_core::time::Millis;
+use duohive_core::worktree::{BaseRef, TaskId, WorktreeRow, WorktreeState};
 use duohive_store::db::{insert_pending_hook, open_db, open_db_for_hook};
 use duohive_store::{Paths, SqliteStore};
 
@@ -39,6 +40,7 @@ fn row(state: AgentState) -> SessionRow {
         task_at_launch: true,
         saw_end_hook: false,
         last_task: Some("fix it".into()),
+        worktree: None,
     }
 }
 
@@ -63,10 +65,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 2);
+    assert_eq!(user_version(&first), 3);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 2);
+    assert_eq!(user_version(&second), 3);
 }
 
 #[test]
@@ -394,4 +396,98 @@ fn hooks_queued_before_the_firing_time_column_replay_by_arrival() {
         store.take_pending_hooks().unwrap(),
         vec![fired_at("busy", 50)]
     );
+}
+
+fn wt_row(agent: &str, task: &str, state: WorktreeState) -> WorktreeRow {
+    WorktreeRow {
+        agent: n(agent),
+        task: TaskId(task.into()),
+        repo: "/repo".into(),
+        path: format!("/data/worktrees/{agent}/{task}").into(),
+        branch: format!("duohive/{agent}/{task}"),
+        created_at: Millis(5),
+        created_from: "abc123".into(),
+        state,
+        checked_at: Some(Millis(9)),
+        base: Some(BaseRef("origin/main".into())),
+    }
+}
+
+#[test]
+fn worktree_rows_round_trip() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let states = [
+        WorktreeState::Unchecked,
+        WorktreeState::InUse,
+        WorktreeState::NotMerged { files_changed: 7 },
+        WorktreeState::MergedDirty,
+        WorktreeState::Merged,
+        WorktreeState::Removing,
+        WorktreeState::CheckFailed("no default branch: it's \"odd\" | ünï".into()),
+        WorktreeState::CheckFailed(String::new()),
+    ];
+    for (i, state) in states.into_iter().enumerate() {
+        let mut row = wt_row("squad-1", "fix", state);
+        if i == 0 {
+            row.checked_at = None;
+            row.base = None;
+        }
+        store.save_worktree(&row).unwrap();
+        assert_eq!(store.load_worktrees().unwrap(), vec![row.clone()]);
+        store.delete_worktree(&row.agent, &row.task).unwrap();
+        assert!(store.load_worktrees().unwrap().is_empty());
+    }
+}
+
+#[test]
+fn same_task_two_agents_two_rows() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let a = wt_row("squad-1", "fix-tests", WorktreeState::InUse);
+    let b = wt_row("squad-2", "fix-tests", WorktreeState::Merged);
+    store.save_worktree(&a).unwrap();
+    store.save_worktree(&b).unwrap();
+    assert_eq!(store.load_worktrees().unwrap(), vec![a.clone(), b.clone()]);
+    store.delete_worktree(&a.agent, &a.task).unwrap();
+    assert_eq!(store.load_worktrees().unwrap(), vec![b]);
+}
+
+#[test]
+fn session_worktree_round_trips() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let mut r = row(AgentState::Working);
+    r.worktree = Some(TaskId("fix-tests".into()));
+    store.save_session(&r).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![r]);
+}
+
+#[test]
+fn migration_3_applies_on_v2_db() {
+    let (_t, paths) = temp_paths();
+    std::fs::create_dir_all(&paths.data_dir).unwrap();
+    let old = rusqlite::Connection::open(paths.state_db()).unwrap();
+    old.execute_batch(
+        "CREATE TABLE sessions (agent TEXT PRIMARY KEY, token TEXT, window TEXT, state TEXT NOT NULL,
+           quiet INTEGER NOT NULL, quiet_since INTEGER, from_screen INTEGER NOT NULL, since INTEGER NOT NULL,
+           error TEXT, last_reply TEXT, task_at_launch INTEGER NOT NULL, saw_end_hook INTEGER NOT NULL, last_task TEXT);
+         CREATE TABLE pending_hooks (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, agent TEXT NOT NULL,
+           event TEXT NOT NULL, payload TEXT NOT NULL, received_at INTEGER NOT NULL, sent_at_ms INTEGER NOT NULL DEFAULT 0);
+         INSERT INTO sessions VALUES ('auth-service', NULL, NULL, 'idle', 0, NULL, 0, 1, NULL, NULL, 0, 0, 'old task');
+         PRAGMA user_version = 2;",
+    )
+    .unwrap();
+    drop(old);
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let rows = store.load_sessions().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].worktree, None);
+    assert_eq!(rows[0].last_task.as_deref(), Some("old task"));
+    store
+        .save_worktree(&wt_row("squad-1", "fix", WorktreeState::InUse))
+        .unwrap();
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 3);
 }
