@@ -28,9 +28,11 @@ fn with(c: KeyCode, mods: KeyModifiers) -> KeyEvent {
     KeyEvent::new(c, mods)
 }
 
-/// auth-service (working) selected, the agent pane focused, Typing.
+/// auth-service (working) selected, its live terminal showing, the agent pane focused,
+/// Typing.
 fn typing() -> UiModel {
     let mut m = spec_model();
+    m.live_agent = Some(n("auth-service"));
     m.focus.pane = Pane::Agent;
     assert_eq!(press(&mut m, plain(KeyCode::Enter)), []);
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);
@@ -98,8 +100,29 @@ fn enter_types_only_into_a_running_agent() {
     assert_eq!(press(&mut m, plain(KeyCode::Enter)), []);
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
     m.selected = NodeKey::Duo;
+    m.live_agent = Some(n("Duo"));
     press(&mut m, plain(KeyCode::Enter));
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+}
+
+#[test]
+fn enter_waits_for_the_live_terminal() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    // Running, but no stream with a `Reset` yet (or another agent's).
+    for live in [None, Some(n("billing-api"))] {
+        m.live_agent = live;
+        assert_eq!(press(&mut m, plain(KeyCode::Enter)), []);
+        assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+        assert_eq!(
+            m.footer_note.as_deref(),
+            Some("auth-service isn't ready yet")
+        );
+    }
+    m.live_agent = Some(n("auth-service"));
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert_eq!(m.footer_note, None);
 }
 
 #[test]
@@ -115,6 +138,7 @@ fn pgup_and_pgdn_scroll_in_selected_mode_and_enter_returns_live() {
         [UiEffect::Scroll { up: false }]
     );
     m.scrolled = true;
+    m.live_agent = Some(n("auth-service"));
     press(&mut m, plain(KeyCode::Enter));
     assert!(!m.scrolled);
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);

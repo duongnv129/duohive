@@ -38,14 +38,18 @@ pub(super) fn agent_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     }
 }
 
-/// `enter`: Typing mode on a running agent, back on the live terminal (P2-D12).
+/// `enter`: Typing mode, back on the live terminal (P2-D12), once the agent's live
+/// terminal shows; a running agent whose stream hasn't delivered a `Reset` yet gets a
+/// note instead, and a stopped one nothing.
 fn start_typing(m: &mut UiModel) {
     let Some(agent) = agent_of(m, &m.selected) else {
         return;
     };
-    if m.view(&agent).status.state.is_running() {
+    if m.live_agent.as_ref() == Some(&agent) {
         m.focus.agent_mode = AgentMode::Typing;
         m.scrolled = false;
+    } else if m.view(&agent).status.state.is_running() {
+        m.footer_note = Some(format!("{agent} isn't ready yet"));
     }
 }
 

@@ -386,7 +386,7 @@ pub(crate) async fn run_loop<B: Backend>(
     };
     let mut live = Live::new(Arc::clone(&cfg.pane_view), cfg.no_color);
     loop {
-        live.sync(&mut m, Instant::now());
+        clock.dirty |= live.sync(&mut m, Instant::now());
         let wake = clock.next_wake(&m);
         let open_at = live.open_at();
         let (streaming, scrolling) = (live.streaming(), live.scrolling_back());
@@ -458,7 +458,9 @@ pub(crate) async fn run_loop<B: Backend>(
             bytes = next_scrollback(scrollback), if scrolling => {
                 clock.dirty |= live.on_scrollback(bytes, &mut m);
             }
-            () = sleep_until(open_at), if open_at.is_some() => live.open_due(&m),
+            () = sleep_until(open_at), if open_at.is_some() => {
+                clock.dirty |= live.open_due(&mut m, Instant::now());
+            }
             () = sleep_until(wake), if wake.is_some() => {
                 if clock.on_wake(&m) {
                     draw(terminal, &m, &cfg, &live, clock.spinner)?;

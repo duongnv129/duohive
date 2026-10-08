@@ -211,6 +211,12 @@ pub trait PaneView: Send + Sync {
         stream: StreamId,
         lines: u16,
     ) -> Result<tokio::sync::oneshot::Receiver<Vec<u8>>, ViewError>;
+    /// Whether the view can stream yet. `false` while a real view is still attaching:
+    /// the viewer waits and asks again instead of opening (a stream opened now would only
+    /// close). Polling it must be cheap.
+    fn ready(&self) -> bool {
+        true
+    }
 }
 
 /// Desktop alerts.

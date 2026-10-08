@@ -340,3 +340,129 @@ async fn pgup_enters_scrolled_snapshot_and_pgdn_returns_live() {
     assert!(text.contains("LIVE"), "{text}");
     assert!(!text.contains("old 30"), "{text}");
 }
+
+#[tokio::test(start_paused = true)]
+async fn stream_opens_once_the_view_is_ready() {
+    let view = FakePaneView::default();
+    view.set_ready(false);
+    run_with(resting_model(), &view, async |h: &mut Harness| {
+        sleep(2_000).await;
+        // Nothing is opened against a view that isn't there yet.
+        assert_eq!(opens(&view), []);
+        view.set_ready(true);
+        // No event or key needed: the view joining is noticed on its own.
+        sleep(500).await;
+        assert_eq!(opens(&view).len(), 1);
+        view.push(StreamId(1), reset("hello"));
+        sleep(50).await;
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}
+
+fn reconnecting(m: &UiModel, n: u32) -> Event {
+    let Event::Snapshot(mut s) = snapshot(m) else {
+        unreachable!()
+    };
+    s.reconnecting = n;
+    Event::Snapshot(s)
+}
+
+#[tokio::test(start_paused = true)]
+async fn reconnecting_closes_quietly_and_reopens_after() {
+    let view = FakePaneView::default();
+    let m = resting_model();
+    let lines = run_with(m.clone(), &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "DUO").await;
+        h.events.send(reconnecting(&m, 2)).unwrap();
+        sleep(10).await;
+        assert!(!view.receiving(id));
+        h.events.send(Event::Reconnected).unwrap();
+        sleep(150).await;
+        assert_eq!(opens(&view).len(), 2);
+        view.push(StreamId(2), reset("DUO AGAIN"));
+        sleep(50).await;
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+    let text = lines.join("\n");
+    assert!(!text.contains("session ended"), "{text}");
+    assert!(text.contains("DUO AGAIN"), "{text}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn hidden_pane_closes_quietly_and_reopens_when_shown() {
+    let view = FakePaneView::default();
+    let lines = run_with(resting_model(), &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "DUO").await;
+        focus_agent_pane(h).await;
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        // Too small: the main screen (and the pane) is gone.
+        h.input.send(InputEvent::Resize(60, 20)).await.unwrap();
+        sleep(10).await;
+        assert!(!view.receiving(id));
+        h.input.send(InputEvent::Resize(100, 30)).await.unwrap();
+        sleep(150).await;
+        assert_eq!(opens(&view).len(), 2);
+        view.push(StreamId(2), reset("BACK"));
+        sleep(50).await;
+        // Typing ended with the stream: `q` quits.
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+    let text = lines.join("\n");
+    assert!(!text.contains("session ended"), "{text}");
+    assert!(text.contains("BACK"), "{text}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn resize_while_typing_keeps_the_stream_until_typing_ends() {
+    let view = FakePaneView::default();
+    let m = resting_model();
+    let big = size_at(&m, 160, 48);
+    run_with(m, &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "$ ").await;
+        focus_agent_pane(h).await;
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        h.input.send(InputEvent::Resize(160, 48)).await.unwrap();
+        sleep(500).await;
+        assert_eq!(opens(&view).len(), 1, "no re-open while typing");
+        assert!(view.calls().contains(&PaneCall::Resize(id, big)));
+        h.input.send(key('x')).await.unwrap();
+        sleep(10).await;
+        assert_eq!(
+            view.calls().last(),
+            Some(&PaneCall::Send(id, PaneInput::Text("x".into())))
+        );
+        // Typing ends: now the stream is opened again.
+        h.input.send(ctrl('q')).await.unwrap();
+        sleep(150).await;
+        assert_eq!(
+            opens(&view),
+            [
+                PaneCall::Open(n("Duo"), size_at(&resting_model(), 100, 30)),
+                PaneCall::Open(n("Duo"), big)
+            ]
+        );
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn closed_around_a_resize_still_ends_typing_with_the_note() {
+    let view = FakePaneView::default();
+    let lines = run_with(resting_model(), &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "$ ").await;
+        focus_agent_pane(h).await;
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        sleep(10).await;
+        view.close(id, "the window closed");
+        h.input.send(InputEvent::Resize(160, 48)).await.unwrap();
+        sleep(200).await;
+        assert_eq!(opens(&view).len(), 1);
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+    assert_eq!(lines.last().unwrap().trim_end(), " Duo's session ended");
+}

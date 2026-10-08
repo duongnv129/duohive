@@ -6,10 +6,15 @@
 //!   agent, and closes (is dropped) when the selection moves or the pane is hidden. A move
 //!   within the settle cancels the pending open.
 //! - A size change resizes the window and, after the settle, opens the stream again: the
-//!   view sends no fresh `Reset` on resize, and a shrinking `TermView` loses modes.
+//!   view sends no fresh `Reset` on resize, and a shrinking `TermView` loses modes. While
+//!   typing the re-open waits until typing ends, so keys stay on the opened stream.
 //! - A stream that closes before any `Reset` means "not running": the summary stays, with
 //!   no note. One that closes after a `Reset` ends Typing mode with `<agent>'s session
-//!   ended`. Neither is opened again until the agent's status changes.
+//!   ended`. Neither is opened again until the agent's status changes. A stream we let go
+//!   of (pane hidden, reconnecting, selection moved) closes quietly, and opens again when
+//!   it is wanted again.
+//! - Nothing opens while the view isn't ready (still attaching); it is asked again every
+//!   [`READY_POLL`].
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,6 +23,7 @@ use duohive_core::names::AgentName;
 use duohive_core::ports::PaneView;
 use duohive_core::status::Status;
 use duohive_core::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId};
+use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
@@ -30,6 +36,8 @@ use crate::term_view::TermView;
 pub(crate) const SETTLE: Duration = Duration::from_millis(100);
 /// The most history `PgUp` asks for (P2-D12).
 pub(crate) const SCROLLBACK_LINES: u16 = 2_000;
+/// How often a view that is still attaching is asked whether it is ready.
+const READY_POLL: Duration = Duration::from_millis(250);
 
 /// An open stream.
 pub(crate) struct Open {
@@ -67,7 +75,21 @@ pub(crate) struct Live {
     /// A stream for this agent closed while it had this status: not opened again until
     /// the status changes.
     blocked: Option<(AgentName, Status)>,
+    /// The view wasn't ready: when to ask again.
+    recheck: Option<Instant>,
+    /// The size changed while typing: open the stream again once typing ends.
+    reopen_deferred: bool,
     no_color: bool,
+}
+
+/// Why a stream is dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Close {
+    /// The stream closed itself: the window is gone, or was never there.
+    Itself,
+    /// We let go of it: the selection moved, the pane is hidden, the app is
+    /// reconnecting, or the agent stopped.
+    Quiet,
 }
 
 impl Live {
@@ -80,14 +102,17 @@ impl Live {
             snapshot: None,
             scrollback: None,
             blocked: None,
+            recheck: None,
+            reopen_deferred: false,
             no_color,
         }
     }
 
-    /// The agent and size the pane wants streamed now, if any.
+    /// The agent and size the pane wants streamed now, if any; `None` also while the
+    /// view isn't ready, the pane is hidden or the app is reconnecting.
     fn wanted(&mut self, m: &UiModel) -> Option<(AgentName, PaneSize)> {
         let empty = m.org.teams.is_empty() && m.org.roles.is_empty();
-        if m.reconnecting > 0 || empty {
+        if m.reconnecting > 0 || empty || !self.view.ready() {
             return None;
         }
         let agent = m.selected_agent()?;
@@ -104,70 +129,107 @@ impl Live {
         Some((agent.clone(), live_size(m)?))
     }
 
-    /// Brings the stream in line with the model after any change: closes one no longer
-    /// wanted, schedules opens, and follows the pane's size.
-    pub(crate) fn sync(&mut self, m: &mut UiModel, now: Instant) {
+    /// Brings the stream in line with the model after any change: applies chunks already
+    /// queued, closes a stream no longer wanted, schedules opens, and follows the pane's
+    /// size. `true` when the screen changed.
+    pub(crate) fn sync(&mut self, m: &mut UiModel, now: Instant) -> bool {
         if !m.scrolled {
             self.snapshot = None;
         }
+        let mut dirty = self.drain(m);
+        // A view still attaching is asked again shortly; nothing else would wake us.
+        self.recheck = (!self.view.ready()).then(|| now + READY_POLL);
         let want = self.wanted(m);
         if let Some(open) = &self.stream
             && want.as_ref().map(|w| &w.0) != Some(&open.agent)
         {
-            // Still selected but no longer running: its session ended.
-            let ended = m.selected_agent() == Some(&open.agent) && open.had_reset;
-            self.end(m, ended);
+            // Moved away, hidden, reconnecting or no longer running: close quietly. Only
+            // the stream closing itself says the session ended.
+            self.end(m, Close::Quiet);
+            dirty = true;
         }
-        let Some((agent, size)) = want else {
+        match want {
+            Some((agent, size)) => self.follow(agent, size, m, now),
+            None => self.pending = None,
+        }
+        m.live_agent = self.shown_agent().cloned();
+        dirty
+    }
+
+    /// Schedules the open of `agent` at `size`, or follows a size change of its open
+    /// stream: resized at once, and opened again after the settle for a fresh `Reset`;
+    /// never while typing (P2-D1: keys stay on the stream that was opened), so the re-open
+    /// waits until typing ends.
+    fn follow(&mut self, agent: AgentName, size: PaneSize, m: &UiModel, now: Instant) {
+        let typing = m.focus.agent_mode == AgentMode::Typing;
+        let settle = |agent| Pending {
+            agent,
+            size,
+            at: now + SETTLE,
+        };
+        let Some(open) = &mut self.stream else {
+            match &mut self.pending {
+                Some(p) if p.agent == agent => p.size = size,
+                _ => self.pending = Some(settle(agent)),
+            }
+            return;
+        };
+        if open.size != size {
+            let _ = self.view.resize(open.id, size);
+            open.size = size;
+            if let Some(term) = &mut self.term {
+                term.resize(size);
+            }
+            self.reopen_deferred = true;
             self.pending = None;
-            return;
-        };
-        if let Some(open) = &mut self.stream {
-            if open.size != size {
-                // The window follows the pane now; the stream is opened again once the
-                // size settles, for a fresh `Reset`.
-                let _ = self.view.resize(open.id, size);
-                open.size = size;
-                if let Some(term) = &mut self.term {
-                    term.resize(size);
-                }
-                self.pending = Some(Pending {
-                    agent,
-                    size,
-                    at: now + SETTLE,
-                });
-            } else if let Some(p) = &mut self.pending {
-                p.size = size;
-            }
-            return;
         }
-        match &mut self.pending {
-            Some(p) if p.agent == agent => p.size = size,
-            _ => {
-                self.pending = Some(Pending {
-                    agent,
-                    size,
-                    at: now + SETTLE,
-                });
+        if typing {
+            // A re-open waits for typing to end.
+            if self.pending.take().is_some() {
+                self.reopen_deferred = true;
             }
+        } else if self.reopen_deferred {
+            self.reopen_deferred = false;
+            self.pending = Some(settle(agent));
+        } else if let Some(p) = &mut self.pending {
+            p.size = size;
         }
     }
 
-    /// When the pending open is due.
+    /// When the loop must next call [`Self::open_due`]: the pending open, or the next
+    /// readiness check.
     pub(crate) fn open_at(&self) -> Option<Instant> {
-        self.pending.as_ref().map(|p| p.at)
+        let open = self.pending.as_ref().map(|p| p.at);
+        [open, self.recheck].into_iter().flatten().min()
     }
 
-    /// Opens the pending stream; a stream for the same agent is replaced, keeping its
-    /// screen until the new `Reset`.
-    pub(crate) fn open_due(&mut self, m: &UiModel) {
+    /// Opens the pending stream when it is due; a stream for the same agent is replaced,
+    /// keeping its screen until the new `Reset`. Chunks the old stream already queued are
+    /// applied first, so a `Closed` isn't lost (and a dead window isn't re-opened). `true`
+    /// when the screen changed.
+    pub(crate) fn open_due(&mut self, m: &mut UiModel, now: Instant) -> bool {
+        self.recheck = None;
+        if self.pending.as_ref().is_none_or(|p| p.at > now) {
+            return false;
+        }
+        let had_stream = self.stream.is_some();
+        let dirty = self.drain(m);
         let Some(p) = self.pending.take() else {
-            return;
+            return dirty;
         };
-        let had_reset = self
-            .stream
-            .take()
-            .is_some_and(|s| s.agent == p.agent && s.had_reset);
+        if had_stream && self.stream.is_none() {
+            return dirty;
+        }
+        let had_reset = match self.stream.take() {
+            Some(old) => {
+                // A snapshot or a history request belongs to the old stream.
+                self.snapshot = None;
+                self.scrollback = None;
+                m.scrolled = false;
+                old.agent == p.agent && old.had_reset
+            }
+            None => false,
+        };
         match self.view.open(&p.agent, p.size) {
             Ok(PaneStream { id, rx }) => {
                 let _ = self.view.resize(id, p.size);
@@ -185,6 +247,22 @@ impl Live {
                 self.blocked = Some((p.agent, status));
             }
         }
+        m.live_agent = self.shown_agent().cloned();
+        dirty
+    }
+
+    /// Applies every chunk already queued on the stream; `true` when the screen changed.
+    fn drain(&mut self, m: &mut UiModel) -> bool {
+        let mut dirty = false;
+        while let Some(open) = &mut self.stream {
+            let chunk = match open.rx.try_recv() {
+                Ok(chunk) => Some(chunk),
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => None,
+            };
+            dirty |= self.on_chunk(chunk, m);
+        }
+        dirty
     }
 
     /// Whether a stream is open (its chunks are awaited).
@@ -203,7 +281,7 @@ impl Live {
         let Some(open) = &mut self.stream else {
             return false;
         };
-        match chunk {
+        let changed = match chunk {
             Some(chunk @ PaneChunk::Reset { .. }) => {
                 open.had_reset = true;
                 let size = open.size;
@@ -220,34 +298,46 @@ impl Live {
                 _ => false,
             },
             Some(PaneChunk::Closed { .. }) | None => {
-                let had_reset = open.had_reset;
-                self.end(m, had_reset);
+                self.end(m, Close::Itself);
                 true
             }
-        }
+        };
+        m.live_agent = self.shown_agent().cloned();
+        changed
     }
 
-    /// Drops the stream and everything drawn from it. Typing mode ends; with `ended`,
-    /// the footer says the session ended. The agent isn't streamed again until its
-    /// status changes.
-    fn end(&mut self, m: &mut UiModel, ended: bool) {
+    /// Drops the stream and everything drawn from it; Typing mode ends. When the stream
+    /// closed itself, a session that had shown its screen gets the footer note, and the
+    /// agent isn't streamed again until its status changes.
+    fn end(&mut self, m: &mut UiModel, how: Close) {
         let Some(open) = self.stream.take() else {
             return;
         };
         self.term = None;
         self.snapshot = None;
         self.scrollback = None;
+        self.reopen_deferred = false;
         m.scrolled = false;
+        m.live_agent = None;
         if m.focus.agent_mode == AgentMode::Typing {
             m.focus.agent_mode = AgentMode::Selected;
         }
-        if ended {
+        if how == Close::Quiet {
+            return;
+        }
+        if open.had_reset {
             m.footer_note = Some(format!("{}'s session ended", open.agent));
         }
         if m.selected_agent() == Some(&open.agent) {
             let status = m.view(&open.agent).status.clone();
             self.blocked = Some((open.agent, status));
         }
+    }
+
+    /// The agent whose live terminal shows: its stream has delivered a `Reset`.
+    fn shown_agent(&self) -> Option<&AgentName> {
+        let open = self.stream.as_ref()?;
+        (open.had_reset && self.term.is_some()).then_some(&open.agent)
     }
 
     /// Sends typed input to the open stream. A failure means the window is gone; its
@@ -371,6 +461,67 @@ fn snapshot_term(bytes: &[u8], cols: u16) -> TermView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use duohive_core::org::NodeKey;
+    use duohive_core::testkit::{FakePaneView, PaneCall, n};
+    use ratatui::layout::Rect;
+
+    use crate::fixtures::spec_model;
+
+    /// auth-service (working) selected on a 120×36 screen, its stream open with a `Reset`.
+    fn opened() -> (Live, FakePaneView, UiModel, Instant) {
+        let view = FakePaneView::default();
+        let mut live = Live::new(Arc::new(view.clone()), false);
+        let mut m = spec_model();
+        m.selected = NodeKey::Agent(n("auth-service"));
+        m.screen = Rect::new(0, 0, 120, 36);
+        let t = Instant::now();
+        live.sync(&mut m, t);
+        live.open_due(&mut m, t + SETTLE);
+        view.push(
+            StreamId(1),
+            PaneChunk::Reset {
+                bytes: b"$ ".to_vec(),
+                cursor: (2, 0),
+            },
+        );
+        live.sync(&mut m, t + SETTLE);
+        assert_eq!(m.live_agent, Some(n("auth-service")));
+        (live, view, m, t + SETTLE)
+    }
+
+    #[test]
+    fn a_closed_queued_before_a_reopen_is_not_lost() {
+        let (mut live, view, mut m, t) = opened();
+        m.screen = Rect::new(0, 0, 160, 48);
+        live.sync(&mut m, t);
+        // The window dies before the settle ends; its `Closed` is still queued.
+        view.close(StreamId(1), "the window closed");
+        live.open_due(&mut m, t + SETTLE);
+        let opens = view
+            .calls()
+            .into_iter()
+            .filter(|c| matches!(c, PaneCall::Open(..)))
+            .count();
+        assert_eq!(opens, 1, "no re-open of a dead window");
+        assert_eq!(
+            m.footer_note.as_deref(),
+            Some("auth-service's session ended")
+        );
+        assert!(!live.streaming());
+    }
+
+    #[test]
+    fn a_replaced_stream_drops_its_scrollback() {
+        let (mut live, _view, mut m, t) = opened();
+        live.scroll(true, &mut m);
+        assert!(live.scrolling_back());
+        m.screen = Rect::new(0, 0, 160, 48);
+        live.sync(&mut m, t);
+        live.open_due(&mut m, t + SETTLE);
+        assert!(!live.scrolling_back());
+        assert!(!m.scrolled);
+        assert!(live.snapshot.is_none());
+    }
 
     #[test]
     fn snapshot_keeps_every_line() {
