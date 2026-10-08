@@ -73,10 +73,14 @@ impl Engine {
         }
     }
 
-    /// `StopAgent`: quit a running agent, or clear an errored one.
+    /// `StopAgent`: quit a running agent, or clear an errored one. Refused while
+    /// its worktree is being created, so the launch can't run over the stop (P2-D20).
     pub(super) fn stop_agent(&mut self, agent: &AgentName) -> Vec<Event> {
         if !self.knows(agent) {
             return reject(format!("no agent named {agent}"));
+        }
+        if self.creating_worktree(agent) {
+            return reject(getting_ready(agent));
         }
         let mut out = Vec::new();
         match self.state_of(agent) {
@@ -337,7 +341,7 @@ impl Engine {
                 0,
                 Event::GiveWorkNotTaken {
                     agent: agent.clone(),
-                    task: TaskId(task),
+                    task,
                     reason,
                 },
             );
@@ -363,7 +367,7 @@ impl Engine {
 }
 
 /// P2-D20's refusal while `agent`'s worktree is being created.
-fn getting_ready(agent: &AgentName) -> String {
+pub(super) fn getting_ready(agent: &AgentName) -> String {
     format!("{agent} is getting a worktree ready")
 }
 

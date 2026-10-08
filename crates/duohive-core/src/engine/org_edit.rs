@@ -7,6 +7,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
+use super::lifecycle::getting_ready;
 use super::{AgentRt, Engine, reject};
 use crate::command::{OrgEdit, RoleDraft};
 use crate::event::Event;
@@ -108,6 +109,14 @@ impl Engine {
     /// The runtime checks an edit needs: deletes and renames only while stopped.
     fn check_edit(&self, edit: &OrgEdit) -> Result<(), String> {
         let not_stopped = |a: &AgentName| self.state_of(a) != AgentState::Stopped;
+        // P2-D20: a worktree's answer must still find its agent.
+        if let Some(a) = self
+            .edited_agents(edit)
+            .into_iter()
+            .find(|a| self.creating_worktree(a))
+        {
+            return Err(getting_ready(&a));
+        }
         match edit {
             OrgEdit::Delete(NodeKey::Duo) => Err("Duo can't be deleted".to_owned()),
             OrgEdit::Delete(NodeKey::Agent(a)) if self.org.is_duo(a) => {
@@ -129,6 +138,18 @@ impl Engine {
                 Err(RENAME_WHILE_STOPPED.to_owned())
             }
             _ => Ok(()),
+        }
+    }
+
+    /// The agents `edit` renames or deletes.
+    fn edited_agents(&self, edit: &OrgEdit) -> Vec<AgentName> {
+        match edit {
+            OrgEdit::Delete(key) => agents_under(&self.org, key),
+            OrgEdit::EditAgent { key, draft } if draft.name != *key => vec![key.clone()],
+            OrgEdit::EditOrgDefaults { duo, .. } if duo.name != self.org.duo.name => {
+                vec![self.org.duo.name.clone()]
+            }
+            _ => Vec::new(),
         }
     }
 

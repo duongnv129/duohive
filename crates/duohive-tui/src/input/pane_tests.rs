@@ -7,7 +7,7 @@ use duohive_core::names::NodeName;
 use duohive_core::org::{NodeKey, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
-use duohive_core::worktree::{RunIn, TaskId};
+use duohive_core::worktree::RunIn;
 use ratatui::layout::Rect;
 
 use super::{Action, UiEffect, map_key, update};
@@ -295,7 +295,7 @@ fn chat_not_taken_returns_text() {
     assert_eq!(m.chat_input.text(), "");
     assert!(m.apply(Event::GiveWorkNotTaken {
         agent: n("Duo"),
-        task: TaskId("run-the-tests".to_owned()),
+        task: "run the tests".to_owned(),
         reason: "no sign it started".to_owned(),
     }));
     assert_eq!(m.chat_input.text(), "run the tests");
@@ -377,7 +377,7 @@ fn returned_task_goes_back_before_newly_typed_text() {
     type_text(&mut m, "and lint");
     m.apply(Event::GiveWorkNotTaken {
         agent: n("Duo"),
-        task: TaskId("run-the-tests".to_owned()),
+        task: "run the tests".to_owned(),
         reason: "no sign it started".to_owned(),
     });
     assert_eq!(m.chat_input.text(), "run the tests\nand lint");

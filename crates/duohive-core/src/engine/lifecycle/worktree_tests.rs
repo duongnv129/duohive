@@ -304,3 +304,78 @@ fn directory_launch_clears_the_worktree() {
         None
     );
 }
+
+const READY: &str = "pay-qa is getting a worktree ready";
+
+fn edit(h: &mut Harness, e: crate::command::OrgEdit) -> Vec<Event> {
+    h.send(crate::command::Command::EditOrg(e))
+}
+
+#[test]
+fn rename_and_delete_refused_during_creation() {
+    use crate::command::{AgentDraft, OrgEdit};
+    use crate::names::NodeName;
+    use crate::org::{NodeKey, RoleKey};
+    let mut h = in_repo();
+    h.give_in("pay-qa", TASK, RunIn::NewWorktree);
+    let fields = h
+        .engine
+        .org
+        .find_agent(&n("pay-qa"))
+        .unwrap()
+        .agent
+        .fields
+        .clone();
+    let rename = OrgEdit::EditAgent {
+        key: n("pay-qa"),
+        draft: AgentDraft {
+            name: n("pay-qa-2"),
+            fields,
+        },
+    };
+    let nn = |s: &str| NodeName::parse(s).unwrap();
+    let qa = RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("QA"),
+    };
+    for e in [
+        rename,
+        OrgEdit::Delete(NodeKey::Agent(n("pay-qa"))),
+        OrgEdit::Delete(NodeKey::Role(qa)),
+        OrgEdit::Delete(NodeKey::Team(nn("Payments"))),
+    ] {
+        let events = edit(&mut h, e.clone());
+        assert!(rejected(&events, READY), "{e:?}: {events:?}");
+    }
+    assert!(h.engine.org.find_agent(&n("pay-qa")).is_some());
+    assert!(h.store.state.lock().unwrap().saved_orgs.is_empty());
+    // The answer still finds its agent and launches.
+    h.input(created("pay-qa", ID, ok()));
+    assert_eq!(starts(&h), 1);
+}
+
+#[test]
+fn stop_refused_during_creation() {
+    let mut h = in_repo();
+    h.force_errored("pay-qa", "exited unexpectedly (code 1)", None);
+    h.give_in("pay-qa", TASK, RunIn::NewWorktree);
+    let events = h.send(crate::command::Command::StopAgent { agent: n("pay-qa") });
+    assert!(rejected(&events, READY), "{events:?}");
+    assert_eq!(h.state("pay-qa"), AgentState::Errored);
+    h.input(created("pay-qa", ID, ok()));
+    assert_eq!(h.state("pay-qa"), AgentState::Starting);
+}
+
+#[test]
+fn stale_created_keeps_the_guard() {
+    let mut h = in_repo();
+    h.give_in("pay-qa", TASK, RunIn::NewWorktree);
+    h.input(created("pay-qa", "other", ok()));
+    h.input(created("pay-qa", "other", Err(GitError::Other("x".into()))));
+    assert!(rejected(&h.start("pay-qa"), READY));
+    assert_eq!(starts(&h), 0);
+    assert_eq!(h.rt("pay-qa").status.error, None);
+    assert_eq!(creates(&h).len(), 1);
+    h.input(created("pay-qa", ID, ok()));
+    assert_eq!(starts(&h), 1);
+}

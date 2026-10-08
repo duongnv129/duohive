@@ -129,8 +129,8 @@ pub enum Event {
     GiveWorkNotTaken {
         /// Which agent.
         agent: AgentName,
-        /// Which task.
-        task: TaskId,
+        /// The task as given, so it can be offered again.
+        task: String,
         /// Why.
         reason: String,
     },
@@ -319,8 +319,8 @@ mod tests {
             Event::AlertClicked { agent: n("a") },
             Event::GiveWorkNotTaken {
                 agent: n("a"),
-                task: TaskId("t-1".into()),
-                reason: "branch exists".into(),
+                task: "Fix the \"flaky\" test\nthen run $(it) ✓".into(),
+                reason: "no sign it started".into(),
             },
             Event::Worktrees(vec![WorktreeRow {
                 agent: n("a"),
