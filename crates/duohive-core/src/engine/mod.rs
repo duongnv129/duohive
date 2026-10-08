@@ -29,7 +29,9 @@ use crate::inherit::{expand_home, resolve};
 use crate::launch::{Token, WindowId};
 use crate::names::AgentName;
 use crate::org::Org;
-use crate::ports::{Clock, Ids, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store};
+use crate::ports::{
+    Clock, Git, GitEvent, Ids, Notifier, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store,
+};
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, transition};
 use crate::time::Millis;
@@ -66,6 +68,10 @@ pub struct Ports {
     pub ids: Box<dyn Ids>,
     /// Directory probe (D26).
     pub dirs: Arc<dyn DirProbe>,
+    /// Desktop alerts.
+    pub notifier: Box<dyn Notifier>,
+    /// Git worktrees.
+    pub git: Box<dyn Git>,
 }
 
 /// Everything the engine reacts to.
@@ -81,6 +87,13 @@ pub enum Input {
     CliInventory(Vec<(CliKind, CliPresence)>),
     /// D26: every resolved agent directory, probed after the first frame.
     DirInventory(Vec<(PathBuf, DirStatus)>),
+    /// A report from git.
+    Git(GitEvent),
+    /// The user clicked an agent's alert.
+    AlertClicked {
+        /// Which agent.
+        agent: AgentName,
+    },
     /// A timer is due.
     Tick,
 }
@@ -255,6 +268,9 @@ impl Engine {
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
             }
+            // Worktrees: later tasks act on git's answers.
+            Input::Git(_) => Vec::new(),
+            Input::AlertClicked { agent } => vec![Event::AlertClicked { agent }],
             Input::Tick => self.on_tick(),
             Input::Runtime(RuntimeEvent::Inventory(windows)) => self.on_inventory(&windows),
             // Pastes: Give work's dialog (phase 2).
@@ -266,7 +282,7 @@ impl Engine {
         match c {
             Command::StartAgent { agent } => self.start_agent(agent),
             Command::StopAgent { agent } => self.stop_agent(&agent),
-            Command::GiveWork { agent, task } => self.give_work(agent, task),
+            Command::GiveWork { agent, task, run } => self.give_work(agent, task, run),
             Command::ViewAgent { agent } => self.view_agent(&agent),
             Command::EditOrg(edit) => self.edit_org(edit),
             Command::ReloadOrg => self.reload_org(),
@@ -290,6 +306,8 @@ impl Engine {
                     last_reply: rt.and_then(|r| r.last_reply.clone()),
                     notice: rt.and_then(|r| r.notice.clone()),
                     problem: problems.remove(&name),
+                    worktree: None,
+                    delivery_pending: false,
                 };
                 (name, view)
             })
@@ -301,6 +319,7 @@ impl Engine {
             org_error: self.org_error.clone(),
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
+            worktrees: Vec::new(),
         }
     }
 

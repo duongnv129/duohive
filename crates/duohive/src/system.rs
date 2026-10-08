@@ -28,7 +28,7 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
-use duohive_core::ports::{OrgFileError, Store, StoreError};
+use duohive_core::ports::{NoGit, NoNotifier, OrgFileError, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
@@ -239,6 +239,8 @@ pub async fn start_system(
         clock: Box::new(SystemClock),
         ids: Box::new(RandomIds),
         dirs: Arc::new(FsDirProbe),
+        notifier: Box::new(NoNotifier),
+        git: Box::new(NoGit),
     };
     let cfg = EngineConfig {
         home: home.clone(),

@@ -21,6 +21,7 @@ fn snapshot_of(m: &UiModel, reconnecting: u32) -> Event {
         org_error: None,
         settings_error: None,
         reconnecting,
+        worktrees: Vec::new(),
     }))
 }
 

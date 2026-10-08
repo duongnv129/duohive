@@ -52,6 +52,8 @@ pub fn view(status: Status) -> AgentView {
         last_reply: None,
         notice: None,
         problem: None,
+        worktree: None,
+        delivery_pending: false,
     }
 }
 

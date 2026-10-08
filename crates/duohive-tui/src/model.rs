@@ -159,10 +159,26 @@ impl UiModel {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
                 _ => self.footer_note = Some(reason),
             },
-            Event::GiveWorkRefused { agent, state } => {
+            Event::GiveWorkRefused { agent, state, .. } => {
                 self.footer_note = Some(format!("{agent} is {}", state.word()));
             }
             Event::Reconnected => self.reconnecting = 0,
+            Event::AgentRunChanged {
+                agent,
+                worktree,
+                delivery_pending,
+            } => {
+                return self.update_view(&agent, |v| {
+                    v.worktree = worktree;
+                    v.delivery_pending = delivery_pending;
+                });
+            }
+            // Alerts and worktrees reach the screen in later tasks.
+            Event::Alert(_)
+            | Event::AlertsUnavailable
+            | Event::AlertClicked { .. }
+            | Event::GiveWorkNotTaken { .. }
+            | Event::Worktrees(_) => {}
         }
         true
     }
@@ -256,6 +272,8 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     last_reply: None,
     notice: None,
     problem: None,
+    worktree: None,
+    delivery_pending: false,
 };
 
 #[cfg(test)]
@@ -366,6 +384,7 @@ mod tests {
                 message: "x".into(),
             }),
             reconnecting: 3,
+            worktrees: Vec::new(),
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);

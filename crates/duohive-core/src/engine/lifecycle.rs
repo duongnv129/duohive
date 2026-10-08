@@ -14,6 +14,7 @@ use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
 use crate::validate::{DirStatus, agent_problem};
+use crate::worktree::RunIn;
 
 impl Engine {
     /// `StartAgent`: a fresh launch with no task, from stopped or errored.
@@ -27,8 +28,8 @@ impl Engine {
         self.launch_or_queue(agent, None)
     }
 
-    /// `GiveWork` by state (TD §5.1).
-    pub(super) fn give_work(&mut self, agent: AgentName, task: String) -> Vec<Event> {
+    /// `GiveWork` by state (TD §5.1). `_run` is ignored until worktrees land.
+    pub(super) fn give_work(&mut self, agent: AgentName, task: String, _run: RunIn) -> Vec<Event> {
         if !self.knows(&agent) {
             return reject(format!("no agent named {agent}"));
         }
@@ -40,7 +41,11 @@ impl Engine {
             AgentState::Finished | AgentState::Idle => self.type_next_turn(&agent, task),
             // Starting has no input box yet; working and waiting are busy.
             state @ (AgentState::Starting | AgentState::Working | AgentState::Waiting) => {
-                vec![Event::GiveWorkRefused { agent, state }]
+                vec![Event::GiveWorkRefused {
+                    agent,
+                    state,
+                    pending: false,
+                }]
             }
         }
     }
@@ -134,7 +139,11 @@ impl Engine {
         if self.cli.is_none() {
             self.queued_launches.push(match task {
                 None => Command::StartAgent { agent },
-                Some(task) => Command::GiveWork { agent, task },
+                Some(task) => Command::GiveWork {
+                    agent,
+                    task,
+                    run: RunIn::Directory,
+                },
             });
             return Vec::new();
         }
