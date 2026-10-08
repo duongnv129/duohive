@@ -167,7 +167,13 @@ impl Engine {
                 let name = duo.name.clone();
                 // A stop the user already asked for stays a plain stop.
                 let stopping = self.agents.get(&name).is_some_and(|rt| rt.stopping);
-                if duo.cli != old.duo.cli && self.state_of(&name).is_running() && !stopping {
+                // A worktree being created launches on the new CLI anyway (P2-D20).
+                let creating = self.creating_worktree(&name);
+                if duo.cli != old.duo.cli
+                    && self.state_of(&name).is_running()
+                    && !stopping
+                    && !creating
+                {
                     out.extend(self.stop_agent(&name));
                     self.rt_mut(&name).restart_after_stop = true;
                 }
@@ -203,13 +209,23 @@ impl Engine {
     }
 
     /// Refuses a reload that drops an agent that isn't stopped (renamed or removed
-    /// by hand, Duo included): its live session must not be orphaned (D9).
+    /// by hand, Duo included): its live session must not be orphaned (D9). Nor may
+    /// it drop one whose worktree is being created: git's answer must still find it
+    /// (P2-D20).
     fn reload_drops_live_agent(&self, org: &Org) -> Option<OrgFileError> {
         let keeps = |a: &AgentName| org.is_duo(a) || org.find_agent(a).is_some();
         self.agent_names()
             .into_iter()
             .filter(|a| !keeps(a))
-            .find_map(|a| drop_refusal(&a, self.state_of(&a)))
+            .find_map(|a| {
+                if self.creating_worktree(&a) {
+                    return Some(OrgFileError {
+                        line: None,
+                        message: getting_ready(&a),
+                    });
+                }
+                drop_refusal(&a, self.state_of(&a))
+            })
     }
 
     /// Gives every agent in the org a runtime entry and drops entries the org no
