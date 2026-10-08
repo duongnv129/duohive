@@ -19,6 +19,7 @@ use crate::names::AgentName;
 use crate::org::Org;
 use crate::ports::{LiveWindow, OrgFileError, SessionRow};
 use crate::status::{AgentState, Trigger};
+use crate::worktree::TaskId;
 
 /// What start-up holds until the inventory arrives.
 #[derive(Debug)]
@@ -78,6 +79,17 @@ impl Engine {
         out.insert(0, Event::Snapshot(Box::new(self.snapshot())));
         self.alerts_unavailable(&mut out);
         out
+    }
+
+    /// Whether a session row the inventory hasn't settled yet, for an agent
+    /// the org doesn't name, ran in `task`'s worktree: it may still be live,
+    /// so the worktree counts as in use (P2-D6).
+    pub(super) fn orphan_in(&self, agent: &AgentName, task: &TaskId) -> bool {
+        self.reconnect.as_ref().is_some_and(|r| {
+            r.orphans
+                .iter()
+                .any(|row| &row.agent == agent && row.worktree.as_ref() == Some(task))
+        })
     }
 
     /// Shutdown (Review Focus 3): hooks taken but not applied (the start-up
@@ -158,6 +170,8 @@ impl Engine {
         self.needs_you_shown.clone_from(&items);
         out.push(Event::NeedsYouChanged(items));
         self.replaying = false;
+        // Orphan sessions no longer hold their worktrees in use.
+        self.worktrees_stale = true;
         out.push(Event::Reconnected);
     }
 

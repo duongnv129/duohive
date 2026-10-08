@@ -106,7 +106,6 @@ impl Engine {
         Some(out)
     }
 
-    /// Whether `agent` is held.
     /// Whether a held agent's live session runs in `task`'s worktree (P2-D6):
     /// held rows are running agents, so their worktrees are in use.
     pub(in crate::engine) fn held_in(&self, agent: &AgentName, task: &TaskId) -> bool {
@@ -116,6 +115,7 @@ impl Engine {
             .any(|r| &r.agent == agent && r.worktree.as_ref() == Some(task))
     }
 
+    /// Whether `agent` is held.
     pub(super) fn is_held(&self, agent: &AgentName) -> bool {
         self.held.rows.iter().any(|r| &r.agent == agent)
     }

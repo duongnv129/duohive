@@ -275,6 +275,10 @@ pub struct CheckWorktree {
     pub branch: String,
     /// The base commit the branch was created on.
     pub created_from: String,
+    /// Which incarnation of the row this check is for; echoed in `Checked`,
+    /// so an answer for a removed row is never applied to a newer row with
+    /// the same agent and task.
+    pub generation: u64,
 }
 
 /// A request to remove a worktree.
@@ -331,6 +335,8 @@ pub enum GitEvent {
         dirty_files: u32,
         /// The base ref found, if any.
         base: Option<BaseRef>,
+        /// The request's `generation`.
+        generation: u64,
     },
     /// A worktree was removed, or not.
     Removed {
@@ -528,6 +534,7 @@ mod tests {
             path: "/repo/.wt/t-1".into(),
             branch: "duohive/t-1".into(),
             created_from: "abc123".into(),
+            generation: 7,
         }
     }
 
@@ -682,6 +689,7 @@ mod tests {
                 merge: MergeState::NotMerged { files_changed: 3 },
                 dirty_files: 1,
                 base: Some(BaseRef("main".into())),
+                generation: 1,
             },
             GitEvent::Checked {
                 agent: n("a"),
@@ -689,6 +697,7 @@ mod tests {
                 merge: MergeState::Merged(MergeKind::Squash),
                 dirty_files: 0,
                 base: None,
+                generation: 2,
             },
             GitEvent::Checked {
                 agent: n("a"),
@@ -696,6 +705,7 @@ mod tests {
                 merge: MergeState::Unknown("no base".into()),
                 dirty_files: 0,
                 base: None,
+                generation: 2,
             },
             GitEvent::Removed {
                 agent: n("a"),
