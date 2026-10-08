@@ -135,6 +135,8 @@ pub struct UiModel {
     pub live_agent: Option<AgentName>,
     /// `z`: the selected agent's pane fills the screen (UI §4.2).
     pub zoomed: bool,
+    /// The pane that had focus when zoom started; restoring goes back to it.
+    pub zoom_from: crate::focus::Pane,
 }
 
 impl UiModel {
@@ -165,6 +167,7 @@ impl UiModel {
             scrolled: false,
             live_agent: None,
             zoomed: false,
+            zoom_from: crate::focus::Pane::Org,
         }
     }
 
@@ -343,6 +346,9 @@ impl UiModel {
     fn keep_selection_valid(&mut self) {
         if !self.has_node(&self.selected) {
             self.selected = NodeKey::Duo;
+        }
+        if self.selected_agent().is_none() {
+            self.zoomed = false;
         }
         let gone: Vec<NodeKey> = self
             .folded

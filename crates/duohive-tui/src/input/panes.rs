@@ -50,14 +50,22 @@ pub(super) fn move_focus(m: &mut UiModel, forward: bool) {
 /// or role says what `z` does instead (P2-D15).
 pub(super) fn toggle_zoom(m: &mut UiModel) {
     if m.zoomed_agent().is_some() {
-        m.zoomed = false;
+        restore_zoom(m);
     } else if m.selected_agent().is_some() {
         m.zoomed = true;
+        m.zoom_from = m.focus.pane;
         m.focus.pane = Pane::Agent;
         m.focus.agent_mode = AgentMode::Selected;
     } else {
         m.footer_note = Some("z zooms an agent".to_owned());
     }
+}
+
+/// `z` or `esc` while zoomed: the panes come back, focus on the pane zoom started from.
+pub(super) fn restore_zoom(m: &mut UiModel) {
+    m.zoomed = false;
+    m.focus.pane = m.zoom_from;
+    m.focus.agent_mode = AgentMode::Selected;
 }
 
 /// `ctrl+↑` / `ctrl+↓`: between UI §3's size and the size that leaves the agent pane 6

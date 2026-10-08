@@ -51,7 +51,15 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
         return typing_footer(buf, r, m, p);
     }
     let text = truncate_end(&format!("{KEYS}{}", need_you(m)), w);
-    put(buf, r.x, r.y, &text, w, fg(p.fg_muted));
+    // The Needs you count starts at its `◆`, after the separator.
+    let split = text
+        .char_indices()
+        .find(|&(_, c)| c == '◆')
+        .map_or(text.len(), |(i, _)| i);
+    let (keys, need) = text.split_at(split);
+    let x = put(buf, r.x, r.y, keys, w, fg(p.fg_muted));
+    let room = w.saturating_sub(usize::from(x - r.x));
+    put(buf, x, r.y, need, room, fg(p.attention));
 }
 
 /// ` · ◆ 2 need you (squad-3, billing-api)`, or nothing when no one needs you.

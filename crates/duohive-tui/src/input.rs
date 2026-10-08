@@ -231,6 +231,10 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         return Vec::new();
     }
     match a {
+        Action::Esc if m.zoomed_agent().is_some() => {
+            panes::restore_zoom(m);
+            return Vec::new();
+        }
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);

@@ -108,3 +108,24 @@ fn zoomed_stopped_agent_shows_its_stopped_line() {
     assert!(lines.contains("○ stopped · space to give work"), "{lines}");
     assert!(lines.starts_with(" DuoHive › pay-qa (zoomed)"));
 }
+
+#[test]
+fn zoom_footer_need_you_segment_is_attention_coloured() {
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    let m = zoomed();
+    let p = ctx().palette;
+    let mut buf = Buffer::empty(Rect::new(0, 0, 100, 1));
+    super::zoom::draw_footer(&mut buf, Rect::new(0, 0, 100, 1), &m, &p);
+    let text: String = (0..100).map(|x| buf[(x, 0)].symbol().to_owned()).collect();
+    let at = text.chars().position(|c| c == '◆').unwrap();
+    let at = u16::try_from(at).unwrap();
+    assert_eq!(buf[(at, 0)].fg, p.attention);
+    assert_eq!(buf[(at + 4, 0)].fg, p.attention);
+    assert_eq!(buf[(2, 0)].fg, p.fg_muted);
+    // Cut: the ellipsis keeps the attention colour.
+    let mut narrow = Buffer::empty(Rect::new(0, 0, 60, 1));
+    super::zoom::draw_footer(&mut narrow, Rect::new(0, 0, 60, 1), &m, &p);
+    assert_eq!(narrow[(59, 0)].symbol(), "…");
+    assert_eq!(narrow[(59, 0)].fg, p.attention);
+}
