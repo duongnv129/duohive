@@ -18,6 +18,10 @@ use crate::tree::tree_rows;
 
 const GROUP_START_STOP: &str = "s starts or stops an agent";
 const DUO_NOT_DELETABLE: &str = "Duo can't be deleted";
+/// Added to the stop question when the agent is in a worktree (UI §4.8).
+const STOP_KEEPS_WORKTREE: &str = "The worktree and its branch are kept.";
+/// Ends the delete-role and delete-team questions (UI §4.8).
+const WORKTREES_KEPT: &str = "Worktrees are kept and stay listed under w.";
 /// The engine refuses every edit while `org.toml` doesn't parse (Review Focus 2).
 const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
 
@@ -90,6 +94,8 @@ pub enum Action {
     Zoom,
     /// `space`: Give work to the selected agent.
     GiveWork,
+    /// `w`: the worktree list.
+    Worktrees,
 }
 
 /// What the app loop does after an action.
@@ -159,6 +165,13 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
+        Some(Dialog::Worktrees(_)) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Char('d') => Some(Action::Delete),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        },
         Some(Dialog::Chooser(_)) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
@@ -225,6 +238,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             return Vec::new();
         }
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
+        Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
         None => {}
     }
     if m.zoomed_agent().is_some()
@@ -241,6 +255,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             panes::restore_zoom(m);
             return Vec::new();
         }
+        Action::Worktrees => return worktrees::open(m),
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);
@@ -348,6 +363,9 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
         back.saving = yes;
         m.dialog = Some(Dialog::Form(back));
     }
+    if let Some(list) = c.back_list {
+        m.dialog = Some(Dialog::Worktrees(list));
+    }
     if yes {
         vec![UiEffect::Send(c.on_yes)]
     } else {
@@ -413,7 +431,10 @@ fn edit_here(m: &mut UiModel) -> Vec<UiEffect> {
     let form = match &m.selected {
         NodeKey::Duo => Form::edit_org(&m.org, m.view(&m.org.duo.name)),
         NodeKey::Agent(a) if m.org.is_duo(a) => Form::edit_org(&m.org, m.view(a)),
-        NodeKey::Agent(a) => Form::edit_agent(&m.org, a, m.view(a), dirs, home),
+        NodeKey::Agent(a) => {
+            let has_worktrees = m.worktrees.iter().any(|r| &r.agent == a);
+            Form::edit_agent(&m.org, a, m.view(a), has_worktrees, dirs, home)
+        }
         NodeKey::Role(k) => Form::edit_role(&m.org, k, dirs, home),
         NodeKey::Team(t) => Form::edit_team(&m.org, t, dirs, home),
     };
@@ -469,7 +490,12 @@ fn start_stop(m: &mut UiModel) -> Vec<UiEffect> {
             let age = age_of(status, m.now)
                 .map(|d| format!(" ({})", format_age(d)))
                 .unwrap_or_default();
-            let line = format!("Stop {agent}? It is {}{age}.", status_word(status));
+            let word = status_word(status);
+            let line = if m.view(&agent).worktree.is_some() {
+                format!("Stop {agent}? It is {word}{age} in a worktree. {STOP_KEEPS_WORKTREE}")
+            } else {
+                format!("Stop {agent}? It is {word}{age}.")
+            };
             m.dialog = Some(confirm(
                 "Stop agent?",
                 vec![line],
@@ -528,7 +554,11 @@ fn delete(m: &mut UiModel) -> Vec<UiEffect> {
     }
     let lines = match &key {
         NodeKey::Agent(_) => vec![first],
-        _ => removes(m, &first, &agents),
+        _ => {
+            let mut lines = removes(m, &first, &agents);
+            lines.push(WORKTREES_KEPT.to_owned());
+            lines
+        }
     };
     let on_yes = Command::EditOrg(OrgEdit::Delete(key));
     m.dialog = Some(confirm(title, lines, "Delete", on_yes));
@@ -580,12 +610,14 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
         focus_yes: false,
         on_yes,
         back: None,
+        back_list: None,
     }))
 }
 
 mod agent;
 mod give_work;
 mod panes;
+mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
@@ -593,5 +625,7 @@ mod agent_tests;
 mod pane_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod worktree_tests;
 #[cfg(test)]
 mod zoom_tests;

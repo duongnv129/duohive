@@ -9,6 +9,7 @@ mod header;
 mod needs_you;
 mod org_pane;
 mod screens;
+mod worktrees;
 mod zoom;
 
 use duohive_core::names::AgentName;
@@ -22,6 +23,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 
 pub use screens::{BlockingScreen, render_blocking};
+pub(crate) use worktrees::files_changed;
 
 use crate::focus::{Pane, chat_extra_max_below, layout_below, shows_replies, zoom_area};
 use crate::format::width;
@@ -109,7 +111,7 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
         zoom::draw_header(buf, row(area.y + banner_rows), agent, p);
         zoom::draw_footer(buf, row(area.bottom() - 1), m, p);
         agent_pane::draw(buf, pane, m, ctx, live);
-        if let Some(Some(at)) = m.dialog.as_ref().map(|d| dialog::draw(buf, area, d, p)) {
+        if let Some(Some(at)) = m.dialog.as_ref().map(|d| dialog::draw(buf, area, d, m, p)) {
             frame.set_cursor_position(at);
         }
         return;
@@ -121,7 +123,7 @@ pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option
     agent_pane::draw(buf, l.agent, m, ctx, live);
     let chat_cursor = chat_pane::draw(buf, l.chat, m, ctx, l.compact);
     let cursor = match &m.dialog {
-        Some(d) => dialog::draw(buf, area, d, p),
+        Some(d) => dialog::draw(buf, area, d, m, p),
         None => chat_cursor,
     };
     if let Some(at) = cursor {
@@ -295,5 +297,7 @@ mod pane_tests;
 mod screen_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod worktrees_tests;
 #[cfg(test)]
 mod zoom_tests;

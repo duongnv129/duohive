@@ -194,3 +194,35 @@ pub fn render_live_lines(
     t.draw(|f| render_live(f, m, ctx, live)).unwrap();
     lines_of(t.backend().buffer())
 }
+
+/// A worktree row of `agent` for `task`, checked 3 minutes ago against `origin/main`.
+pub fn worktree_row(
+    agent: &str,
+    task: &str,
+    state: duohive_core::worktree::WorktreeState,
+) -> duohive_core::worktree::WorktreeRow {
+    use duohive_core::worktree::{BaseRef, TaskId, WorktreeRow};
+    WorktreeRow {
+        agent: n(agent),
+        task: TaskId(task.to_owned()),
+        repo: "/repo".into(),
+        path: format!("/wt/{agent}/{task}").into(),
+        branch: format!("duohive/{agent}/{task}"),
+        created_at: ago(mins(60)),
+        created_from: "abc123".to_owned(),
+        state,
+        checked_at: Some(ago(mins(3))),
+        base: Some(BaseRef("origin/main".to_owned())),
+    }
+}
+
+/// UI §4.9's four rows.
+pub fn spec_worktrees() -> Vec<duohive_core::worktree::WorktreeRow> {
+    use duohive_core::worktree::WorktreeState as S;
+    vec![
+        worktree_row("auth-service", "retry-loop", S::InUse),
+        worktree_row("pay-qa", "retry-cases", S::Removing),
+        worktree_row("squad-2", "flaky-date", S::NotMerged { files_changed: 2 }),
+        worktree_row("squad-1", "readme", S::MergedDirty),
+    ]
+}

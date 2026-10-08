@@ -48,12 +48,13 @@ impl Form {
         build(org, &parent, title, target, &name, &Fields::default()).ready(org, dirs, home)
     }
 
-    /// Edits `name`; renaming only while it is stopped, and a running agent is told when
-    /// changes apply.
+    /// Edits `name`; renaming only while it is stopped and has no worktree row
+    /// (`has_worktrees`), and a running agent is told when changes apply.
     pub fn edit_agent(
         org: &Org,
         name: &AgentName,
         view: &AgentView,
+        has_worktrees: bool,
         dirs: &dyn DirProbe,
         home: &Path,
     ) -> Form {
@@ -74,7 +75,7 @@ impl Form {
         let target = Target::EditAgent(name.clone());
         let mut f = build(org, &parent, title, target, name.as_str(), &own);
         let state = view.status.state;
-        if state != AgentState::Stopped {
+        if state != AgentState::Stopped || has_worktrees {
             lock_name(&mut f);
         }
         if state.is_running() {
