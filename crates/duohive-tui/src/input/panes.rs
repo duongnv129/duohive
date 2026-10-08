@@ -27,6 +27,7 @@ pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
         // Typing mode is mapped before this (it takes every key).
         Pane::Agent => match code {
             KeyCode::Enter => Some(Action::Enter),
+            KeyCode::Char('z') => Some(Action::Zoom),
             KeyCode::PageUp => Some(Action::PageUp),
             KeyCode::PageDown => Some(Action::PageDown),
             _ => None,
@@ -43,6 +44,20 @@ pub(super) fn move_focus(m: &mut UiModel, forward: bool) {
         m.focus.prev()
     };
     m.focus.agent_mode = AgentMode::Selected;
+}
+
+/// `z`: zoom the selected agent, focusing its pane in Selected mode, or restore; a team
+/// or role says what `z` does instead (P2-D15).
+pub(super) fn toggle_zoom(m: &mut UiModel) {
+    if m.zoomed_agent().is_some() {
+        m.zoomed = false;
+    } else if m.selected_agent().is_some() {
+        m.zoomed = true;
+        m.focus.pane = Pane::Agent;
+        m.focus.agent_mode = AgentMode::Selected;
+    } else {
+        m.footer_note = Some("z zooms an agent".to_owned());
+    }
 }
 
 /// `ctrl+↑` / `ctrl+↓`: between UI §3's size and the size that leaves the agent pane 6

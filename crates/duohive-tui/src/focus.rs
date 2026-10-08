@@ -202,6 +202,18 @@ pub(crate) fn layout_below(
     })
 }
 
+/// The zoomed agent pane: everything between the header and the footer (UI §4.2), or
+/// `None` below 80×24. `banners` rows are taken above the header.
+pub(crate) fn zoom_area(area: Rect, banners: u16) -> Option<Rect> {
+    Size::of(area)?;
+    Some(Rect::new(
+        area.x,
+        area.y + banners + 1,
+        area.width,
+        available_rows(area, banners),
+    ))
+}
+
 /// The most rows `ctrl+↑` can add to the chat at `area` (P2-D3): up to where the agent
 /// pane keeps 6 rows.
 pub fn chat_extra_max(area: Rect) -> i16 {

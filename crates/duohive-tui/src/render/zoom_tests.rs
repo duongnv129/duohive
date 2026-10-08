@@ -1,0 +1,110 @@
+//! The zoomed agent: header, footer and the full-screen pane (UI §4.2).
+
+use duohive_core::event::NeedsYouItem;
+use duohive_core::org::NodeKey;
+use duohive_core::testkit::n;
+
+use super::LiveScreen;
+use crate::fixtures::{ctx, render_lines, render_live_lines, spec_model, term_for};
+use crate::focus::Pane;
+use crate::model::UiModel;
+
+const SCREEN: &[u8] = "✓ go test ./... (14 passed)\r\n\
+✓ Ready for review · 3 files changed\r\n\
+\r\n\
+❯"
+.as_bytes();
+
+fn zoomed() -> UiModel {
+    let mut m = spec_model();
+    m.zoomed = true;
+    m.focus.pane = Pane::Agent;
+    m
+}
+
+fn lines_at(m: &UiModel, w: u16, h: u16) -> Vec<String> {
+    let mut sized = m.clone();
+    sized.screen = ratatui::layout::Rect::new(0, 0, w, h);
+    let term = term_for(&sized, w, h, SCREEN, (2, 3));
+    let screen = LiveScreen {
+        agent: &n("auth-service"),
+        term: &term,
+        first_row: 0,
+        no_color: false,
+    };
+    render_live_lines(&sized, &ctx(), Some(screen), w, h)
+}
+
+#[test]
+fn zoomed_snapshots() {
+    let m = zoomed();
+    for (name, w, h) in [("zoomed_80x24", 80, 24), ("zoomed_160x48", 160, 48)] {
+        insta::assert_snapshot!(name, lines_at(&m, w, h).join("\n"));
+    }
+}
+
+#[test]
+fn zoom_header_names_the_agent_and_restores_at_the_right() {
+    let lines = lines_at(&zoomed(), 100, 30);
+    let header = &lines[0];
+    assert!(
+        header.starts_with(" DuoHive › auth-service (zoomed)"),
+        "{header}"
+    );
+    assert!(header.trim_end().ends_with("z restore"), "{header}");
+    assert!(header.ends_with("z restore "), "{header}");
+}
+
+#[test]
+fn zoom_footer_lists_needs_you() {
+    let lines = lines_at(&zoomed(), 100, 30);
+    assert_eq!(
+        lines.last().unwrap().trim_end(),
+        " enter type · z restore · PgUp/PgDn scroll · ◆ 2 need you (squad-3, billing-api)"
+    );
+}
+
+#[test]
+fn zoom_footer_is_cut_with_an_ellipsis() {
+    let mut m = zoomed();
+    let extra = m.needs_you[0].clone();
+    m.needs_you.push(NeedsYouItem {
+        agent: n("pay-qa"),
+        ..extra
+    });
+    let lines = lines_at(&m, 80, 24);
+    let footer = lines.last().unwrap();
+    assert!(footer.trim_end().ends_with('…'), "{footer}");
+    assert!(
+        footer.starts_with(" enter type · z restore · PgUp/PgDn scroll"),
+        "{footer}"
+    );
+}
+
+#[test]
+fn zoom_footer_without_needs_you_has_just_the_keys() {
+    let mut m = zoomed();
+    m.needs_you.clear();
+    let lines = lines_at(&m, 100, 30);
+    assert_eq!(
+        lines.last().unwrap().trim_end(),
+        " enter type · z restore · PgUp/PgDn scroll"
+    );
+}
+
+#[test]
+fn zoom_hides_the_other_panes() {
+    let lines = lines_at(&zoomed(), 100, 30).join("\n");
+    assert!(!lines.contains("Needs you"));
+    assert!(!lines.contains("Chat"));
+    assert!(lines.contains("┏━ auth-service · Claude"));
+}
+
+#[test]
+fn zoomed_stopped_agent_shows_its_stopped_line() {
+    let mut m = zoomed();
+    m.selected = NodeKey::Agent(n("pay-qa"));
+    let lines = render_lines(&m, &ctx(), 100, 30).join("\n");
+    assert!(lines.contains("○ stopped · space to give work"), "{lines}");
+    assert!(lines.starts_with(" DuoHive › pay-qa (zoomed)"));
+}
