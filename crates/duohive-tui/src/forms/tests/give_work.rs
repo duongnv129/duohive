@@ -293,7 +293,10 @@ fn not_taken_reopens_prefilled() {
     });
     assert_eq!(dialog(&m).agent, n("billing-api"));
     assert_eq!(dialog(&m).task.text(), "Fix it\nthen run tests");
-    assert!(screen_text(&m).contains("billing-api didn't take the task"));
+    assert_eq!(
+        dialog(&m).note.as_deref(),
+        Some("billing-api didn't take the task · enter to try again")
+    );
     assert_eq!(
         key(&mut m, plain(KeyCode::Enter)),
         given("Fix it\nthen run tests", RunIn::Directory)
@@ -405,18 +408,63 @@ fn refused_give_work_comes_back_with_its_text() {
 }
 
 #[test]
-fn sent_memory_ends_when_the_agent_leaves_rest() {
+fn sent_memory_ends_at_the_next_user_action() {
+    let mut m = model_in(AgentState::Idle);
+    send(&mut m, "x");
+    key(&mut m, plain(KeyCode::Down));
+    m.apply(Event::CommandRejected {
+        reason: "unrelated".into(),
+    });
+    assert_eq!(m.dialog, None);
+    assert_eq!(m.footer_note.as_deref(), Some("unrelated"));
+}
+
+#[test]
+fn refusal_after_the_status_change_still_reopens() {
     let mut m = model_in(AgentState::Idle);
     send(&mut m, "x");
     m.apply(Event::AgentStatusChanged {
         agent: n("billing-api"),
         status: status(AgentState::Working, mins(0)),
     });
-    m.apply(Event::CommandRejected {
-        reason: "unrelated".into(),
+    m.apply(Event::GiveWorkRefused {
+        agent: n("billing-api"),
+        state: AgentState::Working,
+        pending: false,
     });
-    assert_eq!(m.dialog, None);
-    assert_eq!(m.footer_note.as_deref(), Some("unrelated"));
+    assert_eq!(dialog(&m).task.text(), "x");
+    assert_eq!(dialog(&m).note.as_deref(), Some("billing-api is working"));
+}
+
+#[test]
+fn space_on_another_agent_leaves_the_deferred_task() {
+    let mut m = stopped_model();
+    update(&mut m, Action::Delete);
+    not_taken(&mut m);
+    key(&mut m, plain(KeyCode::Esc));
+    m.selected = NodeKey::Agent(n("auth-service"));
+    space(&mut m);
+    assert_eq!(dialog(&m).task.text(), "");
+    assert!(m.give_later.is_some());
+}
+
+#[test]
+fn deferred_reopen_keeps_the_run_choice() {
+    let mut m = with_worktree_default(stopped_model(), false);
+    space(&mut m);
+    type_text(&mut m, "go");
+    key(&mut m, plain(KeyCode::Tab));
+    space(&mut m);
+    assert_eq!(dialog(&m).run, RunIn::NewWorktree);
+    assert_eq!(key(&mut m, plain(KeyCode::Enter)).len(), 1);
+    m.dialog = Some(Dialog::Chooser(Chooser::for_selection(&m.org, &m.selected)));
+    m.apply(Event::CommandRejected {
+        reason: "busy".into(),
+    });
+    key(&mut m, plain(KeyCode::Esc));
+    space(&mut m);
+    assert_eq!(dialog(&m).task.text(), "go");
+    assert_eq!(dialog(&m).run, RunIn::NewWorktree);
 }
 
 fn not_taken(m: &mut UiModel) {

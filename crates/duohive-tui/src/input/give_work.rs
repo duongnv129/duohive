@@ -20,12 +20,16 @@ pub(super) fn open(m: &mut UiModel) -> Vec<UiEffect> {
         NodeKey::Team(_) => AGENT_OR_ROLE,
         NodeKey::Role(_) => SELECT_AGENT,
         NodeKey::Agent(a) => {
-            let task = match m.give_later.take() {
-                Some((later, task)) if later == *a => task,
-                _ => String::new(),
+            let later = match m.give_later.take() {
+                Some((who, task, run)) if who == *a => Some((task, run)),
+                other => {
+                    m.give_later = other;
+                    None
+                }
             };
-            m.give_sent = None;
-            let g = GiveWork::new(&m.org, a, m.view(a), &task, m.dirs.probe(), &m.home);
+            let (task, run) = later.unwrap_or_default();
+            let mut g = GiveWork::new(&m.org, a, m.view(a), &task, m.dirs.probe(), &m.home);
+            g.set_run(run);
             m.dialog = Some(Dialog::GiveWork(Box::new(g)));
             return Vec::new();
         }
