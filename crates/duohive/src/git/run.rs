@@ -66,6 +66,16 @@ pub(super) struct Runner {
 impl Runner {
     /// `git -C <dir> <args>`. `Err` when git could not be run or timed out.
     pub fn git<S: AsRef<OsStr>>(&self, dir: &Path, args: &[S]) -> Result<Output, String> {
+        self.git_env(dir, args, &[])
+    }
+
+    /// [`Runner::git`] with `extra` variables for this one child.
+    pub fn git_env<S: AsRef<OsStr>>(
+        &self,
+        dir: &Path,
+        args: &[S],
+        extra: &[(&str, &str)],
+    ) -> Result<Output, String> {
         let name = args
             .iter()
             .map(AsRef::as_ref)
@@ -78,7 +88,10 @@ impl Runner {
         }
         command
             .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .envs(extra.iter().copied())
             .env("GIT_TERMINAL_PROMPT", "0")
+            // A check never takes the index lock (`status` would refresh it).
+            .env("GIT_OPTIONAL_LOCKS", "0")
             .env("LC_ALL", "C")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())

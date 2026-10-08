@@ -589,33 +589,113 @@ async fn delete_branch_keeps_a_branch_that_is_no_longer_merged() {
     assert!(f.path("t").join("b.txt").exists());
 }
 
-#[tokio::test]
-async fn same_repo_requests_run_in_order() {
-    let f = Fixture::new();
+/// Sends create, check, remove, create for task `t` back to back, the middle
+/// two through `other_repo`, and returns what each answer said. Each depends
+/// on the one before having finished.
+async fn run_back_to_back(f: &Fixture, other_repo: &Path) -> Vec<String> {
     let (mut git, mut rx) = f.cli();
-    // Sent back to back: each depends on the one before having finished.
+    let from = f.git(&["rev-parse", "origin/main"]);
     git.create(f.create_req("t"));
-    git.check(f.check_req("t", "", 1));
-    git.remove(f.remove_req("t", false, false));
+    let mut check = f.check_req("t", &from, 1);
+    check.repo = other_repo.to_path_buf();
+    git.check(check);
+    let mut remove = f.remove_req("t", false, false);
+    remove.repo = other_repo.to_path_buf();
+    git.remove(remove);
     git.create(f.create_req("t"));
     let mut kinds = Vec::new();
     for _ in 0..4 {
         kinds.push(match answer(&mut rx).await {
             GitEvent::Created { result, .. } => format!("created {}", result.is_ok()),
-            GitEvent::Checked { merge, .. } => {
-                format!("checked {}", !matches!(merge, MergeState::Merged(_)))
-            }
+            GitEvent::Checked { merge, .. } => format!("checked {merge:?}"),
             GitEvent::Removed { result, .. } => format!("removed {}", result.is_ok()),
         });
     }
-    assert_eq!(
-        kinds,
-        [
-            "created true",
-            "checked true",
-            "removed true",
-            // The branch was kept, so the name is taken.
-            "created false",
-        ]
-    );
+    kinds
+}
+
+const IN_ORDER: [&str; 4] = [
+    "created true",
+    "checked NotMerged { files_changed: 0 }",
+    "removed true",
+    // The branch was kept, so the name is taken.
+    "created false",
+];
+
+#[tokio::test]
+async fn same_repo_requests_run_in_order() {
+    let f = Fixture::new();
+    assert_eq!(run_back_to_back(&f, &f.repo).await, IN_ORDER);
+}
+
+#[tokio::test]
+async fn repo_root_and_subdirectory_share_one_worker() {
+    let f = Fixture::new();
+    f.commit_file(&f.repo, "sub/deep/file.txt", "x\n", "sub");
+    f.push_main();
+    let sub = f.repo.join("sub").join("deep");
+    assert_eq!(run_back_to_back(&f, &sub).await, IN_ORDER);
+}
+
+#[tokio::test]
+async fn rebase_check_does_not_trust_merge_commits() {
+    let f = Fixture::new();
+    let (mut git, mut rx) = f.cli();
+    let from = create(&f, &mut git, &mut rx, "t").await;
+    let wt = f.path("t");
+    let c1 = f.commit_file(&wt, "a.txt", "a\n", "one");
+    // A side branch merged into the task branch; the merge commit itself
+    // carries extra content no ordinary commit has.
+    f.git_in(&wt, &["checkout", "--quiet", "-b", "side"]);
+    let c2 = f.commit_file(&wt, "b.txt", "b\n", "two");
+    f.git_in(&wt, &["checkout", "--quiet", &branch("t")]);
+    f.git_in(&wt, &["merge", "--quiet", "--no-ff", "--no-commit", "side"]);
+    fs::write(wt.join("only-in-merge.txt"), "precious\n").unwrap();
+    f.git_in(&wt, &["add", "-A"]);
+    f.git_in(&wt, &["commit", "--quiet", "-m", "merge side"]);
+    // The base takes the ordinary commits only.
+    f.advance_main("other.txt");
+    f.git(&["cherry-pick", &c1, &c2]);
+    f.push_main();
+    let (merge, _, _) = check(&f, &mut git, &mut rx, "t", &from).await;
+    assert_eq!(merge, MergeState::NotMerged { files_changed: 3 });
+}
+
+#[tokio::test]
+async fn repeated_squash_checks_leave_one_object() {
+    let f = Fixture::new();
+    let (mut git, mut rx) = f.cli();
+    let from = create(&f, &mut git, &mut rx, "t").await;
+    f.commit_file(&f.path("t"), "a.txt", "a\n", "one");
+    f.advance_main("other.txt");
+    let loose = || {
+        let stats = f.git(&["count-objects", "-v"]);
+        stats
+            .lines()
+            .find_map(|l| l.strip_prefix("count: "))
+            .unwrap()
+            .to_owned()
+    };
+    check(&f, &mut git, &mut rx, "t", &from).await;
+    let after_one = loose();
+    // A later second: an unpinned date would give a new commit object.
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    check(&f, &mut git, &mut rx, "t", &from).await;
+    assert_eq!(loose(), after_one);
+}
+
+#[tokio::test]
+async fn delete_branch_without_force_keeps_untracked_work() {
+    let f = Fixture::new();
+    let (mut git, mut rx) = f.cli();
+    create(&f, &mut git, &mut rx, "t").await;
+    f.commit_file(&f.path("t"), "a.txt", "a\n", "work");
+    f.git(&["merge", "--quiet", "--ff-only", &branch("t")]);
+    f.push_main();
+    let file = f.path("t").join("notes.txt");
+    fs::write(&file, "keep me\n").unwrap();
+    let result = remove(&mut git, &mut rx, f.remove_req("t", true, false)).await;
+    assert!(result.is_err());
+    assert!(file.exists());
+    assert!(f.branch_exists("t"));
 }
