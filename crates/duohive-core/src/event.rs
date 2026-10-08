@@ -306,7 +306,8 @@ mod tests {
     #[test]
     fn new_events_round_trip_json() {
         use crate::alert::{Alert, AlertKind};
-        use crate::worktree::{RunIn, TaskId, WorktreeRow};
+        use crate::time::Millis;
+        use crate::worktree::{RunIn, TaskId, WorktreeRow, WorktreeState};
         let events = vec![
             Event::Alert(Alert {
                 agent: n("a"),
@@ -321,7 +322,18 @@ mod tests {
                 task: TaskId("t-1".into()),
                 reason: "branch exists".into(),
             },
-            Event::Worktrees(vec![WorktreeRow::default()]),
+            Event::Worktrees(vec![WorktreeRow {
+                agent: n("a"),
+                task: TaskId("t-1".into()),
+                repo: "/r".into(),
+                path: "/d/worktrees/a/t-1".into(),
+                branch: "duohive/a/t-1".into(),
+                created_at: Millis(1),
+                created_from: "abc".into(),
+                state: WorktreeState::CheckFailed("x".into()),
+                checked_at: None,
+                base: None,
+            }]),
             Event::GiveWorkRefused {
                 agent: n("a"),
                 state: AgentState::Working,

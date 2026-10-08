@@ -18,6 +18,7 @@ use crate::settings::Settings;
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus};
 use crate::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId, ViewError};
+use crate::worktree::{TaskId, WorktreeRow};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -209,6 +210,8 @@ pub struct FakeStoreState {
     pub sessions: BTreeMap<AgentName, SessionRow>,
     /// Every `delete_session` call, oldest first.
     pub deleted_sessions: Vec<AgentName>,
+    /// Worktree rows by agent and task.
+    pub worktrees: BTreeMap<(AgentName, TaskId), WorktreeRow>,
     /// Queued hooks, oldest first.
     pub pending: Vec<HookMessage>,
 }
@@ -224,6 +227,7 @@ impl Default for FakeStoreState {
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
             deleted_sessions: Vec::new(),
+            worktrees: BTreeMap::new(),
             pending: Vec::new(),
         }
     }
@@ -294,6 +298,31 @@ impl Store for FakeStore {
         let mut st = self.state.lock().unwrap();
         st.sessions.remove(agent);
         st.deleted_sessions.push(agent.clone());
+        Ok(())
+    }
+    fn load_worktrees(&mut self) -> Result<Vec<WorktreeRow>, StoreError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .worktrees
+            .values()
+            .cloned()
+            .collect())
+    }
+    fn save_worktree(&mut self, row: &WorktreeRow) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.worktrees
+            .insert((row.agent.clone(), row.task.clone()), row.clone());
+        Ok(())
+    }
+    fn delete_worktree(&mut self, agent: &AgentName, task: &TaskId) -> Result<(), StoreError> {
+        self.state
+            .lock()
+            .unwrap()
+            .worktrees
+            .remove(&(agent.clone(), task.clone()));
         Ok(())
     }
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {

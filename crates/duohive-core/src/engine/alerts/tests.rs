@@ -215,6 +215,7 @@ fn row(agent: &str, state: AgentState, window: &str) -> SessionRow {
         task_at_launch: true,
         saw_end_hook: false,
         last_task: None,
+        worktree: None,
     }
 }
 

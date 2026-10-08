@@ -28,6 +28,11 @@ CREATE TABLE pending_hooks (id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT
 -- Replay order is firing order (Review Focus 3); older rows fired about when they arrived.
 ALTER TABLE pending_hooks ADD COLUMN sent_at_ms INTEGER NOT NULL DEFAULT 0;
 UPDATE pending_hooks SET sent_at_ms = received_at;
+", "
+CREATE TABLE worktrees(agent TEXT NOT NULL, task TEXT NOT NULL, repo TEXT NOT NULL, path TEXT NOT NULL,
+  branch TEXT NOT NULL, created_at INTEGER NOT NULL, created_from TEXT NOT NULL, state TEXT NOT NULL,
+  checked_at INTEGER, base TEXT, PRIMARY KEY(agent, task));
+ALTER TABLE sessions ADD COLUMN worktree TEXT;
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {

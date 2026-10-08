@@ -39,6 +39,7 @@ fn row(agent: &str, state: AgentState, window: Option<&str>, since: Millis) -> S
         task_at_launch: true,
         saw_end_hook: false,
         last_task: Some("fix the login".into()),
+        worktree: None,
     }
 }
 
