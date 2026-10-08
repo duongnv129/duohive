@@ -29,13 +29,14 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
-use duohive_core::ports::{NoGit, NoNotifier, Notifier, OrgFileError, Store, StoreError};
+use duohive_core::ports::{Git, NoNotifier, Notifier, OrgFileError, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
 
+use crate::git::GitCli;
 use crate::hook_listener::{AgentClis, HookListener, InstanceLock, ListenerError};
 use crate::notifier::{ALERT_TIMEOUT, DesktopNotifier, Platform};
 use crate::real_ports::{FsDirProbe, RandomIds, SystemClock};
@@ -65,6 +66,9 @@ pub struct SystemOptions {
     /// Replaces the desktop notifier: tests and the bench set it so none posts a
     /// real alert. `None` detects the system's own ([`DesktopNotifier::detect`]).
     pub notifier: Option<Box<dyn Notifier>>,
+    /// Replaces git: tests that don't exercise worktrees set [`NoGit`](duohive_core::ports::NoGit).
+    /// `None` runs the `git` binary ([`GitCli`]).
+    pub git: Option<Box<dyn Git>>,
 }
 
 /// The system could not start.
@@ -189,6 +193,7 @@ pub async fn start_system(
     }
     let home = opts.home;
     let notifier_override = opts.notifier;
+    let git_override = opts.git;
     let hook_exe = std::env::current_exe().map_err(StartError::Exe)?;
     let agents = AgentClis::default();
     let files = {
@@ -243,6 +248,13 @@ pub async fn start_system(
         Some(notifier) => notifier,
         None => detect_notifier(inputs_tx.clone()).await,
     };
+    let git = git_override.unwrap_or_else(|| {
+        Box::new(GitCli::new(
+            paths.worktrees_dir(),
+            inputs_tx.clone(),
+            Vec::new(),
+        ))
+    });
     let ports = Ports {
         runtime: Box::new(runtime),
         store: Box::new(store),
@@ -250,7 +262,7 @@ pub async fn start_system(
         ids: Box::new(RandomIds),
         dirs: Arc::new(FsDirProbe),
         notifier,
-        git: Box::new(NoGit),
+        git,
     };
     let cfg = EngineConfig {
         home: home.clone(),

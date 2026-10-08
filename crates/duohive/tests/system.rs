@@ -31,7 +31,7 @@ use duohive_core::hook::HookMessage;
 use duohive_core::launch::{Key, LaunchCommand, LaunchSpec};
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
-use duohive_core::ports::{NoNotifier, Store};
+use duohive_core::ports::{NoGit, NoNotifier, Store};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::{StubAdapter, example_org, n};
 use duohive_core::time::Millis;
@@ -103,6 +103,7 @@ fn opts() -> SystemOptions {
         first_frame: None,
         home: std::env::temp_dir(),
         notifier: Some(Box::new(NoNotifier)),
+        git: Some(Box::new(NoGit)),
     }
 }
 
