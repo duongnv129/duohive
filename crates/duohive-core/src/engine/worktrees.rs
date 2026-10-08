@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use super::lifecycle::{getting_ready, not_found};
+use super::timers::WORKTREE_CHECK_EVERY;
 use super::{Engine, reject};
 use crate::adapter::CliPresence;
 use crate::event::Event;
@@ -211,6 +212,8 @@ impl Engine {
     /// Deletes a worktree row; a failure is reported, not fatal.
     fn drop_worktree_row(&mut self, row: &WorktreeRow, out: &mut Vec<Event>) {
         self.worktrees_stale = true;
+        self.worktree_generations
+            .remove(&(row.agent.clone(), row.task.clone()));
         if let Err(e) = self.ports.store.delete_worktree(&row.agent, &row.task) {
             out.push(Event::CommandRejected {
                 reason: format!("couldn't save state: {e}"),
@@ -227,7 +230,19 @@ impl Engine {
         let running = self.agents.get(&row.agent).is_some_and(|rt| {
             rt.status.state.is_running() && rt.worktree.as_ref() == Some(&row.task)
         });
-        running || self.held_in(&row.agent, &row.task)
+        running || self.held_in(&row.agent, &row.task) || self.orphan_in(&row.agent, &row.task)
+    }
+
+    /// `row`'s incarnation, given now when it has none.
+    fn generation(&mut self, row: &WorktreeRow) -> u64 {
+        let next = &mut self.next_generation;
+        *self
+            .worktree_generations
+            .entry((row.agent.clone(), row.task.clone()))
+            .or_insert_with(|| {
+                *next += 1;
+                *next
+            })
     }
 
     /// Whether `row` is the one being created for its agent's next launch
@@ -299,6 +314,7 @@ impl Engine {
             if skip {
                 continue;
             }
+            let generation = self.generation(&row);
             self.ports.git.check(CheckWorktree {
                 agent: row.agent,
                 task: row.task,
@@ -306,13 +322,17 @@ impl Engine {
                 path: row.path,
                 branch: row.branch,
                 created_from: row.created_from,
+                generation,
             });
         }
     }
 
     /// `Checked`: in use stays `InUse` whatever the result (P2-D16); merged
     /// with no dirty files is removed, keeping nothing; anything else is kept
-    /// and listed. `Unknown` is never merged.
+    /// and listed. `Unknown` is never merged. While reconnecting, nothing is
+    /// removed: a session the inventory hasn't settled may still run there,
+    /// so merged and clean stays `Merged` until the next check. An answer for
+    /// an older row with the same agent and task is ignored.
     pub(super) fn on_checked(
         &mut self,
         agent: &AgentName,
@@ -320,8 +340,14 @@ impl Engine {
         merge: MergeState,
         dirty_files: u32,
         base: Option<BaseRef>,
+        generation: u64,
     ) -> Vec<Event> {
         let mut out = Vec::new();
+        let key = (agent.clone(), task.clone());
+        if self.worktree_generations.get(&key) != Some(&generation) {
+            tracing::debug!(%agent, task = %task.0, "check answer for an older row");
+            return out;
+        }
         let Some(row) = self.worktree_row(agent, task, &mut out) else {
             tracing::debug!(%agent, task = %task.0, "check answer for no worktree row");
             return out;
@@ -333,6 +359,9 @@ impl Engine {
             WorktreeState::InUse
         } else {
             match merge {
+                MergeState::Merged(_) if dirty_files == 0 && self.reconnect.is_some() => {
+                    WorktreeState::Merged
+                }
                 MergeState::Merged(_) if dirty_files == 0 => WorktreeState::Removing,
                 MergeState::Merged(_) => WorktreeState::MergedDirty,
                 MergeState::NotMerged { files_changed } => {
@@ -469,6 +498,10 @@ impl Engine {
         // Saving above marked the list stale again; these rows are current.
         self.worktrees_stale = false;
         if rows != self.worktrees_shown {
+            // The timer is no deadline without worktrees: the first one starts it afresh.
+            if self.worktrees_shown.is_empty() && !rows.is_empty() {
+                self.worktree_check_due = self.ports.clock.now() + WORKTREE_CHECK_EVERY;
+            }
             self.worktrees_shown.clone_from(&rows);
             out.push(Event::Worktrees(rows));
         }

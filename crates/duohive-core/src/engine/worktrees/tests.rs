@@ -94,13 +94,31 @@ fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
         .collect()
 }
 
-fn checked(agent: &str, task: &str, merge: MergeState, dirty: u32) -> Input {
+/// An answer to the latest check of (agent, task); one never asked for gets
+/// a generation no row has.
+fn checked_on(h: &Harness, agent: &str, task: &str, merge: MergeState, dirty: u32) -> Input {
+    let generation = h
+        .git_calls()
+        .into_iter()
+        .rev()
+        .find_map(|c| match c {
+            GitCall::Check(req) if req.agent == n(agent) && req.task.0 == task => {
+                Some(req.generation)
+            }
+            _ => None,
+        })
+        .unwrap_or(u64::MAX);
+    answer(agent, task, merge, dirty, generation)
+}
+
+fn answer(agent: &str, task: &str, merge: MergeState, dirty: u32, generation: u64) -> Input {
     Input::Git(GitEvent::Checked {
         agent: n(agent),
         task: TaskId(task.into()),
         merge,
         dirty_files: dirty,
         base: Some(BaseRef("origin/main".into())),
+        generation,
     })
 }
 
@@ -253,7 +271,8 @@ fn merged_clean_unused_is_removed() {
     let r = row("squad-1", "c", WorktreeState::Unchecked);
     put(&h, r.clone());
     h.send(Command::CheckWorktrees);
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "squad-1",
         "c",
         MergeState::Merged(MergeKind::Squash),
@@ -288,19 +307,22 @@ fn never_removes_dirty_unmerged_or_in_use() {
         checks(&h),
         pairs(&[("pay-qa", ID), ("squad-1", "x"), ("squad-1", "y")])
     );
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "squad-1",
         "x",
         MergeState::NotMerged { files_changed: 3 },
         0,
     ));
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "squad-1",
         "y",
         MergeState::Merged(MergeKind::Normal),
         2,
     ));
-    let events = h.input(checked(
+    let events = h.input(checked_on(
+        &h,
         "pay-qa",
         ID,
         MergeState::Merged(MergeKind::Rebase),
@@ -365,7 +387,8 @@ fn in_use_survives_restart() {
     }])));
     assert_eq!(state(&h, "pay-qa", "t"), WorktreeState::InUse);
     h.send(Command::CheckWorktrees);
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "pay-qa",
         "t",
         MergeState::Merged(MergeKind::Normal),
@@ -418,7 +441,8 @@ fn removed_after_session_stops() {
     assert!(checks(&h).is_empty());
     h.send(Command::CheckWorktrees);
     assert_eq!(checks(&h), pairs(&[("pay-qa", ID)]));
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "pay-qa",
         ID,
         MergeState::Merged(MergeKind::Squash),
@@ -551,7 +575,8 @@ fn unknown_merge_never_removes() {
     let mut h = Harness::new();
     put(&h, row("squad-1", "c", WorktreeState::Unchecked));
     h.send(Command::CheckWorktrees);
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "squad-1",
         "c",
         MergeState::Unknown("no default branch".into()),
@@ -565,7 +590,8 @@ fn unknown_merge_never_removes() {
     // A later answer for a row that's gone, or isn't being removed, moves nothing.
     h.input(removed("squad-1", "c", Ok(())));
     assert!(stored(&h, "squad-1", "c").is_some());
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "squad-1",
         "gone",
         MergeState::Merged(MergeKind::Normal),
@@ -589,7 +615,8 @@ fn row_being_created_is_never_checked_or_removed() {
         vec!["pay-qa is getting a worktree ready"]
     );
     // A stray check answer for it moves nothing.
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "pay-qa",
         ID,
         MergeState::Merged(MergeKind::Normal),
@@ -695,7 +722,8 @@ fn held_agent_worktree_is_in_use() {
     assert!(h.engine.holds_rows());
     assert_eq!(state(&h, "ghost", "t"), WorktreeState::InUse);
     h.send(Command::CheckWorktrees);
-    h.input(checked(
+    h.input(checked_on(
+        &h,
         "ghost",
         "t",
         MergeState::Merged(MergeKind::Normal),
@@ -708,4 +736,145 @@ fn held_agent_worktree_is_in_use() {
     );
     assert!(removes(&h).is_empty(), "{:?}", removes(&h));
     assert_eq!(state(&h, "ghost", "t"), WorktreeState::InUse);
+}
+
+/// A session row for `agent` working in worktree `task` on `window`.
+fn session_in(h: &Harness, agent: &str, task: &str, window: &str) {
+    h.store.state.lock().unwrap().sessions.insert(
+        n(agent),
+        SessionRow {
+            agent: n(agent),
+            token: Some(Token(format!("tok-{agent}"))),
+            window: Some(WindowId(window.into())),
+            status: Status {
+                state: AgentState::Working,
+                quiet: false,
+                quiet_since: None,
+                from_screen: false,
+                since: h.t0,
+                error: None,
+            },
+            last_reply: None,
+            task_at_launch: true,
+            saw_end_hook: false,
+            last_task: None,
+            worktree: Some(TaskId(task.into())),
+        },
+    );
+}
+
+#[test]
+fn no_removal_while_reconnecting() {
+    let mut h = Harness::new();
+    // org.toml lost `ghost` while DuoHive was closed; its session may still run.
+    put(&h, row("ghost", "t", WorktreeState::Unchecked));
+    put(&h, row("squad-1", "c", WorktreeState::Unchecked));
+    session_in(&h, "ghost", "t", "@9");
+    h.engine.start_up();
+    h.send(Command::CheckWorktrees);
+    assert_eq!(checks(&h), pairs(&[("ghost", "t"), ("squad-1", "c")]));
+    h.input(checked_on(
+        &h,
+        "ghost",
+        "t",
+        MergeState::Merged(MergeKind::Normal),
+        0,
+    ));
+    h.input(checked_on(
+        &h,
+        "squad-1",
+        "c",
+        MergeState::Merged(MergeKind::Squash),
+        0,
+    ));
+    assert!(removes(&h).is_empty(), "{:?}", removes(&h));
+    // The orphan session's worktree is in use until the inventory settles it;
+    // a merged, clean row stays `Merged` meanwhile.
+    assert_eq!(state(&h, "ghost", "t"), WorktreeState::InUse);
+    assert_eq!(state(&h, "squad-1", "c"), WorktreeState::Merged);
+    let events = delete(&mut h, "ghost", "t", true);
+    assert_eq!(
+        rejected(&events),
+        vec!["ghost is running in it · stop it first"]
+    );
+    assert!(removes(&h).is_empty(), "{:?}", removes(&h));
+
+    // The inventory finds no window: the session has gone, so the next check removes.
+    h.input(Input::Runtime(RuntimeEvent::Inventory(Vec::new())));
+    assert_eq!(state(&h, "ghost", "t"), WorktreeState::Unchecked);
+    clear_git(&h);
+    h.send(Command::CheckWorktrees);
+    h.input(checked_on(
+        &h,
+        "ghost",
+        "t",
+        MergeState::Merged(MergeKind::Normal),
+        0,
+    ));
+    h.input(checked_on(
+        &h,
+        "squad-1",
+        "c",
+        MergeState::Merged(MergeKind::Squash),
+        0,
+    ));
+    let mut removed: Vec<(String, bool, bool)> = removes(&h)
+        .into_iter()
+        .map(|r| (r.task.0, r.delete_branch, r.force))
+        .collect();
+    removed.sort();
+    assert_eq!(
+        removed,
+        vec![("c".into(), true, false), ("t".into(), true, false)]
+    );
+}
+
+#[test]
+fn late_check_answer_ignored_for_recreated_row() {
+    let mut h = Harness::new();
+    put(&h, row("squad-1", "c", WorktreeState::MergedDirty));
+    h.send(Command::CheckWorktrees);
+    let old = match h.git_calls().pop() {
+        Some(GitCall::Check(req)) => req.generation,
+        other => panic!("expected a check, got {other:?}"),
+    };
+    delete(&mut h, "squad-1", "c", true);
+    h.input(removed("squad-1", "c", Ok(())));
+    assert!(stored(&h, "squad-1", "c").is_none());
+    // A new row with the same agent and task, then the old check's answer.
+    put(&h, row("squad-1", "c", WorktreeState::Unchecked));
+    clear_git(&h);
+    h.input(answer(
+        "squad-1",
+        "c",
+        MergeState::Merged(MergeKind::Normal),
+        0,
+        old,
+    ));
+    assert!(removes(&h).is_empty(), "{:?}", removes(&h));
+    assert_eq!(state(&h, "squad-1", "c"), WorktreeState::Unchecked);
+    // Its own check's answer applies.
+    h.send(Command::CheckWorktrees);
+    h.input(checked_on(
+        &h,
+        "squad-1",
+        "c",
+        MergeState::Merged(MergeKind::Normal),
+        0,
+    ));
+    assert_eq!(removes(&h).len(), 1);
+}
+
+#[test]
+fn ten_minute_timer_rearms_when_first_worktree_appears() {
+    let mut h = Harness::new();
+    // No worktrees: the timer is no deadline, so no tick re-armed it.
+    h.at(Duration::from_secs(1_800));
+    assert_eq!(h.engine.next_deadline(), None);
+    put(&h, row("squad-1", "c", WorktreeState::Unchecked));
+    h.send(Command::CheckWorktrees);
+    assert_eq!(
+        h.engine.next_deadline(),
+        Some(h.t0 + Duration::from_secs(2_400))
+    );
 }

@@ -220,6 +220,12 @@ pub struct Engine {
     worktrees_stale: bool,
     /// When the 10-minute worktree check is next due (TD §5.3).
     worktree_check_due: Millis,
+    /// Each worktree row's incarnation, given at its first check and dropped
+    /// with the row, so a late answer never reaches a newer row of the same
+    /// agent and task.
+    worktree_generations: HashMap<(AgentName, TaskId), u64>,
+    /// The next incarnation number.
+    next_generation: u64,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -253,6 +259,8 @@ impl Engine {
             worktrees_shown: Vec::new(),
             worktrees_stale: false,
             worktree_check_due: now + timers::WORKTREE_CHECK_EVERY,
+            worktree_generations: HashMap::new(),
+            next_generation: 0,
             cfg,
             ports,
             adapters,
@@ -313,7 +321,8 @@ impl Engine {
                 merge,
                 dirty_files,
                 base,
-            }) => self.on_checked(&agent, &task, merge, dirty_files, base),
+                generation,
+            }) => self.on_checked(&agent, &task, merge, dirty_files, base, generation),
             Input::Git(GitEvent::Removed {
                 agent,
                 task,
