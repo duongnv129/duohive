@@ -96,6 +96,8 @@ pub enum Action {
     GiveWork,
     /// `w`: the worktree list.
     Worktrees,
+    /// `,`: Settings.
+    Settings,
 }
 
 /// What the app loop does after an action.
@@ -128,6 +130,9 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         return Some(agent::typing_key(k));
     }
     if matches!(m.dialog, Some(Dialog::Form(_) | Dialog::GiveWork(_))) {
+        return form_key(k);
+    }
+    if matches!(&m.dialog, Some(Dialog::Settings(s)) if s.editing.is_some()) {
         return form_key(k);
     }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
@@ -170,6 +175,14 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Down => Some(Action::Down),
             KeyCode::Char('d') => Some(Action::Delete),
             KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        },
+        Some(Dialog::Settings(_)) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Left => Some(Action::Left),
+            KeyCode::Right => Some(Action::Right),
+            KeyCode::Enter | KeyCode::Char(' ') => Some(Action::DialogEnter),
             _ => None,
         },
         Some(Dialog::Chooser(_)) => match k.code {
@@ -239,6 +252,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
+        Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         None => {}
     }
     if m.zoomed_agent().is_some()
@@ -256,6 +270,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             return Vec::new();
         }
         Action::Worktrees => return worktrees::open(m),
+        Action::Settings => return settings::open(m),
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);
@@ -617,12 +632,15 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 mod agent;
 mod give_work;
 mod panes;
+mod settings;
 mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
 #[cfg(test)]
 mod pane_tests;
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
