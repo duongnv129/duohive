@@ -225,3 +225,17 @@ fn a_failed_removal_is_described_as_one() {
         c.lines
     );
 }
+
+#[test]
+fn remove_confirm_states_the_whole_loss() {
+    let mut m = open();
+    cursor_to(&mut m, 2);
+    press(&mut m, key('d'));
+    let Some(Dialog::Confirm(c)) = &m.dialog else {
+        panic!("no confirmation");
+    };
+    assert_eq!(
+        c.lines[1],
+        "Everything in it that isn't committed is lost, including untracked and ignored files. The branch is kept."
+    );
+}
