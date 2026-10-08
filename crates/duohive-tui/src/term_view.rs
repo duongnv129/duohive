@@ -97,19 +97,34 @@ impl TermView {
     /// program hid the cursor. With `no_color`, colours are dropped and
     /// inverse is kept.
     pub fn render(&self, area: Rect, buf: &mut Buffer, show_cursor: bool, no_color: bool) {
+        self.render_from(area, buf, 0, show_cursor, no_color);
+    }
+
+    /// [`Self::render`] from row `first_row` down: a tall terminal (a scrollback
+    /// snapshot) is drawn one window at a time.
+    pub fn render_from(
+        &self,
+        area: Rect,
+        buf: &mut Buffer,
+        first_row: u16,
+        show_cursor: bool,
+        no_color: bool,
+    ) {
         let screen = self.parser.screen();
         let (rows, cols) = screen.size();
         let area = area.intersection(buf.area);
         let (cursor_row, cursor_col) = screen.cursor_position();
         let draw_cursor = show_cursor && !screen.hide_cursor();
-        let (draw_rows, draw_cols) = (area.height.min(rows), area.width.min(cols));
+        let below = rows.saturating_sub(first_row);
+        let (draw_rows, draw_cols) = (area.height.min(below), area.width.min(cols));
         for dy in 0..draw_rows {
+            let row = first_row + dy;
             for dx in 0..draw_cols {
-                let Some(cell) = screen.cell(dy, dx) else {
+                let Some(cell) = screen.cell(row, dx) else {
                     continue;
                 };
                 let mut style = cell_style(cell, no_color);
-                if draw_cursor && dy == cursor_row && dx == cursor_col {
+                if draw_cursor && row == cursor_row && dx == cursor_col {
                     style = style.add_modifier(Modifier::REVERSED);
                     if cell.inverse() {
                         style = style.remove_modifier(Modifier::REVERSED);
@@ -128,6 +143,11 @@ impl TermView {
                 target.set_style(style);
             }
         }
+    }
+
+    /// The terminal's rows.
+    pub fn rows(&self) -> u16 {
+        self.parser.screen().size().0
     }
 
     fn move_cursor(&mut self, col: u16, row: u16) {

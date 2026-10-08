@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · OpenCode · your manager agent ──────┐
+┃▌⬢ Duo                ◆   1m  ┃│ opencode wants to run: gh pr list --state op │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ en                                           │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│ Allow? (y) yes  (n) no                       │
+┃     auth-service     ●   2m  ┃│                                              │
+┃     billing-api      ◆   4m  ┃│                                              │
+┃   ▾ QA                       ┃│                                              │
+┃     pay-qa           ○   1d  ┃│                                              │
+┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
+┃     squad-1         ~●   1m  ┃│                                              │
+┃     squad-2          ✓   3m  ┃│                                              │
+┃     squad-3          ◷   6m  ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◆ waiting ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

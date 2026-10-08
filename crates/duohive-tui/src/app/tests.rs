@@ -13,7 +13,7 @@ use duohive_core::command::Command;
 use duohive_core::event::{Event, Snapshot};
 use duohive_core::settings::Settings;
 use duohive_core::status::AgentState;
-use duohive_core::testkit::{example_org, n};
+use duohive_core::testkit::{FakePaneView, example_org, n};
 use ratatui::Terminal;
 use ratatui::backend::{Backend, ClearType, TestBackend, WindowSize};
 use ratatui::buffer::Cell;
@@ -28,8 +28,8 @@ use crate::fixtures::{mins, model_for, status, view};
 use crate::model::UiModel;
 
 /// `TestBackend` that counts flushes: ratatui flushes once per `Terminal::draw`.
-struct CountingBackend {
-    inner: TestBackend,
+pub(super) struct CountingBackend {
+    pub(super) inner: TestBackend,
     flushes: Arc<AtomicUsize>,
 }
 
@@ -73,23 +73,23 @@ impl Backend for CountingBackend {
 }
 
 /// Channels and counters around one run of the loop.
-struct Harness {
-    draws: Arc<AtomicUsize>,
-    input: mpsc::Sender<InputEvent>,
-    events: mpsc::UnboundedSender<Event>,
-    commands: mpsc::Receiver<Command>,
-    first_frame: oneshot::Receiver<()>,
+pub(super) struct Harness {
+    pub(super) draws: Arc<AtomicUsize>,
+    pub(super) input: mpsc::Sender<InputEvent>,
+    pub(super) events: mpsc::UnboundedSender<Event>,
+    pub(super) commands: mpsc::Receiver<Command>,
+    pub(super) first_frame: oneshot::Receiver<()>,
 }
 
-struct Parts {
-    terminal: Terminal<CountingBackend>,
-    input: mpsc::Receiver<InputEvent>,
-    events: mpsc::UnboundedReceiver<Event>,
-    commands: mpsc::Sender<Command>,
-    first_frame: oneshot::Sender<()>,
+pub(super) struct Parts {
+    pub(super) terminal: Terminal<CountingBackend>,
+    pub(super) input: mpsc::Receiver<InputEvent>,
+    pub(super) events: mpsc::UnboundedReceiver<Event>,
+    pub(super) commands: mpsc::Sender<Command>,
+    pub(super) first_frame: oneshot::Sender<()>,
 }
 
-fn harness() -> (Harness, Parts) {
+pub(super) fn harness() -> (Harness, Parts) {
     let draws = Arc::new(AtomicUsize::new(0));
     let backend = CountingBackend {
         inner: TestBackend::new(100, 30),
@@ -118,6 +118,11 @@ fn harness() -> (Harness, Parts) {
 }
 
 fn cfg(reduce_motion: bool) -> AppConfig {
+    cfg_with_view(reduce_motion, &FakePaneView::default())
+}
+
+/// [`cfg`] over `view`, which the test keeps to push chunks and read calls.
+pub(super) fn cfg_with_view(reduce_motion: bool, view: &FakePaneView) -> AppConfig {
     AppConfig {
         org_toml: PathBuf::from("/cfg/org.toml"),
         settings: Settings {
@@ -131,10 +136,11 @@ fn cfg(reduce_motion: bool) -> AppConfig {
         home: PathBuf::from("/home/me"),
         halted: Arc::new(AtomicBool::new(false)),
         running: Arc::new(AtomicUsize::new(0)),
+        pane_view: Arc::new(view.clone()),
     }
 }
 
-fn snapshot(m: &UiModel) -> Event {
+pub(super) fn snapshot(m: &UiModel) -> Event {
     Event::Snapshot(Box::new(Snapshot {
         org: m.org.clone(),
         agents: m.agents.clone(),
@@ -152,7 +158,7 @@ fn idle_model() -> UiModel {
 }
 
 /// Idle, finished, waiting and stopped agents.
-fn resting_model() -> UiModel {
+pub(super) fn resting_model() -> UiModel {
     let mut m = model_for(example_org());
     m.agents
         .insert(n("auth-service"), view(status(AgentState::Idle, mins(2))));
@@ -165,7 +171,7 @@ fn resting_model() -> UiModel {
     m
 }
 
-fn key(c: char) -> InputEvent {
+pub(super) fn key(c: char) -> InputEvent {
     InputEvent::Key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE))
 }
 

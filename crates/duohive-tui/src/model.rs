@@ -128,6 +128,8 @@ pub struct UiModel {
     pub chat_sent: Option<String>,
     /// The terminal's size, which bounds the chat's resizing.
     pub screen: Rect,
+    /// The agent pane shows a frozen scrollback snapshot (P2-D12), not the live terminal.
+    pub scrolled: bool,
 }
 
 impl UiModel {
@@ -155,6 +157,7 @@ impl UiModel {
             chat_input: LineEdit::default(),
             chat_sent: None,
             screen: Rect::default(),
+            scrolled: false,
         }
     }
 
@@ -227,6 +230,22 @@ impl UiModel {
             | Event::Worktrees(_) => {}
         }
         true
+    }
+
+    /// Typing mode has the keys: the agent pane is focused and Typing, under no dialog.
+    pub fn typing(&self) -> bool {
+        self.dialog.is_none()
+            && self.focus.pane == crate::focus::Pane::Agent
+            && self.focus.agent_mode == crate::focus::AgentMode::Typing
+    }
+
+    /// The agent a selection shows: Duo's name for Duo, `None` for teams and roles.
+    pub fn selected_agent(&self) -> Option<&AgentName> {
+        match &self.selected {
+            NodeKey::Duo => Some(&self.org.duo.name),
+            NodeKey::Agent(a) => Some(a),
+            NodeKey::Team(_) | NodeKey::Role(_) => None,
+        }
     }
 
     /// Whether `key` names a node of the current org.

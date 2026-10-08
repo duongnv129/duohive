@@ -1,12 +1,17 @@
-//! Real implementations of the core ports: wall clock, random tokens, directory probe.
+//! Real implementations of the core ports: wall clock, random tokens, directory probe,
+//! and the live pane view filled in once it has attached.
 
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use duohive_core::launch::Token;
-use duohive_core::ports::{Clock, Ids};
+use duohive_core::names::AgentName;
+use duohive_core::ports::{Clock, Ids, NoPaneView, PaneView};
 use duohive_core::time::Millis;
 use duohive_core::validate::{DirProbe, DirStatus};
+use duohive_core::view::{PaneInput, PaneSize, PaneStream, StreamId, ViewError};
+use tokio::sync::oneshot;
 
 /// Bytes of entropy in a per-launch token (D1).
 const TOKEN_BYTES: usize = 32;
@@ -47,6 +52,51 @@ impl Ids for RandomIds {
 
 const HEX: &[u8; 16] = b"0123456789abcdef";
 
+/// A [`PaneView`] whose real view arrives later: tmux's view client takes a few seconds
+/// to attach, and the first frame doesn't wait for it. Until [`Self::set`] (and for
+/// good, if the attach fails) it acts as [`NoPaneView`]: every stream closes before
+/// its first `Reset`, so the agent pane shows summaries.
+#[derive(Default)]
+pub struct LatePaneView {
+    inner: OnceLock<Arc<dyn PaneView>>,
+}
+
+impl LatePaneView {
+    /// Hands over the real view; a second call is ignored.
+    pub fn set(&self, view: Arc<dyn PaneView>) {
+        let _ = self.inner.set(view);
+    }
+
+    fn view(&self) -> &dyn PaneView {
+        match self.inner.get() {
+            Some(v) => v.as_ref(),
+            None => &NoPaneView,
+        }
+    }
+}
+
+impl PaneView for LatePaneView {
+    fn open(&self, agent: &AgentName, size: PaneSize) -> Result<PaneStream, ViewError> {
+        self.view().open(agent, size)
+    }
+
+    fn resize(&self, stream: StreamId, size: PaneSize) -> Result<(), ViewError> {
+        self.view().resize(stream, size)
+    }
+
+    fn send(&self, stream: StreamId, input: PaneInput) -> Result<(), ViewError> {
+        self.view().send(stream, input)
+    }
+
+    fn scrollback(
+        &self,
+        stream: StreamId,
+        lines: u16,
+    ) -> Result<oneshot::Receiver<Vec<u8>>, ViewError> {
+        self.view().scrollback(stream, lines)
+    }
+}
+
 /// Stat-only directory probe. It walks up the ancestors, so a directory inside
 /// a repository is a `GitRepo`: no `git` process, no threads. A stat on a hung
 /// network mount can block the caller; that risk is accepted (see Task 26 report).
@@ -75,6 +125,27 @@ mod tests {
     use duohive_core::validate::{DirProbe, DirStatus};
 
     use super::*;
+
+    #[test]
+    fn late_pane_view_closes_streams_until_set() {
+        use duohive_core::testkit::{FakePaneView, PaneCall, n};
+        use duohive_core::view::PaneChunk;
+
+        let late = LatePaneView::default();
+        let size = PaneSize { cols: 80, rows: 24 };
+        let mut stream = late.open(&n("a"), size).unwrap();
+        assert!(matches!(stream.rx.try_recv(), Ok(PaneChunk::Closed { .. })));
+        assert_eq!(late.resize(stream.id, size), Err(ViewError::Closed));
+
+        let fake = FakePaneView::default();
+        late.set(Arc::new(fake.clone()));
+        let stream = late.open(&n("a"), size).unwrap();
+        late.resize(stream.id, size).unwrap();
+        late.send(stream.id, PaneInput::Text("x".into())).unwrap();
+        late.scrollback(stream.id, 5).unwrap();
+        assert_eq!(fake.calls().len(), 4);
+        assert_eq!(fake.calls()[0], PaneCall::Open(n("a"), size));
+    }
 
     #[test]
     fn random_ids_are_64_lowercase_hex() {

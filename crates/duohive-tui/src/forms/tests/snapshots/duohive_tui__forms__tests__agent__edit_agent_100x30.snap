@@ -3,7 +3,7 @@ source: crates/duohive-tui/src/forms/tests/agent.rs
 expression: screen_text(&m)
 ---
  DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude Code ────────────────────┐
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────┐
 ┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
 ┃ ├─ ▣ Payments                 ● 1              ┃│    ● working                                   │
 ┃ │  ├─ ◇ Backend               ● 1              ┃│                                                │

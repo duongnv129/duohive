@@ -267,10 +267,10 @@ fn agent_pane_for_agents_and_groups() {
     };
     let mut m = spec_model();
     let s = side(&m);
-    assert!(s.contains("┌─ auth-service · Claude Code ─"), "{s}");
+    assert!(s.contains("┌─ auth-service · Claude ─"), "{s}");
     m.selected = NodeKey::Agent(n("pay-qa"));
     let s = side(&m);
-    assert!(s.contains("○ stopped · s to start"), "{s}");
+    assert!(s.contains("○ stopped · space to give work"), "{s}");
     m.selected = NodeKey::Role(duohive_core::org::RoleKey {
         team: Some(NodeName::parse("Payments").unwrap()),
         role: NodeName::parse("Backend").unwrap(),

@@ -29,7 +29,7 @@ use std::time::Duration;
 
 use duohive_cli::real_adapters;
 use duohive_store::Paths;
-use duohive_tmux::{TmuxError, TmuxVersion, tmux_version};
+use duohive_tmux::{TmuxError, TmuxPaneView, TmuxVersion, tmux_version};
 use duohive_tui::{
     AppConfig, BlockingScreen, QuitSignals, TuiError, restore_terminal, run_app, show_blocking,
 };
@@ -37,7 +37,7 @@ use tokio::sync::{Notify, oneshot};
 
 use crate::local_time::utc_offset_secs;
 use crate::logging::init_logging;
-use crate::real_ports::FsDirProbe;
+use crate::real_ports::{FsDirProbe, LatePaneView};
 use crate::system::{StartError, SystemOptions, start_system, tmux_config};
 
 /// The exit status after a panic (Rust's own).
@@ -123,6 +123,7 @@ pub async fn run_app_main() -> ExitCode {
         Ended::Quit
     } else {
         let cfg = AppConfig {
+            pane_view: attach_pane_view(&paths),
             org_toml: paths.org_toml(),
             settings: handle.settings.clone(),
             utc_offset_secs: utc_offset_secs(var(&env, "TZ")),
@@ -177,6 +178,28 @@ pub async fn run_app_main() -> ExitCode {
             ExitCode::from(PANIC_EXIT)
         }
     }
+}
+
+/// The live pane view: a [`LatePaneView`] that the tmux view client joins once it has
+/// attached. Attaching blocks for up to a few seconds and needs the session, which
+/// the started system has made, so it runs off the async loop and the first frame
+/// never waits for it. A failed attach is logged; the agent pane then keeps its
+/// summaries.
+fn attach_pane_view(paths: &Paths) -> Arc<LatePaneView> {
+    let view = Arc::new(LatePaneView::default());
+    let late = Arc::clone(&view);
+    let cfg = tmux_config(paths);
+    // Detached: the result lands in `late`, and the runtime's exit doesn't wait on it.
+    drop(tokio::task::spawn_blocking(
+        move || match TmuxPaneView::new(&cfg) {
+            Ok(v) => {
+                tracing::info!("live pane view attached");
+                late.set(Arc::new(v));
+            }
+            Err(e) => tracing::error!(error = %e, "live pane view unavailable"),
+        },
+    ));
+    view
 }
 
 /// Runs `f` on `rt`, then shuts the runtime down waiting at most `grace` for blocking

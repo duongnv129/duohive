@@ -9,9 +9,11 @@ mod needs_you;
 mod org_pane;
 mod screens;
 
+use duohive_core::names::AgentName;
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
+use duohive_core::view::PaneSize;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -22,6 +24,7 @@ pub use screens::{BlockingScreen, render_blocking};
 use crate::focus::{Pane, chat_extra_max_below, layout_below, shows_replies};
 use crate::format::width;
 use crate::model::UiModel;
+use crate::term_view::TermView;
 use crate::theme::Palette;
 
 /// What drawing needs besides the model.
@@ -46,8 +49,36 @@ impl RenderCtx {
     }
 }
 
-/// Draws the main screen.
+/// The live terminal the agent pane may show: drawn only while `agent` is selected.
+#[derive(Clone, Copy)]
+pub struct LiveScreen<'a> {
+    /// Whose terminal it is.
+    pub agent: &'a AgentName,
+    /// The terminal, or the frozen scrollback snapshot (P2-D12).
+    pub term: &'a TermView,
+    /// The first row of `term` to draw (scrolled back: above the bottom).
+    pub first_row: u16,
+    /// `NO_COLOR` is set: the terminal's colours are dropped.
+    pub no_color: bool,
+}
+
+impl std::fmt::Debug for LiveScreen<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LiveScreen")
+            .field("agent", &self.agent)
+            .field("first_row", &self.first_row)
+            .field("no_color", &self.no_color)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Draws the main screen, the agent pane showing summaries only.
 pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
+    render_live(frame, m, ctx, None);
+}
+
+/// Draws the main screen; the agent pane shows `live` when it belongs to the selection.
+pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveScreen<'_>>) {
     let area = frame.area();
     let p = &ctx.palette;
     let buf = frame.buffer_mut();
@@ -73,7 +104,7 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
     header::draw_footer(buf, row(area.bottom() - 1), m, p, l.compact);
     let replies = ctx.settings.show_last_reply && shows_replies(area);
     org_pane::draw(buf, &l, m, ctx, replies);
-    agent_pane::draw(buf, l.agent, m, ctx);
+    agent_pane::draw(buf, l.agent, m, ctx, live);
     let chat_cursor = chat_pane::draw(buf, l.chat, m, ctx, l.compact);
     let cursor = match &m.dialog {
         Some(d) => dialog::draw(buf, area, d, p),
@@ -90,6 +121,20 @@ pub(crate) fn chat_extra_limit(m: &UiModel) -> i16 {
     let banners = header::banners(m, usize::from(m.screen.width)).len();
     let rows = u16::try_from(banners).unwrap_or(u16::MAX);
     chat_extra_max_below(m.screen, rows)
+}
+
+/// The live terminal's size for the model's screen: the agent pane inside its border and
+/// side padding (P2-D5). `None` when the main screen doesn't fit (the pane is hidden).
+pub fn live_size(m: &UiModel) -> Option<PaneSize> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let l = layout_below(m.screen, rows, m.chat_rows_extra, typing)?;
+    let inner = agent_pane::live_area(l.agent);
+    (inner.width > 0 && inner.height > 0).then_some(PaneSize {
+        cols: inner.width,
+        rows: inner.height,
+    })
 }
 
 /// The border lines and inside style for a pane, heavy and on `bg.panel` when it has focus.
@@ -224,6 +269,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
     edge(buf, bottom, l.bottom, "", l, border);
 }
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

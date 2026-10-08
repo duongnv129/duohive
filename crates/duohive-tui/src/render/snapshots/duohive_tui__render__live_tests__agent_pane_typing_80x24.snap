@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┌─ Org ────────────────────────┐┏━ auth-service · Claude · worktree retry-loo… ┓
+│ ⬢ Duo                ◦   1m  │┃ ✓ go test ./... (14 passed)                  ┃
+│ ▾ Payments           ● 1 ◆ 1 │┃ ✓ Ready for review · 3 files changed         ┃
+│   ▾ Backend          ● 1 ◆ 1 │┃                                              ┃
+│▌    auth-service     ●   2m  │┃ ❯ also add a test for the third retry        ┃
+│     billing-api      ◆   4m  │┃                                              ┃
+│   ▾ QA                       │┃                                              ┃
+│     pay-qa           ○   1d  │┃                                              ┃
+│ ▾ Generalist        ~● 1 ◷ 1 │┃                                              ┃
+│     squad-1         ~●   1m  │┃                                              ┃
+│     squad-2          ✓   3m  │┃                                              ┃
+│     squad-3          ◷   6m  │┃                                              ┃
+│                              │┃                                              ┃
+│                              │┃                                              ┃
+├─ Needs you (2) ──────────────┤┃                                              ┃
+│ ◷ squad-3            6m      │┃                                              ┃
+│ ◆ billing-api        4m      │┃                                              ┃
+└──────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ TYPING · every key goes to auth-service, ctrl+c too · ctrl+q stop typing
