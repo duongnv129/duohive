@@ -143,7 +143,7 @@ pub struct UiModel {
     /// The last Give work the dialog sent, put back if the engine refuses it.
     pub give_sent: Option<(AgentName, String, RunIn)>,
     /// A task that couldn't be put back yet; the next `space` on its agent opens it.
-    pub give_later: Option<(AgentName, String)>,
+    pub give_later: Option<(AgentName, String, Option<RunIn>)>,
 }
 
 impl UiModel {
@@ -214,7 +214,7 @@ impl UiModel {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
                 _ => match self.give_sent.clone() {
                     Some((agent, task, run)) => {
-                        self.reopen_give_work(&agent, &task, Some(run), reason);
+                        self.reopen_give_work(&agent, &task, Some(run), reason, "");
                     }
                     None => self.footer_note = Some(reason),
                 },
@@ -241,9 +241,9 @@ impl UiModel {
                 chat::not_taken(self);
             }
             Event::GiveWorkNotTaken { agent, task, .. } => {
-                let note = format!("{agent} didn't take the task");
+                let reason = format!("{agent} didn't take the task");
                 self.give_sent = None;
-                self.reopen_give_work(&agent, &task, None, note);
+                self.reopen_give_work(&agent, &task, None, reason, NOT_TAKEN_RETRY);
             }
             Event::Reconnected => self.reconnecting = 0,
             Event::AgentRunChanged {
@@ -274,13 +274,6 @@ impl UiModel {
     /// The open Give work dialog follows its agent's state.
     fn sync_give_work(&mut self, agent: &AgentName) {
         let view = self.view(agent).clone();
-        let left_rest = matches!(
-            view.status.state,
-            AgentState::Starting | AgentState::Working | AgentState::Waiting
-        );
-        if left_rest && self.give_sent.as_ref().is_some_and(|(a, ..)| a == agent) {
-            self.give_sent = None;
-        }
         if let Some(Dialog::GiveWork(g)) = &mut self.dialog
             && &g.agent == agent
         {
@@ -292,7 +285,7 @@ impl UiModel {
     fn refused_give_work(&mut self, agent: &AgentName, reason: String) {
         match self.give_sent.clone() {
             Some((a, task, run)) if &a == agent => {
-                self.reopen_give_work(agent, &task, Some(run), reason);
+                self.reopen_give_work(agent, &task, Some(run), reason, "");
             }
             _ => self.footer_note = Some(reason),
         }
@@ -307,6 +300,7 @@ impl UiModel {
         task: &str,
         run: Option<RunIn>,
         reason: String,
+        dialog_suffix: &str,
     ) {
         if self.org.find_agent(agent).is_none() {
             return;
@@ -316,7 +310,7 @@ impl UiModel {
             || self.typing()
             || (self.focus.pane == crate::focus::Pane::Chat && !self.chat_input.text().is_empty());
         if busy {
-            self.give_later = Some((agent.clone(), task.to_owned()));
+            self.give_later = Some((agent.clone(), task.to_owned(), run));
             self.footer_note = Some(format!("{reason} · space to try again"));
             return;
         }
@@ -330,7 +324,7 @@ impl UiModel {
             &self.home,
         );
         g.set_run(run);
-        g.note = Some(reason);
+        g.note = Some(format!("{reason}{dialog_suffix}"));
         self.dialog = Some(Dialog::GiveWork(Box::new(g)));
     }
 
@@ -497,6 +491,9 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
 };
 
 /// The footer note when the system has no desktop notifier (UI §4.1.4).
+/// What the reopened dialog adds when the task wasn't taken.
+const NOT_TAKEN_RETRY: &str = " · enter to try again";
+
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
 
 #[cfg(test)]

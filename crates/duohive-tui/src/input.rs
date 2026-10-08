@@ -212,6 +212,8 @@ fn form_key(k: KeyEvent) -> Option<Action> {
 /// Applies an action to the model; pure. Any key clears the footer note.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
+    // A refusal arrives before any further input; later ones aren't about the last send.
+    m.give_sent = None;
     if a == Action::Quit {
         return vec![UiEffect::Quit];
     }
