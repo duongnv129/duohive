@@ -232,13 +232,40 @@ impl UiModel {
                     v.delivery_pending = delivery_pending;
                 });
             }
-            // Alerts and worktrees reach the screen in later tasks.
+            Event::AlertClicked { agent } => {
+                self.reveal_agent(&agent);
+            }
+            // The desktop notice and worktrees reach the screen in later tasks.
             Event::Alert(_)
             | Event::AlertsUnavailable
-            | Event::AlertClicked { .. }
             | Event::GiveWorkNotTaken { .. }
             | Event::Worktrees(_) => {}
         }
+        true
+    }
+
+    /// Selects `agent`, unfolding its team and role, and focuses the agent pane in
+    /// Selected mode (UI §4.1.3, §4.1.4). `false` when the org doesn't name it.
+    pub fn reveal_agent(&mut self, agent: &AgentName) -> bool {
+        if self.org.is_duo(agent) {
+            self.selected = NodeKey::Duo;
+        } else {
+            let Some(loc) = self.org.find_agent(agent) else {
+                return false;
+            };
+            let team = loc.team.map(|t| t.name.clone());
+            let role = RoleKey {
+                team: team.clone(),
+                role: loc.role.name.clone(),
+            };
+            if let Some(t) = team {
+                self.folded.remove(&NodeKey::Team(t));
+            }
+            self.folded.remove(&NodeKey::Role(role));
+            self.selected = NodeKey::Agent(agent.clone());
+        }
+        self.focus.pane = crate::focus::Pane::Agent;
+        self.focus.agent_mode = crate::focus::AgentMode::Selected;
         true
     }
 
@@ -391,6 +418,35 @@ mod tests {
 
     use super::*;
     use crate::fixtures::{NOW, mins, spec_model, status};
+
+    #[test]
+    fn alert_click_selects_agent() {
+        let mut m = spec_model();
+        let agent = n("pay-qa");
+        m.focus.pane = crate::focus::Pane::Org;
+        m.apply(Event::AlertClicked {
+            agent: agent.clone(),
+        });
+        assert_eq!(m.selected, NodeKey::Agent(agent));
+        assert_eq!(m.focus.pane, crate::focus::Pane::Agent);
+        assert_eq!(m.focus.agent_mode, crate::focus::AgentMode::Selected);
+    }
+
+    #[test]
+    fn alert_click_unfolds_parents() {
+        let mut m = spec_model();
+        let agent = n("pay-qa");
+        let loc = m.org.find_agent(&agent).unwrap();
+        let team = NodeKey::Team(loc.team.unwrap().name.clone());
+        let role = NodeKey::Role(RoleKey {
+            team: loc.team.map(|t| t.name.clone()),
+            role: loc.role.name.clone(),
+        });
+        m.folded.insert(team.clone());
+        m.folded.insert(role.clone());
+        m.apply(Event::AlertClicked { agent });
+        assert!(!m.folded.contains(&team) && !m.folded.contains(&role));
+    }
 
     #[test]
     fn apply_events_update_model() {
