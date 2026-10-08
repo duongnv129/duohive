@@ -1,0 +1,20 @@
+
+     Access 1k tokens of past research & decisions for just 171t. Use the
+     claude-mem skill to access memories by ID.
+
+     View Observations Live @ http://localhost:37777
+     ✨ 30 Day Free Trial — memory runs off-plan. Get up to 100% more usage from
+     your plan https://cmem.ai/pro?from=session-start
+
+❯ Reply with the single word OK and use no tools.
+  ⎿  Async hook SessionStart completed
+
+  ❯ /superpowers:brainstorming      (superpowers) You MUST use this before any
+                                    creative work - creating features, buildi…
+    /create-pr                      Use when creating a pull request where
+                                    main is protected, branch naming follows …
+────────────────────────────────────────────────────────────────────────────────
+❯ /
+────────────────────────────────────────────────────────────────────────────────
+   Model: Haiku 5.5  v2.1.294  Ctx: 83.1k  ⎇ no git  (no git)  In: 2  Out...
+  -- INSERT -- ⏵⏵ auto mode on (shift+tab to cycle)

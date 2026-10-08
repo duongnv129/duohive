@@ -1,0 +1,212 @@
+tag | echo p50 / p95 / max ms | echoes | base server % | base reader % | view server % | view reader % | view client+pipe % | extra (server+reader+client+pipe) % | view conn other-pane lines (echo / noisy) | main %output lines | first frame ms | captures/changed
+3.2a-a | none | 0/3 | 11.96 | 0.024 | n/a | n/a | n/a | n/a | echo-phase lines 0 (echo pane only: set()) / n/a | 0 | 0.54 | -/-
+3.2a-b-n1-heavy | 0.34 / 0.41 / 0.47 | 200/200 | 0.225 | 0.033 | 0.375 | 0.103 | 0.0 | +0.22 | echo-phase lines 200 (echo pane only: {'%2'}) / 0 | 0 | 0.13 | 0/0
+3.2a-b-n1 | 0.27 / 0.41 / 4.7 | 200/200 | 0.125 | 0.029 | 0.15 | 0.081 | 0.0 | +0.08 | echo-phase lines 200 (echo pane only: {'%2'}) / 0 | 0 | 0.14 | 0/0
+3.2a-b-r1 | 0.56 / 1.12 / 6.6 | 200/200 | 12.709 | 0.028 | 13.276 | 0.056 | 0.0 | +0.60 | echo-phase lines 200 (echo pane only: {'%101'}) / 0 | 0 | 0.56 | 0/0
+3.2a-b-r2 | 0.55 / 1.72 / 3.37 | 200/200 | 11.778 | 0.021 | 12.506 | 0.048 | 0.0 | +0.75 | echo-phase lines 200 (echo pane only: {'%101'}) / 0 | 0 | 0.63 | 0/0
+3.2a-c-n1-heavy | 0.39 / 0.48 / 1.8 | 200/200 | 0.225 | 0.033 | 0.25 | 0.086 | 0.025 | +0.10 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.16 | 0/0
+3.2a-c-n1 | 0.4 / 0.48 / 0.55 | 200/200 | 0.125 | 0.031 | 0.175 | 0.077 | 0.025 | +0.12 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.15 | 0/0
+3.2a-c-r1 | 0.58 / 1.92 / 5.58 | 200/200 | 13.576 | 0.025 | 11.891 | 0.051 | 0.017 | -1.64 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.54 | 0/0
+3.2a-c-r2 | 0.49 / 1.47 / 9.48 | 200/200 | 12.294 | 0.022 | 10.851 | 0.045 | 0.017 | -1.40 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 1.11 | 0/0
+3.2a-d-n1-heavy | 20.9 / 50.57 / 54.31 | 200/200 | 0.2 | 0.026 | 0.974 | 0.399 | 0.0 | +1.15 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.07 | 802/2
+3.2a-d-n1 | 31.12 / 50.46 / 58.15 | 200/200 | 0.125 | 0.032 | 0.924 | 0.428 | 0.0 | +1.20 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.14 | 801/287
+3.2a-d-r1 | 20.3 / 48.99 / 67.86 | 200/200 | 11.614 | 0.028 | 14.125 | 0.295 | 0.0 | +2.78 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.37 | 1201/333
+3.2a-d-r2 | 20.63 / 52.07 / 57.41 | 200/200 | 11.277 | 0.022 | 13.739 | 0.274 | 0.0 | +2.71 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.43 | 1201/330
+3.7c-a | none | 0/3 | 13.144 | 0.023 | n/a | n/a | n/a | n/a | echo-phase lines 0 (echo pane only: set()) / n/a | 0 | 0.6 | -/-
+3.7c-b-n1-heavy | 0.36 / 0.42 / 0.51 | 200/200 | 0.25 | 0.029 | 0.325 | 0.104 | 0.0 | +0.15 | echo-phase lines 200 (echo pane only: {'%2'}) / 0 | 0 | 0.16 | 0/0
+3.7c-b-n1 | 0.35 / 0.44 / 0.71 | 200/200 | 0.15 | 0.03 | 0.175 | 0.092 | 0.0 | +0.09 | echo-phase lines 200 (echo pane only: {'%2'}) / 0 | 0 | 0.15 | 0/0
+3.7c-b-r1 | 0.82 / 1.92 / 33.24 | 200/200 | 14.227 | 0.022 | 14.976 | 0.053 | 0.0 | +0.78 | echo-phase lines 200 (echo pane only: {'%101'}) / 0 | 0 | 0.47 | 0/0
+3.7c-b-r2 | 0.52 / 0.8 / 1.16 | 200/200 | 13.86 | 0.022 | 14.425 | 0.054 | 0.0 | +0.60 | echo-phase lines 200 (echo pane only: {'%101'}) / 0 | 0 | 0.44 | 0/0
+3.7c-c-n1-heavy | 0.35 / 0.48 / 3.97 | 200/200 | 0.275 | 0.033 | 0.3 | 0.071 | 0.025 | +0.09 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.13 | 0/0
+3.7c-c-n1 | 0.41 / 0.49 / 0.68 | 200/200 | 0.15 | 0.03 | 0.175 | 0.073 | 0.025 | +0.09 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.11 | 0/0
+3.7c-c-r1 | 0.5 / 0.98 / 3.96 | 200/200 | 12.822 | 0.022 | 11.308 | 0.043 | 0.017 | -1.48 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.55 | 0/0
+3.7c-c-r2 | 0.45 / 0.7 / 0.89 | 200/200 | 13.975 | 0.022 | 14.056 | 0.048 | 0.017 | +0.12 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.35 | 0/0
+3.7c-d-n1-heavy | 23.02 / 51.06 / 58.63 | 200/200 | 0.275 | 0.03 | 1.248 | 0.43 | 0.0 | +1.37 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.15 | 802/6
+3.7c-d-n1 | 23.55 / 51.08 / 57.82 | 200/200 | 0.15 | 0.035 | 1.098 | 0.429 | 0.0 | +1.34 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.17 | 803/288
+3.7c-d-r1 | 18.27 / 49.03 / 54.07 | 200/200 | 13.307 | 0.022 | 14.808 | 0.266 | 0.0 | +1.74 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.73 | 1201/372
+3.7c-d-r2 | 20.38 / 49.88 / 57.69 | 200/200 | 14.01 | 0.021 | 14.541 | 0.269 | 0.0 | +0.78 | echo-phase lines 0 (echo pane only: set()) / 0 | 0 | 0.6 | 1202/361
+
+capture cost (S3.6): tag | visible p50/p95 ms, bytes, server ms/call | -S -2000 p50/p95 ms, bytes, lines, server ms/call
+3.2a-a | 0.51/0.79, 4184, 0.4 | 12.16/17.78, 178001, 2001, 11.0
+3.2a-b-n1-heavy | 0.27/0.35, 4184, 0.2 | 3.57/5.92, 178001, 2001, 3.8
+3.2a-b-n1 | 0.13/0.13, 4184, 0.2 | 3.75/4.11, 178001, 2001, 3.4
+3.2a-b-r1 | 0.53/0.7, 4184, 0.6 | 11.95/16.68, 178001, 2001, 11.0
+3.2a-b-r2 | 0.48/0.69, 4184, 0.4 | 11.78/14.44, 178001, 2001, 11.0
+3.2a-c-n1-heavy | 0.28/0.35, 4184, 0.2 | 3.83/4.0, 178001, 2001, 3.6
+3.2a-c-n1 | 0.25/0.36, 4184, 0.2 | 3.6/5.83, 178001, 2001, 3.8
+3.2a-c-r1 | 0.57/0.88, 4184, 0.6 | 12.02/13.95, 178001, 2001, 11.0
+3.2a-c-r2 | 0.43/0.58, 4184, 0.6 | 11.91/12.84, 178001, 2001, 11.0
+3.2a-d-n1-heavy | 0.29/0.39, 4184, 0.4 | 3.6/5.89, 178001, 2001, 3.6
+3.2a-d-n1 | 0.27/0.38, 4184, 0.2 | 3.63/5.8, 178001, 2001, 3.6
+3.2a-d-r1 | 0.51/0.77, 4184, 0.6 | 12.97/16.66, 178001, 2001, 11.4
+3.2a-d-r2 | 0.48/1.37, 4184, 0.6 | 11.54/12.24, 178001, 2001, 11.0
+3.7c-a | 0.63/0.87, 3714, 0.6 | 17.49/20.12, 158001, 2001, 16.2
+3.7c-b-n1-heavy | 0.35/0.49, 3714, 0.4 | 5.38/8.76, 158001, 2001, 5.4
+3.7c-b-n1 | 0.34/0.46, 3714, 0.4 | 5.37/7.08, 158001, 2001, 5.4
+3.7c-b-r1 | 0.67/1.01, 3714, 0.6 | 16.77/21.97, 158001, 2001, 16.2
+3.7c-b-r2 | 0.61/0.85, 3714, 0.8 | 16.58/17.35, 158001, 2001, 15.8
+3.7c-c-n1-heavy | 0.36/0.48, 3714, 0.4 | 5.22/7.65, 158001, 2001, 5.2
+3.7c-c-n1 | 0.35/0.48, 3714, 0.4 | 5.38/7.62, 158001, 2001, 5.4
+3.7c-c-r1 | 0.69/0.98, 3714, 0.6 | 17.02/18.85, 158001, 2001, 16.2
+3.7c-c-r2 | 0.63/1.01, 3714, 0.6 | 16.7/23.23, 158001, 2001, 16.0
+3.7c-d-n1-heavy | 0.35/0.43, 3714, 0.4 | 5.26/7.89, 158001, 2001, 5.4
+3.7c-d-n1 | 0.35/0.46, 3714, 0.2 | 5.1/7.46, 158001, 2001, 5.2
+3.7c-d-r1 | 0.63/0.94, 3714, 0.6 | 16.53/20.49, 158001, 2001, 15.6
+3.7c-d-r2 | 0.58/0.76, 3714, 0.6 | 16.36/17.93, 158001, 2001, 15.6
+
+== out/resize.txt
+tmux 3.2a opencode
+start: size=160x48 window-size(window)= window-size(global)=latest drawn: widest=158 last_row=47
+resize 100x30: size=100x30 window-size(window)=manual
+  after 2 s: size=100x30 drawn: widest=98 last_row=29
+  after main refresh -C and a new window: size=100x30
+  after a viewer client (ignore-size, -C 120x40): size=100x30
+resize 80x20: size=80x20 drawn: widest=78 last_row=19
+resize 120x36: size=120x36 drawn: widest=118 last_row=35
+main errors: 0
+tmux 3.2a claude
+start: size=160x48 window-size(window)= window-size(global)=latest drawn: widest=160 last_row=48
+resize 100x30: size=100x30 window-size(window)=manual
+  after 2 s: size=100x30 drawn: widest=100 last_row=30
+  after main refresh -C and a new window: size=100x30
+  after a viewer client (ignore-size, -C 120x40): size=100x30
+resize 80x20: size=80x20 drawn: widest=80 last_row=20
+resize 120x36: size=120x36 drawn: widest=120 last_row=36
+main errors: 0
+tmux 3.7c opencode
+start: size=160x48 window-size(window)= window-size(global)=latest drawn: widest=158 last_row=47
+resize 100x30: size=100x30 window-size(window)=manual
+  after 2 s: size=100x30 drawn: widest=98 last_row=29
+  after main refresh -C and a new window: size=100x30
+  after a viewer client (ignore-size, -C 120x40): size=100x30
+resize 80x20: size=80x20 drawn: widest=78 last_row=19
+resize 120x36: size=120x36 drawn: widest=118 last_row=35
+main errors: 0
+tmux 3.7c claude
+start: size=160x48 window-size(window)= window-size(global)=latest drawn: widest=160 last_row=48
+resize 100x30: size=100x30 window-size(window)=manual
+  after 2 s: size=100x30 drawn: widest=100 last_row=30
+  after main refresh -C and a new window: size=100x30
+  after a viewer client (ignore-size, -C 120x40): size=100x30
+resize 80x20: size=80x20 drawn: widest=80 last_row=20
+resize 120x36: size=120x36 drawn: widest=120 last_row=36
+main errors: 0
+
+== out/trust.txt
+claude 2.1.294 (Claude Code)
+before:
+/HOME/worksplace/duohive -> True
+/private/tmp/duohive-s3-trust.mRuaBf/duohive/worktrees/a1/t1 -> (no entry)
+/private/tmp/duohive-s3-trust.mRuaBf/plain -> (no entry)
+wt: trust dialog shown: no: 
+plain: trust dialog shown: yes: /private/tmp/duohive-s3-trust.mRuaBf/plain
+after (not answered):
+/HOME/worksplace/duohive -> True
+/private/tmp/duohive-s3-trust.mRuaBf/duohive/worktrees/a1/t1 -> (no entry)
+/private/tmp/duohive-s3-trust.mRuaBf/plain -> (no entry)
+
+== out/cut-3.2a.txt
+/HOME/.local/tmux-3.2a/bin/tmux: exact 20/20
+
+== out/cut-3.7c.txt
+tmux: exact 20/20
+
+== out/closed.txt
+/HOME/.local/tmux-3.2a/bin/tmux: window-add lines ['%window-add @2']; late pane %2: 8 output lines before off, 0 after
+/HOME/.local/tmux-3.2a/bin/tmux: after kill-window @1: ['%unlinked-window-close @1', '%begin 1791481592 287 1', "can't find pane: %1", '%error 1791481592 287 1']
+tmux: window-add lines ['%window-add @2']; late pane %2: 8 output lines before off, 0 after
+tmux: after kill-window @1: ['%unlinked-window-close @1', '%begin 1791481597 311 1', "can't find pane: %1", '%error 1791481597 311 1']
+
+== out/fidelity-fixtures-eN.txt
+== fixtures/claude-2.1.294/after-exit/
+  text rows differing from capture-pane -p: 4 [0, 1, 2, 19]
+    row 0: vt100 ""
+    row 0: tmux  "Resume this session with:"
+    row 1: vt100 "Resume this session with:"
+    row 1: tmux  "claude --resume ec414f37-5f05-4870-a09f-9310ef183b09"
+    row 2: vt100 "claude --resume ec414f37-5f05-4870-a09f-9310ef183b09"
+    row 2: tmux  ""
+    row 19: vt100 ""
+    row 19: tmux  "Pane is dead (status 0, Fri Oct  9 00:14:20 2026)"
+  cells differing, stream vs capture-pane -e -N frame: 165 of 1600
+  cursor: vt100 (0,3) tmux (0,19) -> DIFFERENT
+  cursor visible: vt100 true tmux false -> DIFFERENT
+  alternate screen: vt100 false tmux false -> same
+== fixtures/claude-2.1.294/at-rest-after-turn/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (2,16) tmux (2,16) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/claude-2.1.294/at-rest-start/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (2,16) tmux (2,16) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/claude-2.1.294/slash-menu/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (3,16) tmux (3,16) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/claude-2.1.294/typed/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (49,16) tmux (49,16) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/claude-2.1.294/working/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (2,16) tmux (2,16) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/opencode-1.18.34/after-exit/
+  text rows differing from capture-pane -p: 1 [19]
+    row 19: vt100 ""
+    row 19: tmux  "Pane is dead (status 0, Fri Oct  9 00:14:35 2026)"
+  cells differing, stream vs capture-pane -e -N frame: 39 of 1600
+  cursor: vt100 (0,0) tmux (0,19) -> DIFFERENT
+  cursor visible: vt100 true tmux false -> DIFFERENT
+  alternate screen: vt100 false tmux false -> same
+== fixtures/opencode-1.18.34/at-rest-start/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (6,9) tmux (6,9) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/opencode-1.18.34/slash-menu/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (7,9) tmux (7,9) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+== fixtures/opencode-1.18.34/typed/
+  text rows differing from capture-pane -p: 0 []
+  cells differing, stream vs capture-pane -e -N frame: 0 of 1600
+  cursor: vt100 (26,9) tmux (26,9) -> same
+  cursor visible: vt100 true tmux true -> same
+  alternate screen: vt100 true tmux true -> same
+
+== out/fidelity-fixtures-e.txt
+== fixtures/claude-2.1.294/after-exit/
+  cells differing, stream vs capture-pane -e frame: 165 of 1600
+== fixtures/claude-2.1.294/at-rest-after-turn/
+  cells differing, stream vs capture-pane -e frame: 31 of 1600
+== fixtures/claude-2.1.294/at-rest-start/
+  cells differing, stream vs capture-pane -e frame: 0 of 1600
+== fixtures/claude-2.1.294/slash-menu/
+  cells differing, stream vs capture-pane -e frame: 31 of 1600
+== fixtures/claude-2.1.294/typed/
+  cells differing, stream vs capture-pane -e frame: 0 of 1600
+== fixtures/claude-2.1.294/working/
+  cells differing, stream vs capture-pane -e frame: 31 of 1600
+== fixtures/opencode-1.18.34/after-exit/
+  cells differing, stream vs capture-pane -e frame: 39 of 1600
+== fixtures/opencode-1.18.34/at-rest-start/
+  cells differing, stream vs capture-pane -e frame: 814 of 1600
+== fixtures/opencode-1.18.34/slash-menu/
+  cells differing, stream vs capture-pane -e frame: 430 of 1600
+== fixtures/opencode-1.18.34/typed/
+  cells differing, stream vs capture-pane -e frame: 814 of 1600
