@@ -237,6 +237,49 @@ async fn zoom_resizes_the_viewed_window_and_restore_resizes_back() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn zoom_in_selected_mode_reopens_after_settle() {
+    let view = FakePaneView::default();
+    let m = resting_model();
+    let big = PaneSize {
+        cols: 100 - 4,
+        rows: 30 - 4,
+    };
+    run_with(m, &view, async |h: &mut Harness| {
+        open_duo(&view, "x").await;
+        h.input.send(key('z')).await.unwrap();
+        sleep(150).await;
+        assert_eq!(opens(&view).len(), 2);
+        assert_eq!(opens(&view)[1], PaneCall::Open(n("Duo"), big));
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn zoomed_typing_keeps_the_same_stream() {
+    let view = FakePaneView::default();
+    run_with(resting_model(), &view, async |h: &mut Harness| {
+        open_duo(&view, "x").await;
+        h.input.send(key('z')).await.unwrap();
+        sleep(150).await;
+        view.push(StreamId(2), reset("y"));
+        sleep(50).await;
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        // `z` while typing goes to the agent; nothing zooms or re-opens.
+        h.input.send(key('z')).await.unwrap();
+        sleep(300).await;
+        assert_eq!(opens(&view).len(), 2);
+        assert_eq!(
+            view.calls().last(),
+            Some(&PaneCall::Send(StreamId(2), PaneInput::Text("z".into())))
+        );
+        h.input.send(ctrl('q')).await.unwrap();
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn typing_ends_when_window_dies() {
     let view = FakePaneView::default();
     let lines = run_with(resting_model(), &view, async |h: &mut Harness| {

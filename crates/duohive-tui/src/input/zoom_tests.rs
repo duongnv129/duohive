@@ -108,3 +108,66 @@ fn z_on_role_notes() {
     press(&mut m, KeyCode::Down);
     assert_eq!(m.footer_note, None);
 }
+
+#[test]
+fn esc_restores_while_zoomed_and_never_quits() {
+    let mut m = model();
+    press(&mut m, z());
+    assert_eq!(
+        map_key(&m, KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+        Some(super::Action::Esc)
+    );
+    assert_eq!(press(&mut m, KeyCode::Esc), []);
+    assert!(!m.zoomed);
+    // Typing keeps its keys: esc goes to the agent.
+    m.live_agent = Some(n("auth-service"));
+    press(&mut m, z());
+    press(&mut m, KeyCode::Enter);
+    assert_eq!(
+        press(&mut m, KeyCode::Esc),
+        [UiEffect::Pane(PaneInput::Key(
+            duohive_core::view::PaneKey::Escape
+        ))]
+    );
+    assert!(m.zoomed);
+}
+
+#[test]
+fn restore_returns_focus_to_the_pane_zoom_started_from() {
+    let mut m = model();
+    assert_eq!(m.focus.pane, Pane::Org);
+    press(&mut m, z());
+    assert_eq!(m.focus.pane, Pane::Agent);
+    press(&mut m, z());
+    assert_eq!(m.focus.pane, Pane::Org);
+    m.focus.pane = Pane::Agent;
+    press(&mut m, z());
+    press(&mut m, KeyCode::Esc);
+    assert_eq!(m.focus.pane, Pane::Agent);
+}
+
+#[test]
+fn org_change_to_a_team_selection_clears_zoom() {
+    use duohive_core::event::Event;
+    let mut m = model();
+    press(&mut m, z());
+    assert!(m.zoomed);
+    let mut org = m.org.clone();
+    for t in &mut org.teams {
+        for r in &mut t.roles {
+            r.agents.retain(|a| a.name != n("auth-service"));
+        }
+    }
+    m.apply(Event::OrgChanged {
+        org: Box::new(org),
+        problems: Default::default(),
+    });
+    assert_eq!(m.selected, NodeKey::Duo);
+    // Duo is an agent, so zoom stays; a selection that is no agent clears it.
+    m.selected = NodeKey::Team(NodeName::parse("Payments").unwrap());
+    m.apply(Event::OrgChanged {
+        org: Box::new(m.org.clone()),
+        problems: Default::default(),
+    });
+    assert!(!m.zoomed);
+}
