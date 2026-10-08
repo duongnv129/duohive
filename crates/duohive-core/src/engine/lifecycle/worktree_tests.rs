@@ -379,3 +379,62 @@ fn stale_created_keeps_the_guard() {
     h.input(created("pay-qa", ID, ok()));
     assert_eq!(starts(&h), 1);
 }
+
+#[test]
+fn reload_dropping_an_agent_mid_creation_is_refused() {
+    use super::super::harness::test_org;
+    use crate::command::Command;
+    use crate::ports::OrgFileError;
+    let mut removed = test_org();
+    removed.teams[0].roles.remove(1);
+    let mut renamed = test_org();
+    renamed.teams[0].roles[1].agents[0].name = n("pay-qa-2");
+    for org in [removed, renamed] {
+        let mut h = in_repo();
+        h.give_in("pay-qa", TASK, RunIn::NewWorktree);
+        h.store.state.lock().unwrap().org_result = Ok(Some(org));
+        let events = h.send(Command::ReloadOrg);
+        let err = OrgFileError {
+            line: None,
+            message: READY.into(),
+        };
+        assert_eq!(events, vec![Event::OrgFileError(Some(err))]);
+        assert_eq!(h.engine.org, test_org());
+        // The late answer still finds its agent and launches.
+        h.input(created("pay-qa", ID, ok()));
+        assert_eq!(starts(&h), 1);
+    }
+}
+
+#[test]
+fn duo_cli_change_mid_creation_sets_no_restart() {
+    use crate::cli_kind::CliKind;
+    use crate::command::OrgEdit;
+    use crate::org::DuoConfig;
+    let mut h = Setup {
+        dirs: HashMap::from([(PathBuf::from("/home/me"), DirStatus::GitRepo)]),
+        ..Setup::default()
+    }
+    .build();
+    h.give_in("Duo", TASK, RunIn::NewWorktree);
+    assert!(h.engine.creating_worktree(&n("Duo")));
+    let defaults = h.engine.org.defaults.clone();
+    let events = edit(
+        &mut h,
+        OrgEdit::EditOrgDefaults {
+            defaults,
+            duo: DuoConfig {
+                name: n("Duo"),
+                cli: CliKind::Opencode,
+            },
+        },
+    );
+    assert!(
+        events.iter().any(|e| matches!(e, Event::OrgChanged { .. })),
+        "{events:?}"
+    );
+    assert!(!h.rt("Duo").restart_after_stop);
+    h.input(created("Duo", ID, ok()));
+    assert_eq!(starts(&h), 1);
+    assert_eq!(h.rt("Duo").cli, Some(CliKind::Opencode));
+}
