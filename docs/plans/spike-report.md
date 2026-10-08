@@ -1,6 +1,6 @@
-# DuoHive v1 Phase 0–1: Spike Report
+# DuoHive v1 Phase 0–2: Spike Report
 
-Findings from the phase 0–1 spikes (plan Tasks 3–5). Each section records what was measured, the
+Findings from the phase 0–1 spikes (plan Tasks 3–5) and phase 2's spike S3 (phase-2 plan Task 2.1). Each section records what was measured, the
 log that shows it, and the decision taken. The spike code is throwaway and lives in `spikes/`.
 Its large raw logs (`spikes/*/out/`) are not committed, so the key lines are quoted here. The small evidence files the report cites (`out/summary.txt` and the `close-*`, `flags-*` and `selected-*` outputs) are committed.
 
@@ -557,3 +557,211 @@ TD edits (`docs/design/technical-design.md`):
 - **§6.5 Replies:** OpenCode's reply comes from `duohive_last_reply` in the `session.idle` payload, added by the plugin from the event stream.
 
 Plan edits (`docs/plans/phase-1-plan.md`, Tasks 20–21, where the measured mechanism contradicts the text): the task goes last as `--prompt=<task>` for OpenCode (no `--`; the positional is the project directory), and `launch_snapshot_with_task_model_effort_flags` and `launch_snapshot_hostile_text` check that one argument; effort for OpenCode is a config key, not a flag; `hook_config_points_at_duohive_hook` checks, for OpenCode, the config file's `plugin` entry, the plugin file in `run_dir`, and the environment that names the hook exe and agent (the plugin runs `duohive hook` as an argv, so `hook_command`'s shell string is not used for it); the OpenCode plugin delivers hooks in order and sends `busy` only on change; and OpenCode's `parse_hook` reads `duohive_last_reply` from the `session.idle` payload, so its `enrich_hook` stays the no-op. TD §4.2's waiting-exception sentence now says that only Claude Code lacks a hook for the answer. After the ruling and its review: TD §5.2's OpenCode row and "Spike S2" note, and Task 21's launch text and `launch_snapshot_no_task` / `no_auto_approve_flags` descriptions, say that the plugin's `config` hook composes `ask` for `edit` and `bash` (no static `permission` key); Task 21 gains the plugin's never-disturb rules, the `session-start` trigger, `plugin_replays_recorded_events`, and the fixture list and `NeedsInput` prompt for `parses_recorded_hooks`; plan D2 mirrors TD §4.2's wording on approval answers.
+
+## S3 Live view of one pane at 100 agents
+
+Code: `spikes/s3/` (`run.sh`, `view.py`, `bench.sh`, `bench-isolated.sh`, `analyze.py`, `record.sh`, `export.py`, `fidelity/`, `resize.sh`, `trust.sh`, `probe-cut.py`, `probe-closed.py`, `probe-blocks.sh`). Every figure below comes from `out/summary.txt` (`analyze.py` over `out/`), which also carries the outputs of the other checks. Per-run logs are `out/<version>-<candidate>[-n1][-heavy][-r<n>]-{result.json,latency.txt,windows.txt}`.
+
+### S3.0 Setup
+
+- **Machine and tmux:** as S0: Apple M4 (Mac16,12, 10 cores), macOS 26.4.1 (25E253); tmux 3.2a (`~/.local/tmux-3.2a`) and 3.7c (Homebrew). Every run is a throwaway `-L duohive-s3-<pid>` server started with `-f /dev/null`. Other work ran on the machine (load average 2.3 to 3.7).
+- **Windows:** S0's generator: a keeper window and 100 noisy windows (`while :; do date; sleep 0.1; done`). Two more: an echo window (`stty -icanon; exec cat >/dev/null`, so the tty's echo is the only thing on its screen) and a history window (3,000 coloured lines, then `cat`).
+- **Main connection:** S0.5's, as TD §4.1 runs it: `attach-session -f no-output,ignore-size`, `refresh-client -C 160x48`, and `list-windows -F …` once a second.
+- **One run** (`run.sh <tmux> <candidate>`, driven by `view.py`):
+  1. a baseline phase: the main connection only (60 s);
+  2. a view of the echo pane, with 200 `send-keys -t %P -l Z`, 20 to 60 ms apart. Each key is timed from writing the command to the reader seeing the `Z`;
+  3. a view of a noisy pane (60 s): CPU over the baseline, and `%output` lines per pane on both connections;
+  4. 50 `capture-pane -e -p` and 50 `capture-pane -e -p -S -2000` of the history pane.
+- **Candidates (P2-D2):**
+  - (a) a second control client with `no-output`, then `refresh-client -A '%P:on'` and `'%P:continue'`;
+  - (b) a second control client: `!no-output`, every other pane `off`, the viewed pane `on`, all on one command line (see S3.3);
+  - (c) `pipe-pane -O -t %P 'exec cat > <fifo>'`, read from the FIFO;
+  - (d) `capture-pane -e -p -t %P` every 50 ms on a second control client, keeping changed frames only.
+
+  Keys go over a second control client for every candidate. The first frame is always `capture-pane -e -p` plus `display -p '#{cursor_x} #{cursor_y}'`.
+- **Runs:** `bench.sh`: (a) once per version; (b), (c) and (d) twice per version (`-r1`, `-r2`). `bench-isolated.sh`: `NOISY=1` keeps only the viewed noisy window, to isolate the view's own cost from the other 99 panes' noise (40 s phases); `HEAVY=1` makes that window print about 1,000 lines a second.
+- **CPU:** the server, the view's `tmux -C` client and any pipe process by `ps` cumulative time (0.01 s resolution, so ±0.025 % over 40 s); the Python reader by `getrusage`. **Extra** = view phase − baseline phase of the same run: server + reader + view client + pipe process.
+
+### S3.1 Keystroke-to-echo latency
+
+200 keys per run (`out/*-latency.txt`), at 100 noisy windows:
+
+| Candidate | 3.2a p50 / p95 / max (ms), r1; r2 | 3.7c p50 / p95 / max (ms), r1; r2 | Echoes |
+|---|---|---|---|
+| (a) `no-output` + `-A on` | none | none | 0 of 3 on each version: the keys reached the pane (3 `Z` on its screen), and nothing streamed |
+| (b) second client, others `off` | 0.56 / 1.12 / 6.60; 0.55 / 1.72 / 3.37 | 0.82 / 1.92 / 33.24; 0.52 / 0.80 / 1.16 | 200 of 200 in every run |
+| (c) `pipe-pane -O` to a FIFO | 0.58 / 1.92 / 5.58; 0.49 / 1.47 / 9.48 | 0.50 / 0.98 / 3.96; 0.45 / 0.70 / 0.89 | 200 of 200 |
+| (d) `capture-pane` every 50 ms | 20.30 / 48.99 / 67.86; 20.63 / **52.07** / 57.41 | 18.27 / 49.03 / 54.07; 20.38 / 49.88 / 57.69 | 200 of 200 |
+
+The isolated runs (one noisy window) agree: (b) p95 0.41 to 0.44 ms, (c) 0.48 to 0.49 ms, and (d) **50.46 to 51.08 ms** (all four over 50).
+- **(a) is not honoured:** with `no-output` set, `-A '%P:on'` and `:continue` give no output on either version, as S0 found (`selected.py`).
+- **(d) is bounded by its timer:** about 50 ms plus the read. Its p95 sits at the 50 ms limit, and was over it in 5 of 8 runs.
+
+### S3.2 CPU of viewing one noisy pane
+
+At 100 noisy windows (`bench.sh`), the server's own noise (±1.5 points between phases) is larger than a view's cost:
+
+| Candidate | Baseline server, 3.2a / 3.7c | Extra, 3.2a r1, r2 | Extra, 3.7c r1, r2 | Reader extra, 3.2a / 3.7c |
+|---|---|---|---|---|
+| (b) | 11.8–12.7 % / 13.9–14.2 % | +0.60, +0.75 | +0.78, +0.60 | +0.03 / +0.03 |
+| (c) | 12.3–13.6 % / 12.8–14.0 % | −1.64, −1.40 | −1.48, +0.12 | +0.02 (+0.017 `cat`) / +0.02 (+0.017) |
+| (d) | 11.3–11.6 % / 13.3–14.0 % | +2.78, +2.71 | +1.74, +0.78 | +0.26 / +0.25 |
+
+S0's baseline (100 noisy windows, no client) was 10.16 % (3.2a) and 10.64 % (3.7c). The extra is the server's run-to-run swing more than the view's cost, so the view's own cost was measured with one window (`bench-isolated.sh`, % of one core):
+
+| Candidate | S0's noisy pane, 3.2a / 3.7c: extra (server, reader, pipe) | Heavy pane (about 1,000 lines a second), 3.2a / 3.7c |
+|---|---|---|
+| (b) | **+0.08** (0.025, 0.052, –) / **+0.09** (0.025, 0.062, –) | +0.22 (0.150, 0.070, –) / +0.15 (0.075, 0.075, –) |
+| (c) | +0.12 (0.050, 0.046, 0.025) / +0.09 (0.025, 0.043, 0.025) | +0.10 (0.025, 0.053, 0.025) / +0.09 (0.025, 0.038, 0.025) |
+| (d) | +1.20 (0.80, 0.40, –) / +1.34 (0.95, 0.39, –) | +1.15 / +1.37 |
+
+The `tmux -C` client processes measured 0.00 % in every run.
+- **(b) and (c) cost about 0.1 % of a core** for S0's noisy pane, and the difference is at `ps`'s resolution.
+- **On heavy output, (c) is lower by 0.06 to 0.12 points:** with (b), tmux octal-escapes the bytes into `%output` lines, and the reader unescapes them.
+- **(d) costs about 15 times (b)'s:** 20 captures a second at about 0.4 to 0.6 ms of server time each, whether the pane changed or not (1,201 captures, 330 to 372 of them changed, per 60 s).
+
+### S3.3 The other panes stay silent
+
+- **Main connection:** 0 `%output` lines in every run, for every candidate, on both versions (`main_output_lines` in each `result.json`). No view changes what the main connection gets.
+- **(b)'s viewer:** in the echo phase it carried only the echo pane (200 lines, one per key), and in the noisy phase only the viewed pane (0 lines from the other 102 panes, every run).
+  - **Order matters.** The first version sent the `off` commands while `no-output` was still set, then cleared it. Every pane then streamed: 2,833 lines from all 100 noisy panes in 3 s (3.7c smoke run). Clearing `no-output` resets every pane's on/off state.
+  - **The fix:** the open sends `!no-output` first and the `off`s after it, all on one line. tmux runs a line's commands in one pass, with no pane read between them, and replies with one `%begin`/`%end` block per command (`probe-blocks.sh`).
+- **A window added while viewing** (`probe-closed.py`, `out/closed.txt`, both versions):
+  - `%window-add @2` arrives, and the new pane streams (8 lines in 1 s) until `refresh-client -A '%2:off'`, then 0 lines.
+  - The viewer drops any other pane's lines anyway, so the gap costs only those lines.
+- **(c) and (d)** use no `%output` at all; their second client stays `no-output`.
+
+### S3.4 Fidelity in `vt100` `=0.16.2`
+
+`record.sh` started `claude --model haiku` (2.1.294) and `opencode` (1.18.34) at 80×20 in a throwaway server, with `TERM=xterm-256color` and `COLORTERM=truecolor` in a clean environment (the pane saw `TERM=tmux-256color`). It recorded the pane's raw bytes from the first byte with `pipe-pane -O` (attached while the window slept 1 s before `exec`).
+- **Claude Code:** start, a typed prompt, "Reply with the single word OK and use no tools." (working, then at rest), the `/` menu, and the quit keys.
+- **OpenCode:** no prompt: start, typed text, the `/` menu, and `/exit`.
+
+At each checkpoint it saved the stream so far, `capture-pane -e -p`, `capture-pane -e -N -p`, `capture-pane -p` and `#{pane_width} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}`.
+
+`fidelity/` replays the stream into `vt100::Parser::new(20, 80, 0)` and compares the result with tmux's screen. It also feeds the capture into a second parser, which is the first-frame path, and compares the two cell by cell: text, fg and bg colour, bold, dim, italic, underline and inverse (`out/summary.txt`, `out/fidelity-fixtures-*.txt`).
+
+| Checkpoint | Text vs `capture-pane -p` | Cells: stream vs `-e -N` frame (vs `-e` frame) | Cursor, visibility, alternate screen | Colours on screen |
+|---|---|---|---|---|
+| Claude `at-rest-start`, `typed` | same | 0 of 1,600 (0) | same, same, same (on) | 12 indexed (256-colour), 0 RGB |
+| Claude `working`, `at-rest-after-turn`, `slash-menu` | same | 0 of 1,600 (**31**) | same | 12–13 indexed |
+| OpenCode `at-rest-start`, `typed`, `slash-menu` | same | 0 of 1,600 (**814**, **814**, **430**) | same, same, same (on) | 10 RGB |
+| Claude / OpenCode `after-exit` (pane dead) | tmux's `Pane is dead (status 0, …)` line, which is not in the stream; Claude's exit text one row lower in `vt100` | 165 / 39 | cursor and visibility differ (tmux's own line); alternate screen off in both | – |
+
+- **Live screens are exact:** the text, every cell's colour and attributes, the cursor, cursor visibility and the alternate screen match tmux, for both CLIs.
+  - Claude Code 2.1.294 draws on the alternate screen too (`alternate_on` 1 from the first frame), as OpenCode does.
+- **The first frame needs `-N`:** `capture-pane -e -p` drops the background of trailing blank cells:
+  - OpenCode paints its whole screen with an RGB background, so half the screen lost its background (814 cells);
+  - Claude's highlighted prompt row lost 31 cells.
+
+  `capture-pane -e -N -p` reproduces the stream's screen exactly. So P2-D2's first frame becomes `capture-pane -e -N -p` (S3.8).
+- **Dead panes:** the stream ends with the CLI's last bytes. tmux's own `Pane is dead` line comes only from a capture, so a view re-reads the pane with a capture when it dies.
+- **Sequences `vt100` does not handle** (it ignores them; none changed a live screen):
+  - synchronized output (`CSI ?2026h/l`, up to 29 pairs per fixture stream). The CLIs bracket every frame with it, so a renderer can draw only at `?2026l` to avoid half frames;
+  - keyboard modes: kitty keyboard (`CSI >5u`, `CSI <u`, `CSI ?u`), modifyOtherKeys (`CSI >4;Nm`), focus events (`?1004`);
+  - terminal queries, which tmux answers as the pane's terminal: DA, XTVERSION, DECRQM `CSI ?$…p`, DSR `CSI 6n`, `CSI 14t`, and OSC 4/10/11/12;
+  - cursor shape (`CSI 0q`/`1q`), which a view loses;
+  - `CSI 0s`/`CSI 0u`, `?1016`, `?2031`, OSC 22/66/99/112/1337, `ESC ( B` and `ESC \`.
+- **Fixtures for Task 2.4:** `spikes/s3/fixtures/claude-2.1.294/` and `spikes/s3/fixtures/opencode-1.18.34/`:
+  - `stream.bin`: the whole session;
+  - `env.txt`;
+  - one directory per checkpoint: `stream.bin` up to it, `capture-e.txt`, `capture-eN.txt`, `capture.txt`, and `meta.txt` (`width height cursor_x cursor_y cursor_flag alternate_on`).
+
+  `export.py` copied them byte for byte, except the user's OpenCode model and provider names: `GLM 5.2` became `Model 1`, and `LiteLLM (Cake)` became `Provider (Ex.)`, each the same length, so every cursor move still holds. The Claude screens show the user's own plugins' start-up text, as S1's do.
+
+### S3.5 `resize-window`
+
+`resize.sh`, with DuoHive's server options (`duohive-tmux` `ensure_server`: `default-size 160x48`, `window-size` left at its default, `latest`) and the main connection attached. The same results on 3.2a and 3.7c, for both CLIs (`out/resize.txt`):
+- **It works:** `resize-window -t <window> -x 100 -y 30` sets the window to 100×30, and sets that window's `window-size` to `manual`.
+- **The size holds:** it held through the main client's `refresh-client -C 160x48`, a new window, and a second control client (`ignore-size`, `-C 120x40`).
+- **The CLIs redraw within 2 s:**
+
+  | Size | OpenCode: widest line, last row | Claude Code: widest line, last row |
+  |---|---|---|
+  | 100×30 | 98, 29 | 100, 30 |
+  | 80×20 | 78, 19 | 80, 20 |
+  | 120×36 | 118, 35 | 120, 36 |
+
+### S3.6 `capture-pane -e -S -2000`
+
+On the history pane (2,001 lines with `-S -2000`), 50 calls per run (`capture_cost` in each `result.json`):
+
+| | 3.2a, 100 noisy windows | 3.2a, 1 window | 3.7c, 100 noisy windows | 3.7c, 1 window |
+|---|---|---|---|---|
+| `capture-pane -e -p` (visible, 48 rows): p50 / p95 | 0.43–0.57 / 0.58–1.37 ms | 0.13–0.29 / 0.13–0.39 ms | 0.58–0.69 / 0.76–1.01 ms | 0.34–0.36 / 0.43–0.49 ms |
+| `capture-pane -e -p -S -2000`: p50 / p95 | 11.5–13.0 / 12.2–17.8 ms | 3.6–3.8 / 4.0–5.9 ms | 16.4–17.5 / 17.4–23.2 ms | 5.1–5.4 / 7.1–8.8 ms |
+| Size of the `-S -2000` reply | 178,001 bytes | 178,001 bytes | 158,001 bytes | 158,001 bytes |
+| Server CPU per `-S -2000` call | 11.0–11.4 ms | 3.4–3.8 ms | 15.6–16.2 ms | 5.2–5.4 ms |
+
+A full-history read costs one call of up to about 23 ms at 100 noisy windows: fine once, when a view opens or the user scrolls, but not on a timer. The first frame itself (`capture-pane` plus `display`) took 0.35 to 1.1 ms.
+
+### S3.7 Workspace trust in a new worktree
+
+`trust.sh` (`out/trust.txt`):
+- **Setup:**
+  - a detached worktree of this repository (which Claude Code already trusts) at a new path shaped like TD §5.3's, `/private/tmp/duohive-s3-trust.*/duohive/worktrees/a1/t1`;
+  - a fresh non-git directory beside it;
+  - `claude --model haiku` (2.1.294) started in each.
+- **Neither dialog was answered.** The server was killed and the worktree removed.
+- **Result:**
+  - **New worktree of a trusted repo:** no dialog. The session started.
+  - **Fresh directory:** the dialog (`Quick safety check: Is this a project you created or one you trust?`).
+  - Neither path gained an entry in `~/.claude.json` (checked before and after).
+
+So Claude Code trusts a worktree through the repository it belongs to: an observed behaviour, not a documented one.
+- **Phase-2 risk for Task 2.19:** a worktree of a repository the user has never opened in Claude Code still shows the dialog. That agent starts waiting (`~`, S1.8's screen rule), and the user answers in the pane. DuoHive does not answer it.
+- **Not tested:** a repository trusted only through a parent directory.
+
+### S3.8 Decision
+
+**Path: (b), a second control client that streams only the viewed pane.**
+- **Echo:** (a) fails (nothing streams). (d) is at or over the 50 ms limit (p95 48.99 to 52.07 ms, and over 50 in 5 of 8 runs), and costs about 15 times (b)'s CPU. (b) and (c) both meet it with a p95 under 2 ms.
+- **S3.2:** (b) and (c) tie at about 0.1 % of a core, at the 0.025 % resolution of the measurement. On S0's noisy pane, (b) measured 0.08 and 0.09 against (c)'s 0.12 and 0.09. At 1,000 lines a second (c) is cheaper, by 0.06 to 0.12 points (S3.2).
+- **The tie is broken on correctness:**
+  - **An exact first frame:** (b)'s capture rides the same connection as its stream. The `%output` that follows the capture's `%end` continues exactly where the capture ends (`probe-cut.py` at about 1,500 lines a second: 100 of 100 opens exact on 3.7c, 99 of 100 on 3.2a). A FIFO has no order against a command reply, so (c) would drop or repeat the bytes around the capture.
+  - **One connection:** keys, `resize-window` and the capture all go over (b)'s connection.
+  - **Nothing outside it:** (b) needs no FIFO or `cat` per view, and doesn't take the pane's single `pipe-pane` slot.
+
+**Commands** (the viewer connection; `%P` is the viewed pane, `@W` its window):
+
+1. **Connect** once, beside the main connection, and keep the connection:
+   ```
+   tmux -L duohive -C attach-session -f no-output,ignore-size -t =duohive
+   refresh-client -C 160x48
+   ```
+2. **Open** (P2-D4: 100 ms after the selection settles):
+   - Size the window to the agent pane's inner size (P2-D5):
+     ```
+     resize-window -t @W -x <cols> -y <rows>
+     ```
+   - Then send one line. `!no-output` comes first, because clearing it resets every pane's on/off state. The `off`s cover every other pane, from `list-panes -s -t =duohive -F '#{pane_id}'`:
+     ```
+     refresh-client -f '!no-output' ; refresh-client -A '%<other>:off' ; … ; refresh-client -A '%P:on' ; display -p -t %P '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}' ; capture-pane -e -N -p -t %P
+     ```
+   - **The first frame:** the last two replies (`-N` keeps the background of trailing blanks, S3.4).
+   - **The stream:** every `%output %P <data>` after the capture's `%end`, with `\ooo` octal escapes decoded, fed to `vt100`.
+3. **While open:**
+   - **Keys:** `send-keys -t %P -l '<text>'` and `send-keys -t %P <key>`.
+   - **Resize:** `resize-window -t @W -x <cols> -y <rows>`.
+   - **A new window:** on `%window-add @N`, send `refresh-client -A '%<its pane>:off'`. Drop `%output` from any pane but `%P`.
+   - **Scrollback**, when asked: `capture-pane -e -p -S -2000 -t %P`.
+4. **Close:**
+   ```
+   refresh-client -f no-output
+   ```
+   Every pane goes quiet at once.
+5. **Window gone:**
+   - `%unlinked-window-close @W` (S0: never `%window-close`) arrives on the viewer. A key or resize sent after it gets `%error` with `can't find pane: %P` (`probe-closed.py`, both versions).
+   - tmux never reuses a pane id within a server, so a stream bound to `%P` can never type into a newer window. Both cases are `ViewError::Closed` (P2-D1).
+   - **Pane dead** (`remain-on-exit`): the stream stops. The view re-reads `capture-pane -e -N -p` to show tmux's `Pane is dead` line.
+   - **Server gone:** `%exit`, then EOF.
+
+**Main connection:** unchanged (S0.5). It stays `no-output` and never carries a pane's output (S3.3).
+
+### S3.9 TD changes
+
+`docs/design/technical-design.md`:
+- **§3.1, Ports row:** adds `Ids` and `DirProbe` (built in phase 1) and `PaneView` (P2-D1). A note under the table describes them.
+- **§3.1, Adapters row:** "tmux runtime and pane view".
+- **§4.1, source 2:** the live view of the selected pane takes its own path, a second control client (§4.3, spike S3).
+- **§4.3, "No pane streams in phases 0–1":** becomes "One pane stream, the viewed one", with S3.8's path and its measured cost.

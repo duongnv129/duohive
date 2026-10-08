@@ -20,3 +20,8 @@ trim_trailing_whitespace = false
 [crates/duohive-cli/tests/fixtures/**]
 # Raw captures: capture-pane pads lines, and the screen rules must cope with it.
 trim_trailing_whitespace = false
+
+[spikes/s3/fixtures/**]
+# Raw pane bytes and captures (spike S3.4): byte for byte, never reformatted.
+trim_trailing_whitespace = false
+insert_final_newline = false

@@ -54,9 +54,16 @@ Dependencies point inward only:
 | Layer | Holds | Must not know about |
 |---|---|---|
 | **Core** | Org model and inheritance, agent lifecycle, status engine, inbox, Duo's actions and chat, approval cards, worktree rules, task-to-role picking | tmux, terminals, SQL, the TUI, MCP |
-| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Notifier`, `Git` | Any implementation |
-| **Adapters** | tmux runtime, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
+| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Ids`, `DirProbe`, `Notifier`, `Git`, `PaneView` | Any implementation |
+| **Adapters** | tmux runtime and pane view, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
 | **Interfaces** | TUI; MCP endpoint | Each other |
+
+- **`Ids`** makes per-launch tokens, and **`DirProbe`** reports whether a directory is a git repository, exists, or is missing (for validation; the core does no I/O). Both came in phase 1.
+- **`PaneView`** (phase 2, P2-D1) is the live terminal of the selected agent, and bypasses the engine:
+  - **Wiring:** the port (traits and data only) is implemented in `duohive-tmux`, and the binary hands it to the TUI as `Arc<dyn PaneView>`. Raw bytes never pass through the core's single task. The engine still receives `ViewAgent`.
+  - **Binding:** `open` returns a `StreamId` bound to the window open at that moment (its pane id, which tmux never reuses within a server).
+  - **Keys never reach a newer window:** `send` and `resize` take that id, and fail with `ViewError::Closed` once that window is gone.
+  - **The tmux path** is in §4.3 (spike S3).
 
 ### 3.2 Command/event boundary
 
@@ -94,7 +101,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 | Source | Mechanism | Gives |
 |---|---|---|
 | **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
-| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0, followed by `refresh-client -C 160x48` so tmux 3.2a doesn't size windows from the control client; it covers new windows with no per-window command, and silences every pane on the connection, so a live view of the selected pane in phase 2 needs its own path), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty (spike S1): it has no exit status, and is errored "exited unexpectedly" | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status, or none for a signal death |
+| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0, followed by `refresh-client -C 160x48` so tmux 3.2a doesn't size windows from the control client; it covers new windows with no per-window command, and silences every pane on the connection; the live view of the selected pane takes its own path, a second control client, §4.3 and spike S3), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty (spike S1): it has no exit status, and is errored "exited unexpectedly" | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status, or none for a signal death |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
 - **Spike S0** (`docs/plans/spike-report.md` S0): format subscriptions (`refresh-client -B`) did report for silenced panes at 100 windows, about once a second, with the same delay as polling (median 0.47–0.57 s), but their reader cost more CPU than the one-a-second `list-windows` at 100 noisy windows on both tmux 3.2a and latest, so the poll is the mechanism. `no-output` beat paused flow control on tmux server + reader CPU and needs nothing per new window. A closed window is reported as `%unlinked-window-close @N` (not `%window-close`), and is also absent from the next reply.
@@ -131,7 +138,15 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 ### 4.3 Cost at scale
 
 - **No per-agent polling:** one activity query a second covers every agent (spike S0: about 0.2–0.3 % of a core in the reader at 100 windows).
-- **No pane streams in phases 0–1:** every pane is silenced with `no-output`, so the connection carries only command replies and the once-a-second activity poll. Spike S0 found that `no-output` has no per-pane exception, so the phase-2 live view of the selected agent needs its own path: a second client, or `!no-output` with the other panes paused.
+- **One pane stream, the viewed one (phase 2, spike S3):** the main connection stays `no-output`, so it carries only command replies and the once-a-second activity poll (`no-output` has no per-pane exception, spike S0).
+  - **The viewer:** the agent pane's live view (`PaneView`, §3.1) uses a second control client, `attach-session -f no-output,ignore-size`.
+  - **Opening a view** is one command line, in this order: `refresh-client -f '!no-output'` (it resets every pane's on/off state, so it comes first), `refresh-client -A '%N:off'` for every other pane, `-A '%P:on'` for the viewed pane, then `display -p '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}'` and `capture-pane -e -N -p` for the first frame (`-N` keeps the background of trailing blanks).
+  - **The stream:** the `%output %P` lines after the capture's reply continue exactly where the capture ends.
+  - **Keys and resizes:** `send-keys -t %P` and `resize-window -t @W`, over the same connection. They fail once the window is gone.
+  - **A window added while viewing** is turned `off` on its `%window-add`.
+  - **Closing:** `refresh-client -f no-output`.
+  - **Cost:** about 0.1 % of a core, with keystroke echo at a p95 under 2 ms, at 100 noisy windows on tmux 3.2a and latest. A 50 ms `capture-pane` timer cost about 15 times as much, with its p95 at about 50 ms.
+  - **Scrollback:** read once on request (`capture-pane -e -p -S -2000`, 12–23 ms at 100 noisy windows), never on a timer.
 - **Bounded reads:** a busy agent redrawing a spinner many times a second costs one screen read after it settles.
 
 **Latency budget** (PRD: reported states under 1 s at 10 agents and under 2 s at 100; screen-read states under 2 s):
