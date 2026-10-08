@@ -19,9 +19,27 @@ const SQUASH_IDENTITY: [&str; 4] = [
     "user.email=duohive@localhost",
 ];
 
+/// Fixed dates for the synthetic squash commit, so repeated checks of one
+/// branch write one object, not one per check.
+const SQUASH_DATES: [(&str, &str); 2] = [
+    ("GIT_AUTHOR_DATE", "@0 +0000"),
+    ("GIT_COMMITTER_DATE", "@0 +0000"),
+];
+
 /// The fully qualified ref of a local branch.
 pub(super) fn head_ref(branch: &str) -> String {
     format!("refs/heads/{branch}")
+}
+
+/// The commit `branch` points at, or `None` when there is no such branch.
+pub(super) fn branch_tip(
+    git: &Runner,
+    repo: &Path,
+    branch: &str,
+) -> Result<Option<String>, String> {
+    let commit = format!("{}^{{commit}}", head_ref(branch));
+    let out = git.git(repo, &["rev-parse", "--verify", "--quiet", commit.as_str()])?;
+    Ok(out.ok().then(|| out.stdout.trim().to_owned()))
 }
 
 /// Whether `reference` names an existing ref.
@@ -109,19 +127,16 @@ fn local_default(git: &Runner, repo: &Path) -> Result<Option<BaseRef>, String> {
     Ok(None)
 }
 
-/// Whether `branch` has reached `base`. With `created_from`, a branch with no
-/// commits after it is never merged (P2-D17).
+/// Whether the commit `tip` has reached `base`. With `created_from`, a tip
+/// with no commits after it is never merged (P2-D17). Callers pass a commit
+/// id, not a branch name, so the verdict is about exactly that commit.
 pub(super) fn merge_state(
     git: &Runner,
     repo: &Path,
-    branch: &str,
+    tip: &str,
     base: &BaseRef,
     created_from: Option<&str>,
 ) -> Result<MergeState, String> {
-    let tip = head_ref(branch);
-    if !ref_exists(git, repo, &tip)? {
-        return Err(format!("branch {branch} not found"));
-    }
     let base = base.0.as_str();
     // 1. Fresh.
     if let Some(from) = created_from {
@@ -131,23 +146,25 @@ pub(super) fn merge_state(
         }
     }
     // 2. Normal: a merge commit or a fast-forward.
-    let ancestor = git.git(repo, &["merge-base", "--is-ancestor", &tip, base])?;
+    let ancestor = git.git(repo, &["merge-base", "--is-ancestor", tip, base])?;
     match ancestor.code {
         Some(0) => return Ok(MergeState::Merged(MergeKind::Normal)),
         Some(1) => {}
         _ => return Err(ancestor.reason()),
     }
-    // 3. Rebase: every branch commit has an equivalent on the base.
-    if all_applied(git, repo, base, &tip)? {
+    // 3. Rebase: every branch commit has an equivalent on the base. `git
+    // cherry` skips merge commits, whose own content would go unchecked, so a
+    // branch holding one is left to the squash test.
+    if !has_merge_commits(git, repo, base, tip)? && all_applied(git, repo, base, tip)? {
         return Ok(MergeState::Merged(MergeKind::Rebase));
     }
     // 4. Squash: the branch's whole change, as one commit, has an equivalent.
-    let merge_base = git.text(repo, &["merge-base", base, &tip])?;
+    let merge_base = git.text(repo, &["merge-base", base, tip])?;
     let merge_base = merge_base.trim();
     let tree = format!("{tip}^{{tree}}");
     let mut args: Vec<&str> = SQUASH_IDENTITY.to_vec();
     args.extend(["commit-tree", &tree, "-p", merge_base, "-m", "squash"]);
-    let synthetic = git.text(repo, &args)?;
+    let synthetic = git.git_env(repo, &args, &SQUASH_DATES)?.into_result()?;
     if all_applied(git, repo, base, synthetic.trim())? {
         return Ok(MergeState::Merged(MergeKind::Squash));
     }
@@ -159,6 +176,13 @@ pub(super) fn merge_state(
     Ok(MergeState::NotMerged {
         files_changed: u32::try_from(files_changed).unwrap_or(u32::MAX),
     })
+}
+
+/// Whether `base..tip` holds a merge commit.
+fn has_merge_commits(git: &Runner, repo: &Path, base: &str, tip: &str) -> Result<bool, String> {
+    let range = format!("{base}..{tip}");
+    let count = git.text(repo, &["rev-list", "--merges", "--count", range.as_str()])?;
+    Ok(count.trim() != "0")
 }
 
 /// `git cherry <base> <head>` lists no `+` line.
