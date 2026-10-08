@@ -14,6 +14,7 @@ use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use duohive_core::validate::{DirProbe, DirStatus};
+use duohive_core::worktree::RunIn;
 
 use ratatui::layout::Rect;
 
@@ -139,6 +140,10 @@ pub struct UiModel {
     pub zoomed: bool,
     /// The pane that had focus when zoom started; restoring goes back to it.
     pub zoom_from: crate::focus::Pane,
+    /// The last Give work the dialog sent, put back if the engine refuses it.
+    pub give_sent: Option<(AgentName, String, RunIn)>,
+    /// A task that couldn't be put back yet; the next `space` on its agent opens it.
+    pub give_later: Option<(AgentName, String)>,
 }
 
 impl UiModel {
@@ -170,6 +175,8 @@ impl UiModel {
             live_agent: None,
             zoomed: false,
             zoom_from: crate::focus::Pane::Org,
+            give_sent: None,
+            give_later: None,
         }
     }
 
@@ -205,7 +212,12 @@ impl UiModel {
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => match &mut self.dialog {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
-                _ => self.footer_note = Some(reason),
+                _ => match self.give_sent.clone() {
+                    Some((agent, task, run)) => {
+                        self.reopen_give_work(&agent, &task, Some(run), reason);
+                    }
+                    None => self.footer_note = Some(reason),
+                },
             },
             // Phase 2 gives Duo work only from the chat (P2-D8, P2-D10).
             Event::GiveWorkRefused {
@@ -215,16 +227,24 @@ impl UiModel {
             } if self.org.is_duo(&agent) => chat::refused(self, state, pending),
             Event::GiveWorkRefused {
                 agent,
-                pending: true,
-                ..
-            } => self.footer_note = Some(chat::still_taking(&agent)),
-            Event::GiveWorkRefused { agent, state, .. } => {
-                self.footer_note = Some(format!("{agent} is {}", state.word()));
+                state,
+                pending,
+            } => {
+                let reason = if pending {
+                    chat::still_taking(&agent)
+                } else {
+                    format!("{agent} is {}", state.word())
+                };
+                self.refused_give_work(&agent, reason);
             }
             Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
                 chat::not_taken(self);
             }
-            Event::GiveWorkNotTaken { agent, task, .. } => self.reopen_give_work(&agent, &task),
+            Event::GiveWorkNotTaken { agent, task, .. } => {
+                let note = format!("{agent} didn't take the task");
+                self.give_sent = None;
+                self.reopen_give_work(&agent, &task, None, note);
+            }
             Event::Reconnected => self.reconnecting = 0,
             Event::AgentRunChanged {
                 agent,
@@ -254,6 +274,13 @@ impl UiModel {
     /// The open Give work dialog follows its agent's state.
     fn sync_give_work(&mut self, agent: &AgentName) {
         let view = self.view(agent).clone();
+        let left_rest = matches!(
+            view.status.state,
+            AgentState::Starting | AgentState::Working | AgentState::Waiting
+        );
+        if left_rest && self.give_sent.as_ref().is_some_and(|(a, ..)| a == agent) {
+            self.give_sent = None;
+        }
         if let Some(Dialog::GiveWork(g)) = &mut self.dialog
             && &g.agent == agent
         {
@@ -261,17 +288,39 @@ impl UiModel {
         }
     }
 
-    /// The agent didn't take the task (P2-D11): Give work opens again with it in the box.
-    /// Another dialog stays; the footer says it instead.
-    fn reopen_give_work(&mut self, agent: &AgentName, task: &str) {
-        let known = self.org.find_agent(agent).is_some();
-        if !known {
+    /// The engine refused the last Give work: its text comes back in the dialog.
+    fn refused_give_work(&mut self, agent: &AgentName, reason: String) {
+        match self.give_sent.clone() {
+            Some((a, task, run)) if &a == agent => {
+                self.reopen_give_work(agent, &task, Some(run), reason);
+            }
+            _ => self.footer_note = Some(reason),
+        }
+    }
+
+    /// Give work opens again with `task` in the box and `reason` under it (P2-D11, P2-D20).
+    /// Typing mode, a chat draft and another dialog keep the keyboard: the footer says
+    /// why and the task waits for the next `space` on the agent.
+    fn reopen_give_work(
+        &mut self,
+        agent: &AgentName,
+        task: &str,
+        run: Option<RunIn>,
+        reason: String,
+    ) {
+        if self.org.find_agent(agent).is_none() {
             return;
         }
-        if self.dialog.is_some() {
-            self.footer_note = Some(format!("{agent} didn't take the task · space to try again"));
+        self.give_sent = None;
+        let busy = self.dialog.is_some()
+            || self.typing()
+            || (self.focus.pane == crate::focus::Pane::Chat && !self.chat_input.text().is_empty());
+        if busy {
+            self.give_later = Some((agent.clone(), task.to_owned()));
+            self.footer_note = Some(format!("{reason} · space to try again"));
             return;
         }
+        self.give_later = None;
         let mut g = GiveWork::new(
             &self.org,
             agent,
@@ -280,7 +329,8 @@ impl UiModel {
             self.dirs.probe(),
             &self.home,
         );
-        g.note = Some(format!("{agent} didn't take the task · enter to try again"));
+        g.set_run(run);
+        g.note = Some(reason);
         self.dialog = Some(Dialog::GiveWork(Box::new(g)));
     }
 

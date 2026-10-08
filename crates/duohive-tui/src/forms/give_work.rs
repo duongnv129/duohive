@@ -120,6 +120,15 @@ impl GiveWork {
         }
     }
 
+    /// Keeps the run choice the work was last sent with, where it can still be chosen.
+    pub fn set_run(&mut self, run: Option<RunIn>) {
+        if let Some(run) = run
+            && (run == RunIn::Directory || self.worktree_blocked.is_none())
+        {
+            self.run = run;
+        }
+    }
+
     /// Follows the agent: its state or pending delivery changed while the dialog was open.
     pub fn sync(&mut self, view: &AgentView) {
         self.state = view.status.state;
