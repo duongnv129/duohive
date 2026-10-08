@@ -21,6 +21,7 @@ use duohive_core::hook::HookMessage;
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::status::AgentState;
+use duohive_core::worktree::RunIn;
 use duohive_store::{Paths, save_org};
 use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
 use duohive_tui::{QuitSignals, UiModel};
@@ -332,6 +333,15 @@ impl Drop for BenchEnv {
     }
 }
 
+/// The bench gives work in the agent's own directory, never a worktree.
+fn give_work_command(agent: AgentName, task: String) -> Command {
+    Command::GiveWork {
+        agent,
+        task,
+        run: RunIn::Directory,
+    }
+}
+
 /// The system, its hook tap and the screen stand-in, driven together.
 struct Run {
     handle: SystemHandle,
@@ -358,7 +368,7 @@ impl Run {
             let task = format!("bench task {turn}");
             for agent in self.names.clone() {
                 let task = task.clone();
-                self.send(Command::GiveWork { agent, task }).await?;
+                self.send(give_work_command(agent, task)).await?;
             }
             let reply = format!("done: {task}");
             self.wait_all("every agent to finish a turn", TURN_WAIT, move |m, n| {
@@ -478,6 +488,19 @@ fn at_rest(m: &UiModel, name: &AgentName) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_call_sites_give_work_in_directory() {
+        let agent = AgentName::parse("a-1").unwrap();
+        assert_eq!(
+            give_work_command(agent.clone(), "bench task 1".to_owned()),
+            Command::GiveWork {
+                agent,
+                task: "bench task 1".to_owned(),
+                run: duohive_core::worktree::RunIn::Directory,
+            }
+        );
+    }
 
     #[test]
     fn percentiles_of_known_samples() {

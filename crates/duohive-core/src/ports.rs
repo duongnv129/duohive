@@ -1,9 +1,11 @@
 //! The ports the engine talks through; real ones live in other crates.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::alert::Alert;
 use crate::hook::HookMessage;
 use crate::launch::{Key, LaunchCommand, Token, WindowId};
 use crate::names::AgentName;
@@ -11,6 +13,8 @@ use crate::org::Org;
 use crate::settings::Settings;
 use crate::status::Status;
 use crate::time::Millis;
+use crate::view::{PaneInput, PaneSize, PaneStream, StreamId, ViewError};
+use crate::worktree::{BaseRef, MergeState, TaskId};
 
 /// The wall clock.
 pub trait Clock: Send {
@@ -190,10 +194,166 @@ pub trait Store: Send {
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError>;
 }
 
+/// A live view of one agent's pane. Opening a stream closes any other.
+pub trait PaneView: Send + Sync {
+    /// Streams `agent`'s pane at `size`; the first chunk is a `Reset`.
+    fn open(&self, agent: &AgentName, size: PaneSize) -> Result<PaneStream, ViewError>;
+    /// Resizes the pane to follow the view.
+    fn resize(&self, stream: StreamId, size: PaneSize) -> Result<(), ViewError>;
+    /// Sends the user's input to the pane.
+    fn send(&self, stream: StreamId, input: PaneInput) -> Result<(), ViewError>;
+    /// Asks for the last `lines` lines of history; the answer arrives on the receiver.
+    fn scrollback(
+        &self,
+        stream: StreamId,
+        lines: u16,
+    ) -> Result<tokio::sync::oneshot::Receiver<Vec<u8>>, ViewError>;
+}
+
+/// Desktop alerts.
+pub trait Notifier: Send + std::fmt::Debug {
+    /// Whether alerts can be shown at all.
+    fn available(&self) -> bool;
+    /// Shows `alert`.
+    fn notify(&mut self, alert: &Alert);
+}
+
+/// Git worktrees. Fire-and-forget; answers return as [`GitEvent`] inputs.
+pub trait Git: Send + std::fmt::Debug {
+    /// Creates a worktree and its branch.
+    fn create(&mut self, req: CreateWorktree);
+    /// Reports whether the worktree's branch has been merged and whether it is dirty.
+    fn check(&mut self, req: CheckWorktree);
+    /// Removes the worktree, and its branch when asked.
+    fn remove(&mut self, req: RemoveWorktree);
+}
+
+/// A request to create a worktree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateWorktree {
+    /// Which agent.
+    pub agent: AgentName,
+    /// Which task.
+    pub task: TaskId,
+    /// The repository.
+    pub repo: PathBuf,
+    /// Where the worktree goes.
+    pub path: PathBuf,
+    /// The branch to create.
+    pub branch: String,
+}
+
+/// A request to check a worktree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CheckWorktree {
+    /// Which agent.
+    pub agent: AgentName,
+    /// Which task.
+    pub task: TaskId,
+    /// The repository.
+    pub repo: PathBuf,
+    /// The worktree.
+    pub path: PathBuf,
+    /// Its branch.
+    pub branch: String,
+    /// The base commit the branch was created on.
+    pub created_from: String,
+}
+
+/// A request to remove a worktree.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoveWorktree {
+    /// Which agent.
+    pub agent: AgentName,
+    /// Which task.
+    pub task: TaskId,
+    /// The repository.
+    pub repo: PathBuf,
+    /// The worktree.
+    pub path: PathBuf,
+    /// Its branch.
+    pub branch: String,
+    /// Also delete the branch.
+    pub delete_branch: bool,
+    /// Remove even when the worktree is dirty.
+    pub force: bool,
+}
+
+/// Why a git request failed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitError {
+    /// The branch name is taken.
+    BranchExists,
+    /// The directory is not a git repository.
+    NotARepo,
+    /// Anything else.
+    Other(String),
+}
+
+/// What git reports back.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GitEvent {
+    /// A worktree was created, or not.
+    Created {
+        /// Which agent.
+        agent: AgentName,
+        /// Which task.
+        task: TaskId,
+        /// The base ref and its commit id, or why it failed.
+        result: Result<(BaseRef, String), GitError>,
+    },
+    /// A worktree was checked.
+    Checked {
+        /// Which agent.
+        agent: AgentName,
+        /// Which task.
+        task: TaskId,
+        /// Whether the branch reached its base.
+        merge: MergeState,
+        /// Files with uncommitted changes.
+        dirty_files: u32,
+        /// The base ref found, if any.
+        base: Option<BaseRef>,
+    },
+    /// A worktree was removed, or not.
+    Removed {
+        /// Which agent.
+        agent: AgentName,
+        /// Which task.
+        task: TaskId,
+        /// Why it failed, if it did.
+        result: Result<(), String>,
+    },
+}
+
+/// A [`Notifier`] for systems with no desktop alerts.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoNotifier;
+
+impl Notifier for NoNotifier {
+    fn available(&self) -> bool {
+        false
+    }
+    fn notify(&mut self, _alert: &Alert) {}
+}
+
+/// A [`Git`] that answers nothing.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoGit;
+
+impl Git for NoGit {
+    fn create(&mut self, _req: CreateWorktree) {}
+    fn check(&mut self, _req: CheckWorktree) {}
+    fn remove(&mut self, _req: RemoveWorktree) {}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::alert::{Alert, AlertKind};
     use crate::testkit::*;
+    use crate::view::*;
+    use crate::worktree::*;
 
     #[test]
     fn fake_clock_advances_and_ids_count() {
@@ -295,5 +455,235 @@ mod tests {
         let back: SessionRow =
             serde_json::from_str(&serde_json::to_string(&row()).unwrap()).unwrap();
         assert_eq!(back, row());
+    }
+
+    fn create_req() -> CreateWorktree {
+        CreateWorktree {
+            agent: n("a"),
+            task: TaskId("t-1".into()),
+            repo: "/repo".into(),
+            path: "/repo/.wt/t-1".into(),
+            branch: "duohive/t-1".into(),
+        }
+    }
+
+    fn check_req() -> CheckWorktree {
+        CheckWorktree {
+            agent: n("a"),
+            task: TaskId("t-1".into()),
+            repo: "/repo".into(),
+            path: "/repo/.wt/t-1".into(),
+            branch: "duohive/t-1".into(),
+            created_from: "abc123".into(),
+        }
+    }
+
+    fn remove_req() -> RemoveWorktree {
+        RemoveWorktree {
+            agent: n("a"),
+            task: TaskId("t-1".into()),
+            repo: "/repo".into(),
+            path: "/repo/.wt/t-1".into(),
+            branch: "duohive/t-1".into(),
+            delete_branch: true,
+            force: false,
+        }
+    }
+
+    #[test]
+    fn fakes_record_calls() {
+        let mut git = FakeGit::default();
+        let calls = git.calls.clone();
+        git.create(create_req());
+        git.check(check_req());
+        git.remove(remove_req());
+        assert_eq!(
+            *calls.lock().unwrap(),
+            vec![
+                GitCall::Create(create_req()),
+                GitCall::Check(check_req()),
+                GitCall::Remove(remove_req()),
+            ]
+        );
+
+        let mut notifier = FakeNotifier::new(true);
+        let alerts = notifier.alerts.clone();
+        let alert = Alert {
+            agent: n("a"),
+            kind: AlertKind::NeedsYou,
+            title: "a needs you".into(),
+            body: "ok?".into(),
+        };
+        assert!(notifier.available());
+        notifier.notify(&alert);
+        notifier.notify(&alert);
+        assert_eq!(*alerts.lock().unwrap(), vec![alert.clone(), alert]);
+        assert!(!FakeNotifier::new(false).available());
+
+        let view = FakePaneView::default();
+        let size = PaneSize { cols: 80, rows: 24 };
+        let mut stream = view.open(&n("a"), size).unwrap();
+        view.resize(stream.id, size).unwrap();
+        view.send(stream.id, PaneInput::Text("hi".into())).unwrap();
+        view.scrollback(stream.id, 50).unwrap();
+        assert_eq!(
+            view.calls(),
+            vec![
+                PaneCall::Open(n("a"), size),
+                PaneCall::Resize(stream.id, size),
+                PaneCall::Send(stream.id, PaneInput::Text("hi".into())),
+                PaneCall::Scrollback(stream.id, 50),
+            ]
+        );
+        view.push(stream.id, PaneChunk::Bytes(b"x".to_vec()));
+        view.close(stream.id, "gone");
+        assert_eq!(stream.rx.try_recv(), Ok(PaneChunk::Bytes(b"x".to_vec())));
+        assert_eq!(
+            stream.rx.try_recv(),
+            Ok(PaneChunk::Closed {
+                reason: "gone".into()
+            })
+        );
+        assert_eq!(
+            view.send(stream.id, PaneInput::Key(PaneKey::Enter)),
+            Err(ViewError::Closed)
+        );
+    }
+
+    #[test]
+    fn opening_a_second_stream_closes_the_first() {
+        let view = FakePaneView::default();
+        let size = PaneSize { cols: 80, rows: 24 };
+        let mut first = view.open(&n("a"), size).unwrap();
+        let second = view.open(&n("b"), size).unwrap();
+        assert_ne!(first.id, second.id);
+        assert!(matches!(first.rx.try_recv(), Ok(PaneChunk::Closed { .. })));
+        assert_eq!(view.resize(first.id, size), Err(ViewError::Closed));
+    }
+
+    #[test]
+    fn null_ports_do_nothing() {
+        let mut notifier = NoNotifier;
+        assert!(!notifier.available());
+        notifier.notify(&Alert {
+            agent: n("a"),
+            kind: AlertKind::Finished,
+            title: String::new(),
+            body: String::new(),
+        });
+        // NoGit takes requests and never answers: it holds no channel to answer on.
+        let mut git = NoGit;
+        git.create(create_req());
+        git.check(check_req());
+        git.remove(remove_req());
+    }
+
+    #[test]
+    fn git_events_round_trip_json() {
+        let events = vec![
+            GitEvent::Created {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                result: Ok((BaseRef("origin/main".into()), "abc".into())),
+            },
+            GitEvent::Created {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                result: Err(GitError::BranchExists),
+            },
+            GitEvent::Created {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                result: Err(GitError::Other("boom".into())),
+            },
+            GitEvent::Checked {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                merge: MergeState::NotMerged { files_changed: 3 },
+                dirty_files: 1,
+                base: Some(BaseRef("main".into())),
+            },
+            GitEvent::Checked {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                merge: MergeState::Merged(MergeKind::Squash),
+                dirty_files: 0,
+                base: None,
+            },
+            GitEvent::Checked {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                merge: MergeState::Unknown("no base".into()),
+                dirty_files: 0,
+                base: None,
+            },
+            GitEvent::Removed {
+                agent: n("a"),
+                task: TaskId("t".into()),
+                result: Err("busy".into()),
+            },
+        ];
+        for ev in events {
+            let json = serde_json::to_string(&ev).unwrap();
+            assert_eq!(
+                serde_json::from_str::<GitEvent>(&json).unwrap(),
+                ev,
+                "{json}"
+            );
+        }
+    }
+
+    #[test]
+    fn pane_types_round_trip_json() {
+        let size = PaneSize {
+            cols: 120,
+            rows: 40,
+        };
+        let json = serde_json::to_string(&size).unwrap();
+        assert_eq!(serde_json::from_str::<PaneSize>(&json).unwrap(), size);
+        let inputs = vec![
+            PaneInput::Text("x".into()),
+            PaneInput::Paste("p".into()),
+            PaneInput::Key(PaneKey::F(5)),
+            PaneInput::Key(PaneKey::Ctrl('c')),
+            PaneInput::Key(PaneKey::Alt('b')),
+            PaneInput::Key(PaneKey::BackTab),
+        ];
+        for i in inputs {
+            let json = serde_json::to_string(&i).unwrap();
+            assert_eq!(
+                serde_json::from_str::<PaneInput>(&json).unwrap(),
+                i,
+                "{json}"
+            );
+        }
+        let chunks = vec![
+            PaneChunk::Reset {
+                bytes: vec![27, 91],
+                cursor: (3, 4),
+            },
+            PaneChunk::Bytes(vec![1, 2]),
+            PaneChunk::Closed { reason: "r".into() },
+        ];
+        for c in chunks {
+            let json = serde_json::to_string(&c).unwrap();
+            assert_eq!(
+                serde_json::from_str::<PaneChunk>(&json).unwrap(),
+                c,
+                "{json}"
+            );
+        }
+        let alert = Alert {
+            agent: n("a"),
+            kind: AlertKind::NeedsYou,
+            title: "t".into(),
+            body: "b".into(),
+        };
+        let json = serde_json::to_string(&alert).unwrap();
+        assert_eq!(serde_json::from_str::<Alert>(&json).unwrap(), alert);
+        assert_eq!(
+            ViewError::NotRunning(n("a")).to_string(),
+            "a is not running"
+        );
     }
 }

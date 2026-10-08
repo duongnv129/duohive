@@ -345,6 +345,7 @@ fn rejection_shows_in_footer_until_next_key() {
     assert!(m.apply(Event::GiveWorkRefused {
         agent: n("auth-service"),
         state: AgentState::Working,
+        pending: false,
     }));
     assert_eq!(m.footer_note.as_deref(), Some("auth-service is working"));
     update(&mut m, Action::Esc);

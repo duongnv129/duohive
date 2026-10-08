@@ -29,6 +29,7 @@ use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::n;
+use duohive_core::worktree::RunIn;
 use duohive_store::{Paths, save_org};
 
 const BIN: &str = env!("CARGO_BIN_EXE_duohive");
@@ -275,6 +276,7 @@ async fn e2e_start_work_finish_view() {
         Command::GiveWork {
             agent: a.clone(),
             task: "say hi".into(),
+            run: RunIn::Directory,
         },
     )
     .await;
@@ -400,6 +402,7 @@ async fn e2e_crash_then_immediate_restart() {
         Command::GiveWork {
             agent: a.clone(),
             task: "again".into(),
+            run: RunIn::Directory,
         },
     )
     .await;
@@ -490,6 +493,7 @@ async fn e2e_hookless_agent_gets_tilde_states() {
         Command::GiveWork {
             agent: a.clone(),
             task: "say hi".into(),
+            run: RunIn::Directory,
         },
     )
     .await;
@@ -579,6 +583,7 @@ async fn e2e_restart_reconnects() {
         Command::GiveWork {
             agent: a.clone(),
             task: "slow task".into(),
+            run: RunIn::Directory,
         },
     )
     .await;

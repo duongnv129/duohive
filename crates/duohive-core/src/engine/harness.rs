@@ -17,10 +17,12 @@ use crate::ports::Clock;
 use crate::settings::Settings;
 use crate::status::AgentState;
 use crate::testkit::{
-    FakeClock, FakeDirs, FakeIds, FakeRuntime, FakeStore, RuntimeCall, StubAdapter, example_org, n,
+    FakeClock, FakeDirs, FakeGit, FakeIds, FakeNotifier, FakeRuntime, FakeStore, RuntimeCall,
+    StubAdapter, example_org, n,
 };
 use crate::time::Millis;
 use crate::validate::DirStatus;
+use crate::worktree::RunIn;
 
 /// The home directory every test engine uses.
 pub(crate) const HOME: &str = "/home/me";
@@ -120,6 +122,8 @@ impl Setup {
             clock: engine_clock,
             ids: Box::new(FakeIds::default()),
             dirs: Arc::new(dirs),
+            notifier: Box::new(FakeNotifier::new(false)),
+            git: Box::new(FakeGit::default()),
         };
         let adapters = Arc::new(Adapters::new(
             [self.claude.clone(), self.opencode.clone()]
@@ -196,6 +200,7 @@ impl Harness {
         self.send(Command::GiveWork {
             agent: n(agent),
             task: task.into(),
+            run: RunIn::Directory,
         })
     }
 

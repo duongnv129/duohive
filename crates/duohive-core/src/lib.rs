@@ -1,6 +1,7 @@
 //! Domain core: pure types and ports with no I/O dependencies.
 
 pub mod adapter;
+pub mod alert;
 pub mod cli_kind;
 pub mod command;
 pub mod engine;
@@ -15,6 +16,8 @@ pub mod settings;
 pub mod status;
 pub mod time;
 pub mod validate;
+pub mod view;
+pub mod worktree;
 
 #[cfg(any(test, feature = "testkit"))]
 #[allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")]

@@ -145,6 +145,7 @@ fn give_work_working_is_refused() {
     assert!(events.contains(&Event::GiveWorkRefused {
         agent: n("auth-service"),
         state: AgentState::Working,
+        pending: false,
     }));
     assert!(h.calls().is_empty());
     assert_eq!(h.state("auth-service"), AgentState::Working);
@@ -158,6 +159,7 @@ fn give_work_waiting_is_refused() {
     assert!(events.contains(&Event::GiveWorkRefused {
         agent: n("billing-api"),
         state: AgentState::Waiting,
+        pending: false,
     }));
     assert!(h.calls().is_empty());
     assert_eq!(h.state("billing-api"), AgentState::Waiting);
@@ -174,6 +176,7 @@ fn give_work_starting_is_refused() {
         vec![Event::GiveWorkRefused {
             agent: n("pay-qa"),
             state: AgentState::Starting,
+            pending: false,
         }]
     );
     assert!(h.calls().is_empty());

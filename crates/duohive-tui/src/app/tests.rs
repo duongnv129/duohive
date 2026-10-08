@@ -142,6 +142,7 @@ fn snapshot(m: &UiModel) -> Event {
         org_error: None,
         settings_error: None,
         reconnecting: 0,
+        worktrees: Vec::new(),
     }))
 }
 

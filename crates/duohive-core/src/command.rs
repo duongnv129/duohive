@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
 use crate::settings::Settings;
+use crate::worktree::RunIn;
 
 /// A request to the engine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -25,6 +26,8 @@ pub enum Command {
         agent: AgentName,
         /// The task text, verbatim.
         task: String,
+        /// Where the agent works.
+        run: RunIn,
     },
     /// Mark an agent as the one being looked at.
     ViewAgent {
