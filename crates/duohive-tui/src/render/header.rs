@@ -10,7 +10,7 @@ use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
 use crate::focus::Pane;
 use crate::format::{truncate_end, width, wrap_capped};
-use crate::forms::FieldKind;
+use crate::forms::{FieldKind, SettingsRow, SettingsState};
 use crate::model::{Dialog, SPACE_RETRY, UiModel};
 use crate::theme::Palette;
 
@@ -28,6 +28,10 @@ const ORG_KEYS_COMPACT: &str = " tab pane · ↑↓ move · space give work";
 const NEEDS_YOU_KEYS: &str = " ↑↓ move · enter go to agent";
 const AGENT_KEYS: &str = " enter type · z zoom · PgUp/PgDn scroll · space give work";
 const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
+const SETTINGS_KEYS: &str = " ↑↓ move · space change · esc back";
+const SETTINGS_STEP_KEYS: &str = " ↑↓ move · space change · ←→ step · esc back";
+/// While a Settings text box is open.
+const SETTINGS_EDIT_KEYS: &str = " enter save · esc cancel";
 /// Typing's footer starts and ends with these (UI §4.1.2).
 const TYPING_LEAD: &str = " TYPING · ";
 const TYPING_TAIL: &str = " · ctrl+q stop typing";
@@ -136,6 +140,8 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             String::new()
         }
         (None, Some(Dialog::GiveWork(g))) => format!(" {}", g.hint()),
+        (None, Some(Dialog::Confirm(c))) => confirm_keys(&c.yes_label),
+        (None, Some(Dialog::Settings(s))) => settings_keys(s).to_owned(),
         (None, _) => match m.focus.pane {
             Pane::Org if compact => ORG_KEYS_COMPACT,
             Pane::Org => ORG_KEYS,
@@ -147,6 +153,22 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
         .to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
+}
+
+/// A confirmation's keys: `y` says yes, `n` or `esc` cancels, `tab` moves between the
+/// buttons and `enter` presses the focused one (UI §4.8).
+fn confirm_keys(yes_label: &str) -> String {
+    let yes = yes_label.to_lowercase();
+    format!(" y {yes} · n/esc cancel · tab switch · enter choose")
+}
+
+/// Settings' keys (UI §4.10); `←→` only on the controls that step.
+fn settings_keys(s: &SettingsState) -> &'static str {
+    match s.row {
+        _ if s.editing.is_some() => SETTINGS_EDIT_KEYS,
+        SettingsRow::Quiet | SettingsRow::Theme => SETTINGS_STEP_KEYS,
+        _ => SETTINGS_KEYS,
+    }
 }
 
 /// Typing mode's footer (UI §4.1.2). A note takes the middle, cut to keep both ends, and

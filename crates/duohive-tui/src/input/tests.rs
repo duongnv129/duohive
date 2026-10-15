@@ -142,6 +142,33 @@ fn s_on_running_opens_stop_confirm_focused_on_cancel() {
 }
 
 #[test]
+fn confirm_footer_lists_its_keys() {
+    let m = stop_dialog_open();
+    for (w, h) in [(80, 24), (160, 48)] {
+        let lines = render_lines(&m, &ctx(), w, h);
+        assert_eq!(
+            lines.last().unwrap().trim_end(),
+            " y stop · n/esc cancel · tab switch · enter choose",
+            "{w}×{h}"
+        );
+    }
+}
+
+#[test]
+fn confirm_footer_keys_work() {
+    let key = |c| KeyEvent::new(c, KeyModifiers::NONE);
+    let m = stop_dialog_open();
+    assert_eq!(
+        map_key(&m, key(KeyCode::Char('y'))),
+        Some(Action::DialogYes)
+    );
+    assert_eq!(map_key(&m, key(KeyCode::Char('n'))), Some(Action::DialogNo));
+    assert_eq!(map_key(&m, key(KeyCode::Esc)), Some(Action::Esc));
+    assert_eq!(map_key(&m, key(KeyCode::Tab)), Some(Action::Tab));
+    assert_eq!(map_key(&m, key(KeyCode::Enter)), Some(Action::DialogEnter));
+}
+
+#[test]
 fn stop_dialog_mentions_worktree() {
     let mut m = spec_model();
     m.agents.get_mut(&n("auth-service")).unwrap().worktree =
