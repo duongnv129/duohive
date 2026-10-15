@@ -28,7 +28,7 @@ fn main() -> ExitCode {
             let _ = std::io::stdout().write_all(USAGE.as_bytes());
             ExitCode::SUCCESS
         }
-        Ok(Cli::BenchAgent { hooks, task }) => run_bench_agent(hooks, task.as_deref(), &env_vars()),
+        Ok(Cli::BenchAgent(args)) => run_bench_agent(&args, &env_vars()),
         Ok(Cli::Bench(args)) => bench(args),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");

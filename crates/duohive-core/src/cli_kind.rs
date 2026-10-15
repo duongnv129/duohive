@@ -26,6 +26,14 @@ impl CliKind {
         }
     }
 
+    /// The short name the agent pane's title shows (UI §4.1): `Claude` or `OpenCode`.
+    pub fn short(self) -> &'static str {
+        match self {
+            CliKind::Claude => "Claude",
+            CliKind::Opencode => "OpenCode",
+        }
+    }
+
     /// The name shown to the user.
     pub fn display(self) -> &'static str {
         match self {
@@ -67,6 +75,13 @@ mod tests {
     fn cli_display_and_binary() {
         assert_eq!(CliKind::Opencode.display(), "OpenCode");
         assert_eq!(CliKind::Claude.binary(), "claude");
+    }
+
+    #[test]
+    fn short_names_for_titles() {
+        assert_eq!(CliKind::Claude.short(), "Claude");
+        assert_eq!(CliKind::Opencode.short(), "OpenCode");
+        assert_eq!(CliKind::Claude.display(), "Claude Code");
     }
 
     #[test]

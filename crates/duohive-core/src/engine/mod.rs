@@ -1,6 +1,7 @@
 //! The sans-I/O engine (TD §3.3): one owner of all state. It takes commands and
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
+mod alerts;
 mod driver;
 #[cfg(test)]
 mod harness;
@@ -9,11 +10,13 @@ mod org_edit;
 mod reconnect;
 mod signals;
 mod timers;
+mod worktrees;
 
 pub use driver::run_core;
 pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
 use signals::Exit;
+use worktrees::Creating;
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -29,11 +32,14 @@ use crate::inherit::{expand_home, resolve};
 use crate::launch::{Token, WindowId};
 use crate::names::AgentName;
 use crate::org::Org;
-use crate::ports::{Clock, Ids, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store};
+use crate::ports::{
+    Clock, Git, GitEvent, Ids, Notifier, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store,
+};
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, transition};
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
+use crate::worktree::{TaskId, WorktreeRow};
 
 /// Timings and places the engine needs.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,6 +72,10 @@ pub struct Ports {
     pub ids: Box<dyn Ids>,
     /// Directory probe (D26).
     pub dirs: Arc<dyn DirProbe>,
+    /// Desktop alerts.
+    pub notifier: Box<dyn Notifier>,
+    /// Git worktrees.
+    pub git: Box<dyn Git>,
 }
 
 /// Everything the engine reacts to.
@@ -81,6 +91,13 @@ pub enum Input {
     CliInventory(Vec<(CliKind, CliPresence)>),
     /// D26: every resolved agent directory, probed after the first frame.
     DirInventory(Vec<(PathBuf, DirStatus)>),
+    /// A report from git.
+    Git(GitEvent),
+    /// The user clicked an agent's alert.
+    AlertClicked {
+        /// Which agent.
+        agent: AgentName,
+    },
     /// A timer is due.
     Tick,
 }
@@ -90,6 +107,13 @@ pub enum Input {
 struct ExitPending {
     window: WindowId,
     status: Option<i32>,
+    due: Millis,
+}
+
+/// A task pasted as the next turn, waiting for a sign the agent took it (P2-D11).
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Delivery {
+    task: String,
     due: Millis,
 }
 
@@ -124,6 +148,12 @@ struct AgentRt {
     killed_window: Option<WindowId>,
     /// The CLI the current session was launched on (org edits apply on the next start).
     cli: Option<CliKind>,
+    /// The worktree the current session runs in (saved on its session row).
+    worktree: Option<TaskId>,
+    /// A next-turn paste not yet taken (P2-D11).
+    delivery: Option<Delivery>,
+    /// The worktree being created for the next launch (P2-D20).
+    creating: Option<Creating>,
 }
 
 impl AgentRt {
@@ -156,6 +186,9 @@ impl AgentRt {
             exit_pending: None,
             killed_window: None,
             cli: None,
+            worktree: None,
+            delivery: None,
+            creating: None,
         }
     }
 }
@@ -177,8 +210,22 @@ pub struct Engine {
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
     reconnect: Option<Reconnect>,
+    /// Start-up is replaying history: no alerts until `Reconnected` (P2-D14).
+    replaying: bool,
     /// Rows of running agents no org names (controller ruling B).
     held: Held,
+    /// The worktree rows last published in `Worktrees` (and `Snapshot`).
+    worktrees_shown: Vec<WorktreeRow>,
+    /// A worktree row, or whether one is in use, may have changed since.
+    worktrees_stale: bool,
+    /// When the 10-minute worktree check is next due (TD §5.3).
+    worktree_check_due: Millis,
+    /// Each worktree row's incarnation, given at its first check and dropped
+    /// with the row, so a late answer never reaches a newer row of the same
+    /// agent and task.
+    worktree_generations: HashMap<(AgentName, TaskId), u64>,
+    /// The next incarnation number.
+    next_generation: u64,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -207,7 +254,13 @@ impl Engine {
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
+            replaying: false,
             held: Held::default(),
+            worktrees_shown: Vec::new(),
+            worktrees_stale: false,
+            worktree_check_due: now + timers::WORKTREE_CHECK_EVERY,
+            worktree_generations: HashMap::new(),
+            next_generation: 0,
             cfg,
             ports,
             adapters,
@@ -221,9 +274,11 @@ impl Engine {
     }
 
     /// Handles one input and returns the events it caused, ending with
-    /// `NeedsYouChanged` when the Needs you list changed.
+    /// `Worktrees` when the worktree rows changed and `NeedsYouChanged` when
+    /// the Needs you list changed.
     pub fn handle(&mut self, input: Input) -> Vec<Event> {
         let mut out = self.dispatch(input);
+        self.publish_worktrees(&mut out);
         self.publish_needs_you(&mut out);
         out
     }
@@ -255,10 +310,30 @@ impl Engine {
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
             }
+            Input::Git(GitEvent::Created {
+                agent,
+                task,
+                result,
+            }) => self.on_created(&agent, &task, result),
+            Input::Git(GitEvent::Checked {
+                agent,
+                task,
+                merge,
+                dirty_files,
+                base,
+                generation,
+            }) => self.on_checked(&agent, &task, merge, dirty_files, base, generation),
+            Input::Git(GitEvent::Removed {
+                agent,
+                task,
+                result,
+            }) => self.on_removed(&agent, &task, result),
+            Input::AlertClicked { agent } => vec![Event::AlertClicked { agent }],
             Input::Tick => self.on_tick(),
             Input::Runtime(RuntimeEvent::Inventory(windows)) => self.on_inventory(&windows),
-            // Pastes: Give work's dialog (phase 2).
-            Input::Runtime(RuntimeEvent::PasteFailed { .. }) => Vec::new(),
+            Input::Runtime(RuntimeEvent::PasteFailed { agent, reason }) => {
+                self.on_paste_failed(&agent, reason)
+            }
         }
     }
 
@@ -266,10 +341,20 @@ impl Engine {
         match c {
             Command::StartAgent { agent } => self.start_agent(agent),
             Command::StopAgent { agent } => self.stop_agent(&agent),
-            Command::GiveWork { agent, task } => self.give_work(agent, task),
+            Command::GiveWork { agent, task, run } => self.give_work(agent, task, run),
             Command::ViewAgent { agent } => self.view_agent(&agent),
             Command::EditOrg(edit) => self.edit_org(edit),
             Command::ReloadOrg => self.reload_org(),
+            Command::CheckWorktrees => {
+                let mut out = Vec::new();
+                self.check_worktrees(None, &mut out);
+                out
+            }
+            Command::DeleteWorktree {
+                agent,
+                task,
+                confirmed,
+            } => self.delete_worktree(&agent, &task, confirmed),
             Command::UpdateSettings(s) => self.update_settings(s),
             // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
@@ -290,6 +375,8 @@ impl Engine {
                     last_reply: rt.and_then(|r| r.last_reply.clone()),
                     notice: rt.and_then(|r| r.notice.clone()),
                     problem: problems.remove(&name),
+                    worktree: rt.and_then(|r| r.worktree.clone()),
+                    delivery_pending: rt.is_some_and(|r| r.delivery.is_some()),
                 };
                 (name, view)
             })
@@ -301,6 +388,7 @@ impl Engine {
             org_error: self.org_error.clone(),
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
+            worktrees: self.worktrees_shown.clone(),
         }
     }
 
@@ -369,6 +457,12 @@ impl Engine {
         let Some(to) = transition(rt.status.state, trigger) else {
             return false;
         };
+        let before = rt.status.clone();
+        if before.state.is_running() != to.is_running() {
+            // Whether a session runs in a worktree may have changed (P2-D6).
+            self.worktrees_stale = true;
+        }
+        let rt = self.rt_mut(agent);
         rt.status = Status {
             state: to,
             quiet: false,
@@ -389,12 +483,51 @@ impl Engine {
             agent: agent.clone(),
             status,
         });
+        self.alert_after(agent, &before, out);
+        // P2-D11: leaving rest ends a delivery's wait; a stopped agent runs in no worktree.
+        self.update_run(agent, out, |rt| {
+            if !to.is_at_rest() {
+                rt.delivery = None;
+            }
+            if to == AgentState::Stopped {
+                rt.worktree = None;
+            }
+        });
         if to == AgentState::Stopped {
             self.delete_row(agent, out);
         } else {
             self.save_row(agent, out);
         }
+        // TD §5.3: an agent's worktrees are checked when it finishes.
+        if to == AgentState::Finished {
+            self.check_worktrees(Some(agent), out);
+        }
         true
+    }
+
+    /// Applies `f` to `agent`'s runtime state, then publishes `AgentRunChanged`
+    /// when its worktree or pending delivery changed.
+    fn update_run(
+        &mut self,
+        agent: &AgentName,
+        out: &mut Vec<Event>,
+        f: impl FnOnce(&mut AgentRt),
+    ) {
+        let rt = self.rt_mut(agent);
+        let before = (rt.worktree.clone(), rt.delivery.is_some());
+        f(rt);
+        let after = (rt.worktree.clone(), rt.delivery.is_some());
+        if after.0 != before.0 {
+            self.worktrees_stale = true;
+        }
+        if after != before {
+            let (worktree, delivery_pending) = after;
+            out.push(Event::AgentRunChanged {
+                agent: agent.clone(),
+                worktree,
+                delivery_pending,
+            });
+        }
     }
 
     /// Deletes `agent`'s session row (stopped, Task 12); a failure is reported, not fatal.
@@ -427,6 +560,7 @@ impl Engine {
             task_at_launch: rt.task_at_launch,
             saw_end_hook: rt.saw_end_hook,
             last_task: rt.last_task.clone(),
+            worktree: rt.worktree.clone(),
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

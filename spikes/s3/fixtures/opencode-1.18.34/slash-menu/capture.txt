@@ -1,0 +1,20 @@
+   ┃ /agents     Switch agent                                                ┃
+   ┃ /connect    Connect provider                                            ┃
+   ┃ /debug      View debug info                                             ┃
+   ┃ /diff       Open diff viewer                                            ┃
+   ┃ /editor     Open editor                                                 ┃
+   ┃ /exit       Exit the app                                                ┃
+   ┃ /help       Help                                                        ┃
+   ┃ /init       guided AGENTS.md setup                                      ┃
+   ┃
+   ┃  /
+   ┃
+   ┃  Build · Model 1 Provider (Ex.)
+   ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                                                   tab agents  ctrl+p commands
+
+
+
+
+  /private/tmp/duohive-spike/work                                      1.18.35
+

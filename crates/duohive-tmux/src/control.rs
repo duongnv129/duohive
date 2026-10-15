@@ -14,6 +14,10 @@ pub enum ControlLine {
     Body(String),
     /// `%unlinked-window-close @N` (what tmux 3.2a and 3.7c send) or `%window-close @N`.
     WindowClose { window: String },
+    /// `%window-add @N`: a window was added to the attached session.
+    WindowAdd { window: String },
+    /// `%output %P <data>`: pane output, its `\ooo` escapes decoded.
+    Output { pane: String, data: Vec<u8> },
     /// `%exit` with an optional reason.
     Exit { reason: Option<String> },
     /// Any other notification or line.
@@ -33,7 +37,59 @@ fn cmd_number(rest: &str) -> Option<(u64, u32)> {
     Some((args.next()?.parse().ok()?, args.next()?.parse().ok()?))
 }
 
+/// Parses `%P <data>` after `%output `; `None` without a pane.
+fn parse_output(rest: &[u8]) -> Option<ControlLine> {
+    let space = rest.iter().position(|&b| b == b' ');
+    let (pane, data) = match space {
+        Some(i) => (&rest[..i], &rest[i + 1..]),
+        None => (rest, &[][..]),
+    };
+    let pane = std::str::from_utf8(pane).ok()?;
+    pane.starts_with('%').then(|| ControlLine::Output {
+        pane: pane.to_owned(),
+        data: unescape(data),
+    })
+}
+
+/// Decodes tmux's `\ooo` octal escapes (it escapes bytes below 32 and the backslash); every other
+/// byte, UTF-8 or not, is passed through.
+pub fn unescape(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut i = 0;
+    while i < data.len() {
+        let octal = data
+            .get(i + 1..i + 4)
+            .filter(|d| data[i] == b'\\' && d.iter().all(|b| (b'0'..=b'7').contains(b)))
+            .map(|d| d.iter().fold(0u32, |n, b| n * 8 + u32::from(b - b'0')))
+            .and_then(|n| u8::try_from(n).ok());
+        match octal {
+            Some(byte) => {
+                out.push(byte);
+                i += 4;
+            }
+            None => {
+                out.push(data[i]);
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
 impl ControlParser {
+    /// Classifies one raw line (without its terminator). `%output` data is taken as
+    /// bytes: tmux passes bytes from 128 up raw, and may split a UTF-8 character
+    /// between two lines. Any other line is read as UTF-8, lossily.
+    pub fn feed_bytes(&mut self, line: &[u8]) -> ControlLine {
+        if self.open_cmd.is_none()
+            && let Some(rest) = line.strip_prefix(b"%output ")
+            && let Some(output) = parse_output(rest)
+        {
+            return output;
+        }
+        self.feed(&String::from_utf8_lossy(line))
+    }
+
     /// Classifies one line (without its line terminator).
     pub fn feed(&mut self, line: &str) -> ControlLine {
         if let Some(open) = self.open_cmd {
@@ -54,6 +110,15 @@ impl ControlParser {
                 },
                 None => ControlLine::Other(line.to_owned()),
             },
+            "%window-add" => match rest.split_whitespace().next() {
+                Some(window) => ControlLine::WindowAdd {
+                    window: window.to_owned(),
+                },
+                None => ControlLine::Other(line.to_owned()),
+            },
+            "%output" => {
+                parse_output(rest.as_bytes()).unwrap_or_else(|| ControlLine::Other(line.to_owned()))
+            }
             "%exit" => ControlLine::Exit {
                 reason: Some(rest.trim())
                     .filter(|r| !r.is_empty())
@@ -130,7 +195,10 @@ mod tests {
         p.feed("%end 1 5 1");
         assert_eq!(
             p.feed("%output %1 x"),
-            ControlLine::Other("%output %1 x".into())
+            ControlLine::Output {
+                pane: "%1".into(),
+                data: b"x".to_vec()
+            }
         );
     }
 
@@ -173,6 +241,73 @@ mod tests {
             ControlLine::Exit {
                 reason: Some("server exited".into())
             }
+        );
+    }
+
+    #[test]
+    fn output_is_decoded_as_bytes() {
+        let mut p = ControlParser::default();
+        assert_eq!(
+            p.feed_bytes(b"%output %3 hi\\015\\012\\033[1m\\134x"),
+            ControlLine::Output {
+                pane: "%3".into(),
+                data: b"hi\r\n\x1b[1m\\x".to_vec()
+            }
+        );
+        // Half a UTF-8 character: tmux splits output at any byte.
+        assert_eq!(
+            p.feed_bytes(b"%output %3 \xe2\x94"),
+            ControlLine::Output {
+                pane: "%3".into(),
+                data: vec![0xe2, 0x94]
+            }
+        );
+        assert_eq!(
+            p.feed("%output %12 a b"),
+            ControlLine::Output {
+                pane: "%12".into(),
+                data: b"a b".to_vec()
+            }
+        );
+        assert_eq!(
+            p.feed_bytes(b"%output %4"),
+            ControlLine::Output {
+                pane: "%4".into(),
+                data: Vec::new()
+            }
+        );
+    }
+
+    #[test]
+    fn output_inside_a_block_is_body() {
+        let mut p = ControlParser::default();
+        p.feed_bytes(b"%begin 1 5 1");
+        assert_eq!(
+            p.feed_bytes(b"%output %1 x\xe2"),
+            ControlLine::Body("%output %1 x\u{fffd}".into())
+        );
+    }
+
+    #[test]
+    fn unescape_leaves_partial_escapes_alone() {
+        assert_eq!(unescape(br"\01"), br"\01".to_vec());
+        assert_eq!(unescape(br"\777x"), br"\777x".to_vec());
+        assert_eq!(unescape(br"\0089"), br"\0089".to_vec());
+        assert_eq!(unescape(br"\134\134"), br"\\".to_vec());
+    }
+
+    #[test]
+    fn parses_window_add() {
+        let mut p = ControlParser::default();
+        assert_eq!(
+            p.feed_bytes(b"%window-add @7"),
+            ControlLine::WindowAdd {
+                window: "@7".into()
+            }
+        );
+        assert_eq!(
+            p.feed("%window-add"),
+            ControlLine::Other("%window-add".into())
         );
     }
 

@@ -29,8 +29,12 @@ pub(crate) fn utf8<'a>(path: &'a Path, what: &str) -> Result<&'a str, LaunchErro
         .ok_or_else(|| LaunchError::Invalid(format!("{what} is not UTF-8: {}", path.display())))
 }
 
-/// The agent's directory with `~` expanded, or the home directory.
+/// Where the CLI runs: the spec's own `cwd` (a new worktree), else the agent's
+/// directory with `~` expanded, else the home directory.
 pub(crate) fn launch_cwd(spec: &LaunchSpec) -> PathBuf {
+    if let Some(cwd) = &spec.cwd {
+        return cwd.clone();
+    }
     spec.agent
         .directory
         .as_deref()
@@ -42,6 +46,33 @@ mod tests {
     use duohive_core::cli_kind::CliKind;
 
     use super::*;
+
+    fn spec(cwd: Option<&str>) -> LaunchSpec {
+        let org = duohive_core::testkit::example_org();
+        let mut agent =
+            duohive_core::inherit::resolve(&org, &duohive_core::testkit::n("squad-1")).unwrap();
+        agent.directory = Some("~/code/payments".into());
+        LaunchSpec {
+            agent,
+            task: None,
+            run_dir: "/run/squad-1".into(),
+            hook_exe: "/bin/duohive".into(),
+            home: "/home/u".into(),
+            cwd: cwd.map(PathBuf::from),
+        }
+    }
+
+    #[test]
+    fn launch_cwd_prefers_spec_cwd() {
+        assert_eq!(
+            launch_cwd(&spec(None)),
+            PathBuf::from("/home/u/code/payments")
+        );
+        assert_eq!(
+            launch_cwd(&spec(Some("/data/worktrees/squad-1/fix"))),
+            PathBuf::from("/data/worktrees/squad-1/fix")
+        );
+    }
 
     #[test]
     fn real_adapters_include_opencode() {

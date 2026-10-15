@@ -10,6 +10,7 @@ use duohive_core::ports::{OrgFileError, SessionRow, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
+use duohive_core::worktree::{BaseRef, TaskId, WorktreeRow, WorktreeState};
 use rusqlite::{Connection, Row};
 
 use crate::db::{db_err, insert_pending_hook, open_db, take_pending, to_i64};
@@ -79,6 +80,65 @@ fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, String>> {
         task_at_launch: r.get("task_at_launch")?,
         saw_end_hook: r.get("saw_end_hook")?,
         last_task: r.get("last_task")?,
+        worktree: r.get::<_, Option<String>>("worktree")?.map(TaskId),
+    }))
+}
+
+/// Stable text for a state: `not-merged:<n>` and `check-failed:<reason>` carry their data.
+fn state_text(state: &WorktreeState) -> String {
+    match state {
+        WorktreeState::Unchecked => "unchecked".to_owned(),
+        WorktreeState::InUse => "in-use".to_owned(),
+        WorktreeState::NotMerged { files_changed } => format!("not-merged:{files_changed}"),
+        WorktreeState::MergedDirty => "merged-dirty".to_owned(),
+        WorktreeState::Merged => "merged".to_owned(),
+        WorktreeState::Removing => "removing".to_owned(),
+        WorktreeState::CheckFailed(reason) => format!("check-failed:{reason}"),
+    }
+}
+
+fn parse_worktree_state(text: &str) -> Option<WorktreeState> {
+    if let Some(n) = text.strip_prefix("not-merged:") {
+        return n
+            .parse()
+            .ok()
+            .map(|files_changed| WorktreeState::NotMerged { files_changed });
+    }
+    if let Some(reason) = text.strip_prefix("check-failed:") {
+        return Some(WorktreeState::CheckFailed(reason.to_owned()));
+    }
+    match text {
+        "unchecked" => Some(WorktreeState::Unchecked),
+        "in-use" => Some(WorktreeState::InUse),
+        "merged-dirty" => Some(WorktreeState::MergedDirty),
+        "merged" => Some(WorktreeState::Merged),
+        "removing" => Some(WorktreeState::Removing),
+        _ => None,
+    }
+}
+
+/// A worktree row, or the `agent/task` key of one that could not be read.
+fn read_worktree(r: &Row<'_>) -> rusqlite::Result<Result<WorktreeRow, (String, String)>> {
+    let agent: String = r.get("agent")?;
+    let task: String = r.get("task")?;
+    let state: String = r.get("state")?;
+    let checked_at: Option<i64> = r.get("checked_at")?;
+    let base: Option<String> = r.get("base")?;
+    let (Ok(agent_name), Some(state)) = (AgentName::parse(&agent), parse_worktree_state(&state))
+    else {
+        return Ok(Err((agent, task)));
+    };
+    Ok(Ok(WorktreeRow {
+        agent: agent_name,
+        task: TaskId(task),
+        repo: r.get::<_, String>("repo")?.into(),
+        path: r.get::<_, String>("path")?.into(),
+        branch: r.get("branch")?,
+        created_at: millis(r.get("created_at")?),
+        created_from: r.get("created_from")?,
+        state,
+        checked_at: checked_at.map(millis),
+        base: base.map(BaseRef),
     }))
 }
 
@@ -137,8 +197,8 @@ impl Store for SqliteStore {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO sessions (agent, token, window, state, quiet, quiet_since, \
-                 from_screen, since, error, last_reply, task_at_launch, saw_end_hook, last_task) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                 from_screen, since, error, last_reply, task_at_launch, saw_end_hook, last_task, worktree) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 rusqlite::params![
                     row.agent.as_str(),
                     row.token.as_ref().map(|t| t.0.as_str()),
@@ -153,6 +213,7 @@ impl Store for SqliteStore {
                     row.task_at_launch,
                     row.saw_end_hook,
                     row.last_task,
+                    row.worktree.as_ref().map(|t| t.0.as_str()),
                 ],
             )
             .map(drop)
@@ -165,6 +226,68 @@ impl Store for SqliteStore {
             .execute("DELETE FROM sessions WHERE agent = ?1", [agent.as_str()])
             .map(drop)
             .map_err(|e| db_err("cannot delete session", &e))
+    }
+
+    fn load_worktrees(&mut self) -> Result<Vec<WorktreeRow>, StoreError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT * FROM worktrees ORDER BY agent, task")
+            .map_err(|e| db_err("cannot read worktrees", &e))?;
+        let parsed = stmt
+            .query_map([], read_worktree)
+            .map_err(|e| db_err("cannot read worktrees", &e))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| db_err("cannot read worktree", &e))?;
+        drop(stmt);
+        let mut good = Vec::with_capacity(parsed.len());
+        for item in parsed {
+            match item {
+                Ok(row) => good.push(row),
+                Err((agent, task)) => {
+                    // One unreadable row must not hide the healthy ones: drop it and say so.
+                    tracing::warn!(%agent, %task, "dropping unreadable worktree row");
+                    self.conn
+                        .execute(
+                            "DELETE FROM worktrees WHERE agent = ?1 AND task = ?2",
+                            [&agent, &task],
+                        )
+                        .map_err(|e| db_err("cannot drop bad worktree", &e))?;
+                }
+            }
+        }
+        Ok(good)
+    }
+
+    fn save_worktree(&mut self, row: &WorktreeRow) -> Result<(), StoreError> {
+        self.conn
+            .execute(
+                "INSERT OR REPLACE INTO worktrees (agent, task, repo, path, branch, created_at, \
+                 created_from, state, checked_at, base) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    row.agent.as_str(),
+                    row.task.0,
+                    row.repo.to_string_lossy(),
+                    row.path.to_string_lossy(),
+                    row.branch,
+                    to_i64(row.created_at.0),
+                    row.created_from,
+                    state_text(&row.state),
+                    row.checked_at.map(|m| to_i64(m.0)),
+                    row.base.as_ref().map(|b| b.0.as_str()),
+                ],
+            )
+            .map(drop)
+            .map_err(|e| db_err("cannot save worktree", &e))
+    }
+
+    fn delete_worktree(&mut self, agent: &AgentName, task: &TaskId) -> Result<(), StoreError> {
+        self.conn
+            .execute(
+                "DELETE FROM worktrees WHERE agent = ?1 AND task = ?2",
+                [agent.as_str(), task.0.as_str()],
+            )
+            .map(drop)
+            .map_err(|e| db_err("cannot delete worktree", &e))
     }
 
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {

@@ -280,6 +280,7 @@ mod tests {
             run_dir: "/run/a".into(),
             hook_exe: "/bin/duohive".into(),
             home: "/h".into(),
+            cwd: None,
         }
     }
 

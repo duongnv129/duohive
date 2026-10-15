@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/pane_tests.rs
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┌─ Org ────────────────────────┐┌─ auth-service · Claude ──────────────────────┐
+│ ⬢ Duo                ◦   1m  ││                                              │
+│ ▾ Payments           ● 1 ◆ 1 ││    ● working                                 │
+│   ▾ Backend          ● 1 ◆ 1 ││                                              │
+│▌    auth-service     ●   2m  ││                                              │
+│     billing-api      ◆   4m  ││                                              │
+│   ▾ QA                       ││                                              │
+│     pay-qa           ○   1d  ││                                              │
+│ ▾ Generalist        ~● 1 ◷ 1 ││                                              │
+│     squad-1         ~●   1m  ││                                              │
+│     squad-2          ✓   3m  ││                                              │
+│     squad-3          ◷   6m  ││                                              │
+│                              ││                                              │
+│                              ││                                              │
+┢━ Needs you (2) ━━━━━━━━━━━━━━┪│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃▌◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ ↑↓ move · enter go to agent

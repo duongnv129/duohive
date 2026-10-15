@@ -1,4 +1,5 @@
-//! The side pane: the selected node's summary (UI §4.1.2, D7 phase-1 text).
+//! The agent pane: the selected agent's live terminal, or the selected node's summary
+//! (UI §4.1.2, P2-D3).
 
 use duohive_core::cli_kind::CliKind;
 use duohive_core::inherit::{inherited_for, resolve};
@@ -7,18 +8,18 @@ use duohive_core::org::{Fields, NodeKey, RoleKey};
 use duohive_core::status::AgentState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
-use super::{LIGHT, RenderCtx, draw_box, fg};
-use crate::format::{chunk_cells, one_line, truncate_end, width};
+use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style};
+use crate::focus::Pane;
+use crate::format::{marker, one_line, status_glyph, status_word, truncate_end, width};
 use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
 
 const EMPTY_ORG: &str = "Your org is empty · n to add a team, role or agent";
-const STOPPED: &str = "○ stopped · s to start";
+const STOPPED: &str = "○ stopped · space to give work";
 const ERRORED: &str = "✕ errored · s to stop";
 /// The padding cell inside the border (UI §3).
 const PAD: &str = " ";
@@ -28,23 +29,32 @@ const NONE: &str = "(none)";
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
+/// The rows a full team or role summary takes.
+const SUMMARY_ROWS: usize = 6;
 
-pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
+pub(super) fn draw(
+    buf: &mut Buffer,
+    r: Rect,
+    m: &UiModel,
+    ctx: &RenderCtx,
+    live: Option<LiveScreen<'_>>,
+) {
     let p = &ctx.palette;
-    let (title, lines) = content(m, ctx, usize::from(r.width.saturating_sub(2)));
-    draw_box(
-        buf,
-        r,
-        &title,
-        &LIGHT,
-        fg(p.border),
-        Style::default().bg(p.bg),
-    );
+    let cells = usize::from(r.width.saturating_sub(2));
+    let rows = usize::from(r.height.saturating_sub(2));
+    let (title, lines) = content(m, ctx, cells, rows);
+    let (border_lines, border, inside) = pane_style(p, m.focus.pane == Pane::Agent);
+    draw_box(buf, r, &title, border_lines, border, inside);
     if r.width < 5 || r.height < 3 {
         return;
     }
-    // From the padding cell, so the attach command can use every cell; other lines start
-    // with `PAD` themselves.
+    if let Some(s) = live.filter(|s| shown_agent(m) == Some(s.agent)) {
+        let cursor = m.typing() && !m.scrolled;
+        s.term
+            .render_from(live_area(r), buf, s.first_row, cursor, s.no_color);
+        return;
+    }
+    // From the border's inside; each line starts with `PAD` itself.
     let inner = Rect {
         x: r.x + 1,
         y: r.y + 1,
@@ -56,8 +66,34 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx) {
         .render(inner, buf);
 }
 
+/// Where the live terminal goes in the pane `r`: inside the border and the padding cell
+/// on each side (UI §3).
+pub(super) fn live_area(r: Rect) -> Rect {
+    Rect {
+        x: r.x.saturating_add(2),
+        y: r.y.saturating_add(1),
+        width: r.width.saturating_sub(4),
+        height: r.height.saturating_sub(2),
+    }
+}
+
+/// The agent whose pane is shown: none while reconnecting, with an empty org, or with a
+/// team or role selected.
+fn shown_agent(m: &UiModel) -> Option<&AgentName> {
+    let empty = m.org.teams.is_empty() && m.org.roles.is_empty();
+    if m.reconnecting > 0 || empty {
+        return None;
+    }
+    m.selected_agent()
+}
+
 /// The pane's title and body for the current state and selection.
-fn content(m: &UiModel, ctx: &RenderCtx, cells: usize) -> (String, Vec<Line<'static>>) {
+fn content(
+    m: &UiModel,
+    ctx: &RenderCtx,
+    cells: usize,
+    rows: usize,
+) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
     if m.reconnecting > 0 {
         let noun = if m.reconnecting == 1 {
@@ -72,8 +108,8 @@ fn content(m: &UiModel, ctx: &RenderCtx, cells: usize) -> (String, Vec<Line<'sta
         return (String::new(), message(EMPTY_ORG, p.fg));
     }
     match &m.selected {
-        NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
-        NodeKey::Agent(a) => agent(m, ctx, a, cells),
+        NodeKey::Duo => agent(m, ctx, &m.org.duo.name),
+        NodeKey::Agent(a) => agent(m, ctx, a),
         NodeKey::Team(t) => {
             let Some(team) = m.org.teams.iter().find(|x| &x.name == t) else {
                 return (String::new(), Vec::new());
@@ -86,14 +122,20 @@ fn content(m: &UiModel, ctx: &RenderCtx, cells: usize) -> (String, Vec<Line<'sta
             let title = format!("▣ {t}");
             (
                 title,
-                summary(m, p, &names, &team.defaults, &NodeKey::Duo, cells),
+                summary(m, p, &names, &team.defaults, &NodeKey::Duo, cells, rows),
             )
         }
-        NodeKey::Role(key) => role(m, p, key, cells),
+        NodeKey::Role(key) => role(m, p, key, cells, rows),
     }
 }
 
-fn role(m: &UiModel, p: &Palette, key: &RoleKey, cells: usize) -> (String, Vec<Line<'static>>) {
+fn role(
+    m: &UiModel,
+    p: &Palette,
+    key: &RoleKey,
+    cells: usize,
+    rows: usize,
+) -> (String, Vec<Line<'static>>) {
     let (roles, parent, title) = match &key.team {
         Some(t) => {
             let roles = m
@@ -118,7 +160,10 @@ fn role(m: &UiModel, p: &Palette, key: &RoleKey, cells: usize) -> (String, Vec<L
         return (String::new(), Vec::new());
     };
     let names: Vec<&AgentName> = role.agents.iter().map(|a| &a.name).collect();
-    (title, summary(m, p, &names, &role.defaults, &parent, cells))
+    (
+        title,
+        summary(m, p, &names, &role.defaults, &parent, cells, rows),
+    )
 }
 
 /// A blank line, then `text` indented.
@@ -132,36 +177,60 @@ fn message(text: &str, color: ratatui::style::Color) -> Vec<Line<'static>> {
     ]
 }
 
-/// Title `<agent> · <CLI>`; body: how to attach while it runs, else how to start or stop it.
-fn agent(
-    m: &UiModel,
-    ctx: &RenderCtx,
-    name: &AgentName,
-    cells: usize,
-) -> (String, Vec<Line<'static>>) {
+/// `<agent> · <CLI> · worktree <task-id>` or `· <dir>`; Duo's `⬢ <name> · <CLI> · your
+/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12).
+fn agent_title(m: &UiModel, name: &AgentName) -> String {
+    let resolved = resolve(&m.org, name).ok();
+    let cli = resolved
+        .as_ref()
+        .map_or(m.org.defaults.cli, |r| r.cli)
+        .short();
+    let mut title = if m.org.is_duo(name) {
+        format!("⬢ {name} · {cli} · your manager agent")
+    } else {
+        let place = match &m.view(name).worktree {
+            Some(task) => Some(format!("worktree {}", task.0)),
+            None => resolved.and_then(|r| r.directory),
+        };
+        match place {
+            Some(place) => format!("{name} · {cli} · {place}"),
+            None => format!("{name} · {cli}"),
+        }
+    };
+    if m.typing() {
+        title.push_str(" · TYPING");
+    }
+    if m.scrolled {
+        title.push_str(" · scrolled");
+    }
+    title
+}
+
+/// The title, and as the body (until the live terminal shows) its state; how to give it
+/// work or stop it when not running.
+fn agent(m: &UiModel, ctx: &RenderCtx, name: &AgentName) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
-    let cli = resolve(&m.org, name).map_or(m.org.defaults.cli, |r| r.cli);
-    let title = format!("{name} · {}", cli.display());
+    let title = agent_title(m, name);
     let state = m.view(name).status.state;
     let body = match state {
         AgentState::Stopped => message(STOPPED, p.fg_muted),
         AgentState::Errored => message(ERRORED, p.error),
         _ => {
-            // The command is never split at a space: copied, it must still be one command.
-            let command = format!("tmux -L {} attach -t duohive:{name}", ctx.tmux_socket);
-            let mut lines = message("attach:", p.fg_muted);
-            lines.extend(
-                chunk_cells(&command, cells)
-                    .into_iter()
-                    .map(|c| Line::from(Span::styled(c, fg(p.fg)))),
+            let status = &m.view(name).status;
+            let line = format!(
+                "{}{} {}",
+                marker(status),
+                status_glyph(status, ctx.spinner()),
+                status_word(status)
             );
-            lines
+            message(&line, super::state_color(p, status))
         }
     };
     (title, body)
 }
 
-/// A team or role summary: counts, defaults and prompt, then the edit key.
+/// A team or role summary: counts, defaults and prompt, then the edit key. When the pane
+/// is too short for all of it, the defaults and prompt go first (UI §3's shrink order).
 fn summary(
     m: &UiModel,
     p: &Palette,
@@ -169,6 +238,7 @@ fn summary(
     own: &Fields,
     parent: &NodeKey,
     cells: usize,
+    rows: usize,
 ) -> Vec<Line<'static>> {
     let views: Vec<_> = names.iter().filter_map(|n| m.agents.get(*n)).collect();
     let noun = if names.len() == 1 { "agent" } else { "agents" };
@@ -213,13 +283,17 @@ fn summary(
     wt.push(worktrees.styled(p));
     // Room after the padding cell and the label, leaving the right padding cell.
     let prompt = truncate_end(&prompt, cells.saturating_sub(LABEL_CELLS + 2));
+    let keys = Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted)));
+    if rows < SUMMARY_ROWS {
+        return vec![Line::from(counts), Line::default(), keys];
+    }
     vec![
         Line::from(counts),
         Line::from(defaults),
         Line::from(wt),
         Line::from(vec![label("Prompt", p), Span::styled(prompt, fg(p.fg))]),
         Line::default(),
-        Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted))),
+        keys,
     ]
 }
 

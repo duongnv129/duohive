@@ -1,14 +1,13 @@
 ---
-source: crates/duohive-tui/src/render/tests.rs
-assertion_line: 290
-expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
 ---
  DuoHive  ● 2 · ◆ 2                                                             
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ─────────────────┐
-┃ ⬢ Duo                ◦   1m  ┃│                                              │
-┃ ▾ Payments           ● 1 ◆ 1 ┃│   attach:                                    │
-┃   ▾ Backend          ● 1 ◆ 1 ┃│tmux -L duohive attach -t duohive:auth-service│
-┃▌    auth-service     ●   2m  ┃│                                              │
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · OpenCode · your manager agent ──────┐
+┃▌⬢ Duo                ◆   1m  ┃│ opencode wants to run: gh pr list --state op │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ en                                           │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│ Allow? (y) yes  (n) no                       │
+┃     auth-service     ●   2m  ┃│                                              │
 ┃     billing-api      ◆   4m  ┃│                                              │
 ┃   ▾ QA                       ┃│                                              │
 ┃     pay-qa           ○   1d  ┃│                                              │
@@ -18,12 +17,12 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 ┃     squad-3          ◷   6m  ┃│                                              │
 ┃                              ┃│                                              │
 ┃                              ┃│                                              │
-┃                              ┃│                                              │
-┃                              ┃│                                              │
-┃                              ┃│                                              │
-┃                              ┃│                                              │
 ┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
 ┃ ◷ squad-3            6m      ┃│                                              │
 ┃ ◆ billing-api        4m      ┃│                                              │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
- ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit
+┌─ ⬢ Duo · ◆ waiting ──────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

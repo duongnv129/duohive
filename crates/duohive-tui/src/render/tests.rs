@@ -32,7 +32,8 @@ const SPEC_4_1_ORG: [&str; 13] = [
 
 #[test]
 fn org_pane_matches_spec_4_1() {
-    let lines = render_lines(&spec_model(), &ctx(), 100, 30);
+    // Last replies show only at ≥ 120×36 (UI §3).
+    let lines = render_lines(&spec_model(), &ctx(), 120, 36);
     assert!(
         lines[0].starts_with(" DuoHive   6 agents · ● 2 working · ◆ 2 need you  "),
         "{}",
@@ -49,8 +50,9 @@ fn org_pane_matches_spec_4_1() {
 #[test]
 fn needs_you_rows_match_spec() {
     let lines = render_lines(&spec_model(), &ctx(), 100, 30);
-    // Rows 25..=28 of 30: separator, two items, bottom border; row 29 is the footer.
-    let got: Vec<String> = lines[25..=28].iter().map(|l| cols(l, 50)).collect();
+    // Rows 19..=22 of 30: separator, two items, bottom border; the chat's 6 rows and the
+    // footer follow.
+    let got: Vec<String> = lines[19..=22].iter().map(|l| cols(l, 50)).collect();
     assert_eq!(
         got,
         [
@@ -84,7 +86,8 @@ fn compact_org_pane_matches_spec() {
             "┃     squad-3          ◷   6m  ┃",
         ]
     );
-    let bottom: Vec<String> = lines[19..=22].iter().map(|l| cols(l, 32)).collect();
+    // Rows 15..=18 of 24; the chat's 4 rows and the footer follow.
+    let bottom: Vec<String> = lines[15..=18].iter().map(|l| cols(l, 32)).collect();
     assert_eq!(
         bottom,
         [
@@ -184,7 +187,11 @@ fn errors_on_rows_match_spec_4_12() {
     );
     assert_eq!(
         lines_under(&lines, "pay-api", 2),
-        ["   exited unexpectedly (code 1) ·", "   s stop"].map(|t| format!(" │  │   {t}"))
+        [
+            "   exited unexpectedly (code 1) ·",
+            "   space retry · s stop"
+        ]
+        .map(|t| format!(" │  │   {t}"))
     );
     assert_eq!(
         lines_under(&lines, "billing-api", 2),
@@ -254,7 +261,7 @@ fn spinner_animates_only_without_reduce_motion() {
 }
 
 #[test]
-fn side_pane_for_agents_and_groups() {
+fn agent_pane_for_agents_and_groups() {
     let side = |m: &UiModel| -> String {
         render_lines(m, &ctx(), 120, 30)
             .iter()
@@ -264,13 +271,10 @@ fn side_pane_for_agents_and_groups() {
     };
     let mut m = spec_model();
     let s = side(&m);
-    assert!(s.contains("┌─ auth-service · Claude Code ─"), "{s}");
-    assert!(s.contains("│   attach:"));
-    assert!(s.contains("│tmux -L duohive attach -t duohive:auth-service"));
+    assert!(s.contains("┌─ auth-service · Claude ─"), "{s}");
     m.selected = NodeKey::Agent(n("pay-qa"));
     let s = side(&m);
-    assert!(s.contains("○ stopped · s to start"), "{s}");
-    assert!(!s.contains("attach:"));
+    assert!(s.contains("○ stopped · space to give work"), "{s}");
     m.selected = NodeKey::Role(duohive_core::org::RoleKey {
         team: Some(NodeName::parse("Payments").unwrap()),
         role: NodeName::parse("Backend").unwrap(),
@@ -282,13 +286,6 @@ fn side_pane_for_agents_and_groups() {
     assert!(!s.contains("space"));
     m.selected = NodeKey::Team(NodeName::parse("Payments").unwrap());
     assert!(side(&m).contains("3 agents · ● 1 working · ◆ 1 waiting"));
-}
-
-#[test]
-fn main_screen_snapshots() {
-    let m = spec_model();
-    insta::assert_snapshot!("main_80x24", render_lines(&m, &ctx(), 80, 24).join("\n"));
-    insta::assert_snapshot!("main_160x48", render_lines(&m, &ctx(), 160, 48).join("\n"));
 }
 
 #[test]

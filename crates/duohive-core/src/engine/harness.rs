@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use super::{AgentRt, Engine, EngineConfig, Input, Ports};
 use crate::adapter::{Adapters, CliPresence};
+use crate::alert::Alert;
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
@@ -17,10 +18,12 @@ use crate::ports::Clock;
 use crate::settings::Settings;
 use crate::status::AgentState;
 use crate::testkit::{
-    FakeClock, FakeDirs, FakeIds, FakeRuntime, FakeStore, RuntimeCall, StubAdapter, example_org, n,
+    FakeClock, FakeDirs, FakeGit, FakeIds, FakeNotifier, FakeRuntime, FakeStore, GitCall,
+    RuntimeCall, StubAdapter, example_org, n,
 };
 use crate::time::Millis;
 use crate::validate::DirStatus;
+use crate::worktree::RunIn;
 
 /// The home directory every test engine uses.
 pub(crate) const HOME: &str = "/home/me";
@@ -70,6 +73,8 @@ pub(crate) struct Setup {
     pub settings: Settings,
     /// When the clock starts.
     pub start: Millis,
+    /// Whether the notifier reports itself available.
+    pub notifier_available: bool,
 }
 
 impl Default for Setup {
@@ -83,6 +88,7 @@ impl Default for Setup {
             inventory: Some(all_found()),
             settings: Settings::default(),
             start: T0,
+            notifier_available: true,
         }
     }
 }
@@ -112,14 +118,20 @@ impl Setup {
             settle_after: Duration::from_millis(1_500),
             end_hook_grace: Duration::from_millis(500),
         };
+        let notifier = FakeNotifier::new(self.notifier_available);
+        let alerts = Arc::clone(&notifier.alerts);
         let dirs = FakeDirs::new(self.dirs);
         let dir_probes = Arc::clone(&dirs.1);
+        let git = FakeGit::default();
+        let git_log = Arc::clone(&git.calls);
         let ports = Ports {
             runtime: Box::new(runtime.clone()),
             store: Box::new(store.clone()),
             clock: engine_clock,
             ids: Box::new(FakeIds::default()),
             dirs: Arc::new(dirs),
+            notifier: Box::new(notifier),
+            git: Box::new(git),
         };
         let adapters = Arc::new(Adapters::new(
             [self.claude.clone(), self.opencode.clone()]
@@ -137,6 +149,8 @@ impl Setup {
             claude: self.claude,
             opencode: self.opencode,
             dir_probes,
+            alerts,
+            git_log,
             t0: self.start,
         };
         if let Some(list) = self.inventory {
@@ -156,6 +170,10 @@ pub(crate) struct Harness {
     pub opencode: StubAdapter,
     /// How many directory probes the engine made.
     pub dir_probes: Arc<AtomicUsize>,
+    /// Alerts the notifier was given, oldest first.
+    pub alerts: Arc<Mutex<Vec<Alert>>>,
+    /// Git calls the engine made, oldest first.
+    pub git_log: Arc<Mutex<Vec<GitCall>>>,
     /// When the clock started.
     pub t0: Millis,
 }
@@ -193,10 +211,25 @@ impl Harness {
     }
 
     pub(crate) fn give(&mut self, agent: &str, task: &str) -> Vec<Event> {
+        self.give_in(agent, task, RunIn::Directory)
+    }
+
+    pub(crate) fn give_in(&mut self, agent: &str, task: &str, run: RunIn) -> Vec<Event> {
         self.send(Command::GiveWork {
             agent: n(agent),
             task: task.into(),
+            run,
         })
+    }
+
+    /// Git calls so far.
+    pub(crate) fn git_calls(&self) -> Vec<GitCall> {
+        self.git_log.lock().unwrap().clone()
+    }
+
+    /// Alerts given to the notifier so far.
+    pub(crate) fn notified(&self) -> Vec<Alert> {
+        self.alerts.lock().unwrap().clone()
     }
 
     /// Runtime calls so far.

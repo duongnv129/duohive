@@ -6,8 +6,9 @@ use ratatui::style::Style;
 
 use super::{LIGHT, draw_box, fg, put};
 use crate::format::{width, wrap_words};
-use crate::model::{Confirm, Dialog};
+use crate::model::{Confirm, Dialog, UiModel};
 use crate::theme::Palette;
+use duohive_core::time::Millis;
 
 /// The mock-ups' dialog width; narrower screens get the screen less a margin.
 const WIDTH: u16 = 64;
@@ -20,11 +21,21 @@ const FOCUS: &str = "▌";
 const GAP: &str = "   ";
 
 /// Draws the open dialog centred over `area`; returns where the terminal cursor goes.
-pub(super) fn draw(buf: &mut Buffer, area: Rect, d: &Dialog, p: &Palette) -> Option<Position> {
+pub(super) fn draw(
+    buf: &mut Buffer,
+    area: Rect,
+    d: &Dialog,
+    m: &UiModel,
+    now: Millis,
+    p: &Palette,
+) -> Option<Position> {
     match d {
         Dialog::Confirm(c) => draw_confirm(buf, area, c, p),
         Dialog::Form(f) => return super::form::draw_form(buf, area, f, p),
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
+        Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, p),
+        Dialog::Settings(s) => return super::settings::draw(buf, area, s, m, p),
+        Dialog::Worktrees(l) => super::worktrees::draw(buf, area, l, m, now, p),
     }
     None
 }

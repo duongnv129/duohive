@@ -4,8 +4,10 @@ use duohive_core::event::NeedsYouItem;
 use duohive_core::status::AgentState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 
-use super::{At, HEAVY, RenderCtx, edge, fg, glyph_color, put_pieces};
+use super::{At, HEAVY, LIGHT, RenderCtx, edge, fg, glyph_color, put, put_pieces};
+use crate::focus::Pane;
 use crate::format::{QUIET_GLYPH, format_age, pad_right, quoted, truncate_middle};
 use crate::model::UiModel;
 
@@ -18,13 +20,44 @@ const AGE_CELLS: usize = 4;
 /// Blank cells between the age and the excerpt.
 const EXCERPT_GAP: &str = "  ";
 
-/// Draws the `┣━ Needs you (n) ━┫` separator at `r.y` and up to `r.height - 1` rows under it.
+/// Heavy below a light org pane: the separator when Needs you alone has focus.
+const HEAVY_BELOW: [&str; 2] = ["┢", "┪"];
+
+/// Draws the `┣━ Needs you (n) ━┫` separator at `r.y`, the rows under it and the org pane's
+/// bottom border at `r.bottom() - 1`. With focus, this part's border is heavy (UI §2.2).
 pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
     let p = &ctx.palette;
+    if r.height < 2 || r.width < 2 {
+        return;
+    }
+    let (sep, lines, border) = match m.focus.pane {
+        Pane::Org => (HEAVY.tee, &HEAVY, fg(p.border_focus)),
+        Pane::NeedsYou => (HEAVY_BELOW, &HEAVY, fg(p.border_focus)),
+        Pane::Agent | Pane::Chat => (LIGHT.tee, &LIGHT, fg(p.border)),
+    };
+    let focused = m.focus.pane == Pane::NeedsYou;
+    if focused {
+        let inside = Rect {
+            y: r.y + 1,
+            height: r.height - 1,
+            ..r
+        };
+        buf.set_style(inside, Style::default().bg(p.bg_panel));
+    }
     let title = format!("Needs you ({})", m.needs_you.len());
-    edge(buf, r, HEAVY.tee, &title, &HEAVY, fg(p.border_focus));
+    edge(buf, r, sep, &title, lines, border);
+    for y in r.y + 1..r.bottom() - 1 {
+        put(buf, r.x, y, lines.v, 1, border);
+        put(buf, r.right() - 1, y, lines.v, 1, border);
+    }
+    let bottom = Rect {
+        y: r.bottom() - 1,
+        height: 1,
+        ..r
+    };
+    edge(buf, bottom, lines.bottom, "", lines, border);
     let content = usize::from(r.width.saturating_sub(4));
-    let rows = usize::from(r.height.saturating_sub(1));
+    let rows = usize::from(r.height.saturating_sub(2));
     let overflow = m.needs_you.len() > rows;
     // When the items don't fit, the last row says how many are left out.
     let shown = if overflow {
@@ -44,6 +77,16 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
     }
     for (i, item) in m.needs_you.iter().take(shown).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
+        if focused && i == m.focus.needs_you_cursor {
+            let bar = Rect {
+                x: r.x + 1,
+                y,
+                width: r.width - 2,
+                height: 1,
+            };
+            buf.set_style(bar, Style::default().bg(p.selection));
+            put(buf, r.x + 1, y, "▌", 1, fg(p.border_focus));
+        }
         let (glyph, word) = if item.quiet {
             (QUIET_GLYPH, "quiet")
         } else {

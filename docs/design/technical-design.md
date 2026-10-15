@@ -54,9 +54,16 @@ Dependencies point inward only:
 | Layer | Holds | Must not know about |
 |---|---|---|
 | **Core** | Org model and inheritance, agent lifecycle, status engine, inbox, Duo's actions and chat, approval cards, worktree rules, task-to-role picking | tmux, terminals, SQL, the TUI, MCP |
-| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Notifier`, `Git` | Any implementation |
-| **Adapters** | tmux runtime, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
+| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Ids`, `DirProbe`, `Notifier`, `Git`, `PaneView` | Any implementation |
+| **Adapters** | tmux runtime and pane view, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
 | **Interfaces** | TUI; MCP endpoint | Each other |
+
+- **`Ids`** makes per-launch tokens, and **`DirProbe`** reports whether a directory is a git repository, exists, or is missing (for validation; the core does no I/O). Both came in phase 1.
+- **`PaneView`** (phase 2, P2-D1) is the live terminal of the selected agent, and bypasses the engine:
+  - **Wiring:** the port (traits and data only) is implemented in `duohive-tmux`, and the binary hands it to the TUI as `Arc<dyn PaneView>`. Raw bytes never pass through the core's single task. The engine still receives `ViewAgent`.
+  - **Binding:** `open` returns a `StreamId` bound to the window open at that moment (its pane id, which tmux never reuses within a server).
+  - **Keys never reach a newer window:** `send` and `resize` take that id, and fail with `ViewError::Closed` once that window is gone.
+  - **The tmux path** is in §4.3 (spike S3).
 
 ### 3.2 Command/event boundary
 
@@ -78,7 +85,7 @@ Commands and events are plain serialisable enums. When the core moves into a bac
 | Crate | Contents |
 |---|---|
 | `duohive-core` | Domain, ports, engine. No I/O |
-| `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling) |
+| `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling); `PaneView` over a second control client (the viewed pane's stream, §4.3) |
 | `duohive-cli` | `CliAdapter` for Claude Code and OpenCode |
 | `duohive-store` | `Store` over SQLite, `org.toml` and `settings.toml` |
 | `duohive-tui` | Ratatui views, input, layout |
@@ -94,7 +101,7 @@ The crate boundaries make the inward-dependency rule a compile error to break.
 | Source | Mechanism | Gives |
 |---|---|---|
 | **1. CLI hooks** (exact) | Each launch passes the CLI's hook settings. Every hook runs `duohive hook <agent> <event>`, which reads the JSON payload from stdin (Claude Code's hooks and DuoHive's OpenCode plugin both write it there), authenticates with the session's token (§6.1), and writes one line to `run.sock` (or to the database when DuoHive is closed) | Started, working, waiting for approval, turn finished, ended, and last-reply data where the payload carries it |
-| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0, followed by `refresh-client -C 160x48` so tmux 3.2a doesn't size windows from the control client; it covers new windows with no per-window command, and silences every pane on the connection, so a live view of the selected pane in phase 2 needs its own path), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty (spike S1): it has no exit status, and is errored "exited unexpectedly" | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status, or none for a signal death |
+| **2. tmux activity** | One control-mode connection to `tmux -L duohive`. Its panes are silenced with the client flag `no-output` (`refresh-client -f no-output,ignore-size`, chosen by spike S0, followed by `refresh-client -C 160x48` so tmux 3.2a doesn't size windows from the control client; it covers new windows with no per-window command, and silences every pane on the connection; the live view of the selected pane takes its own path, a second control client, §4.3 and spike S3), so they send no `%output`. Activity comes instead from one `list-windows -F '#{window_id} #{window_activity} #{pane_dead} #{pane_dead_status}'` a second over that connection, for all agents at once (one window per agent, so `#{window_activity}` is the agent's); an agent's activity changed when its value differs from the previous reply. A CLI killed by a signal leaves `#{pane_dead_status}` empty (spike S1): it has no exit status, and is errored "exited unexpectedly" | Activity times, which feed "quiet" and trigger settle reads; pane deaths with exit status, or none for a signal death |
 | **3. Screen read on settle** (`~`) | When an agent's activity time hasn't changed for one report period, read that one pane once (`capture-pane`) and apply the adapter's screen rules | States a CLI does not report (marked `~`), and the last-reply line where no hook carries it |
 
 - **Spike S0** (`docs/plans/spike-report.md` S0): format subscriptions (`refresh-client -B`) did report for silenced panes at 100 windows, about once a second, with the same delay as polling (median 0.47–0.57 s), but their reader cost more CPU than the one-a-second `list-windows` at 100 noisy windows on both tmux 3.2a and latest, so the poll is the mechanism. `no-output` beat paused flow control on tmux server + reader CPU and needs nothing per new window. A closed window is reported as `%unlinked-window-close @N` (not `%window-close`), and is also absent from the next reply.
@@ -118,7 +125,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | working | Turn ends (any agent but Duo) | finished |
 | working | Turn ends (Duo) | idle |
 | finished | The user selects the agent (`ViewAgent`) | idle |
-| finished, idle | New work: a task as the next turn, or a delivered message | working |
+| finished, idle | New work taken: a `busy` or prompt-submit hook after a task or message is typed in as the next turn, or a `~` busy read where the CLI has no busy hook. The paste alone moves nothing (P2-D11): the agent stays at rest, with the delivery pending, for at most 5 s | working |
 | finished, idle | A turn the user typed straight into the pane | working |
 | any running state | Unexpected exit (non-zero status or no status (killed by a signal), or a zero status without the CLI's end hook when the CLI has one; a CLI with no end hook that exits 0 is stopped) | errored |
 | any running state | Stopped by the user or Duo, or a normal exit | stopped |
@@ -131,7 +138,15 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 ### 4.3 Cost at scale
 
 - **No per-agent polling:** one activity query a second covers every agent (spike S0: about 0.2–0.3 % of a core in the reader at 100 windows).
-- **No pane streams in phases 0–1:** every pane is silenced with `no-output`, so the connection carries only command replies and the once-a-second activity poll. Spike S0 found that `no-output` has no per-pane exception, so the phase-2 live view of the selected agent needs its own path: a second client, or `!no-output` with the other panes paused.
+- **One pane stream, the viewed one (phase 2, spike S3):** the main connection stays `no-output`, so it carries only command replies and the once-a-second activity poll (`no-output` has no per-pane exception, spike S0).
+  - **The viewer:** the agent pane's live view (`PaneView`, §3.1) uses a second control client, `attach-session -f no-output,ignore-size`.
+  - **Opening a view** is one command line, in this order: `refresh-client -f '!no-output'` (it resets every pane's on/off state, so it comes first), `refresh-client -A '%N:off'` for every other pane, `-A '%P:on'` for the viewed pane, then `display -p '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}'` and `capture-pane -e -N -p` for the first frame (`-N` keeps the background of trailing blanks).
+  - **The stream:** the `%output %P` lines after the capture's reply continue exactly where the capture ends.
+  - **Keys and resizes:** `send-keys -t %P` and `resize-window -t @W`, over the same connection. They fail once the window is gone.
+  - **A window added while viewing** is turned `off` on its `%window-add`.
+  - **Closing:** `refresh-client -f no-output`.
+  - **Cost:** about 0.1 % of a core, with keystroke echo at a p95 under 2 ms, at 100 noisy windows on tmux 3.2a and latest. A 50 ms `capture-pane` timer cost about 15 times as much, with its p95 at about 50 ms.
+  - **Scrollback:** read once on request (`capture-pane -e -p -S -2000`, 12–23 ms at 100 noisy windows), never on a timer.
 - **Bounded reads:** a busy agent redrawing a spinner many times a second costs one screen read after it settles.
 
 **Latency budget** (PRD: reported states under 1 s at 10 agents and under 2 s at 100; screen-read states under 2 s):
@@ -151,7 +166,7 @@ The same path serves you, Duo, and a task given to a role. Giving work depends o
 | State | Giving work |
 |---|---|
 | stopped, errored | A fresh launch, below |
-| finished, idle | The task is typed into the existing session as its next turn (through the same paste path as inbox delivery, §6.3); it runs where the session already runs |
+| finished, idle | The task is typed into the existing session as its next turn (through the same paste path as inbox delivery, §6.3); it runs where the session already runs, whatever the Run choice. It counts as taken only when the agent leaves rest (§4.2, P2-D11). Until then the agent shows the delivery as pending and a further Give work is refused (`<agent> is still taking the last task`). With no sign within 5 s, or when the paste fails, the engine reports the task not taken and the TUI offers it again. While a delivery is pending on an agent with no busy hook, each new activity also reads the screen at once, since a turn's output rarely settles |
 | starting, working, waiting | Refused; the caller is offered "send as message instead" (§6.3). A starting agent already carries its launch task, and a paste sent before the CLI's input box exists is lost |
 
 A fresh launch:
@@ -159,7 +174,7 @@ A fresh launch:
 1. **Resolve settings:**
    - **Prompt:** stacked as org, then team, then role, then agent, each under a heading naming its level.
    - **Directory, CLI, flags, model, effort, worktree default:** the nearest value up the tree wins, ending at the org defaults in `org.toml`.
-2. **Choose where it runs:** the agent's directory, or a new worktree (§5.3).
+2. **Choose where it runs:** the agent's directory, or a new worktree (§5.3). A new worktree needs the agent's directory to be in a git repo (`new worktree needs a git repo; <dir> isn't one`); the launch waits for git to create it, then runs there (`LaunchSpec.cwd`), and the session row records the worktree's task so a restart still knows it is in use.
 3. **Build the command:** `CliAdapter::launch(spec)` produces the command line and environment:
    - the standing instructions, the hooks, the MCP config and the model and effort;
    - any extra flags;
@@ -184,12 +199,18 @@ A fresh launch:
 ### 5.3 Worktrees
 
 - **Location:** `~/.local/share/duohive/worktrees/<agent>/<task-id>`.
-- **Branch:** `duohive/<agent>/<task-slug>`, from the base branch below.
-- **Base branch:** `origin`'s default branch (`refs/remotes/origin/HEAD`) when the repo has a remote, else the local default branch. Before a check, DuoHive fetches that branch quietly; offline, it uses what it has.
+- **Branch:** `duohive/<agent>/<task-id>` (P2-D7), from the base branch below. The task id is the slug of the task's first line, cut to 32 characters (`task` when empty), made unique among the agent's worktrees with `-2`, `-3`, and so on.
+- **Base branch (P2-D17):** `origin`'s default branch (`refs/remotes/origin/HEAD`, else `git ls-remote --symref origin HEAD`) when the repo has a remote, else the local default branch: the first that exists of `init.defaultBranch`, `main`, `master`; with none, the check fails with `no default branch`. Before a check, DuoHive fetches that branch quietly; offline, it uses what it has. Each worktree records `created_from`, the base commit its branch was created on: a branch with no commits after it is not merged (0 files changed), never merged, so a fresh worktree is never removed.
 - **Merge detection:** a normal merge when the branch tip is an ancestor of the base (`git merge-base --is-ancestor`); a rebase merge when every branch commit has an equivalent on the base (`git cherry`); a squash merge when one synthetic commit of the branch's whole change, on the merge base, has an equivalent on the base (`git commit-tree`, then `git cherry`).
-- **When checked:** when the agent finishes, after start-up (after the first frame), when the worktree list opens, and every 10 minutes.
-- **Removal:** only when merged **and** clean (no uncommitted changes). Everything else stays and is listed; removing a worktree that isn't merged and clean asks first.
-- **Creation failure:** the agent stays stopped, the error goes on its row, and the task is kept for retry.
+- **When checked:** when the agent finishes (that agent's worktrees), after start-up (the first directory inventory, after the first frame), when the worktree list opens (`CheckWorktrees`), and every 10 minutes (a timer only while there are worktrees). Every worktree is checked except one being removed or one still being created (P2-D20: its `Created` answer owns it).
+- **In use (P2-D6):** a worktree is in use while its agent is running and its current session was launched in it. The session row stores the worktree (`sessions.worktree`), so a restart keeps it in use; once the agent stops, the next check above decides.
+- **States (P2-D16):** `not checked yet` until the first check; then, by the check: in use (whatever the merge result), not merged (with files changed), merged with uncommitted changes, merged and clean (the instant before removing), removing, or `couldn't check · <reason>` when git can't tell (an unknown result never counts as merged). A failed removal is kept, as `couldn't check · couldn't remove: <reason>`, and checked again; a removal a restart cut short is checked again, never assumed done. Each check carries the row's generation, so a late answer is never applied to a newer row with the same agent and task.
+- **While reconnecting** (from start-up until the first runtime inventory): nothing is removed automatically, since a session the org no longer names may still run in a worktree. Such a session's worktree counts as in use, and a merged and clean result stays merged until the next check.
+- **Removal:** automatically only when merged **and** clean (no uncommitted changes) **and** not in use; the worktree and its branch go. Everything else stays and is listed. By hand (`DeleteWorktree`): refused while in use (`<agent> is running in it · stop it first`); merged and clean goes with its branch; anything else needs confirming, and is then forced with its branch kept, so unmerged commits stay on it.
+- **Org edits:** an agent with any worktree can't be renamed (rows, paths and branches carry its name); deleting an agent, role or team keeps its worktrees, still checked and listed.
+- **One creation at a time (P2-D20):** from the request to git until its answer (including the retries below), `StartAgent` and Give work for that agent are refused with `<agent> is getting a worktree ready`. The agent keeps its state meanwhile; §4.2 has no state for this.
+- **Task ids and retries (P2-D7):** a branch git reports as existing is never reused or reset; the engine tries the next suffix (`-2`, `-3`, …), up to 9 attempts.
+- **Creation failure:** the row is dropped; a stopped agent stays stopped and an errored one stays errored (P2-D21), with the error on its row (`couldn't create worktree: <e> · space`), and the task is kept for retry.
 
 ### 5.4 Task to a role
 
@@ -231,7 +252,7 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 
 ### 6.3 Inbox
 
-- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt. It is pasted through a tmux buffer named for the delivering process. Delivery moves the recipient to working.
+- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt. It is pasted through a tmux buffer named for the delivering process. Delivery counts once the recipient leaves rest (P2-D11): a `busy` or prompt-submit hook, or a `~` busy read for a CLI with no busy hook, moves it to working; the paste alone does not. With no sign within 5 s, or a failed paste, it is not delivered.
 - **To a stopped agent:**
   - **the user's own `@agent` message** starts the agent with the message as its task;
   - **a message from another agent** waits, with status `queued · stopped`, until the agent is started and at rest.
@@ -278,7 +299,8 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 - **Hand edits:** `org.toml` is re-read on start and on reload (`o`). A file that doesn't parse shows its line and error, and the last good org stays in use. A hand edit never kills a live session: a reload that would remove a running agent is refused like a broken file (banner `<agent> is running · stop it, then press o to reload`), and a start-up where a running agent's session has no agent in the loaded org starts on that org without marking it last-good, keeps the session row, refuses edits and shows a banner until the agent is added back or stopped; a later reload that names it adopts it.
 - **Single instance:** DuoHive holds an exclusive lock (`File::try_lock`) on `<data_dir>/run.lock` for the life of the hook listener, so a second instance exits at once; a probe that connects to `run.sock` would race. The lock is taken before any agent is spawned, so a spawned child can't inherit it.
 - **Quit and shutdown:** `q`, SIGINT, SIGTERM and SIGHUP all quit with the agents left running. Shutdown stops the hook listener first (a hook then falls back to `pending_hooks` in the database), then drains the hook inputs the core still has queued into `pending_hooks`, and releases `run.lock` last; a second signal exits at once, and the whole shutdown is time-bounded. Hooks stored this way are replayed in order of `sent_at_ms`, the time `duohive hook` stamped when it fired (then by id), not the time they were stored. Live hooks can also arrive out of order (the listener serves connections concurrently), so the core keeps, per launch, the newest `sent_at_ms` it applied: a hook stamped earlier than that still records its reply but moves no state (a `sent_at_ms` of 0, unknown, applies as it comes).
-- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it.
+- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
+- **Worktrees table:** one row per worktree, keyed by agent and task: `repo`, `path`, `branch`, `created_at`, `created_from` (the base commit, P2-D17), `state` (§5.3), `checked_at` and `base`. A row is written before git is asked to create the worktree and deleted once git has removed it (or creation failed); deleting an agent keeps its rows.
 - **Logs:** log files are created `0600`; `hook.log` rotates once, to `hook.log.1`, at 1 MiB.
 - **Validation:** agent names must be unique; the tree has up to three levels (team → role → agent), and teams are optional; every CLI must be supported. Each error names the field.
 - **Missing directory:** makes only that agent invalid, with the error on its row; the rest of the org loads and runs.
@@ -330,7 +352,7 @@ Errors are shown where they apply, never only in a log.
 | tmux missing or older than 3.2 | Full-screen message with install steps |
 | `org.toml` invalid | Line and error; last good org kept |
 | Directory missing | Only that agent is invalid, with the error on its row |
-| Worktree creation fails | Error on the agent's row; it stays stopped and the task is kept |
+| Worktree creation fails | Error on the agent's row; a stopped agent stays stopped and an errored one stays errored (P2-D21); the task is kept |
 | Hook silent | Status falls back to screen reading (`~`), then to quiet |
 | Message undeliverable | `dropped` with the reason |
 | Worktree not merged or dirty | Kept and listed |

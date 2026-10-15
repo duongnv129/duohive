@@ -16,12 +16,14 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
 use duohive_core::org::Org;
+use duohive_core::ports::PaneView;
 use duohive_core::settings::Settings;
 use duohive_core::status::AgentState;
 use duohive_core::time::Millis;
 use duohive_core::validate::DirProbe;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
+use ratatui::layout::Rect;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Instant;
@@ -30,8 +32,9 @@ pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
 use crate::input::{UiEffect, map_key, paste, update};
+use crate::live::{Live, next_chunk, next_scrollback};
 use crate::model::{SharedDirs, UiModel};
-use crate::render::{RenderCtx, render};
+use crate::render::{RenderCtx, chat_extra_limit, render_live};
 use crate::theme::palette_for;
 
 /// At most 30 frames a second.
@@ -48,10 +51,10 @@ const DEFAULT_EDITOR: &str = "vi";
 pub struct AppConfig {
     /// `org.toml`, opened by `o`.
     pub org_toml: PathBuf,
-    /// The tmux socket in use, for the attach hint (D31).
-    pub tmux_socket: String,
     /// The settings at start-up.
     pub settings: Settings,
+    /// The local time zone's offset from UTC, in seconds, for chat times.
+    pub utc_offset_secs: i32,
     /// `NO_COLOR` is set.
     pub no_color: bool,
     /// The value of `$EDITOR`, read by the caller; `None` or blank runs `vi`.
@@ -66,14 +69,16 @@ pub struct AppConfig {
     /// How many agents are running, Duo included, kept current by the app so the
     /// caller can say so after a quit (they keep running in tmux).
     pub running: Arc<AtomicUsize>,
+    /// The live view of the selected agent's pane (P2-D1).
+    pub pane_view: Arc<dyn PaneView>,
 }
 
 impl fmt::Debug for AppConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AppConfig")
             .field("org_toml", &self.org_toml)
-            .field("tmux_socket", &self.tmux_socket)
             .field("settings", &self.settings)
+            .field("utc_offset_secs", &self.utc_offset_secs)
             .field("no_color", &self.no_color)
             .field("editor", &self.editor)
             .field("home", &self.home)
@@ -369,6 +374,9 @@ pub(crate) async fn run_loop<B: Backend>(
     m.org_toml = cfg.org_toml.clone();
     m.dirs = SharedDirs(Arc::clone(&cfg.dirs));
     m.home = cfg.home.clone();
+    if let Ok(size) = terminal.size() {
+        set_screen(&mut m, size.width, size.height);
+    }
     let mut clock = Clock {
         dirty: true,
         ready: false,
@@ -376,8 +384,13 @@ pub(crate) async fn run_loop<B: Backend>(
         last_draw: None,
         spinner_next: None,
     };
+    let mut live = Live::new(Arc::clone(&cfg.pane_view), cfg.no_color);
     loop {
+        clock.dirty |= live.sync(&mut m, Instant::now());
         let wake = clock.next_wake(&m);
+        let open_at = live.open_at();
+        let (streaming, scrolling) = (live.streaming(), live.scrolling_back());
+        let (stream, scrollback) = live.waits();
         tokio::select! {
             () = signals.recv() => return Ok(()),
             event = events.recv() => {
@@ -388,10 +401,17 @@ pub(crate) async fn run_loop<B: Backend>(
                 cfg.running.store(running_agents(&m), Ordering::Relaxed);
             }
             got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
-                InputEvent::Resize(..) => clock.dirty = true,
+                InputEvent::Resize(w, h) => {
+                    set_screen(&mut m, w, h);
+                    clock.dirty = true;
+                }
                 InputEvent::Paste(text) => {
                     let before = m.clone();
-                    paste(&mut m, &text);
+                    for effect in paste(&mut m, &text) {
+                        if let UiEffect::Pane(input) = effect {
+                            live.send(input);
+                        }
+                    }
                     clock.dirty |= m != before;
                 }
                 InputEvent::Key(k) => {
@@ -409,6 +429,11 @@ pub(crate) async fn run_loop<B: Backend>(
                         match effect {
                             UiEffect::Quit => return Ok(()),
                             UiEffect::Send(c) => send(&commands, c).await?,
+                            UiEffect::Pane(input) => live.send(input),
+                            UiEffect::Scroll { up } => {
+                                live.scroll(up, &mut m);
+                                clock.dirty = true;
+                            }
                             UiEffect::OpenEditor(path) => {
                                 let editor = cfg.editor.as_deref();
                                 let cmd = editor_command(editor, &path);
@@ -427,9 +452,18 @@ pub(crate) async fn run_loop<B: Backend>(
                     }
                 }
             },
+            chunk = next_chunk(stream), if streaming => {
+                clock.dirty |= live.on_chunk(chunk, &mut m);
+            }
+            bytes = next_scrollback(scrollback), if scrolling => {
+                clock.dirty |= live.on_scrollback(bytes, &mut m);
+            }
+            () = sleep_until(open_at), if open_at.is_some() => {
+                clock.dirty |= live.open_due(&mut m, Instant::now());
+            }
             () = sleep_until(wake), if wake.is_some() => {
                 if clock.on_wake(&m) {
-                    draw(terminal, &m, &cfg, clock.spinner)?;
+                    draw(terminal, &m, &cfg, &live, clock.spinner)?;
                     clock.dirty = false;
                     clock.last_draw = Some(Instant::now());
                     if let Some(tx) = first_frame.take() {
@@ -440,6 +474,12 @@ pub(crate) async fn run_loop<B: Backend>(
             }
         }
     }
+}
+
+/// Records the terminal's size, which bounds the chat's resizing (P2-D3).
+fn set_screen(m: &mut UiModel, w: u16, h: u16) {
+    m.screen = Rect::new(0, 0, w, h);
+    m.chat_rows_extra = m.chat_rows_extra.min(chat_extra_limit(m));
 }
 
 async fn sleep_until(at: Option<Instant>) {
@@ -491,6 +531,7 @@ fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     m: &UiModel,
     cfg: &AppConfig,
+    live: &Live,
     spinner: usize,
 ) -> Result<(), TuiError> {
     if cfg.halted.load(Ordering::SeqCst) {
@@ -501,13 +542,15 @@ fn draw<B: Backend>(
         spinner,
         palette: palette_for(m.settings.theme, cfg.no_color),
         settings: m.settings.clone(),
-        tmux_socket: cfg.tmux_socket.clone(),
+        utc_offset_secs: cfg.utc_offset_secs,
     };
     terminal
-        .draw(|f| render(f, m, &ctx))
+        .draw(|f| render_live(f, m, &ctx, live.screen()))
         .map(|_| ())
         .map_err(|e| TuiError::Terminal(e.to_string()))
 }
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod tests;

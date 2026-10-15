@@ -4,11 +4,13 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::alert::Alert;
 use crate::names::AgentName;
 use crate::org::Org;
 use crate::ports::OrgFileError;
 use crate::status::{AgentState, Status};
 use crate::time::Millis;
+use crate::worktree::{TaskId, WorktreeRow};
 
 /// What the UI shows for one agent.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -21,6 +23,10 @@ pub struct AgentView {
     pub notice: Option<String>,
     /// A configuration problem on the row.
     pub problem: Option<String>,
+    /// The worktree the agent runs in, if any.
+    pub worktree: Option<TaskId>,
+    /// A delivery is waiting on the agent.
+    pub delivery_pending: bool,
 }
 
 /// One entry in the Needs you list.
@@ -53,6 +59,8 @@ pub struct Snapshot {
     pub settings_error: Option<OrgFileError>,
     /// Running session rows awaiting the tmux inventory (UI §4.1.2); 0 = none.
     pub reconnecting: u32,
+    /// The worktrees; empty until they are listed.
+    pub worktrees: Vec<WorktreeRow>,
 }
 
 /// A change the engine reports.
@@ -103,9 +111,40 @@ pub enum Event {
         agent: AgentName,
         /// Its state.
         state: AgentState,
+        /// A delivery is already waiting on it.
+        pending: bool,
     },
     /// The start-up inventory has been applied.
     Reconnected,
+    /// A desktop alert to show.
+    Alert(Alert),
+    /// Desktop alerts cannot be shown.
+    AlertsUnavailable,
+    /// The user clicked an agent's alert.
+    AlertClicked {
+        /// Which agent.
+        agent: AgentName,
+    },
+    /// Give work was not taken, so the task never started.
+    GiveWorkNotTaken {
+        /// Which agent.
+        agent: AgentName,
+        /// The task as given, so it can be offered again.
+        task: String,
+        /// Why.
+        reason: String,
+    },
+    /// The worktrees changed.
+    Worktrees(Vec<WorktreeRow>),
+    /// An agent's worktree or pending delivery changed.
+    AgentRunChanged {
+        /// Which agent.
+        agent: AgentName,
+        /// The worktree it runs in, if any.
+        worktree: Option<TaskId>,
+        /// A delivery is waiting on it.
+        delivery_pending: bool,
+    },
 }
 
 #[cfg(test)]
@@ -159,6 +198,7 @@ mod tests {
             Command::GiveWork {
                 agent: n("a"),
                 task: "do $(it)".into(),
+                run: crate::worktree::RunIn::Directory,
             },
             Command::ViewAgent { agent: n("a") },
             Command::EditOrg(OrgEdit::AddTeam(team.clone())),
@@ -217,6 +257,8 @@ mod tests {
                 last_reply: Some("r".into()),
                 notice: None,
                 problem: Some("p".into()),
+                worktree: None,
+                delivery_pending: false,
             },
         );
         let snap = Snapshot {
@@ -226,6 +268,7 @@ mod tests {
             org_error: Some(err.clone()),
             settings_error: None,
             reconnecting: 2,
+            worktrees: Vec::new(),
         };
         let a: AgentName = n("a");
         vec![
@@ -254,9 +297,65 @@ mod tests {
             Event::GiveWorkRefused {
                 agent: a,
                 state: AgentState::Working,
+                pending: false,
             },
             Event::Reconnected,
         ]
+    }
+
+    #[test]
+    fn new_events_round_trip_json() {
+        use crate::alert::{Alert, AlertKind};
+        use crate::time::Millis;
+        use crate::worktree::{RunIn, TaskId, WorktreeRow, WorktreeState};
+        let events = vec![
+            Event::Alert(Alert {
+                agent: n("a"),
+                kind: AlertKind::Finished,
+                title: "t".into(),
+                body: "b".into(),
+            }),
+            Event::AlertsUnavailable,
+            Event::AlertClicked { agent: n("a") },
+            Event::GiveWorkNotTaken {
+                agent: n("a"),
+                task: "Fix the \"flaky\" test\nthen run $(it) ✓".into(),
+                reason: "no sign it started".into(),
+            },
+            Event::Worktrees(vec![WorktreeRow {
+                agent: n("a"),
+                task: TaskId("t-1".into()),
+                repo: "/r".into(),
+                path: "/d/worktrees/a/t-1".into(),
+                branch: "duohive/a/t-1".into(),
+                created_at: Millis(1),
+                created_from: "abc".into(),
+                state: WorktreeState::CheckFailed("x".into()),
+                checked_at: None,
+                base: None,
+            }]),
+            Event::GiveWorkRefused {
+                agent: n("a"),
+                state: AgentState::Working,
+                pending: true,
+            },
+            Event::AgentRunChanged {
+                agent: n("a"),
+                worktree: Some(TaskId("t-1".into())),
+                delivery_pending: true,
+            },
+        ];
+        for e in events {
+            let json = serde_json::to_string(&e).unwrap();
+            assert_eq!(serde_json::from_str::<Event>(&json).unwrap(), e, "{json}");
+        }
+        let c = Command::GiveWork {
+            agent: n("a"),
+            task: "x".into(),
+            run: RunIn::NewWorktree,
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        assert_eq!(serde_json::from_str::<Command>(&json).unwrap(), c);
     }
 
     #[test]

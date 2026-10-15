@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/zoom_tests.rs
+expression: "lines_at(&m, w, h).join(\"\\n\")"
+---
+ DuoHive › auth-service (zoomed)                                      z restore 
+┏━ auth-service · Claude ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ✓ go test ./... (14 passed)                                                  ┃
+┃ ✓ Ready for review · 3 files changed                                         ┃
+┃                                                                              ┃
+┃ ❯                                                                            ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┃                                                                              ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ enter type · z restore · PgUp/PgDn scroll · ◆ 2 need you (squad-3, billing-api)

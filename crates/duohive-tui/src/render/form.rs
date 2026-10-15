@@ -30,7 +30,14 @@ enum Row<'a> {
 }
 
 /// The box: centred, at most the form's width, as tall as its rows (clipped to the screen).
-fn frame_box(buf: &mut Buffer, area: Rect, w: u16, rows: usize, title: &str, p: &Palette) -> Rect {
+pub(super) fn frame_box(
+    buf: &mut Buffer,
+    area: Rect,
+    w: u16,
+    rows: usize,
+    title: &str,
+    p: &Palette,
+) -> Rect {
     let w = w.min(area.width.saturating_sub(MARGIN));
     let h = u16::try_from(rows)
         .unwrap_or(u16::MAX)

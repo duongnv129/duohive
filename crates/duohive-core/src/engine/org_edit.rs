@@ -7,6 +7,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 
+use super::lifecycle::getting_ready;
 use super::{AgentRt, Engine, reject};
 use crate::command::{OrgEdit, RoleDraft};
 use crate::event::Event;
@@ -20,7 +21,7 @@ use crate::validate::{FieldError, next_agent_names, validate};
 
 /// Why every edit is refused while `org.toml` doesn't parse.
 const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
-/// Why a rename of a running (or errored) agent is refused.
+/// Why a rename of a running (or errored) agent, or one with worktrees, is refused.
 const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees";
 
 impl Engine {
@@ -30,6 +31,9 @@ impl Engine {
             return reject(ORG_FILE_BROKEN);
         }
         if let Err(reason) = self.check_edit(&edit) {
+            return reject(reason);
+        }
+        if let Err(reason) = self.check_rename_worktrees(&edit) {
             return reject(reason);
         }
         let org = match preview_edit(&self.org, &edit) {
@@ -108,6 +112,14 @@ impl Engine {
     /// The runtime checks an edit needs: deletes and renames only while stopped.
     fn check_edit(&self, edit: &OrgEdit) -> Result<(), String> {
         let not_stopped = |a: &AgentName| self.state_of(a) != AgentState::Stopped;
+        // P2-D20: a worktree's answer must still find its agent.
+        if let Some(a) = self
+            .edited_agents(edit)
+            .into_iter()
+            .find(|a| self.creating_worktree(a))
+        {
+            return Err(getting_ready(&a));
+        }
         match edit {
             OrgEdit::Delete(NodeKey::Duo) => Err("Duo can't be deleted".to_owned()),
             OrgEdit::Delete(NodeKey::Agent(a)) if self.org.is_duo(a) => {
@@ -132,6 +144,34 @@ impl Engine {
         }
     }
 
+    /// A rename is refused while the agent has any worktree row: rows, paths
+    /// and branches are keyed by its name. A delete keeps them (Task 2.13).
+    fn check_rename_worktrees(&mut self, edit: &OrgEdit) -> Result<(), String> {
+        let renamed = match edit {
+            OrgEdit::EditAgent { key, draft } if draft.name != *key => key.clone(),
+            OrgEdit::EditOrgDefaults { duo, .. } if duo.name != self.org.duo.name => {
+                self.org.duo.name.clone()
+            }
+            _ => return Ok(()),
+        };
+        if self.has_worktrees(&renamed)? {
+            return Err(RENAME_WHILE_STOPPED.to_owned());
+        }
+        Ok(())
+    }
+
+    /// The agents `edit` renames or deletes.
+    fn edited_agents(&self, edit: &OrgEdit) -> Vec<AgentName> {
+        match edit {
+            OrgEdit::Delete(key) => agents_under(&self.org, key),
+            OrgEdit::EditAgent { key, draft } if draft.name != *key => vec![key.clone()],
+            OrgEdit::EditOrgDefaults { duo, .. } if duo.name != self.org.duo.name => {
+                vec![self.org.duo.name.clone()]
+            }
+            _ => Vec::new(),
+        }
+    }
+
     /// What a saved edit does to the runtime: renames move state, deletes drop
     /// session rows, and a new CLI for a running Duo restarts it.
     fn follow_edit(&mut self, old: &Org, edit: &OrgEdit, out: &mut Vec<Event>) {
@@ -146,7 +186,13 @@ impl Engine {
                 let name = duo.name.clone();
                 // A stop the user already asked for stays a plain stop.
                 let stopping = self.agents.get(&name).is_some_and(|rt| rt.stopping);
-                if duo.cli != old.duo.cli && self.state_of(&name).is_running() && !stopping {
+                // A worktree being created launches on the new CLI anyway (P2-D20).
+                let creating = self.creating_worktree(&name);
+                if duo.cli != old.duo.cli
+                    && self.state_of(&name).is_running()
+                    && !stopping
+                    && !creating
+                {
                     out.extend(self.stop_agent(&name));
                     self.rt_mut(&name).restart_after_stop = true;
                 }
@@ -182,13 +228,23 @@ impl Engine {
     }
 
     /// Refuses a reload that drops an agent that isn't stopped (renamed or removed
-    /// by hand, Duo included): its live session must not be orphaned (D9).
+    /// by hand, Duo included): its live session must not be orphaned (D9). Nor may
+    /// it drop one whose worktree is being created: git's answer must still find it
+    /// (P2-D20).
     fn reload_drops_live_agent(&self, org: &Org) -> Option<OrgFileError> {
         let keeps = |a: &AgentName| org.is_duo(a) || org.find_agent(a).is_some();
         self.agent_names()
             .into_iter()
             .filter(|a| !keeps(a))
-            .find_map(|a| drop_refusal(&a, self.state_of(&a)))
+            .find_map(|a| {
+                if self.creating_worktree(&a) {
+                    return Some(OrgFileError {
+                        line: None,
+                        message: getting_ready(&a),
+                    });
+                }
+                drop_refusal(&a, self.state_of(&a))
+            })
     }
 
     /// Gives every agent in the org a runtime entry and drops entries the org no

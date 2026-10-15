@@ -3,10 +3,10 @@ source: crates/duohive-tui/src/forms/tests/agent.rs
 expression: screen_text(&m)
 ---
  DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude Code ────────────────────┐
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────┐
 ┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
-┃ ├─ ▣ Payments                 ● 1              ┃│   attach:                                      │
-┃ │  ├─ ◇ Backend               ● 1              ┃│tmux -L duohive attach -t duohive:billing-api   │
+┃ ├─ ▣ Payments                 ● 1              ┃│    ● working                                   │
+┃ │  ├─ ◇ Backend               ● 1              ┃│                                                │
 ┃ │  │  ├─┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────────┐         │
 ┃▌│  │  └─│                                                                              │         │
 ┃ │  └─ ◇ │  Name        [ billing-api_________ ]                                        │         │
@@ -23,12 +23,12 @@ expression: screen_text(&m)
 ┃         │  ┊ Backend   API URLs use hyphens. Run make test before done.                │         │
 ┃         │  [ Own: Owns the billing service; invoices and retries.        ]             │         │
 ┃         │                                                                              │         │
-┃         │  billing-api is running: changes apply on next start                         │         │
-┃         │  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │         │
-┃         └──────────────────────────────────────────────────────────────────────────────┘         │
-┃                                                ┃│                                                │
-┃                                                ┃│                                                │
-┃                                                ┃│                                                │
-┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+┣━ Needs y│  billing-api is running: changes apply on next start                         │         │
+┗━━━━━━━━━│  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │─────────┘
+┌─ ⬢ Duo ·└──────────────────────────────────────────────────────────────────────────────┘─────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
  tab next field · ctrl+s save · esc cancel

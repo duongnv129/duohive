@@ -1,14 +1,13 @@
 ---
-source: crates/duohive-tui/src/render/tests.rs
-assertion_line: 291
-expression: "render_lines(&m, &ctx(), 160, 48).join(\"\\n\")"
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
 ---
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude Code ───────────────────────────────────────────────────────────────────────────────┐
-┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   attach:                                                                                                  │
-┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│tmux -L duohive attach -t duohive:auth-service                                                              │
-┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · OpenCode · your manager agent ────────────────────────────────────────────────────────────────────┐
+┃▌⬢ Duo · your manager agent    ◆ waiting    1m  ┃│ opencode wants to run: gh pr list --state open                                                             │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ Allow? (y) yes  (n) no                                                                                     │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃ │  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
 ┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
 ┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
 ┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
@@ -40,14 +39,14 @@ expression: "render_lines(&m, &ctx(), 160, 48).join(\"\\n\")"
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
 ┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
 ┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
 ┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- ↑↓ move · s start/stop · n new · e edit · d delete · v replies · q quit
+┌─ ⬢ Duo · ◆ waiting ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom

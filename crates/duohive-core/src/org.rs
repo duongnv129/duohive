@@ -96,7 +96,7 @@ pub struct Org {
 }
 
 /// A role's address: in a team, or directly under Duo.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RoleKey {
     /// The team, or `None` for a root role.
     pub team: Option<NodeName>,
@@ -105,7 +105,7 @@ pub struct RoleKey {
 }
 
 /// Any node in the tree.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum NodeKey {
     /// Duo.
     Duo,

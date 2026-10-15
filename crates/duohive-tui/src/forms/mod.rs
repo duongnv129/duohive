@@ -7,9 +7,11 @@
 mod agent;
 mod chooser;
 mod field;
+mod give_work;
 mod line_edit;
 mod org;
 mod role;
+mod settings;
 mod team;
 
 use std::path::Path;
@@ -25,7 +27,11 @@ use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
 pub use field::{Field, FieldId, FieldKind, Look};
+pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
+pub use settings::{
+    SettingsRow, SettingsState, cycled, name_typed, quiet_stepped, quiet_typed, toggled,
+};
 
 use crate::input::Action;
 use crate::model::Confirm;
@@ -512,6 +518,7 @@ pub(crate) fn confirm(title: String, lines: Vec<String>, yes: &str, edit: OrgEdi
         focus_yes: false,
         on_yes: Command::EditOrg(edit),
         back: None,
+        back_list: None,
     }
 }
 

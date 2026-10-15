@@ -3,16 +3,22 @@
 use crate::adapter::{
     CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
 };
+use crate::alert::Alert;
 use crate::cli_kind::CliKind;
 use crate::hook::HookMessage;
 use crate::inherit::expand_home;
 use crate::launch::{Key, LaunchCommand, LaunchSpec, Token, WindowId};
 use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, Fields, Org, Role, Team};
-use crate::ports::{Clock, Ids, OrgFileError, Runtime, SessionRow, Store, StoreError};
+use crate::ports::{
+    CheckWorktree, Clock, CreateWorktree, Git, Ids, Notifier, OrgFileError, PaneView,
+    RemoveWorktree, Runtime, SessionRow, Store, StoreError,
+};
 use crate::settings::Settings;
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus};
+use crate::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId, ViewError};
+use crate::worktree::{TaskId, WorktreeRow};
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -204,6 +210,8 @@ pub struct FakeStoreState {
     pub sessions: BTreeMap<AgentName, SessionRow>,
     /// Every `delete_session` call, oldest first.
     pub deleted_sessions: Vec<AgentName>,
+    /// Worktree rows by agent and task.
+    pub worktrees: BTreeMap<(AgentName, TaskId), WorktreeRow>,
     /// Queued hooks, oldest first.
     pub pending: Vec<HookMessage>,
 }
@@ -219,6 +227,7 @@ impl Default for FakeStoreState {
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
             deleted_sessions: Vec::new(),
+            worktrees: BTreeMap::new(),
             pending: Vec::new(),
         }
     }
@@ -289,6 +298,31 @@ impl Store for FakeStore {
         let mut st = self.state.lock().unwrap();
         st.sessions.remove(agent);
         st.deleted_sessions.push(agent.clone());
+        Ok(())
+    }
+    fn load_worktrees(&mut self) -> Result<Vec<WorktreeRow>, StoreError> {
+        Ok(self
+            .state
+            .lock()
+            .unwrap()
+            .worktrees
+            .values()
+            .cloned()
+            .collect())
+    }
+    fn save_worktree(&mut self, row: &WorktreeRow) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.worktrees
+            .insert((row.agent.clone(), row.task.clone()), row.clone());
+        Ok(())
+    }
+    fn delete_worktree(&mut self, agent: &AgentName, task: &TaskId) -> Result<(), StoreError> {
+        self.state
+            .lock()
+            .unwrap()
+            .worktrees
+            .remove(&(agent.clone(), task.clone()));
         Ok(())
     }
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
@@ -378,11 +412,13 @@ impl CliAdapter for StubAdapter {
         if let Some(reason) = &self.launch_error {
             return Err(LaunchError::Invalid(reason.clone()));
         }
-        let cwd = spec
-            .agent
-            .directory
-            .as_deref()
-            .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home));
+        // As `launch_cwd` does: the spec's own `cwd` (a new worktree) first.
+        let cwd = spec.cwd.clone().unwrap_or_else(|| {
+            spec.agent
+                .directory
+                .as_deref()
+                .map_or_else(|| spec.home.clone(), |d| expand_home(d, &spec.home))
+        });
         Ok(LaunchCommand {
             program: self.kind.binary().to_owned(),
             args,
@@ -434,5 +470,187 @@ impl CliAdapter for StubAdapter {
         if let Some(f) = self.enrich {
             f(event, payload);
         }
+    }
+}
+
+/// One call made on a [`FakePaneView`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PaneCall {
+    /// `open`.
+    Open(AgentName, PaneSize),
+    /// `resize`.
+    Resize(StreamId, PaneSize),
+    /// `send`.
+    Send(StreamId, PaneInput),
+    /// `scrollback`.
+    Scrollback(StreamId, u16),
+}
+
+#[derive(Debug, Default)]
+struct FakePaneState {
+    calls: Vec<PaneCall>,
+    next_id: u64,
+    streams: HashMap<StreamId, tokio::sync::mpsc::Sender<PaneChunk>>,
+    scrollback: Vec<u8>,
+    not_ready: bool,
+}
+
+/// Chunks a [`FakePaneView`] stream holds before a push is dropped.
+const FAKE_STREAM_CAPACITY: usize = 256;
+
+/// A [`PaneView`] that records its calls; the test pushes chunks and closes streams.
+/// Clones share the same state.
+#[derive(Clone, Debug, Default)]
+pub struct FakePaneView {
+    state: Arc<Mutex<FakePaneState>>,
+}
+
+impl FakePaneView {
+    /// Calls so far, oldest first.
+    pub fn calls(&self) -> Vec<PaneCall> {
+        self.state.lock().unwrap().calls.clone()
+    }
+
+    /// What later `ready` calls answer (`true` until set).
+    pub fn set_ready(&self, ready: bool) {
+        self.state.lock().unwrap().not_ready = !ready;
+    }
+
+    /// What every later `scrollback` answers.
+    pub fn set_scrollback(&self, bytes: Vec<u8>) {
+        self.state.lock().unwrap().scrollback = bytes;
+    }
+
+    /// Delivers `chunk` on `stream`; dropped when the stream is closed or full.
+    pub fn push(&self, stream: StreamId, chunk: PaneChunk) {
+        let st = self.state.lock().unwrap();
+        if let Some(tx) = st.streams.get(&stream) {
+            tx.try_send(chunk).ok();
+        }
+    }
+
+    /// Whether `stream` is open and its receiver is still held (the viewer hasn't dropped it).
+    pub fn receiving(&self, stream: StreamId) -> bool {
+        let st = self.state.lock().unwrap();
+        st.streams.get(&stream).is_some_and(|tx| !tx.is_closed())
+    }
+
+    /// Ends `stream` with a `Closed` chunk; later calls on it fail with `Closed`.
+    pub fn close(&self, stream: StreamId, reason: &str) {
+        let tx = self.state.lock().unwrap().streams.remove(&stream);
+        if let Some(tx) = tx {
+            tx.try_send(PaneChunk::Closed {
+                reason: reason.to_owned(),
+            })
+            .ok();
+        }
+    }
+
+    fn live(&self, stream: StreamId, call: PaneCall) -> Result<(), ViewError> {
+        let mut st = self.state.lock().unwrap();
+        st.calls.push(call);
+        if st.streams.contains_key(&stream) {
+            Ok(())
+        } else {
+            Err(ViewError::Closed)
+        }
+    }
+}
+
+impl PaneView for FakePaneView {
+    fn open(&self, agent: &AgentName, size: PaneSize) -> Result<PaneStream, ViewError> {
+        let mut st = self.state.lock().unwrap();
+        st.calls.push(PaneCall::Open(agent.clone(), size));
+        for (_, tx) in st.streams.drain() {
+            tx.try_send(PaneChunk::Closed {
+                reason: "another stream opened".to_owned(),
+            })
+            .ok();
+        }
+        st.next_id += 1;
+        let id = StreamId(st.next_id);
+        let (tx, rx) = tokio::sync::mpsc::channel(FAKE_STREAM_CAPACITY);
+        st.streams.insert(id, tx);
+        Ok(PaneStream { id, rx })
+    }
+
+    fn resize(&self, stream: StreamId, size: PaneSize) -> Result<(), ViewError> {
+        self.live(stream, PaneCall::Resize(stream, size))
+    }
+
+    fn send(&self, stream: StreamId, input: PaneInput) -> Result<(), ViewError> {
+        self.live(stream, PaneCall::Send(stream, input))
+    }
+
+    fn scrollback(
+        &self,
+        stream: StreamId,
+        lines: u16,
+    ) -> Result<tokio::sync::oneshot::Receiver<Vec<u8>>, ViewError> {
+        self.live(stream, PaneCall::Scrollback(stream, lines))?;
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tx.send(self.state.lock().unwrap().scrollback.clone()).ok();
+        Ok(rx)
+    }
+
+    fn ready(&self) -> bool {
+        !self.state.lock().unwrap().not_ready
+    }
+}
+
+/// A [`Notifier`] that records its alerts.
+#[derive(Clone, Debug)]
+pub struct FakeNotifier {
+    available: bool,
+    /// Alerts shown so far, oldest first.
+    pub alerts: Arc<Mutex<Vec<Alert>>>,
+}
+
+impl FakeNotifier {
+    /// A notifier that reports `available`.
+    pub fn new(available: bool) -> Self {
+        Self {
+            available,
+            alerts: Arc::default(),
+        }
+    }
+}
+
+impl Notifier for FakeNotifier {
+    fn available(&self) -> bool {
+        self.available
+    }
+    fn notify(&mut self, alert: &Alert) {
+        self.alerts.lock().unwrap().push(alert.clone());
+    }
+}
+
+/// One call made on a [`FakeGit`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitCall {
+    /// `create`.
+    Create(CreateWorktree),
+    /// `check`.
+    Check(CheckWorktree),
+    /// `remove`.
+    Remove(RemoveWorktree),
+}
+
+/// A [`Git`] that records its calls; the test answers each with a `GitEvent` input.
+#[derive(Clone, Debug, Default)]
+pub struct FakeGit {
+    /// Calls so far, oldest first.
+    pub calls: Arc<Mutex<Vec<GitCall>>>,
+}
+
+impl Git for FakeGit {
+    fn create(&mut self, req: CreateWorktree) {
+        self.calls.lock().unwrap().push(GitCall::Create(req));
+    }
+    fn check(&mut self, req: CheckWorktree) {
+        self.calls.lock().unwrap().push(GitCall::Check(req));
+    }
+    fn remove(&mut self, req: RemoveWorktree) {
+        self.calls.lock().unwrap().push(GitCall::Remove(req));
     }
 }
