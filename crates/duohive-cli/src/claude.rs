@@ -127,11 +127,21 @@ impl CliAdapter for ClaudeAdapter {
         }
     }
 
-    /// `C-c` first clears the input box: a turn interrupted by the stop's `Escape`
-    /// before any output puts its prompt back there, and `/exit` typed after it would
-    /// be sent as a new prompt (checked live, TD §5.5).
+    /// Safe in both editor modes (checked live, TD §5.5). An interrupted turn puts
+    /// its prompt back in the input box, where `/exit` would be appended and sent as
+    /// a new prompt; under `"editorMode": "vim"` the stop's `Escape` only leaves
+    /// INSERT, and `/exit` typed in NORMAL edits the prompt. So `C-c` interrupts the
+    /// turn (vim) or clears the box, `i` enters INSERT (vim) or is a stray letter,
+    /// and a second `C-c` clears the box. Two `C-c` on a box already empty quit
+    /// Claude Code there and then, which is a quit too.
     fn quit_keys(&self) -> Vec<Key> {
-        vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
+        vec![
+            Key::CtrlC,
+            Key::Text("i".into()),
+            Key::CtrlC,
+            Key::Text("/exit".into()),
+            Key::Enter,
+        ]
     }
 
     fn submit_keys(&self) -> Vec<Key> {
@@ -809,11 +819,24 @@ mod tests {
     fn keys_versions_and_kind_match_spike_report() {
         let a = ClaudeAdapter;
         assert_eq!(a.kind(), CliKind::Claude);
-        assert_eq!(
-            a.quit_keys(),
-            vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
-        );
         assert_eq!(a.submit_keys(), vec![Key::Enter]);
         assert_eq!(a.tested_versions(), &["2.1"]);
+    }
+
+    /// Vim-safe (TD §5.5): after the stop's `Escape`, `C-c` interrupts a turn or
+    /// clears the box, `i` enters INSERT under vim (a stray `i` otherwise), and the
+    /// second `C-c` clears the box, so `/exit` lands in an empty INSERT box.
+    #[test]
+    fn quit_keys_clear_the_box_in_insert_mode_before_exit() {
+        assert_eq!(
+            ClaudeAdapter.quit_keys(),
+            vec![
+                Key::CtrlC,
+                Key::Text("i".into()),
+                Key::CtrlC,
+                Key::Text("/exit".into()),
+                Key::Enter,
+            ]
+        );
     }
 }
