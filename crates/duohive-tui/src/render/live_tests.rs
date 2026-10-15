@@ -200,6 +200,40 @@ fn mode_word_survives_a_long_agent_name() {
 }
 
 #[test]
+fn typing_footer_keeps_its_ends_around_a_note() {
+    let mut m = typing_model();
+    m.footer_note = Some("pay-qa's session ended".to_owned());
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    assert_eq!(
+        lines[23].trim_end(),
+        " TYPING · pay-qa's session ended · ctrl+q stop typing"
+    );
+}
+
+#[test]
+fn typing_footer_drops_space_to_try_again() {
+    let mut m = typing_model();
+    m.footer_note = Some("billing-api didn't take the task · space to try again".to_owned());
+    let lines = render_lines(&m, &ctx(), 120, 36);
+    assert_eq!(
+        lines[35].trim_end(),
+        " TYPING · billing-api didn't take the task · ctrl+q stop typing"
+    );
+}
+
+#[test]
+fn typing_footer_cuts_a_long_note() {
+    let mut m = typing_model();
+    m.footer_note = Some(
+        "billing-api didn't take the task: the worktree could not be created in time".to_owned(),
+    );
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    let footer = lines[23].trim_end();
+    assert!(footer.starts_with(" TYPING · billing-api"), "{footer}");
+    assert!(footer.ends_with("… · ctrl+q stop typing"), "{footer}");
+}
+
+#[test]
 fn live_screen_of_another_agent_is_not_drawn() {
     let m = typing_model();
     let term = term_for(&m, 120, 36, b"SECRET", (6, 0));

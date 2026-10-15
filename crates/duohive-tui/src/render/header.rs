@@ -9,9 +9,9 @@ use ratatui::style::{Modifier, Style};
 use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
 use crate::focus::Pane;
-use crate::format::wrap_capped;
+use crate::format::{truncate_end, width, wrap_capped};
 use crate::forms::FieldKind;
-use crate::model::{Dialog, UiModel};
+use crate::model::{Dialog, SPACE_RETRY, UiModel};
 use crate::theme::Palette;
 
 /// Continuation lines of a banner start under its text, past ` ✕ `.
@@ -28,6 +28,9 @@ const ORG_KEYS_COMPACT: &str = " tab pane · ↑↓ move · space give work";
 const NEEDS_YOU_KEYS: &str = " ↑↓ move · enter go to agent";
 const AGENT_KEYS: &str = " enter type · z zoom · PgUp/PgDn scroll · space give work";
 const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
+/// Typing's footer starts and ends with these (UI §4.1.2).
+const TYPING_LEAD: &str = " TYPING · ";
+const TYPING_TAIL: &str = " · ctrl+q stop typing";
 
 /// The banner lines for each broken file, `org.toml` first, wrapped to `cells` after a ` · `
 /// separator so the fix stays whole; continuation lines are indented under the text.
@@ -109,9 +112,13 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
     }
 }
 
-/// The footer: the note when one is set, else the keys of the dialog or focused pane.
+/// The footer: Typing's footer (with any note) while typing, the note when one is set,
+/// else the keys of the dialog or focused pane.
 pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, compact: bool) {
     let text = match (&m.footer_note, &m.dialog) {
+        (Some(_), None) if m.focus.pane == Pane::Agent && m.typing() => {
+            return typing_footer(buf, r, m, p);
+        }
         (Some(note), _) => format!(" {note}"),
         // A form is typing: its keys, never the tree's (`q` types there).
         (None, Some(Dialog::Form(f))) => {
@@ -142,12 +149,24 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
 }
 
-/// Typing mode's footer (UI §4.1.2).
+/// Typing mode's footer (UI §4.1.2). A note takes the middle, cut to keep both ends, and
+/// loses its `space to try again`: `space` goes to the agent.
 pub(super) fn typing_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
-    let agent = m
-        .selected_agent()
-        .map(ToString::to_string)
-        .unwrap_or_default();
-    let text = format!(" TYPING · every key goes to {agent}, ctrl+c too · ctrl+q stop typing");
-    put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.attention));
+    let w = usize::from(r.width);
+    let middle = match &m.footer_note {
+        Some(note) => {
+            let note = note.strip_suffix(SPACE_RETRY).unwrap_or(note);
+            let room = w.saturating_sub(width(TYPING_LEAD) + width(TYPING_TAIL));
+            truncate_end(note, room)
+        }
+        None => {
+            let agent = m
+                .selected_agent()
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            format!("every key goes to {agent}, ctrl+c too")
+        }
+    };
+    let text = format!("{TYPING_LEAD}{middle}{TYPING_TAIL}");
+    put(buf, r.x, r.y, &text, w, fg(p.attention));
 }
