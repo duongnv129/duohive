@@ -99,6 +99,8 @@ The main screen has three panes (§4.1): the org pane (with Needs you pinned at 
 
 Below 80×24, DuoHive shows only "Make the window at least 80×24" and the current Needs you count.
 
+**Mixed sizes:** width and height each pick a row, and the smaller row applies: 130×30 uses the 100–119 × 30 row, and 110×24 the 80–99 × 24 row. Below 80 wide or 24 tall, the too-small screen shows.
+
 - **Shrink order:** on a small terminal, the agent pane loses detail first, then the last-reply lines go, then the tree's connector lines. Needs you and the chat input never go.
 - **Focus:** the focused pane has a heavy border and is named in the footer. `tab` moves focus: org → Needs you → agent → chat.
 - **Padding:** 1 cell inside every border. The selected-row bar `▌` sits in that cell.
@@ -204,6 +206,8 @@ The agent pane has two modes.
 
 To zoom while typing, press `ctrl+q`, then `z`.
 
+**Scrolling back:** `PgUp` freezes a snapshot of the agent's scrollback (up to 2 000 lines) and the title gains `· scrolled`; the agent keeps running. `PgDn` past the bottom, or `enter` to type, returns to the live terminal.
+
 ```
 ┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
 ┃ ✓ go test ./... (14 passed)                                          ┃
@@ -284,13 +288,13 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 - **When:** an agent becomes waiting, quiet or errored; Duo raises an approval card; an agent other than Duo finishes. Each kind can be turned off in Settings.
 - **Content:** the title is "<agent> needs you" (or "<agent> finished"); the body is the last reply.
-- **Click:** focuses the terminal and selects the agent, where the system's notifier reports clicks.
+- **Click:** selects the agent, where the system's notifier reports clicks (Linux `notify-send --action`). It doesn't raise the terminal window: neither notifier can name the window DuoHive runs in.
 - **Once:** one alert per agent per state change.
 - **Unavailable:** when the system has no notifier, the footer says "desktop alerts unavailable" once per session.
 
 ### 4.2 Zoomed agent
 
-`z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` restores.
+`z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` restores. `z` zooms an agent whatever its state; a stopped agent's zoomed pane shows its stopped line. On a team or role, `z` does nothing and the footer says "z zooms an agent".
 
 ```
  DuoHive › auth-service (zoomed)                                                         z restore 
@@ -561,6 +565,11 @@ What happens depends on the agent's state:
 | finished, idle | The task is typed in as the next turn of the existing session, which keeps its context. It runs where the session already runs |
 | working, waiting | Refused. The dialog offers "Send as message instead"; the message is typed in when the agent is at rest |
 
+**Delivery is confirmed.** A task typed into a finished or idle agent counts as taken only once the agent leaves rest (a busy hook, or a busy screen read). Until then, at most 5 s:
+
+- a further Give work to that agent is refused with "<agent> is still taking the last task";
+- if no sign comes, the footer says "<agent> didn't take the task" and Give work opens again with the task filled in (`enter to try again`). When a dialog or typing is already open, the footer says "· space to try again" instead, and the task waits.
+
 **A stopped agent:**
 
 ```
@@ -732,7 +741,9 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 - **Automatic removal:** a worktree is removed once its branch is merged (normal, squash or rebase) and it has no uncommitted changes.
 - **Checked:** when its agent finishes, after start-up, when this list opens, and every 10 minutes, against `origin`'s default branch (or the local default branch when there is no remote).
-- **By hand:** `d` removes a worktree; removing anything not merged and clean asks first.
+- **By hand:** `d` removes a worktree; removing anything not merged and clean asks first. A worktree in use can't be removed: `d` says "<agent> is running in it · stop it first".
+- **In use:** its agent is running and its current session was launched there. Once the agent stops, the next check decides.
+- **States:** `not checked yet` until the first check; `in use`; `not merged · N files changed`; `merged · uncommitted changes, kept`; `merged · removing`; `couldn't check · <reason>` when git can't tell (never treated as merged).
 
 ```
 ┌─ Worktrees · 4 · removed automatically once merged and clean ────────────────────────────────────┐
@@ -884,7 +895,7 @@ Errors are shown where they apply, with how to fix them.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Errors on rows:** Duo failing to start; a CLI that isn't installed; a missing directory (only that agent is invalid; the rest of the org works); a crash; a worktree that couldn't be created (the agent stays stopped and the task is kept); an untested CLI version (a notice in `fg.muted`, not an error).
+**Errors on rows:** Duo failing to start; a CLI that isn't installed; a missing directory (only that agent is invalid; the rest of the org works); a crash; a worktree that couldn't be created (a stopped agent stays stopped and an errored one stays errored, with this error as its reason; the task is kept); an untested CLI version (a notice in `fg.muted`, not an error).
 
 ```
 ┌─ Org ────────────────────────────────────────────────────────────────┐
