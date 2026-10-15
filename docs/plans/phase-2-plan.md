@@ -1,6 +1,6 @@
 # DuoHive Phase 2 Implementation Plan — One screen
 
-**Status:** In progress · Tasks 2.1–2.18 merged in `b497418` (2026-10-14); 2.19 (acceptance) and 2.20 (UX pass) open.
+**Status:** In progress · Tasks 2.1–2.18 merged in `b497418` (2026-10-14). 2.19: friction log started and live checks done; the three-day run is open. 2.20: UX pass done, its severity-1 and severity-2 fixes in except friction-log entry 4; marking the phase done waits for the run.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1046,9 +1046,9 @@ This is acceptance, with no code under test.
 - Create `docs/plans/friction-log.md`.
 - Modify `docs/plans/bench-results.md` (live checks).
 
-- [ ] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
+- [x] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
 - [ ] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
-- [ ] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
+- [x] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
   - a newline and non-ASCII text in OpenCode's `--prompt=`;
   - `--effort=` on a real turn;
   - a task starting with `/` on OpenCode;
@@ -1076,7 +1076,7 @@ This is validated by snapshot diffs and the checklist below.
   - Every severity-1 item, then severity-2 items by count.
   - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.
   - Each fix starts with a failing test or snapshot.
-- [ ] **Step 2: Re-check every screen** against the six PRD UX principles:
+- [x] **Step 2: Re-check every screen** against the six PRD UX principles:
   - at 80×24, 100×30 and 160×48;
   - in both themes, and with `NO_COLOR`.
 
