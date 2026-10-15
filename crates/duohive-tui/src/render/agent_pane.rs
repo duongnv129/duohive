@@ -13,7 +13,9 @@ use ratatui::widgets::{Paragraph, Widget, Wrap};
 
 use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style};
 use crate::focus::Pane;
-use crate::format::{marker, one_line, status_glyph, status_word, truncate_end, width};
+use crate::format::{
+    marker, one_line, status_glyph, status_word, truncate_end, truncate_middle, width,
+};
 use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
@@ -26,6 +28,12 @@ const PAD: &str = " ";
 /// Indent of a one-line message, after the padding cell.
 const MESSAGE_INDENT: &str = "  ";
 const NONE: &str = "(none)";
+/// Separates the parts of a title.
+const SEP: &str = " · ";
+/// The cells the top edge takes around the title inside the corners: `━ ` and ` ━`.
+const TITLE_FRAME: usize = 3;
+/// The fewest cells of a cut worktree or directory worth showing, `…` included.
+const MIN_PLACE: usize = 4;
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
@@ -108,8 +116,8 @@ fn content(
         return (String::new(), message(EMPTY_ORG, p.fg));
     }
     match &m.selected {
-        NodeKey::Duo => agent(m, ctx, &m.org.duo.name),
-        NodeKey::Agent(a) => agent(m, ctx, a),
+        NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
+        NodeKey::Agent(a) => agent(m, ctx, a, cells),
         NodeKey::Team(t) => {
             let Some(team) = m.org.teams.iter().find(|x| &x.name == t) else {
                 return (String::new(), Vec::new());
@@ -178,39 +186,63 @@ fn message(text: &str, color: ratatui::style::Color) -> Vec<Line<'static>> {
 }
 
 /// `<agent> · <CLI> · worktree <task-id>` or `· <dir>`; Duo's `⬢ <name> · <CLI> · your
-/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12).
-fn agent_title(m: &UiModel, name: &AgentName) -> String {
+/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12). Cut
+/// to `room` cells, the mode word always stays: the place goes first, then the name is
+/// cut in the middle (UI §2.4).
+fn agent_title(m: &UiModel, name: &AgentName, room: usize) -> String {
     let resolved = resolve(&m.org, name).ok();
     let cli = resolved
         .as_ref()
         .map_or(m.org.defaults.cli, |r| r.cli)
         .short();
-    let mut title = if m.org.is_duo(name) {
-        format!("⬢ {name} · {cli} · your manager agent")
+    // The place: a fixed label and a value that may be cut (Duo's is never cut).
+    let (lead, place) = if m.org.is_duo(name) {
+        (format!("⬢ {name}"), Some(("your manager agent", None)))
     } else {
         let place = match &m.view(name).worktree {
-            Some(task) => Some(format!("worktree {}", task.0)),
-            None => resolved.and_then(|r| r.directory),
+            Some(task) => Some(("worktree ", Some(task.0.clone()))),
+            None => resolved.and_then(|r| r.directory).map(|d| ("", Some(d))),
         };
-        match place {
-            Some(place) => format!("{name} · {cli} · {place}"),
-            None => format!("{name} · {cli}"),
-        }
+        (name.to_string(), place)
     };
-    if m.typing() {
-        title.push_str(" · TYPING");
+    let mode = match (m.typing(), m.scrolled) {
+        (true, true) => " · TYPING · scrolled",
+        (true, false) => " · TYPING",
+        (false, true) => " · scrolled",
+        (false, false) => "",
+    };
+    let head = format!("{lead} · {cli}");
+    let fixed = width(&head) + width(mode);
+    let place = place.map_or(String::new(), |(label, value)| {
+        let value = value.unwrap_or_default();
+        let full = format!("{SEP}{label}{value}");
+        if fixed + width(&full) <= room || mode.is_empty() {
+            return full;
+        }
+        let left = room.saturating_sub(fixed + width(SEP) + width(label));
+        if value.is_empty() || left < MIN_PLACE {
+            return String::new();
+        }
+        format!("{SEP}{label}{}", truncate_middle(&value, left))
+    });
+    if place.is_empty() && fixed > room && !mode.is_empty() {
+        let tail = format!(" · {cli}{mode}");
+        let lead = truncate_middle(&lead, room.saturating_sub(width(&tail)));
+        return format!("{lead}{tail}");
     }
-    if m.scrolled {
-        title.push_str(" · scrolled");
-    }
-    title
+    format!("{head}{place}{mode}")
 }
 
 /// The title, and as the body (until the live terminal shows) its state; how to give it
 /// work or stop it when not running.
-fn agent(m: &UiModel, ctx: &RenderCtx, name: &AgentName) -> (String, Vec<Line<'static>>) {
+fn agent(
+    m: &UiModel,
+    ctx: &RenderCtx,
+    name: &AgentName,
+    cells: usize,
+) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
-    let title = agent_title(m, name);
+    let title = agent_title(m, name, cells.saturating_sub(TITLE_FRAME));
     let state = m.view(name).status.state;
     let body = match state {
         AgentState::Stopped => message(STOPPED, p.fg_muted),

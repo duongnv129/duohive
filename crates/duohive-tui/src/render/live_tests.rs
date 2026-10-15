@@ -129,6 +129,76 @@ fn typing_title_border_and_footer() {
     );
 }
 
+/// The agent pane's top border at 80×24 (the pane starts at column 32).
+fn compact_title(m: &UiModel) -> String {
+    render_lines(m, &ctx(), 80, 24)[1]
+        .chars()
+        .skip(32)
+        .collect()
+}
+
+#[test]
+fn mode_word_survives_a_long_worktree_name() {
+    let mut m = typing_model();
+    m.agents.get_mut(&n("auth-service")).unwrap().worktree =
+        Some(TaskId("retry-loop-for-the-billing-webhook".into()));
+    // Room to spare: the worktree name is cut in the middle, the mode word stays.
+    let title = agent_title(&m);
+    assert!(
+        title.starts_with("┏━ auth-service · Claude · worktree retry-loop-…ing-webhook · TYPING ┓"),
+        "{title}"
+    );
+    // 80×24: no room for the worktree; it goes before the mode word does.
+    let title = compact_title(&m);
+    assert!(
+        title.starts_with("┏━ auth-service · Claude · TYPING ━"),
+        "{title}"
+    );
+    m.focus.agent_mode = AgentMode::Selected;
+    m.scrolled = true;
+    let title = compact_title(&m);
+    assert!(
+        title.starts_with("┏━ auth-service · Claude · scrolled ━"),
+        "{title}"
+    );
+}
+
+#[test]
+fn mode_word_survives_a_long_directory() {
+    let mut m = typing_model();
+    m.agents.get_mut(&n("auth-service")).unwrap().worktree = None;
+    set_directory(
+        &mut m.org,
+        "auth-service",
+        "~/code/a-very-long-directory-name/auth",
+    );
+    let title = compact_title(&m);
+    assert!(
+        title.starts_with("┏━ auth-service · Claude · ~/cod…auth · TYPING ┓"),
+        "{title}"
+    );
+}
+
+#[test]
+fn mode_word_survives_a_long_agent_name() {
+    let mut m = typing_model();
+    let long = n("authentication-service-for-payments-team");
+    let teams = m.org.teams.iter_mut().flat_map(|t| t.roles.iter_mut());
+    for a in teams.flat_map(|r| r.agents.iter_mut()) {
+        if a.name == n("auth-service") {
+            a.name = long.clone();
+        }
+    }
+    m.agents
+        .insert(long.clone(), m.agents[&n("auth-service")].clone());
+    m.selected = NodeKey::Agent(long);
+    let title = compact_title(&m);
+    assert!(
+        title.starts_with("┏━ authenticati…ayments-team · Claude · TYPING ┓"),
+        "{title}"
+    );
+}
+
 #[test]
 fn live_screen_of_another_agent_is_not_drawn() {
     let m = typing_model();
@@ -167,6 +237,7 @@ fn agent_pane_typing_snapshots() {
     let m = typing_model();
     for (name, w, h) in [
         ("agent_pane_typing_80x24", 80, 24),
+        ("agent_pane_typing_100x30", 100, 30),
         ("agent_pane_typing_160x48", 160, 48),
     ] {
         let term = term_for(&m, w, h, TYPING_SCREEN, (38, 3));
