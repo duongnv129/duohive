@@ -1,0 +1,1 @@
+{ "plugins": ["file://<spike>/plugins/probe"], "default_agent": "build", "agents": { "build": { "model": "litellm/no-such-model-xyz" } } }

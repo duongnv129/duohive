@@ -1,0 +1,4 @@
+{"t": 1792088616788, "agent": "err", "event": "session-start", "payload": {}}
+{"t": 1792088620946, "agent": "err", "event": "busy", "payload": {"sessionID": "ses_ebf31c0c3ffe6oMP4IOzjuzaTP"}}
+{"t": 1792088620988, "agent": "err", "event": "turn-end", "payload": {"type": "session.execution.failed", "sessionID": "ses_ebf31c0c3ffe6oMP4IOzjuzaTP", "error": {"type": "provider.invalid-request", "message": "spike: model not found", "status": 400, "response": {"body": "{\"error\": {\"message\": \"spike: model not found\", \"type\": \"invalid_request_error\", \"code\": \"model_not_found\"}}"}}, "duohive_last_reply": null}}
+{"t": 1792088626484, "agent": "err", "event": "session-end", "payload": {}}

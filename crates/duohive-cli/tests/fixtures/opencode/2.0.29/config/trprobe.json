@@ -1,0 +1,1 @@
+{ "plugins": ["file://<spike>/plugins/trprobe"], "permissions": [{"action":"shell","resource":"rm *","effect":"deny"}], "agents": {"build": {"permissions": [{"action":"edit","resource":"secret/*","effect":"deny"}]}} }

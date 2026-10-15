@@ -1,0 +1,49 @@
+{
+ "t": 1792088444430,
+ "dt": 59103,
+ "pid": 40792,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140cb8e0d001eCGwMT1otxG5gp",
+  "created": 1792088444429,
+  "type": "form.created",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3"
+  },
+  "data": {
+   "form": {
+    "id": "frm_140cb8e0c001Yv2vaL2dXb6wNK",
+    "sessionID": "ses_ebf354159ffep9RaaLjoEPu1NH",
+    "title": "Questions",
+    "metadata": {
+     "kind": "question",
+     "tool": {
+      "messageID": "msg_140cb8555001RH2J60l7BnGCxN",
+      "id": "call_0d1d0b2d459f4ebe981136ba"
+     }
+    },
+    "fields": [
+     {
+      "key": "q0",
+      "title": "Preference",
+      "description": "Which do you prefer?",
+      "type": "string",
+      "options": [
+       {
+        "value": "A",
+        "label": "A",
+        "description": "Option A"
+       },
+       {
+        "value": "B",
+        "label": "B",
+        "description": "Option B"
+       }
+      ],
+      "custom": true
+     }
+    ]
+   }
+  }
+ }
+}

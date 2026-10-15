@@ -1,0 +1,40 @@
+ ! Create e.txt containing hi    +
+  ┃
+  ┃   1 hi
+  ┃
+
+     done
+
+     Build · GLM 5.2 · 11.5s · 4.6 tok/s
+
+  ┃
+  ┃  Create a file f.txt containing hi with the write tool, then reply done.
+  ┃
+
+  ┃
+  ┃  # Wrote f.txt
+  ┃
+  ┃   1 hi
+  ┃
+
+     done
+
+     Build · GLM 5.2 · 4.5s · 4.7 tok/s
+
+  ┃
+  ┃  Run the shell command: touch d.txt
+  ┃
+
+  ┃
+  ┃  ⠏ touch d.txt
+  ┃
+
+  ┃
+  ┃  △ Permission required
+  ┃
+  ┃  $ touch d.txt
+  ┃
+  ┃
+  ┃   Allow once   Always allow   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+

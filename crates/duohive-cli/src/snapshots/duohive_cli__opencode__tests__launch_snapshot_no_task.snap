@@ -4,7 +4,7 @@ expression: for_snapshot(cmd)
 ---
 program: opencode
 args:
-  - "--agent=build"
+  - "--standalone"
 env:
   - - OPENCODE_CONFIG
     - /data/duohive/run/squad-1/opencode.json
@@ -17,6 +17,6 @@ files:
   - path: /data/duohive/run/squad-1/instructions.md
     contents: "# Org\n\nIf you are asked for the sentinel, reply HIVE-SENTINEL."
   - path: /data/duohive/run/squad-1/opencode.json
-    contents: "{\n  \"instructions\": [\n    \"/data/duohive/run/squad-1/instructions.md\"\n  ],\n  \"plugin\": [\n    \"file:///data/duohive/run/squad-1/opencode-plugin.js\"\n  ]\n}"
-  - path: /data/duohive/run/squad-1/opencode-plugin.js
-    contents: "<src/assets/opencode-plugin.js>"
+    contents: "{\n  \"default_agent\": \"build\",\n  \"plugins\": [\n    {\n      \"options\": {\n        \"instructions\": \"/data/duohive/run/squad-1/instructions.md\"\n      },\n      \"package\": \"file:///data/duohive/run/squad-1/opencode-plugin\"\n    }\n  ]\n}"
+  - path: /data/duohive/run/squad-1/opencode-plugin/index.js
+    contents: "<src/assets/opencode-plugin/index.js>"

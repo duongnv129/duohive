@@ -1,0 +1,20 @@
+{
+ "t": 1792088043851,
+ "dt": 47419,
+ "pid": 33239,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c57147001xLzSooM08V3BFv",
+  "created": 1792088043847,
+  "type": "session.execution.interrupted",
+  "durable": {
+   "aggregateID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "seq": 22,
+   "version": 1
+  },
+  "data": {
+   "sessionID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "reason": "user"
+  }
+ }
+}

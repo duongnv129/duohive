@@ -1,4 +1,4 @@
-//! Tests for the OpenCode adapter against spike S2's fixtures (OpenCode 1.18.34).
+//! Tests for the OpenCode adapter against spike S2's 2.0.29 fixtures (S2.14).
 
 use std::path::{Path, PathBuf};
 
@@ -12,18 +12,17 @@ use super::*;
 
 const FIXTURES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/opencode/1.18.34"
+    "/tests/fixtures/opencode/2.0.29"
 );
 
 fn fixture(rel: &str) -> String {
     std::fs::read_to_string(Path::new(FIXTURES).join(rel)).unwrap()
 }
 
-/// A reply fixture without the newline the export added; `(null)` is no reply.
+/// A reply fixture; an empty one is no reply.
 fn reply_fixture(rel: &str) -> Option<String> {
     let text = fixture(rel);
-    let text = text.strip_suffix('\n').unwrap_or(&text);
-    (text != "(null)").then(|| text.to_owned())
+    (!text.is_empty()).then_some(text)
 }
 
 const RUN_DIR: &str = "/data/duohive/run/squad-1";
@@ -69,9 +68,9 @@ fn env<'a>(cmd: &'a LaunchCommand, key: &str) -> Option<&'a str> {
 /// show the command and config, not the whole asset (checked separately).
 fn for_snapshot(mut cmd: LaunchCommand) -> LaunchCommand {
     for f in &mut cmd.files {
-        if f.path.ends_with("opencode-plugin.js") {
+        if f.path.ends_with("opencode-plugin/index.js") {
             assert_eq!(f.contents, PLUGIN_SOURCE);
-            f.contents = "<src/assets/opencode-plugin.js>".into();
+            f.contents = "<src/assets/opencode-plugin/index.js>".into();
         }
     }
     cmd
@@ -82,34 +81,36 @@ fn launch_snapshot_no_task() {
     let cmd = launch(&spec(None));
     assert_eq!(cmd.program, "opencode");
     assert_eq!(cmd.cwd, PathBuf::from("/home/u/code/payments"));
-    assert!(!cmd.args.iter().any(|a| a.starts_with("--prompt")));
+    // Without `--standalone` the TUI uses the shared service, which never reads
+    // OPENCODE_CONFIG, so every hook is lost (S2.14).
+    assert_eq!(cmd.args, ["--standalone"]);
     let config = config_json(&cmd);
-    // Approvals are composed by the plugin's `config` hook, never a static key (S2.11).
-    assert!(config.get("permission").is_none(), "{config}");
-    assert!(PLUGIN_SOURCE.contains("config:"));
+    // Approvals are raised by the plugin's `evaluate` hook, never a static key.
+    assert!(config.get("permissions").is_none(), "{config}");
+    assert!(PLUGIN_SOURCE.contains("\"evaluate\""));
     insta::assert_yaml_snapshot!(for_snapshot(cmd));
 }
 
 #[test]
 fn launch_snapshot_with_task_model_effort_flags() {
     let mut s = spec(Some("Add retry cases"));
-    s.agent.model = Some("opus".into());
+    s.agent.model = Some("anthropic/claude-opus".into());
     s.agent.effort = Some("high".into());
     s.agent.flags = vec!["--verbose".into()];
     let cmd = launch(&s);
-    let args = &cmd.args;
-    let pos = |a: &str| args.iter().position(|x| x == a).unwrap();
-    assert!(pos("--verbose") > pos("--model=opus"));
     assert_eq!(
-        args.last().map(String::as_str),
-        Some("--prompt=Add retry cases")
+        cmd.args,
+        ["--standalone", "--verbose", "--prompt=Add retry cases"]
     );
+    // 2.0 rejects `--model` and `--agent` (S2.14): both go in the config.
     assert!(
-        !args
+        !cmd.args
             .iter()
-            .any(|a| a.contains("effort") || a.contains("variant"))
+            .any(|a| a.starts_with("--model") || a.starts_with("--agent"))
     );
-    assert_eq!(config_json(&cmd)["agent"]["build"]["variant"], "high");
+    let config = config_json(&cmd);
+    assert_eq!(config["model"], "anthropic/claude-opus#high");
+    assert_eq!(config["default_agent"], "build");
     insta::assert_yaml_snapshot!(for_snapshot(cmd));
 }
 
@@ -127,19 +128,25 @@ fn launch_snapshot_hostile_text() {
 }
 
 #[test]
-fn launch_writes_the_prompt_to_an_instructions_file_and_omits_an_empty_one() {
+fn launch_passes_the_instructions_file_to_the_plugin_and_omits_an_empty_one() {
     let s = spec(None);
     let cmd = launch(&s);
     let instructions = file(&cmd, "instructions.md");
     assert_eq!(instructions.contents, s.agent.prompt);
+    let config = config_json(&cmd);
+    // 2.0 does not apply the `instructions` key (S2.14).
+    assert!(config.get("instructions").is_none(), "{config}");
     assert_eq!(
-        config_json(&cmd)["instructions"],
-        serde_json::json!([format!("{RUN_DIR}/instructions.md")])
+        config["plugins"][0]["options"],
+        serde_json::json!({"instructions": format!("{RUN_DIR}/instructions.md")})
     );
     let mut blank = spec(None);
     blank.agent.prompt = "  \n".into();
     let cmd = launch(&blank);
-    assert!(config_json(&cmd).get("instructions").is_none());
+    assert_eq!(
+        config_json(&cmd)["plugins"][0]["options"],
+        serde_json::json!({})
+    );
     assert!(
         !cmd.files
             .iter()
@@ -155,30 +162,45 @@ fn launch_without_model_effort_or_directory() {
     s.agent.effort = None;
     let cmd = launch(&s);
     assert_eq!(cmd.cwd, PathBuf::from("/home/u"));
-    assert!(!cmd.args.iter().any(|a| a.starts_with("--model")));
-    assert!(config_json(&cmd).get("agent").is_none());
+    assert!(config_json(&cmd).get("model").is_none());
 }
 
 #[test]
-fn launch_pins_the_build_agent_unless_the_flags_choose_one() {
-    // The plugin composes approvals for the agents it knows; `build` is the
-    // one DuoHive launches (the TUI otherwise starts the last agent used).
-    let args = launch(&spec(Some("t"))).args;
-    assert!(args.contains(&"--agent=build".to_owned()), "{args:?}");
+fn effort_without_a_model_is_left_out() {
+    // 2.0 has effort only inside a model (`provider/model#variant`), P2-D24.
+    let mut s = spec(None);
+    s.agent.model = None;
+    s.agent.effort = Some("high".into());
+    let cmd = launch(&s);
+    let config = config_json(&cmd);
+    assert!(config.get("model").is_none(), "{config}");
+    assert!(!file(&cmd, "opencode.json").contents.contains("high"));
+}
+
+#[test]
+fn a_model_with_its_own_variant_is_kept() {
+    let mut s = spec(None);
+    s.agent.model = Some("litellm/kimi-k3#low".into());
+    s.agent.effort = Some("high".into());
+    assert_eq!(config_json(&launch(&s))["model"], "litellm/kimi-k3#low");
+    s.agent.effort = None;
+    s.agent.model = Some("-x".into());
+    assert_eq!(config_json(&launch(&s))["model"], "-x");
+}
+
+#[test]
+fn launch_defaults_to_the_build_agent_unless_the_flags_choose_one() {
+    assert_eq!(
+        config_json(&launch(&spec(Some("t"))))["default_agent"],
+        "build"
+    );
     for flags in [vec!["--agent", "plan"], vec!["--agent=plan"]] {
         let mut s = spec(None);
         s.agent.flags = flags.iter().map(|f| (*f).to_owned()).collect();
-        let args = launch(&s).args;
-        assert!(!args.contains(&"--agent=build".to_owned()), "{args:?}");
-        assert!(args.ends_with(&s.agent.flags), "{args:?}");
+        let cmd = launch(&s);
+        assert!(config_json(&cmd).get("default_agent").is_none());
+        assert!(cmd.args.ends_with(&s.agent.flags), "{:?}", cmd.args);
     }
-}
-
-#[test]
-fn launch_keeps_a_model_that_starts_with_a_dash() {
-    let mut s = spec(None);
-    s.agent.model = Some("-x".into());
-    assert!(launch(&s).args.contains(&"--model=-x".to_owned()));
 }
 
 #[test]
@@ -216,7 +238,7 @@ fn launch_files_stay_in_run_dir() {
 #[test]
 fn no_auto_approve_flags() {
     let mut s = spec(Some("t"));
-    s.agent.model = Some("opus".into());
+    s.agent.model = Some("p/m".into());
     s.agent.effort = Some("high".into());
     let cmd = launch(&s);
     for banned in [
@@ -227,13 +249,11 @@ fn no_auto_approve_flags() {
         assert!(!cmd.args.iter().any(|a| a.starts_with(banned)), "{banned}");
     }
     let config = config_json(&cmd);
-    assert!(config.get("permission").is_none(), "{config}");
-    assert!(
-        config["agent"]["build"].get("permission").is_none(),
-        "{config}"
-    );
-    // The plugin never decides a permission itself (TD §2).
-    assert!(!PLUGIN_SOURCE.contains("permission.ask\""));
+    for key in ["permission", "permissions", "agents", "agent"] {
+        assert!(config.get(key).is_none(), "{key} in {config}");
+    }
+    // The plugin never answers a permission itself (TD §2).
+    assert!(!PLUGIN_SOURCE.contains("permission.reply"));
 }
 
 #[test]
@@ -241,27 +261,36 @@ fn hook_config_points_at_duohive_hook() {
     let s = spec(None);
     let cmd = launch(&s);
     assert_eq!(
-        config_json(&cmd)["plugin"],
-        serde_json::json!([format!("file://{RUN_DIR}/opencode-plugin.js")])
+        config_json(&cmd)["plugins"][0]["package"],
+        format!("file://{RUN_DIR}/opencode-plugin")
     );
-    assert_eq!(file(&cmd, "opencode-plugin.js").contents, PLUGIN_SOURCE);
+    // 2.0 loads a plugin directory holding `index.js` (S2.14).
+    let plugin = cmd
+        .files
+        .iter()
+        .find(|f| f.path == PathBuf::from(RUN_DIR).join("opencode-plugin/index.js"))
+        .unwrap();
+    assert_eq!(plugin.contents, PLUGIN_SOURCE);
     assert_eq!(
         env(&cmd, "DUOHIVE_HOOK_EXE"),
         Some("/usr/local/bin/duohive")
     );
     assert_eq!(env(&cmd, "DUOHIVE_HOOK_AGENT"), Some("squad-1"));
-    // S2.3's rows, as the plugin names them.
+    // S2.14's rows, as the plugin names them.
     for needle in [
-        "\"catalog.updated\"",
+        "\"plugin.updated\"",
         "\"session.created\"",
-        "\"chat.message\"",
-        "\"session.status\"",
-        "\"tool.execute.before\"",
-        "\"tool.execute.after\"",
+        "\"session.execution.started\"",
+        "\"session.execution.succeeded\"",
+        "\"session.execution.failed\"",
+        "\"session.execution.interrupted\"",
+        "\"session.text.ended\"",
         "\"permission.asked\"",
         "\"permission.replied\"",
-        "\"session.idle\"",
-        "dispose:",
+        "\"form.created\"",
+        "\"form.replied\"",
+        "\"evaluate\"",
+        "\"context\"",
         "\"session-start\"",
         "\"busy\"",
         "\"needs-input\"",
@@ -270,6 +299,7 @@ fn hook_config_points_at_duohive_hook() {
         "duohive_last_reply",
         "process.env.DUOHIVE_HOOK_EXE",
         "process.env.DUOHIVE_HOOK_AGENT",
+        "export default { id: \"duohive\", setup }",
     ] {
         assert!(PLUGIN_SOURCE.contains(needle), "plugin lacks {needle}");
     }
@@ -280,93 +310,153 @@ fn plugin_url_is_percent_encoded() {
     let mut s = spec(None);
     s.run_dir = "/Users/a b/data#1/run/squad-1".into();
     assert_eq!(
-        config_json(&launch(&s))["plugin"],
-        serde_json::json!(["file:///Users/a%20b/data%231/run/squad-1/opencode-plugin.js"])
+        config_json(&launch(&s))["plugins"][0]["package"],
+        "file:///Users/a%20b/data%231/run/squad-1/opencode-plugin"
     );
 }
 
-/// The DuoHive event and signal S2.3 names for each recorded OpenCode fixture.
-fn expected(stem: &str, payload: &Value) -> (String, Option<HookSignal>) {
-    let base = stem.strip_prefix("review-").unwrap_or(stem);
-    let (name, _) = base.rsplit_once('-').unwrap();
-    let ours = |e: &str, s: HookSignal| (e.to_owned(), Some(s));
-    match name {
-        "plugin.init" => ours("session-start", HookSignal::Ready),
-        "session.status" if payload["properties"]["status"]["type"] == "busy" => {
-            ours("busy", HookSignal::Busy)
-        }
-        "hook.chat.message"
-        | "hook.tool.execute.before"
-        | "hook.tool.execute.after"
-        | "permission.replied" => ours("busy", HookSignal::Busy),
-        "permission.asked" => {
+/// The signal DuoHive must read from each delivery the spike's skeleton plugin
+/// logged, with turn `n`'s reply from `replies/turn-end-<n>.<log>.…`.
+fn expected(log: &str, turn: usize, event: &str, payload: &Value) -> HookSignal {
+    match event {
+        "session-start" => HookSignal::Ready,
+        "busy" => HookSignal::Busy,
+        "needs-input" => {
             let p = &payload["properties"];
-            let prompt = format!(
-                "{} {}",
-                p["permission"].as_str().unwrap(),
-                p["metadata"]["filepath"].as_str().unwrap()
-            );
-            ours(
-                "needs-input",
-                HookSignal::NeedsInput {
-                    prompt: Some(prompt),
-                },
-            )
-        }
-        "session.idle.reply" => {
-            let last_reply = if stem.starts_with("review-") {
-                payload["duohive_last_reply"].as_str().map(str::to_owned)
+            let prompt = if payload["type"] == "form.created" {
+                format!("question {}", p["title"].as_str().unwrap())
             } else {
-                reply_fixture(&format!("replies/{stem}.duohive_last_reply.txt"))
+                let resources: Vec<&str> = p["resources"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|r| r.as_str().unwrap())
+                    .collect();
+                format!("{} {}", p["action"].as_str().unwrap(), resources.join(", "))
             };
-            ours("turn-end", HookSignal::TurnEnded { last_reply })
+            HookSignal::NeedsInput {
+                prompt: Some(prompt),
+            }
         }
-        "session.idle" => ours("turn-end", HookSignal::TurnEnded { last_reply: None }),
-        "hook.dispose" => ours("session-end", HookSignal::SessionEnded),
-        // Not mapped (S2.3): passed under its OpenCode name, it maps to nothing.
-        "session.created" | "session.updated" | "message.updated.completed" | "session.status" => {
-            (name.to_owned(), None)
-        }
-        other => panic!("unexpected fixture {other}"),
+        "turn-end" if payload["type"] == "session.execution.failed" => HookSignal::TurnFailed {
+            reason: "turn failed: spike: model not found (400)".into(),
+        },
+        "turn-end" => HookSignal::TurnEnded {
+            last_reply: reply_fixture(&format!(
+                "replies/turn-end-{turn}.{log}.duohive_last_reply.txt"
+            )),
+        },
+        "session-end" => HookSignal::SessionEnded,
+        other => panic!("unexpected delivery {other}"),
     }
 }
 
 #[test]
 fn parses_recorded_hooks() {
-    let mut entries: Vec<_> = std::fs::read_dir(Path::new(FIXTURES).join("hooks"))
+    let mut logs: Vec<_> = std::fs::read_dir(Path::new(FIXTURES).join("hooks"))
         .unwrap()
         .map(|e| e.unwrap().path())
-        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("duohive-hooks-"))
+        })
         .collect();
-    entries.sort();
-    let mut mapped = 0;
-    for path in &entries {
-        let stem = path.file_stem().unwrap().to_str().unwrap();
-        let payload: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        let (event, want) = expected(stem, &payload);
-        mapped += usize::from(want.is_some());
-        assert_eq!(OpencodeAdapter.parse_hook(&event, &payload), want, "{stem}");
+    logs.sort();
+    assert_eq!(logs.len(), 6);
+    let (mut turn, mut parsed, mut failed) = (0, 0, 0);
+    for path in &logs {
+        let log = path
+            .file_stem()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .trim_start_matches("duohive-hooks-");
+        for line in std::fs::read_to_string(path).unwrap().lines() {
+            let v: Value = serde_json::from_str(line).unwrap();
+            let event = v["event"].as_str().unwrap();
+            turn += usize::from(event == "turn-end");
+            let want = expected(log, turn, event, &v["payload"]);
+            failed += usize::from(matches!(want, HookSignal::TurnFailed { .. }));
+            assert_eq!(
+                OpencodeAdapter.parse_hook(event, &v["payload"]),
+                Some(want),
+                "{log}: {line}"
+            );
+            parsed += 1;
+        }
     }
-    assert_eq!(entries.len(), 134);
-    assert!(mapped > 40, "{mapped}");
+    assert_eq!(turn, 13);
+    assert_eq!(failed, 1);
+    assert_eq!(parsed, 48);
 }
 
 #[test]
-fn needs_input_prompt_falls_back_to_patterns_and_tolerates_garbage() {
-    let a = OpencodeAdapter;
-    let p = serde_json::json!({"properties": {"permission": "bash",
-        "patterns": ["git push*", "rm -rf build"], "metadata": {}}});
+fn an_interrupted_turn_is_a_normal_turn_end() {
+    for reason in ["user", "shutdown"] {
+        let p = serde_json::json!({"type": "session.execution.interrupted",
+            "reason": reason, "duohive_last_reply": "half"});
+        assert_eq!(
+            OpencodeAdapter.parse_hook("turn-end", &p),
+            Some(HookSignal::TurnEnded {
+                last_reply: Some("half".into())
+            })
+        );
+    }
+}
+
+#[test]
+fn failed_turn_reason_falls_back_through_the_error() {
+    let reason = |error: Value| {
+        let p = serde_json::json!({"type": "session.execution.failed", "error": error});
+        match OpencodeAdapter.parse_hook("turn-end", &p) {
+            Some(HookSignal::TurnFailed { reason }) => reason,
+            other => panic!("{other:?}"),
+        }
+    };
     assert_eq!(
-        a.parse_hook("needs-input", &p),
-        Some(HookSignal::NeedsInput {
-            prompt: Some("bash git push*, rm -rf build".into())
-        })
+        reason(serde_json::json!({"type": "provider.auth", "message": " bad key ", "status": 401})),
+        "turn failed: bad key (401)"
     );
-    let bare = serde_json::json!({"properties": {"permission": "webfetch"}});
+    assert_eq!(
+        reason(serde_json::json!({"type": "provider.auth", "status": 401})),
+        "turn failed: provider.auth (401)"
+    );
+    assert_eq!(
+        reason(serde_json::json!({"message": "boom"})),
+        "turn failed: boom"
+    );
+    assert_eq!(
+        reason(serde_json::json!({"status": 503})),
+        "turn failed (503)"
+    );
+    assert_eq!(reason(serde_json::json!("garbage")), "turn failed");
+    assert_eq!(reason(Value::Null), "turn failed");
+}
+
+#[test]
+fn needs_input_prompt_tolerates_garbage() {
+    let a = OpencodeAdapter;
+    let bare = serde_json::json!({"properties": {"action": "webfetch"}});
     assert_eq!(
         a.parse_hook("needs-input", &bare),
         Some(HookSignal::NeedsInput {
             prompt: Some("webfetch".into())
+        })
+    );
+    let form = serde_json::json!({"type": "form.created",
+        "properties": {"title": "Questions", "question": "Which do you prefer?"}});
+    assert_eq!(
+        a.parse_hook("needs-input", &form),
+        Some(HookSignal::NeedsInput {
+            prompt: Some("question Which do you prefer?".into())
+        })
+    );
+    let empty_form = serde_json::json!({"type": "form.created", "properties": {}});
+    assert_eq!(
+        a.parse_hook("needs-input", &empty_form),
+        Some(HookSignal::NeedsInput {
+            prompt: Some("question".into())
         })
     );
     let junk = serde_json::json!("garbage");
@@ -383,29 +473,14 @@ fn needs_input_prompt_falls_back_to_patterns_and_tolerates_garbage() {
         a.parse_hook("turn-end", &empty),
         Some(HookSignal::TurnEnded { last_reply: None })
     );
-    assert_eq!(a.parse_hook("session.idle", &junk), None);
-}
-
-#[test]
-fn extracts_last_reply_from_fixture() {
-    // S2.4: the plugin adds the reply to the `session.idle` payload, so the
-    // reply parse_hook reads is the recorded `duohive_last_reply`.
-    for k in 1..=5 {
-        let payload: Value =
-            serde_json::from_str(&fixture(&format!("hooks/session.idle.reply-{k}.json"))).unwrap();
-        let want = reply_fixture(&format!(
-            "replies/session.idle.reply-{k}.duohive_last_reply.txt"
-        ));
-        assert_eq!(
-            OpencodeAdapter.parse_hook("turn-end", &payload),
-            Some(HookSignal::TurnEnded { last_reply: want }),
-            "reply {k}"
-        );
-    }
+    assert_eq!(a.parse_hook("session.execution.succeeded", &junk), None);
     // The reply lives in the payload: enrich_hook is the no-op.
-    let mut p = serde_json::json!({"type": "session.idle"});
-    OpencodeAdapter.enrich_hook("turn-end", &mut p);
-    assert_eq!(p, serde_json::json!({"type": "session.idle"}));
+    let mut p = serde_json::json!({"type": "session.execution.succeeded"});
+    a.enrich_hook("turn-end", &mut p);
+    assert_eq!(
+        p,
+        serde_json::json!({"type": "session.execution.succeeded"})
+    );
 }
 
 fn padded(screen: &str) -> String {
@@ -419,37 +494,41 @@ fn screen_rules_classify_recorded_screens() {
     use ScreenState::{AtRest, Busy, NeedsInput};
     let cases = [
         ("approval-write", Some(NeedsInput)),
-        ("approval-write-2", Some(NeedsInput)),
-        ("approval-reject-selected", Some(NeedsInput)),
-        ("review-approval-write-composed", Some(NeedsInput)),
+        ("approval-shell", Some(NeedsInput)),
+        ("approval-always-selected", Some(NeedsInput)),
+        ("evaluate-hook-reprompts-after-always", Some(NeedsInput)),
+        ("g1-approval-write", Some(NeedsInput)),
+        ("g1-approval-shell", Some(NeedsInput)),
+        ("question-form", Some(NeedsInput)),
+        ("g1-question", Some(NeedsInput)),
         ("working-1", Some(Busy)),
         ("working-2", Some(Busy)),
-        ("write-default-3s", Some(Busy)),
         ("after-approve-yes-1s", Some(Busy)),
-        ("startup-with-task-5s", Some(Busy)),
-        ("startup-with-task-6", Some(Busy)),
-        ("review-paste-after-catalog-1.5s", Some(Busy)),
+        // One `Escape` while working: still working (S2.14).
+        ("esc-again-to-interrupt", Some(Busy)),
+        // A 5xx retries without end: working, then quiet (S2.14's risk).
+        ("retrying-500", Some(Busy)),
         ("at-rest-no-task", Some(AtRest)),
         ("at-rest-after-turn", Some(AtRest)),
         ("after-approve-yes", Some(AtRest)),
-        ("after-approve-no", Some(AtRest)),
-        ("after-paste", Some(AtRest)),
+        ("after-reject-escape", Some(AtRest)),
+        ("after-interrupt", Some(AtRest)),
+        ("after-paste-multiline", Some(AtRest)),
+        ("early-paste-lost-1.5s", Some(AtRest)),
+        ("startup-with-task-2s", Some(AtRest)),
         ("with-task-done", Some(AtRest)),
-        ("write-default-done", Some(AtRest)),
-        ("exit-typed", Some(AtRest)),
-        ("mcp-tool-name", Some(AtRest)),
-        ("paste-before-enter", Some(AtRest)),
-        ("typed-before-enter", Some(AtRest)),
-        ("status-dialog", Some(AtRest)),
-        ("startup-a1-6s", Some(AtRest)),
-        ("startup-with-task-5", Some(AtRest)),
-        ("review-a5-first-box", Some(AtRest)),
-        ("review-early-paste-1.5s", Some(AtRest)),
-        ("startup-with-task-4", None),
-        // Dead panes are left to the exit rules, even with a busy frame on screen.
+        ("subagent-done", Some(AtRest)),
+        ("model-variant-from-config", Some(AtRest)),
+        ("unknown-model-silently-default", Some(AtRest)),
+        ("turn-error-400", Some(AtRest)),
+        ("g2-after-error", Some(AtRest)),
+        ("tui-shared-start", Some(AtRest)),
+        ("tui-shared-after-turn", Some(AtRest)),
+        ("tui-shared-exit-typed", Some(AtRest)),
+        // The TUI has exited: the shell's output, no input box.
         ("after-exit", None),
-        ("after-ctrl-c", None),
-        ("after-kill9", None),
+        ("exit-from-approval", None),
+        ("model-flag-rejected", None),
     ];
     let listed = std::fs::read_dir(Path::new(FIXTURES).join("screens"))
         .unwrap()
@@ -469,12 +548,15 @@ fn screen_rules_classify_recorded_screens() {
 fn screen_rules_need_the_border_and_its_footer() {
     let border = format!("  ╹{}", "▀".repeat(60));
     let read = |s: &str| OpencodeAdapter.read_screen(s).state;
-    assert_eq!(
-        read(&format!(
-            "  ┃  Build\n{border}\n   ■■⬝⬝  esc interrupt   ctrl+p commands\n"
-        )),
-        Some(ScreenState::Busy)
-    );
+    for footer in ["esc interrupt", "esc again to interrupt"] {
+        assert_eq!(
+            read(&format!(
+                "  ┃  Build\n{border}\n   ■■⬝⬝  {footer}   ctrl+p commands\n"
+            )),
+            Some(ScreenState::Busy),
+            "{footer}"
+        );
+    }
     assert_eq!(
         read(&format!(
             "  ┃  Build\n{border}\n   /tmp/w   12K  ctrl+p commands\n"
@@ -490,12 +572,26 @@ fn screen_rules_need_the_border_and_its_footer() {
     );
     // A border made of anything but `▀` is not the input box.
     assert_eq!(read("  ╹▀▀▀x▀▀\n   esc interrupt\n"), None);
-    // Approval text above a later input box is history, not a prompt.
+    // Approval or question text above a later input box is history, not a prompt.
+    for prompt in [
+        "  ┃  △ Permission required\n  ┃   Allow once   Always allow   Reject\n",
+        "  ┃  Questions\n  ┃  ↑↓ select  enter submit  esc dismiss\n",
+    ] {
+        assert_eq!(
+            read(&format!("{prompt}{border}\n   /tmp/w\n")),
+            Some(ScreenState::AtRest)
+        );
+        assert_eq!(read(prompt), Some(ScreenState::NeedsInput));
+    }
+    // 1.18's order of the choices still reads as a prompt.
     assert_eq!(
-        read(&format!(
-            "  ┃  △ Permission required\n  ┃   Allow once   Allow always   Reject\n{border}\n   /tmp/w\n"
-        )),
-        Some(ScreenState::AtRest)
+        read("  ┃  △ Permission required\n  ┃   Allow once   Allow always   Reject\n"),
+        Some(ScreenState::NeedsInput)
+    );
+    // `Questions` in a reply is not the form's title line.
+    assert_eq!(
+        read("  ┃  Questions about X\n  ┃  enter submit  esc dismiss\n"),
+        None
     );
     assert_eq!(read(""), None);
 }
@@ -523,10 +619,10 @@ fn coverage_matches_spike_report() {
 #[test]
 fn version_output_parses() {
     assert_eq!(
-        crate::detect::parse_cli_version(CliKind::Opencode, "1.18.34\n").as_deref(),
-        Some("1.18.34")
+        crate::detect::parse_cli_version(CliKind::Opencode, "2.0.29\n").as_deref(),
+        Some("2.0.29")
     );
-    for garbage in ["", "garbage", "1.18", "v1.18.34", "1.18.34 (OpenCode)"] {
+    for garbage in ["", "garbage", "2.0", "v2.0.29", "2.0.29 (OpenCode)"] {
         assert_eq!(
             crate::detect::parse_cli_version(CliKind::Opencode, garbage),
             None,
@@ -541,12 +637,11 @@ fn keys_versions_and_kind_match_spike_report() {
     assert_eq!(a.kind(), CliKind::Opencode);
     assert_eq!(a.quit_keys(), vec![Key::Text("/exit".into()), Key::Enter]);
     assert_eq!(a.submit_keys(), vec![Key::Enter]);
-    assert_eq!(a.tested_versions(), &["1.18"]);
+    assert_eq!(a.tested_versions(), &["2.0"]);
 }
 
-/// OpenCode 1.18.35's "Update Available" dialog opens over the session a few
-/// seconds after launch and swallows typed text, with `Confirm` highlighted, so
-/// a paste and `Enter` could start an upgrade; `Escape` closes it (TD §5.5).
+/// One `Escape` before a next-turn paste: it closed 1.18.35's update dialog,
+/// and at rest on 2.0.29 it changes nothing (TD §5.5, S2.14).
 #[test]
 fn before_paste_keys_close_a_dialog() {
     assert_eq!(OpencodeAdapter.before_paste_keys(), vec![Key::Escape]);

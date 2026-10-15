@@ -1,0 +1,15 @@
+{
+ "t": 1792088507440,
+ "dt": 494,
+ "pid": 43046,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140cc8400003zNIeBs2gNnVuGc",
+  "created": 1792088507392,
+  "type": "plugin.updated",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3"
+  },
+  "data": {}
+ }
+}

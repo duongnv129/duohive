@@ -1,0 +1,85 @@
+{
+ "t": 1792088507071,
+ "dt": 125,
+ "pid": 43046,
+ "kind": "setup",
+ "data": {
+  "keys": [
+   "app",
+   "location",
+   "options",
+   "agent",
+   "aisdk",
+   "command",
+   "credential",
+   "event",
+   "experimental",
+   "generate",
+   "model",
+   "provider",
+   "integration",
+   "mcp",
+   "permission",
+   "plugin",
+   "reference",
+   "rpc",
+   "skill",
+   "storage",
+   "tool",
+   "vcs",
+   "websearch",
+   "worktree",
+   "session",
+   "shell"
+  ],
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3",
+   "project": {
+    "id": "e6e311cc43ae423760f04c5ce60e76d708d37f73",
+    "directory": "/private/tmp/duohive-spike/oc2/proj3",
+    "canonical": "/private/tmp/duohive-spike/oc2/proj3"
+   }
+  },
+  "options": {},
+  "eventKeys": [
+   "subscribe"
+  ],
+  "subscribeSrc": "(t)=>J(e.event.subscribe().pipe(xs((r)=>Di(v)(r)),fo((r)=>r)),t)",
+  "sessionKeys": [
+   "hook",
+   "create",
+   "get",
+   "remove",
+   "switchAgent",
+   "switchModel",
+   "prompt",
+   "generate",
+   "command",
+   "compact",
+   "synthetic",
+   "interrupt",
+   "update",
+   "move",
+   "wait",
+   "context"
+  ],
+  "permissionKeys": [
+   "hook",
+   "list",
+   "get",
+   "reply",
+   "assert"
+  ],
+  "agentKeys": [
+   "get",
+   "list",
+   "transform",
+   "reload"
+  ],
+  "appKeys": [
+   "name",
+   "version",
+   "channel"
+  ]
+ }
+}

@@ -1,0 +1,40 @@
+   Sentinel def   Ping-pong co   Malformed sh   Ping test      Ping-pong te ! What is the sentinel?      What is the  +
+
+  ┃
+  ┃  What is the sentinel?
+  ┃  Use no tools.
+  ┃
+
+     HIVE-SENTINEL
+
+     Build · GLM 5.2 · 2.9s · 2.8 tok/s
+
+  ┃
+  ┃  What is the sentinel? Use no tools.
+  ┃
+
+     + Thought · 991ms
+
+     HIVE-SENTINEL
+
+     Build · GLM 5.2 · 3.9s · 19.9 tok/s
+
+  ┃
+  ┃  Create a file e.txt containing hi with the write tool, then reply done.
+  ┃
+
+     ← Write e.txt
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    → Edit e.txt
+  ┃
+  ┃  This will always allow edit for this project.
+  ┃
+  ┃
+  ┃   Allow once   Always allow   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+

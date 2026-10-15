@@ -1,7 +1,7 @@
-//! `plugin_replays_recorded_events`: the OpenCode plugin asset, run under
+//! `plugin_replays_recorded_events`: the OpenCode 2.0 plugin asset, run under
 //! `node` and `bun` (each one found) by `tests/opencode-plugin-driver.mjs`.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,7 +14,7 @@ use super::OpencodeAdapter;
 const CRATE: &str = env!("CARGO_MANIFEST_DIR");
 const FIXTURES: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/tests/fixtures/opencode/1.18.34"
+    "/tests/fixtures/opencode/2.0.29"
 );
 
 /// `node` and `bun` from `PATH`, plus Bun's default install directory.
@@ -39,97 +39,151 @@ fn script(path: &Path, body: &str) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-fn reply_file(rel: &str) -> Option<String> {
-    let text = std::fs::read_to_string(Path::new(FIXTURES).join(rel)).unwrap();
-    let text = text.strip_suffix('\n').unwrap_or(&text).to_owned();
-    (text != "(null)").then_some(text)
-}
-
-/// The replies of the recorded turns, in event-log order (S2.4).
-fn recorded_replies() -> VecDeque<Option<String>> {
-    let mut replies: VecDeque<_> = (1..=2)
-        .map(|n| reply_file(&format!("replies/a1-turn-{n}.from-events.txt")))
-        .chain((1..=5).map(|n| {
-            reply_file(&format!(
-                "replies/session.idle.reply-{n}.duohive_last_reply.txt"
-            ))
-        }))
+/// The probe logs replayed, in the order the driver names them `p1`, `p2`, ….
+fn probe_logs() -> Vec<PathBuf> {
+    let mut logs: Vec<PathBuf> = std::fs::read_dir(Path::new(FIXTURES).join("hooks"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with("probe-") && n.ends_with(".jsonl"))
+        })
         .collect();
-    for n in 1..=2 {
-        let path = Path::new(FIXTURES).join(format!("hooks/review-session.idle.reply-{n}.json"));
-        let payload: Value = serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
-        replies.push_back(payload["duohive_last_reply"].as_str().map(str::to_owned));
-    }
-    replies
+    logs.sort();
+    assert_eq!(logs.len(), 7, "{logs:?}");
+    logs
 }
 
-/// What each plugin instance must deliver for the events the driver fed it:
-/// session-start first (on the first `catalog.updated` or `session.created`,
-/// else by the shortened timer), busy only on change, needs-input at each
-/// `permission.asked`, busy after each `permission.replied`, turn-end at each
-/// `session.idle` with the recorded reply, and session-end last.
-fn expected(feed: &[Value]) -> Vec<(String, (String, HookSignal))> {
-    #[derive(Default)]
-    struct Seen {
-        started: bool,
-        busy: bool,
-    }
-    let mut replies = recorded_replies();
-    let mut seen: std::collections::HashMap<String, Seen> = Default::default();
-    let mut out = Vec::new();
-    for item in feed {
-        let agent = item["agent"].as_str().unwrap().to_owned();
-        let s = seen.entry(agent.clone()).or_default();
-        let mut push = |e: &str, sig: HookSignal| out.push((agent.clone(), (e.to_owned(), sig)));
-        match item["type"].as_str().unwrap() {
-            "catalog.updated" | "session.created" if !s.started => {
-                s.started = true;
-                push("session-start", HookSignal::Ready);
+/// Each probe log's records of one kind, in order.
+fn records(path: &Path, kind: &str) -> Vec<Value> {
+    std::fs::read_to_string(path)
+        .unwrap()
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|r| r["kind"] == kind)
+        .map(|r| r["data"].clone())
+        .collect()
+}
+
+fn text(v: &Value) -> String {
+    v.as_str().unwrap_or_default().to_owned()
+}
+
+/// What the plugin must deliver for one launch's events (S2.14): session-start
+/// before anything else (by an event, the start delay or the fallback timer);
+/// busy only on change; needs-input at each `permission.asked` and
+/// `form.created`; busy after a reply that is not a reject; turn-end at each
+/// execution end with the last assistant message's text in ordinal order
+/// (errored for a failed one); child sessions ignored; session-end last.
+#[derive(Default)]
+struct Model {
+    out: Vec<HookSignal>,
+    busy: bool,
+    children: HashSet<String>,
+    /// Per session: (assistant message id, text by ordinal).
+    replies: HashMap<String, (String, std::collections::BTreeMap<i64, String>)>,
+    /// What the model saw: (child events skipped, failed turns, forms).
+    skipped: usize,
+}
+
+impl Model {
+    fn feed(&mut self, ev: &Value) {
+        let (ty, d) = (ev["type"].as_str().unwrap_or_default(), &ev["data"]);
+        if ty == "session.created" && d["parentID"].is_string() {
+            self.children.insert(text(&d["sessionID"]));
+            return;
+        }
+        let sid = d["sessionID"]
+            .as_str()
+            .or_else(|| d["form"]["sessionID"].as_str())
+            .unwrap_or_default()
+            .to_owned();
+        if self.children.contains(&sid) {
+            self.skipped += 1;
+            return;
+        }
+        match ty {
+            "session.execution.started" => {
+                self.replies.remove(&sid);
+                self.mark_busy();
             }
-            "session.status" if item["status"] == "busy" && !s.busy => {
-                s.busy = true;
-                push("busy", HookSignal::Busy);
-            }
-            "permission.replied" if !s.busy => {
-                s.busy = true;
-                push("busy", HookSignal::Busy);
+            "session.text.ended" => {
+                let msg = text(&d["assistantMessageID"]);
+                let entry = self
+                    .replies
+                    .entry(sid)
+                    .or_insert_with(|| (msg.clone(), Default::default()));
+                if entry.0 != msg {
+                    *entry = (msg, Default::default());
+                }
+                entry
+                    .1
+                    .insert(d["ordinal"].as_i64().unwrap(), text(&d["text"]));
             }
             "permission.asked" => {
-                s.busy = false;
-                let p = &item["properties"];
-                let prompt = format!(
-                    "{} {}",
-                    p["permission"].as_str().unwrap(),
-                    p["metadata"]["filepath"].as_str().unwrap()
-                );
-                push(
-                    "needs-input",
-                    HookSignal::NeedsInput {
-                        prompt: Some(prompt),
-                    },
-                );
+                self.busy = false;
+                let resources: Vec<String> = d["resources"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(text)
+                    .collect();
+                let prompt = format!("{} {}", text(&d["action"]), resources.join(", "));
+                self.out.push(HookSignal::NeedsInput {
+                    prompt: Some(prompt),
+                });
             }
-            "session.idle" => {
-                s.busy = false;
-                let last_reply = replies.pop_front().unwrap();
-                push("turn-end", HookSignal::TurnEnded { last_reply });
+            "permission.replied" if d["reply"] != "reject" => self.mark_busy(),
+            "form.created" => {
+                self.busy = false;
+                let question = text(&d["form"]["fields"][0]["description"]);
+                self.out.push(HookSignal::NeedsInput {
+                    prompt: Some(format!("question {question}")),
+                });
             }
-            "dispose" => {
-                if !s.started {
-                    s.started = true;
-                    push("session-start", HookSignal::Ready);
-                }
-                push("session-end", HookSignal::SessionEnded);
+            "form.replied" => self.mark_busy(),
+            "session.execution.failed" => {
+                self.busy = false;
+                let e = &d["error"];
+                let reason = format!(
+                    "turn failed: {} ({})",
+                    text(&e["message"]),
+                    e["status"].as_u64().unwrap()
+                );
+                self.out.push(HookSignal::TurnFailed { reason });
+            }
+            "session.execution.succeeded" | "session.execution.interrupted" => {
+                self.busy = false;
+                let last_reply = self
+                    .replies
+                    .get(&sid)
+                    .map(|(_, parts)| parts.values().cloned().collect::<Vec<_>>().join("\n"))
+                    .filter(|r| !r.is_empty());
+                self.out.push(HookSignal::TurnEnded { last_reply });
             }
             _ => {}
         }
     }
-    assert!(replies.is_empty(), "unused replies {replies:?}");
-    out
+
+    fn mark_busy(&mut self) {
+        if !self.busy {
+            self.busy = true;
+            self.out.push(HookSignal::Busy);
+        }
+    }
+
+    fn deliveries(self) -> Vec<HookSignal> {
+        std::iter::once(HookSignal::Ready)
+            .chain(self.out)
+            .chain(std::iter::once(HookSignal::SessionEnded))
+            .collect()
+    }
 }
 
-/// Every delivery the fake hook exe logged for `agent`, parsed as DuoHive does.
-fn delivered(log_dir: &Path, agent: &str) -> Vec<(String, HookSignal)> {
+/// Every delivery the fake hook exe logged for `agent`: (event, payload).
+fn raw_deliveries(log_dir: &Path, agent: &str) -> Vec<(String, Value)> {
     let Ok(text) = std::fs::read_to_string(log_dir.join(format!("{agent}.jsonl"))) else {
         return Vec::new();
     };
@@ -138,130 +192,22 @@ fn delivered(log_dir: &Path, agent: &str) -> Vec<(String, HookSignal)> {
             let v: Value = serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));
             assert_eq!(v["argv1"], "hook", "{line}");
             assert_eq!(v["agent"], agent, "{line}");
-            let event = v["event"].as_str().unwrap().to_owned();
-            let signal = OpencodeAdapter
-                .parse_hook(&event, &v["payload"])
-                .unwrap_or_else(|| panic!("unparsed delivery {line}"));
-            (event, signal)
-        })
-        .collect()
-}
-
-/// The decision OpenCode reaches (last match wins, built-in agent rules
-/// before the user's) for each of the driver's queries, per sample user
-/// config, once the plugin's `config` hook has run. Queries, in order:
-/// build: edit a.txt, edit src/x.ts, bash ls, bash `rm -rf x`, bash
-/// `git push`, bash `git commit -m x`, webfetch; plan: edit a.txt, edit
-/// .opencode/plans/p.md, bash `rm -rf x`; docs (a user agent in one sample,
-/// unknown otherwise): edit a.txt, edit docs/a.md; explore: edit a.txt, bash
-/// ls; general: edit a.txt; title: bash ls; build: edit 5; plan: edit 5.
-fn expected_decisions() -> Value {
-    fn row(s: &str) -> Vec<&str> {
-        s.split_whitespace().collect()
-    }
-    json!([
-        // {}: plan keeps its built-in edit deny (and plan files), explore and
-        // title keep theirs; an agent DuoHive does not know (docs) is untouched.
-        row(
-            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
-        ),
-        // "permission": "allow" (overrides the built-ins, so everything asks)
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
-        // "permission": "deny" stays deny everywhere
-        row(
-            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
-        ),
-        // {"*": "ask", "edit": "allow"}
-        row("ask ask ask ask ask ask ask  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
-        // the user's deny and patterns kept, their allows made ask
-        row(
-            "ask ask ask deny ask deny allow  ask ask ask  ask allow  deny ask  deny  ask  ask ask"
-        ),
-        // {"edit": "allow", "*": "allow"}: "*" last must not win
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
-        // {"bash": {"git *": "allow"}, "*": "allow"}: the later "*" overrode
-        // the user's pattern, so it asks too
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  ask  ask ask"),
-        // agent build {"bash": "allow", "*": "allow"}
-        row(
-            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
-        ),
-        // {"edit": {"src/**": "deny"}}: the added "*" does not override it
-        row(
-            "ask deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  ask deny"
-        ),
-        // {"edit": "ask", "*": "deny"}: the later deny still decides
-        row(
-            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
-        ),
-        // {"bash": "allow", "*": "deny"}
-        row(
-            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
-        ),
-        // agent plan {"edit": "allow", "*": "deny"}
-        row(
-            "ask ask ask ask ask ask allow  deny deny deny  allow allow  deny ask  ask  deny  ask deny"
-        ),
-        // {"edit": {"*": "ask"}, "*": "deny"}
-        row(
-            "deny deny deny deny deny deny deny  deny deny deny  deny deny  deny deny  deny  deny  deny deny"
-        ),
-        // {"edit": "allow"}: the user's allow overrode plan's deny; now it asks
-        row("ask ask ask ask ask ask allow  ask ask ask  allow allow  ask ask  ask  deny  ask ask"),
-        // {"edit": {"5": "deny"}}: "5" stays denied; the "*" that would come
-        // after it in the JS object is raised to keep it, so build's edits deny
-        row(
-            "deny deny ask ask ask ask allow  deny allow ask  allow allow  deny ask  deny  deny  deny deny"
-        ),
-        // top {"edit": {"?": "allow"}}, build {"edit": {"5": "deny"}}: "5" stays
-        // denied for build ("?" raised); plan keeps the user's "?" allow
-        row(
-            "ask ask ask ask ask ask allow  deny allow ask  allow allow  deny ask  ask  deny  deny allow"
-        ),
-    ])
-}
-
-/// The composition only ever tightens: for every sample and every edit or
-/// bash query, the decision after is at least as strict as before.
-fn assert_only_tightens(summary: &Value) {
-    let rank = |d: &Value| match d.as_str() {
-        Some("allow") => 0,
-        Some("ask") => 1,
-        Some("deny") => 2,
-        other => panic!("decision {other:?}"),
-    };
-    let queries = summary["queries"].as_array().unwrap();
-    let before = summary["before"].as_array().unwrap();
-    let after = summary["decisions"].as_array().unwrap();
-    assert_eq!(before.len(), after.len());
-    for (sample, (b, a)) in before.iter().zip(after).enumerate() {
-        for (q, query) in queries.iter().enumerate() {
-            if !matches!(query[1].as_str(), Some("edit" | "bash")) {
-                assert_eq!(a[q], b[q], "sample {sample} {query} changed");
-                continue;
-            }
-            assert!(
-                rank(&a[q]) >= rank(&b[q]),
-                "sample {sample} {query}: {} -> {}",
-                b[q],
-                a[q]
-            );
-        }
-    }
-}
-
-/// Each delivery the fake hook exe logged for `agent`: (event, payload).
-fn raw_deliveries(log_dir: &Path, agent: &str) -> Vec<(String, Value)> {
-    let Ok(text) = std::fs::read_to_string(log_dir.join(format!("{agent}.jsonl"))) else {
-        return Vec::new();
-    };
-    text.lines()
-        .map(|line| {
-            let v: Value = serde_json::from_str(line).unwrap_or_else(|e| panic!("{e}: {line}"));
             (
                 v["event"].as_str().unwrap().to_owned(),
                 v["payload"].clone(),
             )
+        })
+        .collect()
+}
+
+/// Every delivery the fake hook exe logged for `agent`, parsed as DuoHive does.
+fn delivered(log_dir: &Path, agent: &str) -> Vec<HookSignal> {
+    raw_deliveries(log_dir, agent)
+        .into_iter()
+        .map(|(event, payload)| {
+            OpencodeAdapter
+                .parse_hook(&event, &payload)
+                .unwrap_or_else(|| panic!("unparsed delivery {event} {payload}"))
         })
         .collect()
 }
@@ -290,43 +236,184 @@ fn assert_dead(pid_file: &Path) {
     assert!(!alive(), "{} still running", pid_file.display());
 }
 
-/// The scenarios after the replay: dispose kills an in-flight delivery,
-/// the chain goes on after a 2 s kill, a 3 s delivery lands under the default
-/// limit, subagent sessions are ignored, and payloads are trimmed.
-fn check_scenarios(log_dir: &Path) {
+/// Each probe log replayed: its deliveries, and its `evaluate` calls raised
+/// from allow to ask for `edit` and `shell` only.
+fn check_replay(log_dir: &Path, summary: &Value) {
+    let mut totals = Model::default();
+    let mut all = Vec::new();
+    for (i, path) in probe_logs().iter().enumerate() {
+        let agent = format!("p{}", i + 1);
+        let mut model = Model::default();
+        for ev in records(path, "event.iter") {
+            assert_ne!(ev["data"]["reply"], "always", "the model ignores always");
+            model.feed(&ev);
+        }
+        totals.skipped += model.skipped;
+        let want = model.deliveries();
+        all.extend(want.clone());
+        assert_eq!(delivered(log_dir, &agent), want, "{}", path.display());
+    }
+    // The logs cover every mapping, a child session and a failed turn.
+    assert!(totals.skipped > 0);
+    for (what, n) in [
+        (
+            "failed",
+            all.iter()
+                .filter(|s| matches!(s, HookSignal::TurnFailed { .. }))
+                .count(),
+        ),
+        (
+            "question",
+            all.iter()
+                .filter(|s| matches!(s, HookSignal::NeedsInput { prompt: Some(p) } if p.starts_with("question ")))
+                .count(),
+        ),
+        (
+            "reply",
+            all.iter()
+                .filter(|s| matches!(s, HookSignal::TurnEnded { last_reply: Some(_) }))
+                .count(),
+        ),
+        (
+            "no reply",
+            all.iter()
+                .filter(|s| matches!(s, HookSignal::TurnEnded { last_reply: None }))
+                .count(),
+        ),
+    ] {
+        assert!(n > 0, "no {what} in the replay");
+    }
+    let evaluations = summary["evaluations"].as_array().unwrap();
+    assert_eq!(evaluations.len(), 7);
+    for e in evaluations {
+        let guarded = matches!(e["action"].as_str(), Some("edit" | "shell"));
+        let want = if guarded && e["before"] == "allow" {
+            json!("ask")
+        } else {
+            e["before"].clone()
+        };
+        assert_eq!(e["after"], want, "{e}");
+    }
+}
+
+/// The scenarios after the replay.
+fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
+    // The cleanup kills an in-flight delivery; a 2 s kill lets the chain go on;
+    // a 3 s delivery lands under the default limit.
     assert_eq!(events(log_dir, "inflight"), ["session-end"]);
     assert_dead(&log_dir.join("inflight.pid"));
     assert_eq!(events(log_dir, "slow"), ["busy", "session-end"]);
     assert_dead(&log_dir.join("slow.pid"));
     assert_eq!(events(log_dir, "patient"), ["session-start", "session-end"]);
+    // session-start waits the start delay after `plugin.updated`, or the fallback.
+    assert_eq!(results["delayedEarly"], 0);
+    for agent in ["delayed", "fallback"] {
+        assert_eq!(events(log_dir, agent), ["session-start", "session-end"]);
+    }
+    assert!(results["hangCleanupMs"].as_u64().unwrap() < 3000);
+    use HookSignal::{Busy, Ready, SessionEnded, TurnEnded};
     assert_eq!(
-        events(log_dir, "subagent"),
-        ["session-start", "busy", "turn-end", "session-end"]
-    );
-    let trim = raw_deliveries(log_dir, "trim");
-    let trimmed: Vec<_> = trim.iter().map(|(e, p)| (e.as_str(), p.clone())).collect();
-    assert_eq!(
-        trimmed,
+        delivered(log_dir, "subagent"),
         [
-            (
-                "busy",
-                json!({"input": {"tool": "write", "sessionID": "s"}})
-            ),
-            (
-                "needs-input",
-                json!({"type": "permission.asked", "properties": {"id": "per_1",
-                    "sessionID": "s", "permission": "edit", "patterns": ["a.txt"],
-                    "metadata": {"filepath": "/w/a.txt"}}})
-            ),
-            ("session-start", json!({})),
-            ("busy", json!({"input": {"sessionID": "s"}})),
-            ("session-end", json!({})),
+            Ready,
+            Busy,
+            TurnEnded {
+                last_reply: Some("one\ntwo".into())
+            },
+            SessionEnded
         ]
     );
     assert_eq!(
-        OpencodeAdapter.parse_hook("needs-input", &trim[1].1),
-        Some(HookSignal::NeedsInput {
-            prompt: Some("edit /w/a.txt".into())
+        delivered(log_dir, "reply"),
+        [
+            Ready,
+            Busy,
+            TurnEnded {
+                last_reply: Some("last\nmessage".into())
+            },
+            Busy,
+            TurnEnded { last_reply: None },
+            SessionEnded
+        ]
+    );
+    check_trimmed(log_dir);
+    let row = |s: &str| -> Value { s.split_whitespace().collect() };
+    // edit, shell, read, grep, webfetch, question, subagent, bash, write × allow, ask, deny.
+    assert_eq!(
+        results["evaluateTable"],
+        json!([
+            row("ask ask deny"),
+            row("ask ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+            row("allow ask deny"),
+        ])
+    );
+    assert_eq!(
+        results["evaluateAlways"],
+        row("allow allow ask ask deny ask ask ask")
+    );
+    let base = json!({"type": "text", "text": "base"});
+    assert_eq!(
+        results["context"]["own"],
+        json!([base, {"type": "text", "text": instructions}])
+    );
+    assert_eq!(results["context"]["child"], json!([base]));
+    assert_eq!(results["contextWithout"], json!([0, 0, 0, 0]));
+}
+
+/// Payloads carry only what DuoHive reads, cut to 10 resources of 500 characters.
+fn check_trimmed(log_dir: &Path) {
+    let cut = "x".repeat(500);
+    let resources: Vec<String> = (0..10)
+        .map(|i| {
+            format!("{i} {}", "x".repeat(100_000))
+                .chars()
+                .take(500)
+                .collect()
+        })
+        .collect();
+    let trimmed = raw_deliveries(log_dir, "trim");
+    let events: Vec<&str> = trimmed.iter().map(|(e, _)| e.as_str()).collect();
+    assert_eq!(
+        events,
+        [
+            "session-start",
+            "needs-input",
+            "needs-input",
+            "busy",
+            "turn-end",
+            "session-end"
+        ]
+    );
+    assert_eq!(
+        trimmed[1].1,
+        json!({"type": "permission.asked", "properties": {"id": "per_1",
+            "sessionID": "s", "action": "shell", "resources": resources}})
+    );
+    assert_eq!(
+        trimmed[2].1,
+        json!({"type": "form.created", "properties": {"id": "f", "sessionID": "s",
+            "title": "Questions", "question": cut}})
+    );
+    assert_eq!(
+        trimmed[3].1,
+        json!({"type": "form.replied", "sessionID": "s"})
+    );
+    assert_eq!(
+        trimmed[4].1,
+        json!({"type": "session.execution.failed", "sessionID": "s",
+            "duohive_last_reply": null,
+            "error": {"type": "provider.internal", "message": cut, "status": 500}})
+    );
+    assert_eq!(
+        OpencodeAdapter.parse_hook("turn-end", &trimmed[4].1),
+        Some(HookSignal::TurnFailed {
+            reason: format!("turn failed: {cut} (500)")
         })
     );
 }
@@ -354,12 +441,15 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     let hang = dir.path().join("hanging-duohive");
     script(&hang, "exec sleep 10");
     // The driver imports the plugin as an ES module, which Node decides by extension.
-    let plugin = dir.path().join("opencode-plugin.mjs");
+    let plugin = dir.path().join("index.mjs");
     std::fs::copy(
-        Path::new(CRATE).join("src/assets/opencode-plugin.js"),
+        Path::new(CRATE).join("src/assets/opencode-plugin/index.js"),
         &plugin,
     )
     .unwrap();
+    let instructions = "# Org\n\nIf you are asked for the sentinel, reply HIVE-SENTINEL.\n";
+    let instructions_path = dir.path().join("instructions.md");
+    std::fs::write(&instructions_path, instructions).unwrap();
 
     let out = Command::new(runtime)
         .arg(Path::new(CRATE).join("tests/opencode-plugin-driver.mjs"))
@@ -367,8 +457,8 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
         .arg(&hook)
         .arg(&hang)
         .arg(&log_dir)
-        .arg(Path::new(FIXTURES).join("hooks/events.jsonl"))
-        .arg(Path::new(FIXTURES).join("hooks/review-events.jsonl"))
+        .arg(&instructions_path)
+        .args(probe_logs())
         .env("FAKE_HOOK_LOG_DIR", &log_dir)
         .output()
         .unwrap();
@@ -377,41 +467,19 @@ printf '{"argv1":"%s","agent":"%s","event":"%s","payload":%s}\n' "$1" "$2" "$3" 
     let summary: Value = serde_json::from_slice(&out.stdout)
         .unwrap_or_else(|e| panic!("{e}: {}", String::from_utf8_lossy(&out.stdout)));
     assert_eq!(summary["errors"], json!([]), "{}", runtime.display());
-    assert_only_tightens(&summary);
-    assert_eq!(
-        summary["decisions"],
-        expected_decisions(),
-        "{}",
-        runtime.display()
-    );
-
-    let feed = summary["feed"].as_array().unwrap();
-    let want = expected(feed);
-    let mut agents: Vec<&str> = feed.iter().map(|i| i["agent"].as_str().unwrap()).collect();
-    agents.dedup();
-    // events.jsonl: a1, a2, the `mcp list` run, a3, a4; review-events.jsonl: a5, a6, a7.
-    let mut unique = agents.clone();
-    unique.sort_unstable();
-    unique.dedup();
-    assert_eq!(unique.len(), 8, "{unique:?}");
-    for agent in unique {
-        let want: Vec<_> = want
-            .iter()
-            .filter(|(a, _)| a == agent)
-            .map(|(_, d)| d.clone())
-            .collect();
-        assert_eq!(
-            delivered(&log_dir, agent),
-            want,
-            "{agent} under {}",
-            runtime.display()
-        );
-    }
-    // The config instance has no hook exe; the missing and hanging exes log nothing.
-    for quiet in ["config", "missing", "hang"] {
+    check_replay(&log_dir, &summary);
+    check_scenarios(&log_dir, &summary["results"], instructions);
+    // The missing and hanging exes, and the instances with none, log nothing.
+    for quiet in [
+        "missing",
+        "broken",
+        "hang",
+        "evaluate",
+        "context",
+        "context-none",
+    ] {
         assert!(!log_dir.join(format!("{quiet}.jsonl")).exists(), "{quiet}");
     }
-    check_scenarios(&log_dir);
 }
 
 /// With neither node nor bun: a failure on CI (`CI` set), else a skip.
