@@ -3,16 +3,17 @@
 # marks them Verified.
 #
 #   scripts/resign-commits.sh                 re-sign all commits, then force-push
-#   scripts/resign-commits.sh --unsigned-only re-sign only from the oldest unsigned commit
+#   scripts/resign-commits.sh --unsigned-only re-sign only from the oldest unverified commit
 #   scripts/resign-commits.sh --base REF      re-sign only the commits after REF
 #   scripts/resign-commits.sh --no-push       re-sign locally, don't push
 #   scripts/resign-commits.sh --dry-run       list the commits and their status only
 #   scripts/resign-commits.sh --yes           don't ask before rewriting
 #
-# --unsigned-only: unsigned means no signature at all (%G? = N); a commit signed
-# with a key you don't have locally (E, such as GitHub's merge commits) counts as
-# signed. Commits before the oldest unsigned one keep their hashes; the ones after
-# it are re-signed too, since their parents change. Nothing unsigned → no rewrite.
+# --unsigned-only: a commit GitHub already has is unverified when GitHub says so
+# (asked with gh); any other commit is unverified unless git shows a good signature
+# (G, U) or one signed by a key you don't have (E, such as GitHub's merge commits).
+# Commits before the oldest unverified one keep their hashes; the ones after it are
+# re-signed too, since their parents change. Nothing unverified → no rewrite.
 # Uses your git signing setup (user.signingkey, gpg.format). The key and the
 # committer email must both be on your GitHub account for Verified to show.
 # Commits are rewritten: hashes change, authors and dates are kept, and
@@ -26,7 +27,7 @@ assume_yes=0
 unsigned_only=0
 
 usage() {
-    sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 die() {
@@ -88,22 +89,49 @@ show_status() {
 echo "$count commit(s) on $branch $scope (G = signed, E = signed by a key you don't have, N = not signed):"
 show_status
 
+# Prints "<sha> <true|false>" for each commit on the remote branch, as GitHub
+# verifies it; prints nothing when gh, the repo or the branch can't be reached.
+github_verification() {
+    command -v gh >/dev/null 2>&1 || return 0
+    local url repo
+    url="$(git remote get-url "$remote" 2>/dev/null)" || return 0
+    repo="$(gh repo view "$url" --json nameWithOwner --jq .nameWithOwner 2>/dev/null)" || return 0
+    gh api --paginate "repos/$repo/commits?sha=$remote_branch&per_page=100" \
+        --jq '.[] | "\(.sha) \(.commit.verification.verified)"' 2>/dev/null || true
+}
+
 if [ "$unsigned_only" -eq 1 ]; then
-    # Rewrite from the oldest unsigned commit; everything before it is kept.
-    first_unsigned="$(git log --reverse --format='%H %G?' "$range" | awk '$2 == "N" && !found { print $1; found = 1 }')"
-    if [ -z "$first_unsigned" ]; then
-        echo "every commit is signed · nothing to do"
+    # Rewrite from the oldest unverified commit; everything before it is kept.
+    verification="$(mktemp)"
+    trap 'rm -f "$verification"' EXIT
+    echo "asking GitHub which commits on $remote/$remote_branch are verified…"
+    github_verification >"$verification"
+    [ -s "$verification" ] || echo "  no answer from GitHub (gh missing, signed out, or branch not pushed) · using local signatures only"
+
+    # One line per unverified commit, oldest first: "<sha> <why>".
+    unverified="$(git log --reverse --format='%H %G?' "$range" | awk -v map="$verification" '
+        FILENAME == map { github[$1] = $2; next }
+        ($1 in github) { if (github[$1] != "true") print $1, "GitHub: unverified"; next }
+        $2 !~ /^[GUE]$/ { print $1, "local: " $2 }
+    ' "$verification" -)"
+    if [ -z "$unverified" ]; then
+        echo "every commit is verified · nothing to do"
         exit 0
     fi
-    if git rev-parse --verify --quiet "$first_unsigned^" >/dev/null; then
-        rebase_onto=("$first_unsigned^")
-        rewrite_range="$first_unsigned^..HEAD"
+    echo "unverified:"
+    while read -r sha why; do
+        echo "  $(git rev-parse --short "$sha")  $why  $(git log -1 --format=%s "$sha")"
+    done <<<"$unverified"
+
+    first_unverified="$(head -n 1 <<<"$unverified" | cut -d' ' -f1)"
+    if git rev-parse --verify --quiet "$first_unverified^" >/dev/null; then
+        rebase_onto=("$first_unverified^")
+        rewrite_range="$first_unverified^..HEAD"
     else
         rebase_onto=(--root)
         rewrite_range="HEAD"
     fi
-    unsigned="$(git log --format='%G?' "$range" | grep -c '^N$' || true)"
-    echo "$unsigned unsigned · rewriting from $(git rev-parse --short "$first_unsigned") to HEAD"
+    echo "$(wc -l <<<"$unverified" | tr -d ' ') unverified · rewriting from $(git rev-parse --short "$first_unverified") to HEAD"
 fi
 rewrite="$(git rev-list --count "$rewrite_range")"
 [ "$dry_run" -eq 0 ] || { echo "would rewrite $rewrite commit(s)"; exit 0; }
