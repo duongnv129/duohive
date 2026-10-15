@@ -150,8 +150,8 @@ pub enum RuntimeCall {
     Stop(AgentName, Vec<Key>, Duration),
     /// `kill`.
     Kill(AgentName, WindowId),
-    /// `paste`.
-    Paste(AgentName, String, Vec<Key>),
+    /// `paste`: agent, before keys, text, submit keys.
+    Paste(AgentName, Vec<Key>, String, Vec<Key>),
     /// `capture`.
     Capture(AgentName),
     /// `inventory`.
@@ -181,8 +181,8 @@ impl Runtime for FakeRuntime {
     fn kill(&mut self, agent: &AgentName, window: &WindowId) {
         self.record(RuntimeCall::Kill(agent.clone(), window.clone()));
     }
-    fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>) {
-        self.record(RuntimeCall::Paste(agent.clone(), text, submit));
+    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>) {
+        self.record(RuntimeCall::Paste(agent.clone(), before, text, submit));
     }
     fn capture(&mut self, agent: &AgentName) {
         self.record(RuntimeCall::Capture(agent.clone()));
@@ -352,6 +352,8 @@ pub struct StubAdapter {
     pub enrich: Option<fn(&str, &mut serde_json::Value)>,
     /// When set, `launch` fails with this text (after recording the spec).
     pub launch_error: Option<String>,
+    /// What `before_paste_keys()` returns.
+    pub before_paste: Vec<Key>,
 }
 
 impl StubAdapter {
@@ -374,6 +376,7 @@ impl StubAdapter {
             launches: Arc::new(Mutex::new(Vec::new())),
             enrich: None,
             launch_error: None,
+            before_paste: Vec::new(),
         }
     }
 
@@ -469,6 +472,9 @@ impl CliAdapter for StubAdapter {
     }
     fn submit_keys(&self) -> Vec<Key> {
         vec![Key::Enter]
+    }
+    fn before_paste_keys(&self) -> Vec<Key> {
+        self.before_paste.clone()
     }
     fn startup_prompts(&self) -> bool {
         self.startup_prompts

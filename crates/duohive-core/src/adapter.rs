@@ -121,6 +121,11 @@ pub trait CliAdapter: Send + Sync {
     fn quit_keys(&self) -> Vec<Key>;
     /// Keys that submit after a paste.
     fn submit_keys(&self) -> Vec<Key>;
+    /// Keys sent before a next-turn task is pasted, which happens only at rest
+    /// (e.g. `Escape` to close a dialog that would swallow the paste).
+    fn before_paste_keys(&self) -> Vec<Key> {
+        Vec::new()
+    }
     /// Sn.8 lists a start-up prompt (trust, login, update notice): D2, Task 13.
     fn startup_prompts(&self) -> bool;
     /// Adds to a hook payload before parsing (may read files). Called by the hook listener, never the engine.

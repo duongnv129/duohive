@@ -268,8 +268,10 @@ fn next_turn_ignores_run_choice() {
     h.force("squad-1", AgentState::Idle);
     h.give_in("squad-1", "Add a test", RunIn::NewWorktree);
     assert!(h.git_calls().is_empty());
-    assert!(matches!(h.calls().as_slice(), [RuntimeCall::Paste(a, t, _)]
-        if *a == n("squad-1") && t == "Add a test"));
+    assert!(
+        matches!(h.calls().as_slice(), [RuntimeCall::Paste(a, _, t, _)]
+        if *a == n("squad-1") && t == "Add a test")
+    );
 }
 
 #[test]

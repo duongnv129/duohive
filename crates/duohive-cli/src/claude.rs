@@ -823,6 +823,13 @@ mod tests {
         assert_eq!(a.tested_versions(), &["2.1"]);
     }
 
+    /// Under vim mode `Escape` would leave INSERT, and the paste would be read
+    /// as NORMAL commands.
+    #[test]
+    fn no_keys_before_a_paste() {
+        assert!(ClaudeAdapter.before_paste_keys().is_empty());
+    }
+
     /// Vim-safe (TD §5.5): after the stop's `Escape`, `C-c` interrupts a turn or
     /// clears the box, `i` enters INSERT under vim (a stray `i` otherwise), and the
     /// second `C-c` clears the box, so `/exit` lands in an empty INSERT box.

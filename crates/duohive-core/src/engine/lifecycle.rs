@@ -302,11 +302,14 @@ impl Engine {
     /// agent stays at rest until a sign it took the task (P2-D11): a busy or
     /// prompt-submit hook, or a `~` busy read, moves it to working.
     fn type_next_turn(&mut self, agent: &AgentName, task: String) -> Vec<Event> {
-        let submit = match self.with_running_adapter(agent, |a| a.submit_keys()) {
-            Ok(keys) => keys,
-            Err(reason) => return reject(reason),
-        };
-        self.ports.runtime.paste(agent, task.clone(), submit);
+        let (before, submit) =
+            match self.with_running_adapter(agent, |a| (a.before_paste_keys(), a.submit_keys())) {
+                Ok(keys) => keys,
+                Err(reason) => return reject(reason),
+            };
+        self.ports
+            .runtime
+            .paste(agent, before, task.clone(), submit);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
         rt.last_task = Some(task.clone());

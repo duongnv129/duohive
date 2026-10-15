@@ -168,7 +168,16 @@ impl CliAdapter for OpencodeAdapter {
         vec![Key::Enter]
     }
 
-    /// No trust, login or update prompt was seen (S2.8).
+    /// `Escape` closes the "Update Available" dialog OpenCode 1.18.35 opens over
+    /// the session a few seconds after launch: while open it swallows typed text
+    /// with `Confirm` highlighted, so `Enter` could start an upgrade. Deliveries
+    /// happen only at rest, where `Escape` interrupts nothing (TD §5.5).
+    fn before_paste_keys(&self) -> Vec<Key> {
+        vec![Key::Escape]
+    }
+
+    /// No trust or login prompt was seen (S2.8). The update dialog opens over a
+    /// running session, not before it, and `before_paste_keys` closes it.
     fn startup_prompts(&self) -> bool {
         false
     }

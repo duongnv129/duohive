@@ -112,6 +112,7 @@ fn give_work_finished_types_next_turn() {
         h.calls(),
         vec![RuntimeCall::Paste(
             n("squad-2"),
+            Vec::new(),
             "Now make…".into(),
             vec![Key::Enter]
         )]
@@ -130,6 +131,7 @@ fn give_work_idle_types_next_turn() {
         h.calls(),
         vec![RuntimeCall::Paste(
             n("squad-1"),
+            Vec::new(),
             "Add a test".into(),
             vec![Key::Enter]
         )]
