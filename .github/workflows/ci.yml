@@ -40,7 +40,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - uses: crate-ci/typos@v1.50.3
+      - uses: crate-ci/typos@v1.51.1
 
   test:
     name: test (${{ matrix.os }}, tmux ${{ matrix.tmux }})
