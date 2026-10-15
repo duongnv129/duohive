@@ -453,6 +453,7 @@ mod tests {
                 from_screen: false,
                 since: Millis(0),
                 error: None,
+                waiting_on: None,
             },
             last_reply: None,
             task_at_launch: false,

@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude ─────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│  Quick safety check: Is this a project you created or one you trust?                                       │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│                                                                                                            │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│  ❯ No, exit                                                                                                │
+┃ │  │  ├─ auth-service         ● working    2m  ┃│    Yes, I trust this folder                                                                                │
+┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
+┃▌│  │  └─ billing-api          ◆ waiting    4m  ┃│  Enter to confirm · Esc to cancel                                                                          │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                                                                            │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└─ Claude asks to trust this folder · choose Yes (↓ then enter) · enter alone exits ─────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom

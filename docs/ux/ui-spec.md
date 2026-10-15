@@ -232,6 +232,19 @@ To zoom while typing, press `ctrl+q`, then `z`.
 └──────────────────────────────────────────────────────────┘
 ```
 
+- **A Claude agent waiting on its folder-trust dialog** (a new worktree path, P2-D23): its live terminal, with the pane's bottom edge saying how to answer. `No, exit` is highlighted, so `enter` alone ends the agent. The hint clears when the agent's state changes; narrow panes get `To trust: ↓ then enter · enter alone exits`.
+
+```
+┌─ billing-api · Claude · worktree retry-loop ──────────────────────────────────────┐
+│  Quick safety check: Is this a project you created or one you trust?              │
+│                                                                                   │
+│  ❯ No, exit                                                                       │
+│    Yes, I trust this folder                                                       │
+│                                                                                   │
+│  Enter to confirm · Esc to cancel                                                 │
+└─ Claude asks to trust this folder · choose Yes (↓ then enter) · enter alone exits ┘
+```
+
 - **A team or role:** a summary of its agents, defaults and prompt.
 
 ```
@@ -917,6 +930,8 @@ Errors are shown where they apply, with how to fix them.
 ```
 
 An errored agent stays errored, and in Needs you, until you give it work or stop it.
+
+**A prompt that ends the agent by default:** Claude's folder-trust dialog in a new worktree is not an error. The agent waits and joins Needs you, and its pane says how to answer (§4.1.2, P2-D23).
 
 **`org.toml` doesn't parse** (a banner in `status.error`; the last good org stays):
 

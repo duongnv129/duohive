@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli_kind::CliKind;
 use crate::launch::{Key, LaunchCommand, LaunchSpec};
+use crate::status::WaitingOn;
 
 /// What a hook tells the engine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +47,9 @@ pub struct ScreenSignal {
     pub state: Option<ScreenState>,
     /// The last reply shown, if recognisable.
     pub last_reply: Option<String>,
+    /// The prompt shown, when the state is [`ScreenState::NeedsInput`] and DuoHive knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<WaitingOn>,
 }
 
 /// Which of the five Sn.3 events a CLI hooks, and where the reply comes from.

@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude ───────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│  Quick safety check: Is this a project you c │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ reated or one you trust?                     │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
+┃     auth-service     ●   2m  ┃│  ❯ No, exit                                  │
+┃▌    billing-api      ◆   4m  ┃│    Yes, I trust this folder                  │
+┃   ▾ QA                       ┃│                                              │
+┃     pay-qa           ○   1d  ┃│  Enter to confirm · Esc to cancel            │
+┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
+┃     squad-1         ~●   1m  ┃│                                              │
+┃     squad-2          ✓   3m  ┃│                                              │
+┃     squad-3          ◷   6m  ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└─ To trust: ↓ then enter · enter alone exits ─┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

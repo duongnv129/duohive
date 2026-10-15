@@ -4,7 +4,7 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::event::Event;
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{NodeKey, Org, RoleKey};
-use duohive_core::status::AgentState;
+use duohive_core::status::{AgentState, Status, WaitingOn};
 use duohive_core::testkit::n;
 use duohive_core::worktree::TaskId;
 
@@ -306,6 +306,68 @@ fn duo_waiting_prompt_snapshots() {
         let lines = render_live_lines(&m, &ctx(), Some(screen), w, h);
         insta::assert_snapshot!(name, lines.join("\n"));
     }
+}
+
+/// Claude's folder-trust dialog as S3.7 saw it: `No, exit` is highlighted.
+const TRUST_DIALOG: &[u8] = concat!(
+    " Quick safety check: Is this a project you created or one you trust?\r\n",
+    "\r\n",
+    " ❯ No, exit\r\n",
+    "   Yes, I trust this folder\r\n",
+    "\r\n",
+    " Enter to confirm · Esc to cancel",
+)
+.as_bytes();
+
+/// billing-api selected, waiting on Claude's folder-trust dialog (P2-D23).
+fn trust_model() -> UiModel {
+    let mut m = spec_model();
+    m.agents.get_mut(&n("billing-api")).unwrap().status = Status {
+        waiting_on: Some(WaitingOn::TrustFolder),
+        ..status(AgentState::Waiting, mins(4))
+    };
+    m.selected = NodeKey::Agent(n("billing-api"));
+    m
+}
+
+#[test]
+fn trust_hint_snapshots() {
+    let m = trust_model();
+    for (name, w, h) in [("trust_hint_80x24", 80, 24), ("trust_hint_160x48", 160, 48)] {
+        let term = term_for(&m, w, h, TRUST_DIALOG, (1, 2));
+        let screen = LiveScreen {
+            agent: &n("billing-api"),
+            term: &term,
+            first_row: 0,
+            no_color: false,
+        };
+        let lines = render_live_lines(&m, &ctx(), Some(screen), w, h);
+        insta::assert_snapshot!(name, lines.join("\n"));
+    }
+}
+
+#[test]
+fn trust_hint_shows_zoomed_and_clears_when_the_state_changes() {
+    let hinted = |m: &UiModel| {
+        render_lines(m, &ctx(), 160, 48)
+            .iter()
+            .any(|l| l.contains("choose Yes (↓ then enter) · enter alone exits"))
+    };
+    let mut m = trust_model();
+    assert!(hinted(&m));
+    m.zoomed = true;
+    m.focus.pane = Pane::Agent;
+    assert!(hinted(&m));
+    // Another agent selected: its pane has no hint.
+    m.zoomed = false;
+    m.selected = NodeKey::Agent(n("auth-service"));
+    assert!(!hinted(&m));
+    m.selected = NodeKey::Agent(n("billing-api"));
+    assert!(m.apply(Event::AgentStatusChanged {
+        agent: n("billing-api"),
+        status: status(AgentState::Working, mins(0)),
+    }));
+    assert!(!hinted(&m));
 }
 
 #[test]

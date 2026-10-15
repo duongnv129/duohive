@@ -5,13 +5,13 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::inherit::{inherited_for, resolve};
 use duohive_core::names::AgentName;
 use duohive_core::org::{Fields, NodeKey, RoleKey};
-use duohive_core::status::AgentState;
+use duohive_core::status::{AgentState, WaitingOn};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
-use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style};
+use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style, put};
 use crate::focus::Pane;
 use crate::format::{
     marker, one_line, status_glyph, status_word, truncate_end, truncate_middle, width,
@@ -39,6 +39,14 @@ const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
 /// The rows a full team or role summary takes.
 const SUMMARY_ROWS: usize = 6;
+/// How to answer Claude's folder-trust dialog, whose highlighted choice is `No, exit`
+/// (P2-D23): the longest that fits the bottom edge.
+const TRUST_HINTS: [&str; 2] = [
+    "Claude asks to trust this folder · choose Yes (↓ then enter) · enter alone exits",
+    "To trust: ↓ then enter · enter alone exits",
+];
+/// The cells the bottom edge keeps around a hint: the corners, one `─` and a space each side.
+const HINT_FRAME: usize = 5;
 
 pub(super) fn draw(
     buf: &mut Buffer,
@@ -55,6 +63,12 @@ pub(super) fn draw(
     draw_box(buf, r, &title, border_lines, border, inside);
     if r.width < 5 || r.height < 3 {
         return;
+    }
+    let room = usize::from(r.width).saturating_sub(HINT_FRAME);
+    if let Some(hint) = waiting_hint(m, room) {
+        let at = r.x + 2;
+        let text = format!(" {hint} ");
+        put(buf, at, r.bottom() - 1, &text, room + 2, fg(p.attention));
     }
     if let Some(s) = live.filter(|s| shown_agent(m) == Some(s.agent)) {
         let cursor = m.typing() && !m.scrolled;
@@ -83,6 +97,20 @@ pub(super) fn live_area(r: Rect) -> Rect {
         width: r.width.saturating_sub(4),
         height: r.height.saturating_sub(2),
     }
+}
+
+/// How to answer what the shown agent waits on, fitted to `room` cells (P2-D23). It
+/// goes in the pane's bottom edge, so the live terminal keeps every row.
+fn waiting_hint(m: &UiModel, room: usize) -> Option<String> {
+    let status = &m.view(shown_agent(m)?).status;
+    if status.state != AgentState::Waiting {
+        return None;
+    }
+    let hints = match status.waiting_on? {
+        WaitingOn::TrustFolder => &TRUST_HINTS,
+    };
+    let hint = hints.iter().find(|h| width(h) <= room).or(hints.last())?;
+    Some(truncate_end(hint, room))
 }
 
 /// The agent whose pane is shown: none while reconnecting, with an empty org, or with a

@@ -15,6 +15,7 @@ use crate::ports::{
     RemoveWorktree, Runtime, SessionRow, Store, StoreError,
 };
 use crate::settings::Settings;
+use crate::status::WaitingOn;
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus};
 use crate::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId, ViewError};
@@ -441,13 +442,15 @@ impl CliAdapter for StubAdapter {
             _ => None,
         }
     }
-    /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`); at rest,
-    /// the non-blank line above it is the last reply.
+    /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`, or `TRUST`
+    /// for a trust dialog); at rest, the non-blank line above it is the last reply.
     fn read_screen(&self, screen: &str) -> ScreenSignal {
         let mut lines = screen.lines().rev().filter(|l| !l.trim().is_empty());
-        let state = match lines.next().map(str::trim_end) {
+        let last = lines.next().map(str::trim_end);
+        let waiting_on = (last == Some("TRUST")).then_some(WaitingOn::TrustFolder);
+        let state = match last {
             Some("BUSY") => Some(ScreenState::Busy),
-            Some("ASK") => Some(ScreenState::NeedsInput),
+            Some("ASK" | "TRUST") => Some(ScreenState::NeedsInput),
             Some("REST") => Some(ScreenState::AtRest),
             _ => None,
         };
@@ -455,7 +458,11 @@ impl CliAdapter for StubAdapter {
             Some(ScreenState::AtRest) => lines.next().map(|l| l.trim().to_owned()),
             _ => None,
         };
-        ScreenSignal { state, last_reply }
+        ScreenSignal {
+            state,
+            last_reply,
+            waiting_on,
+        }
     }
     fn quit_keys(&self) -> Vec<Key> {
         vec![Key::Text("/exit".to_owned()), Key::Enter]

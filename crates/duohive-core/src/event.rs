@@ -166,6 +166,7 @@ mod tests {
             from_screen: true,
             since: Millis(5),
             error: None,
+            waiting_on: None,
         }
     }
 

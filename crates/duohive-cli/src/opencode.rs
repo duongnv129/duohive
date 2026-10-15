@@ -156,6 +156,7 @@ impl CliAdapter for OpencodeAdapter {
         ScreenSignal {
             state: screen_state(screen),
             last_reply: None,
+            waiting_on: None,
         }
     }
 

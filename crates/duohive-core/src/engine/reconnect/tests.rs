@@ -34,6 +34,7 @@ fn row(agent: &str, state: AgentState, window: Option<&str>, since: Millis) -> S
             from_screen: false,
             since,
             error: None,
+            waiting_on: None,
         },
         last_reply: Some("earlier reply".into()),
         task_at_launch: true,

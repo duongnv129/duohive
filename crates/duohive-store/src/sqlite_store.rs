@@ -75,6 +75,8 @@ fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, String>> {
             from_screen: r.get("from_screen")?,
             since: millis(r.get("since")?),
             error: r.get("error")?,
+            // Read from the screen, never saved (P2-D23).
+            waiting_on: None,
         },
         last_reply: r.get("last_reply")?,
         task_at_launch: r.get("task_at_launch")?,

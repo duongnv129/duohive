@@ -7,7 +7,7 @@ use crate::hook::HookMessage;
 use crate::inherit::resolve;
 use crate::launch::WindowId;
 use crate::names::AgentName;
-use crate::status::{AgentState, Trigger, transition};
+use crate::status::{AgentState, Trigger, WaitingOn, transition};
 use crate::worktree::RunIn;
 
 /// How an agent's window ended.
@@ -193,11 +193,38 @@ impl Engine {
         let had_reply = reply_event.is_some();
         // The reply goes out before the state change it came with (P2-D8).
         let mut out: Vec<Event> = reply_event.into_iter().collect();
-        let moved = trigger.is_some_and(|t| self.change_with(agent, &t, None, true, &mut out));
+        let asks = signal.state == Some(ScreenState::NeedsInput);
+        let waiting_on = signal.waiting_on.filter(|_| asks);
+        let moved =
+            trigger.is_some_and(|t| self.change_with(agent, &t, None, true, waiting_on, &mut out));
         if !moved && had_reply {
             self.save_row(agent, &mut out);
         }
+        if !moved && asks && state == AgentState::Waiting {
+            self.set_waiting_on(agent, waiting_on, &mut out);
+        }
         out
+    }
+
+    /// A waiting agent's screen shows a prompt: what it waits on follows the screen
+    /// (P2-D23), in place, so a waiting agent restored after a restart gets it at its
+    /// next read. Not saved.
+    fn set_waiting_on(
+        &mut self,
+        agent: &AgentName,
+        waiting_on: Option<WaitingOn>,
+        out: &mut Vec<Event>,
+    ) {
+        let rt = self.rt_mut(agent);
+        if rt.status.waiting_on == waiting_on {
+            return;
+        }
+        rt.status.waiting_on = waiting_on;
+        let status = rt.status.clone();
+        out.push(Event::AgentStatusChanged {
+            agent: agent.clone(),
+            status,
+        });
     }
 
     /// `Started`: records the agent's current window. A window reported after
