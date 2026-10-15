@@ -333,7 +333,12 @@ async fn paste_types_multiline_text() {
     let a = agent("a");
     rt.start(&a, srv.sh("cat > out"));
     ev.started(&a).await;
-    rt.paste(&a, "line one\nline two".into(), vec![Key::Enter]);
+    rt.paste(
+        &a,
+        Vec::new(),
+        "line one\nline two".into(),
+        vec![Key::Enter],
+    );
     let out = srv.path("out");
     let deadline = Instant::now() + SECS(5);
     loop {
@@ -346,11 +351,37 @@ async fn paste_types_multiline_text() {
     }
 }
 
+/// The keys before a paste reach the pane first (OpenCode's `Escape`, TD §5.5).
+#[tokio::test]
+async fn paste_sends_before_keys_first() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    let a = agent("a");
+    rt.start(&a, srv.sh("cat > out"));
+    ev.started(&a).await;
+    rt.paste(
+        &a,
+        vec![Key::Text("first ".into())],
+        "then".into(),
+        vec![Key::Enter],
+    );
+    let out = srv.path("out");
+    let deadline = Instant::now() + SECS(5);
+    loop {
+        let got = std::fs::read_to_string(&out).unwrap_or_default();
+        if got == "first then\n" {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{got:?}; events {:?}", ev.seen);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
 #[tokio::test]
 async fn paste_without_a_window_fails() {
     let srv = TestServer::new();
     let (mut rt, mut ev) = srv.connect().await;
-    rt.paste(&agent("nobody"), "x".into(), vec![Key::Enter]);
+    rt.paste(&agent("nobody"), Vec::new(), "x".into(), vec![Key::Enter]);
     let got = ev.next(SECS(3)).await;
     assert!(
         matches!(got, Some(RuntimeEvent::PasteFailed { .. })),

@@ -15,6 +15,7 @@ use crate::ports::{
     RemoveWorktree, Runtime, SessionRow, Store, StoreError,
 };
 use crate::settings::Settings;
+use crate::status::WaitingOn;
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus};
 use crate::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId, ViewError};
@@ -149,8 +150,8 @@ pub enum RuntimeCall {
     Stop(AgentName, Vec<Key>, Duration),
     /// `kill`.
     Kill(AgentName, WindowId),
-    /// `paste`.
-    Paste(AgentName, String, Vec<Key>),
+    /// `paste`: agent, before keys, text, submit keys.
+    Paste(AgentName, Vec<Key>, String, Vec<Key>),
     /// `capture`.
     Capture(AgentName),
     /// `inventory`.
@@ -180,8 +181,8 @@ impl Runtime for FakeRuntime {
     fn kill(&mut self, agent: &AgentName, window: &WindowId) {
         self.record(RuntimeCall::Kill(agent.clone(), window.clone()));
     }
-    fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>) {
-        self.record(RuntimeCall::Paste(agent.clone(), text, submit));
+    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>) {
+        self.record(RuntimeCall::Paste(agent.clone(), before, text, submit));
     }
     fn capture(&mut self, agent: &AgentName) {
         self.record(RuntimeCall::Capture(agent.clone()));
@@ -351,6 +352,8 @@ pub struct StubAdapter {
     pub enrich: Option<fn(&str, &mut serde_json::Value)>,
     /// When set, `launch` fails with this text (after recording the spec).
     pub launch_error: Option<String>,
+    /// What `before_paste_keys()` returns.
+    pub before_paste: Vec<Key>,
 }
 
 impl StubAdapter {
@@ -373,6 +376,7 @@ impl StubAdapter {
             launches: Arc::new(Mutex::new(Vec::new())),
             enrich: None,
             launch_error: None,
+            before_paste: Vec::new(),
         }
     }
 
@@ -441,13 +445,15 @@ impl CliAdapter for StubAdapter {
             _ => None,
         }
     }
-    /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`); at rest,
-    /// the non-blank line above it is the last reply.
+    /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`, or `TRUST`
+    /// for a trust dialog); at rest, the non-blank line above it is the last reply.
     fn read_screen(&self, screen: &str) -> ScreenSignal {
         let mut lines = screen.lines().rev().filter(|l| !l.trim().is_empty());
-        let state = match lines.next().map(str::trim_end) {
+        let last = lines.next().map(str::trim_end);
+        let waiting_on = (last == Some("TRUST")).then_some(WaitingOn::TrustFolder);
+        let state = match last {
             Some("BUSY") => Some(ScreenState::Busy),
-            Some("ASK") => Some(ScreenState::NeedsInput),
+            Some("ASK" | "TRUST") => Some(ScreenState::NeedsInput),
             Some("REST") => Some(ScreenState::AtRest),
             _ => None,
         };
@@ -455,13 +461,20 @@ impl CliAdapter for StubAdapter {
             Some(ScreenState::AtRest) => lines.next().map(|l| l.trim().to_owned()),
             _ => None,
         };
-        ScreenSignal { state, last_reply }
+        ScreenSignal {
+            state,
+            last_reply,
+            waiting_on,
+        }
     }
     fn quit_keys(&self) -> Vec<Key> {
         vec![Key::Text("/exit".to_owned()), Key::Enter]
     }
     fn submit_keys(&self) -> Vec<Key> {
         vec![Key::Enter]
+    }
+    fn before_paste_keys(&self) -> Vec<Key> {
+        self.before_paste.clone()
     }
     fn startup_prompts(&self) -> bool {
         self.startup_prompts

@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/render/live_tests.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                    
+┌─ Org ──────────────────────────────────────────┐┏━ auth-service · Claude · TYPING ━━━━━━━━━━━━━━━┓
+│ ⬢ Duo · your manager agent    ◦ idle       1m  │┃ ✓ go test ./... (14 passed)                    ┃
+│ ├─ ▣ Payments                 ● 1 ◆ 1          │┃ ✓ Ready for review · 3 files changed           ┃
+│ │  ├─ ◇ Backend               ● 1 ◆ 1          │┃                                                ┃
+│▌│  │  ├─ auth-service         ● working    2m  │┃ ❯ also add a test for the third retry          ┃
+│ │  │  └─ billing-api          ◆ waiting    4m  │┃                                                ┃
+│ │  └─ ◇ QA                                     │┃                                                ┃
+│ │     └─ pay-qa               ○ stopped    1d  │┃                                                ┃
+│ └─ ◇ Generalist              ~● 1 ◷ 1          │┃                                                ┃
+│    ├─ squad-1                ~● working    1m  │┃                                                ┃
+│    ├─ squad-2                 ✓ finished   3m  │┃                                                ┃
+│    └─ squad-3                 ◷ quiet      6m  │┃                                                ┃
+│                                                │┃                                                ┃
+│                                                │┃                                                ┃
+│                                                │┃                                                ┃
+│                                                │┃                                                ┃
+│                                                │┃                                                ┃
+│                                                │┃                                                ┃
+├─ Needs you (2) ────────────────────────────────┤┃                                                ┃
+│ ◷ squad-3      quiet      6m                   │┃                                                ┃
+│ ◆ billing-api  waiting    4m  "Allow edit to…" │┃                                                ┃
+└────────────────────────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ TYPING · every key goes to auth-service, ctrl+c too · ctrl+q stop typing

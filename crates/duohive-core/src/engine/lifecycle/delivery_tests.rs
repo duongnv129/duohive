@@ -8,7 +8,7 @@ use crate::adapter::HookCoverage;
 use crate::cli_kind::CliKind;
 use crate::event::Event;
 use crate::hook::HookMessage;
-use crate::launch::WindowId;
+use crate::launch::{Key, WindowId};
 use crate::ports::RuntimeEvent;
 use crate::status::AgentState;
 use crate::testkit::{RuntimeCall, StubAdapter, n};
@@ -230,4 +230,32 @@ fn a_crash_ends_the_wait() {
     )));
     assert!(!pending(&h, "squad-1"));
     assert!(not_taken(&h.tick_at(Duration::from_secs(6))).is_empty());
+}
+
+/// OpenCode's update dialog swallows typed text (TD §5.5): the adapter's
+/// before-paste keys go with the paste, and the busy hook still confirms it.
+#[test]
+fn next_turn_sends_the_adapters_before_paste_keys() {
+    let mut h = Setup {
+        claude: StubAdapter {
+            before_paste: vec![Key::Escape],
+            ..StubAdapter::new(CliKind::Claude)
+        },
+        ..Setup::default()
+    }
+    .build();
+    idle(&mut h, "squad-1");
+    h.give("squad-1", "Add a test");
+    assert_eq!(
+        h.calls(),
+        vec![RuntimeCall::Paste(
+            n("squad-1"),
+            vec![Key::Escape],
+            "Add a test".into(),
+            vec![Key::Enter]
+        )]
+    );
+    h.input(hook("squad-1", "busy"));
+    assert_eq!(h.state("squad-1"), AgentState::Working);
+    assert!(!pending(&h, "squad-1"));
 }

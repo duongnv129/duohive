@@ -126,7 +126,7 @@ The Phase 2 bench (Task 2.18) adds `--view`: the bench holds one live pane strea
 | | |
 |---|---|
 | Date | 2026-10-09 |
-| Commit | 47df913, plus the fix-round changes committed with this record (`fix: e2e cleans its tmux server; exact view counts`: exact view counts, `MAX_BACKLOG` 1 MiB) |
+| Commit | 47df913 on the phase-2 branch (squash-merged to main as b497418), plus the fix-round changes committed with this record (`fix: e2e cleans its tmux server; exact view counts`: exact view counts, `MAX_BACKLOG` 1 MiB) |
 | Machine | Apple M4, 10 CPUs, 16 GiB memory |
 | macOS | 26.4.1 (build 25E253) |
 | tmux | 3.7c |

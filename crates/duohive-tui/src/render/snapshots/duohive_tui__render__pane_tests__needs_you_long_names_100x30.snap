@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/render/pane_tests.rs
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 4 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                   │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                │
+┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
+┃ │  └─ ◇ QA                                     ┃│                                                │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┃                                                ┃│                                                │
+┣━ Needs you (4) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┃ ◷ squad-3              quiet      6m           ┃│                                                │
+┃ ◆ billing-api          waiting    4m  "Allow…" ┃│                                                │
+┃ ◆ billing-in…ce-worker waiting    4m  "Allow…" ┃│                                                │
+┃ ◆ authentica…ents-team waiting    4m  "Allow…" ┃│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom

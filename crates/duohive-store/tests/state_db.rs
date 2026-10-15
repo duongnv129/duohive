@@ -35,6 +35,7 @@ fn row(state: AgentState) -> SessionRow {
             from_screen: true,
             since: Millis(1_000),
             error: None,
+            waiting_on: None,
         },
         last_reply: Some("hi".into()),
         task_at_launch: true,

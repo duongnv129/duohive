@@ -282,7 +282,7 @@ impl UiModel {
                 self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
             }
             Event::Worktrees(rows) => self.set_worktrees(rows),
-            // The desktop notice reaches the screen in a later task.
+            // The engine hands alerts to the notifier itself; the row's state already shows here.
             Event::Alert(_) => {}
         }
         true
@@ -328,7 +328,7 @@ impl UiModel {
             || (self.focus.pane == crate::focus::Pane::Chat && !self.chat_input.text().is_empty());
         if busy {
             self.give_later = Some((agent.clone(), task.to_owned(), run));
-            self.footer_note = Some(format!("{reason} · space to try again"));
+            self.footer_note = Some(format!("{reason}{SPACE_RETRY}"));
             return;
         }
         self.give_later = None;
@@ -512,6 +512,7 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
         from_screen: false,
         since: Millis(0),
         error: None,
+        waiting_on: None,
     },
     last_reply: None,
     notice: None,
@@ -523,6 +524,9 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
 /// The footer note when the system has no desktop notifier (UI §4.1.4).
 /// What the reopened dialog adds when the task wasn't taken.
 const NOT_TAKEN_RETRY: &str = " · enter to try again";
+/// Ends a note about work that waits for `space`; not shown while typing, where `space`
+/// goes to the agent.
+pub(crate) const SPACE_RETRY: &str = " · space to try again";
 
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
 

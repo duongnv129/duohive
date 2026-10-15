@@ -5,15 +5,17 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::inherit::{inherited_for, resolve};
 use duohive_core::names::AgentName;
 use duohive_core::org::{Fields, NodeKey, RoleKey};
-use duohive_core::status::AgentState;
+use duohive_core::status::{AgentState, WaitingOn};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
-use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style};
+use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style, put};
 use crate::focus::Pane;
-use crate::format::{marker, one_line, status_glyph, status_word, truncate_end, width};
+use crate::format::{
+    marker, one_line, status_glyph, status_word, truncate_end, truncate_middle, width,
+};
 use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
@@ -26,11 +28,25 @@ const PAD: &str = " ";
 /// Indent of a one-line message, after the padding cell.
 const MESSAGE_INDENT: &str = "  ";
 const NONE: &str = "(none)";
+/// Separates the parts of a title.
+const SEP: &str = " · ";
+/// The cells the top edge takes around the title inside the corners: `━ ` and ` ━`.
+const TITLE_FRAME: usize = 3;
+/// The fewest cells of a cut worktree or directory worth showing, `…` included.
+const MIN_PLACE: usize = 4;
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
 /// The rows a full team or role summary takes.
 const SUMMARY_ROWS: usize = 6;
+/// How to answer Claude's folder-trust dialog, whose highlighted choice is `No, exit`
+/// (P2-D23): the longest that fits the bottom edge.
+const TRUST_HINTS: [&str; 2] = [
+    "Claude asks to trust this folder · choose Yes (↓ then enter) · enter alone exits",
+    "To trust: ↓ then enter · enter alone exits",
+];
+/// The cells the bottom edge keeps around a hint: the corners, one `─` and a space each side.
+const HINT_FRAME: usize = 5;
 
 pub(super) fn draw(
     buf: &mut Buffer,
@@ -47,6 +63,12 @@ pub(super) fn draw(
     draw_box(buf, r, &title, border_lines, border, inside);
     if r.width < 5 || r.height < 3 {
         return;
+    }
+    let room = usize::from(r.width).saturating_sub(HINT_FRAME);
+    if let Some(hint) = waiting_hint(m, room) {
+        let at = r.x + 2;
+        let text = format!(" {hint} ");
+        put(buf, at, r.bottom() - 1, &text, room + 2, fg(p.attention));
     }
     if let Some(s) = live.filter(|s| shown_agent(m) == Some(s.agent)) {
         let cursor = m.typing() && !m.scrolled;
@@ -75,6 +97,20 @@ pub(super) fn live_area(r: Rect) -> Rect {
         width: r.width.saturating_sub(4),
         height: r.height.saturating_sub(2),
     }
+}
+
+/// How to answer what the shown agent waits on, fitted to `room` cells (P2-D23). It
+/// goes in the pane's bottom edge, so the live terminal keeps every row.
+fn waiting_hint(m: &UiModel, room: usize) -> Option<String> {
+    let status = &m.view(shown_agent(m)?).status;
+    if status.state != AgentState::Waiting {
+        return None;
+    }
+    let hints = match status.waiting_on? {
+        WaitingOn::TrustFolder => &TRUST_HINTS,
+    };
+    let hint = hints.iter().find(|h| width(h) <= room).or(hints.last())?;
+    Some(truncate_end(hint, room))
 }
 
 /// The agent whose pane is shown: none while reconnecting, with an empty org, or with a
@@ -108,8 +144,8 @@ fn content(
         return (String::new(), message(EMPTY_ORG, p.fg));
     }
     match &m.selected {
-        NodeKey::Duo => agent(m, ctx, &m.org.duo.name),
-        NodeKey::Agent(a) => agent(m, ctx, a),
+        NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
+        NodeKey::Agent(a) => agent(m, ctx, a, cells),
         NodeKey::Team(t) => {
             let Some(team) = m.org.teams.iter().find(|x| &x.name == t) else {
                 return (String::new(), Vec::new());
@@ -178,39 +214,63 @@ fn message(text: &str, color: ratatui::style::Color) -> Vec<Line<'static>> {
 }
 
 /// `<agent> · <CLI> · worktree <task-id>` or `· <dir>`; Duo's `⬢ <name> · <CLI> · your
-/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12).
-fn agent_title(m: &UiModel, name: &AgentName) -> String {
+/// manager agent`. `· TYPING` and `· scrolled` follow the mode (UI §4.1.2, P2-D12). Cut
+/// to `room` cells, the mode word always stays: the place goes first, then the name is
+/// cut in the middle (UI §2.4).
+fn agent_title(m: &UiModel, name: &AgentName, room: usize) -> String {
     let resolved = resolve(&m.org, name).ok();
     let cli = resolved
         .as_ref()
         .map_or(m.org.defaults.cli, |r| r.cli)
         .short();
-    let mut title = if m.org.is_duo(name) {
-        format!("⬢ {name} · {cli} · your manager agent")
+    // The place: a fixed label and a value that may be cut (Duo's is never cut).
+    let (lead, place) = if m.org.is_duo(name) {
+        (format!("⬢ {name}"), Some(("your manager agent", None)))
     } else {
         let place = match &m.view(name).worktree {
-            Some(task) => Some(format!("worktree {}", task.0)),
-            None => resolved.and_then(|r| r.directory),
+            Some(task) => Some(("worktree ", Some(task.0.clone()))),
+            None => resolved.and_then(|r| r.directory).map(|d| ("", Some(d))),
         };
-        match place {
-            Some(place) => format!("{name} · {cli} · {place}"),
-            None => format!("{name} · {cli}"),
-        }
+        (name.to_string(), place)
     };
-    if m.typing() {
-        title.push_str(" · TYPING");
+    let mode = match (m.typing(), m.scrolled) {
+        (true, true) => " · TYPING · scrolled",
+        (true, false) => " · TYPING",
+        (false, true) => " · scrolled",
+        (false, false) => "",
+    };
+    let head = format!("{lead} · {cli}");
+    let fixed = width(&head) + width(mode);
+    let place = place.map_or(String::new(), |(label, value)| {
+        let value = value.unwrap_or_default();
+        let full = format!("{SEP}{label}{value}");
+        if fixed + width(&full) <= room || mode.is_empty() {
+            return full;
+        }
+        let left = room.saturating_sub(fixed + width(SEP) + width(label));
+        if value.is_empty() || left < MIN_PLACE {
+            return String::new();
+        }
+        format!("{SEP}{label}{}", truncate_middle(&value, left))
+    });
+    if place.is_empty() && fixed > room && !mode.is_empty() {
+        let tail = format!(" · {cli}{mode}");
+        let lead = truncate_middle(&lead, room.saturating_sub(width(&tail)));
+        return format!("{lead}{tail}");
     }
-    if m.scrolled {
-        title.push_str(" · scrolled");
-    }
-    title
+    format!("{head}{place}{mode}")
 }
 
 /// The title, and as the body (until the live terminal shows) its state; how to give it
 /// work or stop it when not running.
-fn agent(m: &UiModel, ctx: &RenderCtx, name: &AgentName) -> (String, Vec<Line<'static>>) {
+fn agent(
+    m: &UiModel,
+    ctx: &RenderCtx,
+    name: &AgentName,
+    cells: usize,
+) -> (String, Vec<Line<'static>>) {
     let p = &ctx.palette;
-    let title = agent_title(m, name);
+    let title = agent_title(m, name, cells.saturating_sub(TITLE_FRAME));
     let state = m.view(name).status.state;
     let body = match state {
         AgentState::Stopped => message(STOPPED, p.fg_muted),

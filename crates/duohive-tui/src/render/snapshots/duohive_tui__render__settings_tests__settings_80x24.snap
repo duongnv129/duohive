@@ -25,4 +25,4 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 │                                                                              │
 │ ❯                                                                            │
 └──────────────────────────────────────────────────────────────────────────────┘
- tab pane · ↑↓ move · space give work
+ ↑↓ move · space change · esc back
