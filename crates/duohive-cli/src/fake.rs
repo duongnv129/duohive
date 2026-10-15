@@ -127,7 +127,11 @@ impl CliAdapter for FakeCliAdapter {
             Some(ScreenState::AtRest) => lines.next().map(str::to_owned),
             _ => None,
         };
-        ScreenSignal { state, last_reply }
+        ScreenSignal {
+            state,
+            last_reply,
+            waiting_on: None,
+        }
     }
 
     fn quit_keys(&self) -> Vec<Key> {

@@ -543,3 +543,11 @@ fn keys_versions_and_kind_match_spike_report() {
     assert_eq!(a.submit_keys(), vec![Key::Enter]);
     assert_eq!(a.tested_versions(), &["1.18"]);
 }
+
+/// OpenCode 1.18.35's "Update Available" dialog opens over the session a few
+/// seconds after launch and swallows typed text, with `Confirm` highlighted, so
+/// a paste and `Enter` could start an upgrade; `Escape` closes it (TD §5.5).
+#[test]
+fn before_paste_keys_close_a_dialog() {
+    assert_eq!(OpencodeAdapter.before_paste_keys(), vec![Key::Escape]);
+}

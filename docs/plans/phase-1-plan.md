@@ -1062,7 +1062,7 @@ Each adapter:
 - `read_screen`: the Sn.7 distinguishing strings → `ScreenState`, matched after the same normalisation as the fake adapter's (Task 27): trailing blank rows dropped, each line's trailing whitespace trimmed, rules read from the last non-empty line upward; the last reply line where Sn.4 says there is no hook.
 - `startup_prompts`: true when Sn.8 lists any start-up prompt (Claude Code's workspace trust is one).
 - `detect`: `probe_version(self.kind())`.
-- `quit_keys` per Sn.9 and the 2026-10-04 stop-key measurements (TD §5.5): Claude Code `[CtrlC, Text("/exit"), Enter]` (the `C-c` clears a prompt that `Escape` put back in the input box), OpenCode `[Text("/exit"), Enter]`; `submit_keys` per Sn.10.
+- `quit_keys` per Sn.9 and the 2026-10-04 stop-key measurements (TD §5.5): Claude Code `[CtrlC, Text("i"), CtrlC, Text("/exit"), Enter]` (the `C-c`s clear a prompt that `Escape` or `C-c` put back in the input box, and `i` gets vim mode back to INSERT; amended 2026-10-16, TD §5.5), OpenCode `[Text("/exit"), Enter]`; `submit_keys` per Sn.10.
 - `tested_versions`: the Sn.1 major.minor.
 
 > Reading a transcript is file I/O, so `parse_hook` stays pure: the adapter's `enrich_hook` (Task 10 trait, default no-op) runs in the hook listener before forwarding; where Sn.4 says the reply lives in a file, it reads it and inserts `"duohive_last_reply"` into the payload, and `parse_hook` reads that field. For Claude Code the reply is in the payload (S1.4), so `enrich_hook` reads the transcript (S1.4's extraction rule) only for a `turn-end` payload with no `last_assistant_message`; this fallback is the one adapter call that reads a file, and it runs in the hook listener task, not the engine (Task 22).

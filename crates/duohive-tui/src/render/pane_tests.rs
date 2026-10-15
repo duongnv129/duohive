@@ -379,3 +379,56 @@ fn needs_you_focused_snapshots() {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
 }
+
+/// The spec model with two long-named agents in Needs you.
+fn long_needs_you() -> UiModel {
+    let mut m = spec_model();
+    let first = m.needs_you[1].clone();
+    m.needs_you.push(duohive_core::event::NeedsYouItem {
+        agent: n("billing-invoice-worker"),
+        ..first.clone()
+    });
+    m.needs_you.push(duohive_core::event::NeedsYouItem {
+        agent: n("authentication-service-for-payments-team"),
+        ..first
+    });
+    m
+}
+
+/// The Needs you row whose name has `part`, inside the org pane.
+fn needs_you_row(lines: &[String], part: &str) -> String {
+    lines
+        .iter()
+        .find(|l| l.contains("◆ ") && l.contains(part))
+        .map(|l| l.chars().skip(1).take(48).collect())
+        .unwrap_or_default()
+}
+
+#[test]
+fn needs_you_names_are_never_cut_harder_than_compact() {
+    use crate::format::truncate_middle;
+    let m = long_needs_you();
+    let compact = needs_you_row(&render_lines(&m, &ctx(), 80, 40), "-worker");
+    assert!(compact.contains("billing-…-worker"), "{compact}");
+    for (w, h) in [(100, 30), (160, 48)] {
+        let lines = render_lines(&m, &ctx(), w, h);
+        let row = needs_you_row(&lines, "-worker");
+        assert!(row.contains("billing-in…ce-worker"), "{w}×{h}: {row}");
+        let row = needs_you_row(&lines, "authentic");
+        let cut = truncate_middle("authentication-service-for-payments-team", 20);
+        assert!(row.contains(&cut), "{w}×{h}: {row}");
+        assert!(row.contains("waiting"), "{w}×{h}: {row}");
+        assert!(row.contains("  \"Allow"), "{w}×{h}: {row}");
+    }
+}
+
+#[test]
+fn needs_you_long_names_snapshots() {
+    let m = long_needs_you();
+    for (name, w, h) in [
+        ("needs_you_long_names_100x30", 100, 30),
+        ("needs_you_long_names_160x48", 160, 48),
+    ] {
+        insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
+    }
+}

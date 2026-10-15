@@ -129,3 +129,41 @@ fn zoom_footer_need_you_segment_is_attention_coloured() {
     assert_eq!(narrow[(59, 0)].symbol(), "…");
     assert_eq!(narrow[(59, 0)].fg, p.attention);
 }
+
+#[test]
+fn zoom_footer_note_goes_before_the_needs_you_count() {
+    let mut m = zoomed();
+    m.footer_note = Some("pay-qa's session ended".to_owned());
+    let lines = lines_at(&m, 100, 30);
+    assert_eq!(
+        lines.last().unwrap().trim_end(),
+        " pay-qa's session ended · ◆ 2 need you (squad-3, billing-api)"
+    );
+}
+
+#[test]
+fn zoom_footer_cuts_a_long_note_before_the_needs_you_count() {
+    let mut m = zoomed();
+    m.footer_note = Some(
+        "billing-api didn't take the task: the worktree could not be created in time".to_owned(),
+    );
+    let lines = lines_at(&m, 80, 24);
+    let footer = lines.last().unwrap().trim_end().to_owned();
+    assert!(footer.starts_with(" billing-api didn't take"), "{footer}");
+    assert!(
+        footer.ends_with("… · ◆ 2 need you (squad-3, billing-api)"),
+        "{footer}"
+    );
+}
+
+#[test]
+fn zoom_footer_note_while_typing_keeps_typing_footer() {
+    let mut m = zoomed();
+    m.focus.agent_mode = crate::focus::AgentMode::Typing;
+    m.footer_note = Some("pay-qa's session ended".to_owned());
+    let lines = lines_at(&m, 100, 30);
+    assert_eq!(
+        lines.last().unwrap().trim_end(),
+        " TYPING · pay-qa's session ended · ctrl+q stop typing"
+    );
+}

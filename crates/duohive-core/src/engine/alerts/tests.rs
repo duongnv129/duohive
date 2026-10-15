@@ -54,6 +54,7 @@ fn status(state: AgentState, quiet: bool) -> Status {
         from_screen: false,
         since: Millis(0),
         error: None,
+        waiting_on: None,
     }
 }
 

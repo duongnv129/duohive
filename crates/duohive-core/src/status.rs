@@ -73,6 +73,17 @@ pub struct Status {
     pub since: Millis,
     /// Why the agent is errored.
     pub error: Option<String>,
+    /// What a waiting agent waits on, when its screen shows a prompt DuoHive knows
+    /// (P2-D23). Read from the screen, never saved: the next read restores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub waiting_on: Option<WaitingOn>,
+}
+
+/// A prompt a waiting agent's screen shows that DuoHive can say how to answer (P2-D23).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WaitingOn {
+    /// Claude Code's folder-trust dialog, whose default choice exits.
+    TrustFolder,
 }
 
 /// An event that may move an agent between states.

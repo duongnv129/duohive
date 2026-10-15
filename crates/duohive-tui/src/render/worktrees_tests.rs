@@ -100,3 +100,45 @@ fn check_age_follows_the_render_clock() {
     assert!(at(&ctx()).contains("checked 3m ago"));
     assert!(at(&later).contains("checked 10m ago"));
 }
+
+/// The spec rows and one whose check failed with a long reason.
+fn with_long_reason() -> UiModel {
+    let mut m = listed();
+    let reason = "git fetch origin failed: could not resolve host github.com, check your network";
+    m.worktrees.push(worktree_row(
+        "billing-api",
+        "webhook-retries",
+        S::CheckFailed(reason.to_owned()),
+    ));
+    m
+}
+
+#[test]
+fn a_long_check_failure_does_not_squeeze_branch() {
+    let lines = render_lines(&with_long_reason(), &ctx(), 160, 48);
+    // The list is 100 cells wide, centred: columns 30 to 129.
+    let row: String = lines
+        .iter()
+        .find(|l| l.contains("couldn't check"))
+        .unwrap()
+        .chars()
+        .skip(30)
+        .take(100)
+        .collect();
+    assert!(row.contains("duohive/billing-api/webhook-retries"), "{row}");
+    assert!(row.contains("couldn't check · git fetch origin"), "{row}");
+    // Cut with `…`, and a padding cell before the right border.
+    assert!(row.ends_with(" │"), "{row}");
+    assert!(row.trim_end_matches('│').trim_end().ends_with('…'), "{row}");
+}
+
+#[test]
+fn long_check_failure_snapshots() {
+    let m = with_long_reason();
+    for (name, w, h) in [
+        ("worktrees_long_reason_80x24", 80, 24),
+        ("worktrees_long_reason_160x48", 160, 48),
+    ] {
+        insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
+    }
+}

@@ -36,8 +36,8 @@ pub trait Runtime: Send {
     fn stop(&mut self, agent: &AgentName, quit: Vec<Key>, grace: Duration);
     /// Kills that window only, never a newer one for the same agent.
     fn kill(&mut self, agent: &AgentName, window: &WindowId);
-    /// Pastes `text`, then sends `submit`.
-    fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>);
+    /// Sends `before` (if any) and waits a key pause, pastes `text`, then sends `submit`.
+    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>);
     /// Asks for the agent's screen.
     fn capture(&mut self, agent: &AgentName);
     /// Asks for the list of live windows.
@@ -453,6 +453,7 @@ mod tests {
                 from_screen: false,
                 since: Millis(0),
                 error: None,
+                waiting_on: None,
             },
             last_reply: None,
             task_at_launch: false,

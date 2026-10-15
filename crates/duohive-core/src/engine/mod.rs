@@ -36,7 +36,7 @@ use crate::ports::{
     Clock, Git, GitEvent, Ids, Notifier, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store,
 };
 use crate::settings::Settings;
-use crate::status::{AgentState, Status, Trigger, transition};
+use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
 use crate::worktree::{TaskId, WorktreeRow};
@@ -166,6 +166,7 @@ impl AgentRt {
                 from_screen: false,
                 since: now,
                 error: None,
+                waiting_on: None,
             },
             token: None,
             window: None,
@@ -440,16 +441,18 @@ impl Engine {
         error: Option<String>,
         out: &mut Vec<Event>,
     ) -> bool {
-        self.change_with(agent, trigger, error, false, out)
+        self.change_with(agent, trigger, error, false, None, out)
     }
 
-    /// [`Engine::change`], marking the new state as read from the screen (`~`) when `from_screen`.
+    /// [`Engine::change`], marking the new state as read from the screen (`~`) when
+    /// `from_screen`, and keeping `waiting_on` when the new state is waiting (P2-D23).
     fn change_with(
         &mut self,
         agent: &AgentName,
         trigger: &Trigger,
         error: Option<String>,
         from_screen: bool,
+        waiting_on: Option<WaitingOn>,
         out: &mut Vec<Event>,
     ) -> bool {
         let now = self.ports.clock.now();
@@ -470,6 +473,7 @@ impl Engine {
             from_screen,
             since: now,
             error,
+            waiting_on: waiting_on.filter(|_| to == AgentState::Waiting),
         };
         if to != AgentState::Waiting {
             rt.waiting_prompt = None;

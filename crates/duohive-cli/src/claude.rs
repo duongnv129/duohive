@@ -5,6 +5,7 @@ use duohive_core::adapter::{
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
+use duohive_core::status::WaitingOn;
 use serde_json::Value;
 
 use crate::detect::probe_version;
@@ -118,17 +119,29 @@ impl CliAdapter for ClaudeAdapter {
 
     /// The reply comes from the hook, so only the state is read (S1.7).
     fn read_screen(&self, screen: &str) -> ScreenSignal {
+        let read = screen_state(screen);
         ScreenSignal {
-            state: screen_state(screen),
+            state: read.map(|(state, _)| state),
             last_reply: None,
+            waiting_on: read.and_then(|(_, on)| on),
         }
     }
 
-    /// `C-c` first clears the input box: a turn interrupted by the stop's `Escape`
-    /// before any output puts its prompt back there, and `/exit` typed after it would
-    /// be sent as a new prompt (checked live, TD §5.5).
+    /// Safe in both editor modes (checked live, TD §5.5). An interrupted turn puts
+    /// its prompt back in the input box, where `/exit` would be appended and sent as
+    /// a new prompt; under `"editorMode": "vim"` the stop's `Escape` only leaves
+    /// INSERT, and `/exit` typed in NORMAL edits the prompt. So `C-c` interrupts the
+    /// turn (vim) or clears the box, `i` enters INSERT (vim) or is a stray letter,
+    /// and a second `C-c` clears the box. Two `C-c` on a box already empty quit
+    /// Claude Code there and then, which is a quit too.
     fn quit_keys(&self) -> Vec<Key> {
-        vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
+        vec![
+            Key::CtrlC,
+            Key::Text("i".into()),
+            Key::CtrlC,
+            Key::Text("/exit".into()),
+            Key::Enter,
+        ]
     }
 
     fn submit_keys(&self) -> Vec<Key> {
@@ -253,9 +266,9 @@ const RULE_MIN: usize = 20;
 /// own it). With the input box (a `❯` line between two `─` rules, scanning up
 /// from the bottom), the first line above it, past blanks and right-aligned
 /// notices, is the working line (`^\S (\S.*)… \(\d+s`) or not. Without it, the
-/// text below the last rule is checked for the trust dialog or an approval
-/// prompt.
-fn screen_state(screen: &str) -> Option<ScreenState> {
+/// text below the last rule is checked for the trust dialog (which the agent
+/// then waits on, P2-D23) or an approval prompt.
+fn screen_state(screen: &str) -> Option<(ScreenState, Option<WaitingOn>)> {
     let lines: Vec<&str> = screen.lines().map(str::trim_end).collect();
     let end = lines.iter().rposition(|l| !l.is_empty())? + 1;
     let lines = &lines[..end];
@@ -267,10 +280,13 @@ fn screen_state(screen: &str) -> Option<ScreenState> {
         && let Some(open) = lines[..c].iter().rposition(|l| is_rule(l))
         && is_input_box(&lines[open + 1..c])
     {
-        return Some(above_input_box(&lines[..open]));
+        return Some((above_input_box(&lines[..open]), None));
     }
     let tail = &lines[closing.map_or(0, |c| c + 1)..];
-    (is_trust_dialog(tail) || is_approval(tail)).then_some(ScreenState::NeedsInput)
+    if is_trust_dialog(tail) {
+        return Some((ScreenState::NeedsInput, Some(WaitingOn::TrustFolder)));
+    }
+    is_approval(tail).then_some((ScreenState::NeedsInput, None))
 }
 
 fn is_rule(line: &str) -> bool {
@@ -719,7 +735,26 @@ mod tests {
                 let got = ClaudeAdapter.read_screen(&text);
                 assert_eq!(got.state, want, "{name}");
                 assert_eq!(got.last_reply, None, "{name}");
+                let trust = (name == "startup-trust").then_some(WaitingOn::TrustFolder);
+                assert_eq!(got.waiting_on, trust, "{name}");
             }
+        }
+    }
+
+    /// S3.7 (2.1.300): a new worktree path shows the trust dialog with `No, exit`
+    /// highlighted, so the agent waits on it and the pane says how to answer (P2-D23).
+    #[test]
+    fn trust_dialog_in_a_new_worktree_waits_on_trust() {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/claude/2.1.300/screens/startup-trust-worktree.txt"
+        );
+        let screen = std::fs::read_to_string(path).unwrap();
+        assert!(screen.contains("❯ No, exit\n   Yes, I trust this folder"));
+        for text in [screen.clone(), padded(&screen)] {
+            let got = ClaudeAdapter.read_screen(&text);
+            assert_eq!(got.state, Some(ScreenState::NeedsInput));
+            assert_eq!(got.waiting_on, Some(WaitingOn::TrustFolder));
         }
     }
 
@@ -784,11 +819,31 @@ mod tests {
     fn keys_versions_and_kind_match_spike_report() {
         let a = ClaudeAdapter;
         assert_eq!(a.kind(), CliKind::Claude);
-        assert_eq!(
-            a.quit_keys(),
-            vec![Key::CtrlC, Key::Text("/exit".into()), Key::Enter]
-        );
         assert_eq!(a.submit_keys(), vec![Key::Enter]);
         assert_eq!(a.tested_versions(), &["2.1"]);
+    }
+
+    /// Under vim mode `Escape` would leave INSERT, and the paste would be read
+    /// as NORMAL commands.
+    #[test]
+    fn no_keys_before_a_paste() {
+        assert!(ClaudeAdapter.before_paste_keys().is_empty());
+    }
+
+    /// Vim-safe (TD §5.5): after the stop's `Escape`, `C-c` interrupts a turn or
+    /// clears the box, `i` enters INSERT under vim (a stray `i` otherwise), and the
+    /// second `C-c` clears the box, so `/exit` lands in an empty INSERT box.
+    #[test]
+    fn quit_keys_clear_the_box_in_insert_mode_before_exit() {
+        assert_eq!(
+            ClaudeAdapter.quit_keys(),
+            vec![
+                Key::CtrlC,
+                Key::Text("i".into()),
+                Key::CtrlC,
+                Key::Text("/exit".into()),
+                Key::Enter,
+            ]
+        );
     }
 }

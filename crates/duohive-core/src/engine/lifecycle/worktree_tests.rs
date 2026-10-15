@@ -268,8 +268,10 @@ fn next_turn_ignores_run_choice() {
     h.force("squad-1", AgentState::Idle);
     h.give_in("squad-1", "Add a test", RunIn::NewWorktree);
     assert!(h.git_calls().is_empty());
-    assert!(matches!(h.calls().as_slice(), [RuntimeCall::Paste(a, t, _)]
-        if *a == n("squad-1") && t == "Add a test"));
+    assert!(
+        matches!(h.calls().as_slice(), [RuntimeCall::Paste(a, _, t, _)]
+        if *a == n("squad-1") && t == "Add a test")
+    );
 }
 
 #[test]
@@ -377,6 +379,35 @@ fn stale_created_keeps_the_guard() {
     assert_eq!(h.rt("pay-qa").status.error, None);
     assert_eq!(creates(&h).len(), 1);
     h.input(created("pay-qa", ID, ok()));
+    assert_eq!(starts(&h), 1);
+}
+
+#[test]
+fn creation_with_no_answer_times_out() {
+    use super::super::worktrees::CREATE_WAIT;
+    use std::time::Duration;
+
+    let mut h = in_repo();
+    h.give_in("pay-qa", TASK, RunIn::NewWorktree);
+    assert_eq!(h.engine.next_deadline(), Some(h.t0 + CREATE_WAIT));
+    h.tick_at(CREATE_WAIT - Duration::from_secs(1));
+    assert!(rejected(&h.start("pay-qa"), READY));
+    let events = h.tick_at(CREATE_WAIT);
+    let reason = "couldn't create worktree: git didn't answer · space";
+    assert!(
+        events.iter().any(|e| matches!(e,
+            Event::AgentStatusChanged { agent, status }
+                if *agent == n("pay-qa") && status.error.as_deref() == Some(reason))),
+        "{events:?}"
+    );
+    assert_eq!(h.state("pay-qa"), AgentState::Stopped);
+    assert_eq!(h.rt("pay-qa").last_task.as_deref(), Some(TASK));
+    // The row stays listed under w: git may still have made the worktree.
+    assert_eq!(h.store.state.lock().unwrap().worktrees.len(), 1);
+    // A late answer launches nothing; the guard is gone.
+    h.input(created("pay-qa", ID, ok()));
+    assert_eq!(starts(&h), 0);
+    h.start("pay-qa");
     assert_eq!(starts(&h), 1);
 }
 

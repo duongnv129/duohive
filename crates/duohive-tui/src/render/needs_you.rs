@@ -8,11 +8,14 @@ use ratatui::style::Style;
 
 use super::{At, HEAVY, LIGHT, RenderCtx, edge, fg, glyph_color, put, put_pieces};
 use crate::focus::Pane;
-use crate::format::{QUIET_GLYPH, format_age, pad_right, quoted, truncate_middle};
+use crate::format::{QUIET_GLYPH, format_age, pad_right, quoted, truncate_middle, width};
 use crate::model::UiModel;
 
-/// Name cells: 12 beside the word when wide, 16 when compact.
-const WIDE_NAME: usize = 12;
+/// Name cells beside the word when wide: the longest name, at least 12 (UI §4.1's mock)
+/// and at most 20, never cutting harder than compact's 16. Longer names are cut in the
+/// middle (UI §2.4) and the excerpt takes the rest.
+const WIDE_NAME_MIN: usize = 12;
+const WIDE_NAME_MAX: usize = 20;
 const COMPACT_NAME: usize = 16;
 /// The word is padded to 9 cells (D23) and the age right-aligned in 4.
 const WORD_CELLS: usize = 9;
@@ -75,6 +78,19 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
         };
         put_pieces(buf, at, [(more, p.fg_muted)]);
     }
+    let name_cells = if compact {
+        COMPACT_NAME
+    } else {
+        let longest = m
+            .needs_you
+            .iter()
+            .take(shown)
+            .map(|i| width(i.agent.as_str()));
+        longest
+            .max()
+            .unwrap_or(0)
+            .clamp(WIDE_NAME_MIN, WIDE_NAME_MAX)
+    };
     for (i, item) in m.needs_you.iter().take(shown).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
         if focused && i == m.focus.needs_you_cursor {
@@ -97,7 +113,6 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
         } else {
             glyph_color(p, glyph)
         };
-        let name_cells = if compact { COMPACT_NAME } else { WIDE_NAME };
         let name = pad_right(
             &truncate_middle(item.agent.as_str(), name_cells),
             name_cells,

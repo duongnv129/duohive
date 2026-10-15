@@ -11,7 +11,7 @@ use crate::event::Event;
 use crate::hook::HookMessage;
 use crate::launch::WindowId;
 use crate::ports::{Clock, RuntimeEvent};
-use crate::status::AgentState;
+use crate::status::{AgentState, WaitingOn};
 use crate::testkit::{RuntimeCall, StubAdapter, n};
 use crate::time::Millis;
 
@@ -365,6 +365,64 @@ fn screen_needs_input_while_starting_goes_waiting_even_with_hook() {
     running(&mut h, "pay-qa", "@1", AgentState::Working);
     assert_eq!(h.input(screen("pay-qa", "Run tests?\nASK")), vec![]);
     assert_eq!(h.state("pay-qa"), AgentState::Working);
+}
+
+/// The `waiting_on` of every status change.
+fn waits_on(events: &[Event]) -> Vec<Option<WaitingOn>> {
+    events
+        .iter()
+        .filter_map(|e| match e {
+            Event::AgentStatusChanged { status, .. } => Some(status.waiting_on),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn trust_dialog_read_sets_waiting_on_until_the_next_change() {
+    let mut h = with_coverage(FULL);
+    h.start("pay-qa");
+    let ev = h.input(screen("pay-qa", "Trust this folder?\nTRUST"));
+    assert_eq!(moves(&ev), mv("pay-qa", AgentState::Waiting, true));
+    assert_eq!(waits_on(&ev), vec![Some(WaitingOn::TrustFolder)]);
+    assert_eq!(
+        h.rt("pay-qa").status.waiting_on,
+        Some(WaitingOn::TrustFolder)
+    );
+
+    // The same screen again changes nothing.
+    assert_eq!(
+        h.input(screen("pay-qa", "Trust this folder?\nTRUST")),
+        vec![]
+    );
+
+    // Answered: the agent works, and the hint is gone.
+    let ev = h.input(screen("pay-qa", "BUSY"));
+    assert_eq!(moves(&ev), mv("pay-qa", AgentState::Working, true));
+    assert_eq!(waits_on(&ev), vec![None]);
+    assert_eq!(h.rt("pay-qa").status.waiting_on, None);
+}
+
+#[test]
+fn trust_dialog_read_on_a_waiting_agent_sets_and_clears_waiting_on() {
+    let mut h = with_coverage(FULL);
+    running(&mut h, "pay-qa", "@1", AgentState::Waiting);
+    // After a restart the agent is already waiting: the read adds the hint in place.
+    let ev = h.input(screen("pay-qa", "TRUST"));
+    assert_eq!(moves(&ev), mv("pay-qa", AgentState::Waiting, false));
+    assert_eq!(waits_on(&ev), vec![Some(WaitingOn::TrustFolder)]);
+
+    // Another prompt: still waiting, no hint.
+    let ev = h.input(screen("pay-qa", "Run tests?\nASK"));
+    assert_eq!(waits_on(&ev), vec![None]);
+    assert_eq!(h.state("pay-qa"), AgentState::Waiting);
+
+    // A hook's needs-input never carries the hint.
+    let mut h = with_coverage(FULL);
+    running(&mut h, "pay-qa", "@1", AgentState::Working);
+    h.input(hook("pay-qa", "tok-1", "needs-input"));
+    assert_eq!(h.state("pay-qa"), AgentState::Waiting);
+    assert_eq!(h.rt("pay-qa").status.waiting_on, None);
 }
 
 #[test]

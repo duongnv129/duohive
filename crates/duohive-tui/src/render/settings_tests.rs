@@ -64,3 +64,37 @@ fn settings_snapshots() {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
 }
+
+#[test]
+fn settings_footer_lists_its_keys() {
+    use crate::forms::SettingsRow;
+    let footer = |m: &UiModel, w, h| {
+        render_lines(m, &ctx(), w, h)
+            .last()
+            .unwrap()
+            .trim_end()
+            .to_owned()
+    };
+    let mut m = shown();
+    // Your name: a text box, nothing to step.
+    for (w, h) in [(80, 24), (160, 48)] {
+        assert_eq!(footer(&m, w, h), " ↑↓ move · space change · esc back");
+    }
+    // Quiet after and Theme step with ←→.
+    for row in [SettingsRow::Quiet, SettingsRow::Theme] {
+        m.dialog = Some(Dialog::Settings(SettingsState {
+            row,
+            ..SettingsState::default()
+        }));
+        assert_eq!(
+            footer(&m, 80, 24),
+            " ↑↓ move · space change · ←→ step · esc back"
+        );
+    }
+    // A box open for typing.
+    m.dialog = Some(Dialog::Settings(SettingsState {
+        editing: Some(crate::forms::LineEdit::new("Duong")),
+        ..SettingsState::default()
+    }));
+    assert_eq!(footer(&m, 80, 24), " enter save · esc cancel");
+}

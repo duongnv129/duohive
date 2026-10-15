@@ -38,6 +38,7 @@ pub fn status(state: AgentState, age: Duration) -> Status {
         from_screen: false,
         since: ago(age),
         error: None,
+        waiting_on: None,
     }
 }
 

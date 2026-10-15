@@ -30,7 +30,7 @@ enum Req {
     Start(AgentName, LaunchCommand),
     Stop(AgentName, Vec<Key>, Duration),
     Kill(WindowId),
-    Paste(AgentName, String, Vec<Key>),
+    Paste(AgentName, Vec<Key>, String, Vec<Key>),
     Capture(AgentName),
     Inventory,
 }
@@ -136,8 +136,8 @@ impl Runtime for TmuxRuntime {
         self.send(Req::Kill(window.clone()));
     }
 
-    fn paste(&mut self, agent: &AgentName, text: String, submit: Vec<Key>) {
-        self.send(Req::Paste(agent.clone(), text, submit));
+    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>) {
+        self.send(Req::Paste(agent.clone(), before, text, submit));
     }
 
     fn capture(&mut self, agent: &AgentName) {
@@ -233,7 +233,9 @@ async fn request_loop(shared: Arc<Shared>, mut requests: mpsc::UnboundedReceiver
             Req::Start(agent, cmd) => start(&shared, agent, cmd).await,
             Req::Stop(agent, quit, grace) => stop(&shared, &agent, &quit, grace).await,
             Req::Kill(window) => kill(&shared, &window).await,
-            Req::Paste(agent, text, submit) => paste(&shared, agent, &text, &submit).await,
+            Req::Paste(agent, before, text, submit) => {
+                paste(&shared, agent, &before, &text, &submit).await;
+            }
             Req::Capture(agent) => capture(&shared, agent).await,
             Req::Inventory => inventory(&shared).await,
         }
@@ -389,23 +391,30 @@ async fn kill(shared: &Shared, window: &WindowId) {
     }
 }
 
-async fn paste(shared: &Shared, agent: AgentName, text: &str, submit: &[Key]) {
-    if let Err(reason) = try_paste(shared, &agent, text, submit).await {
+async fn paste(shared: &Shared, agent: AgentName, before: &[Key], text: &str, submit: &[Key]) {
+    if let Err(reason) = try_paste(shared, &agent, before, text, submit).await {
         shared
             .emit(RuntimeEvent::PasteFailed { agent, reason })
             .await;
     }
 }
 
+/// `before` keys first, then a key pause so the paste's opening ESC is not read
+/// with them as one burst (see [`key_steps`]).
 async fn try_paste(
     shared: &Shared,
     agent: &AgentName,
+    before: &[Key],
     text: &str,
     submit: &[Key],
 ) -> Result<(), String> {
     let window = current_window(shared, agent)
         .await
         .ok_or_else(|| "no window".to_owned())?;
+    if !before.is_empty() {
+        send_keys(shared, &window, before).await?;
+        tokio::time::sleep(KEY_PAUSE).await;
+    }
     server::load_buffer(&shared.cfg, text).await?;
     let line = format!(
         "paste-buffer -d -p -b {} -t {}",

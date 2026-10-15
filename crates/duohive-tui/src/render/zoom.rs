@@ -38,19 +38,22 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, agent: &AgentName, p: &Pale
     }
 }
 
-/// The note when one is set, Typing's footer while typing, else the zoom keys and the
-/// Needs you count; cut with `…` to the screen's width.
+/// Typing's footer while typing, else the zoom keys (or the note, cut first) and the
+/// Needs you count (UI §4.2); cut with `…` to the screen's width.
 pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
     let w = usize::from(r.width);
-    if let Some(note) = &m.footer_note {
-        let text = truncate_end(&format!(" {note}"), w);
-        put(buf, r.x, r.y, &text, w, fg(p.fg_muted));
-        return;
-    }
     if m.typing() {
         return typing_footer(buf, r, m, p);
     }
-    let text = truncate_end(&format!("{KEYS}{}", need_you(m)), w);
+    let need = need_you(m);
+    let lead = match &m.footer_note {
+        Some(note) => {
+            let room = w.saturating_sub(width(&need) + 1).max(w / 2);
+            format!(" {}", truncate_end(note, room))
+        }
+        None => KEYS.to_owned(),
+    };
+    let text = truncate_end(&format!("{lead}{need}"), w);
     // The Needs you count starts at its `◆`, after the separator.
     let split = text
         .char_indices()

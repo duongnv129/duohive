@@ -168,6 +168,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §5.2 CLI adapters: MCP | 3 | 3.2 |
 | §5.2 CLI adapters: model lists | 4 | 4.5 |
 | §5.3 Worktrees | 2 | 2.11–2.14 |
+| §5.3 Worktrees: a creation git never answers (P2-D22) | 2 | 2.20 |
 | §5.4 Task to a role | 3 | 3.7 |
 | §5.5 Stop and exit | 1 | T11, T12, T19 |
 | §6.1–§6.5 Identity, tools, inbox, Duo, Duo chat (token generation: D1) | 3 | 3.1–3.8 |
