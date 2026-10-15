@@ -3,7 +3,13 @@
 //!
 //! Everything it touches is its own: temp config and data directories and a
 //! tmux server on the socket `duohive-bench-<pid>`, all removed at the end.
+//!
+//! With `--view` it also holds one live pane stream open on the first agent,
+//! from the moment every agent has started to the end of the idle window
+//! (P2-D4, Review Focus 3): its tmux client counts as DuoHive, and the other
+//! panes must stay silent on it.
 
+mod live_view;
 mod measure;
 mod observe;
 mod report;
@@ -20,13 +26,17 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
+use duohive_core::ports::{NoGit, NoNotifier};
 use duohive_core::status::AgentState;
+use duohive_core::worktree::RunIn;
 use duohive_store::{Paths, save_org};
 use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
 use duohive_tui::{QuitSignals, UiModel};
 use tokio::sync::mpsc;
 
-use crate::system::{StartError, SystemHandle, SystemOptions, start_system};
+use crate::system::{StartError, SystemHandle, SystemOptions, start_system, tmux_config};
+pub use live_view::LiveViewUse;
+use live_view::{LiveView, next_chunk};
 pub use measure::percentiles;
 use observe::Observer;
 pub use report::{BenchOutcome, BenchReport, Machine, Percentiles, ServerUse, Targets};
@@ -40,6 +50,8 @@ const STOP_WAIT: Duration = Duration::from_secs(30);
 /// Quiet time between "all at rest" and the idle measurement, so the last
 /// screen reads and frames are over.
 const SETTLE: Duration = Duration::from_secs(2);
+/// How long the live view's first chunk may take.
+const VIEW_WAIT: Duration = Duration::from_secs(15);
 
 /// What to run.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +62,8 @@ pub struct BenchArgs {
     pub idle_secs: u64,
     /// Tasks given to each agent.
     pub turns: u32,
+    /// Hold one live pane stream open from start to end (P2-D4).
+    pub view: bool,
     /// Print JSON instead of text.
     pub json: bool,
 }
@@ -60,6 +74,7 @@ impl Default for BenchArgs {
             agents: 10,
             idle_secs: 30,
             turns: 3,
+            view: false,
             json: false,
         }
     }
@@ -89,6 +104,9 @@ pub enum BenchError {
     /// The engine stopped on its own.
     #[error("the engine stopped unexpectedly")]
     EngineGone,
+    /// `--view`: the live pane view could not attach or open.
+    #[error("cannot open the live view: {0}")]
+    View(String),
 }
 
 /// Runs the bench and returns what it measured.
@@ -121,6 +139,9 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             tap: Some(tap_tx),
             first_frame: None,
             home: env.home(),
+            notifier: Some(Box::new(NoNotifier)),
+            git: Some(Box::new(NoGit)),
+            git_env: Vec::new(),
         },
     );
     let handle = tokio::select! {
@@ -130,13 +151,15 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             return Err(BenchError::Interrupted);
         }
     };
-    let observer = Observer::new(org, &env.paths.tmux_socket);
+    let observer = Observer::new(org);
     let mut run = Run {
         handle,
         tap,
         observer,
         names,
         procs: Procs::find(&env.paths.tmux_socket),
+        paths: env.paths.clone(),
+        live: None,
     };
     let result = tokio::select! {
         result = run.measure(&a) => result,
@@ -144,7 +167,14 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     };
     // Interrupted or not: stop the agents, the system and the bench's tmux server.
     let (rss_client, rss_server) = (run.procs.client_peak_mb, run.procs.server_peak_mb);
-    let control_client = run.procs.client.is_some();
+    let control_client = !run.procs.clients.is_empty();
+    // The view's client counts only when its own pid was found and sampled.
+    let live_view = run.live.as_ref().map(|live| LiveViewUse {
+        client_counted: live
+            .client_pid()
+            .is_some_and(|pid| run.procs.clients.contains(&pid)),
+        ..live.usage()
+    });
     run.finish().await;
     env.kill_tmux();
     let m = result?;
@@ -167,6 +197,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             rss_mb: rss_server,
         }),
         control_client,
+        live_view,
         hook_samples: m.hook_samples,
         pid: std::process::id(),
     })
@@ -180,19 +211,20 @@ struct Measured {
     server_cpu_pct: Option<f64>,
 }
 
-/// DuoHive's tmux control client and DuoHive's tmux server, sampled by pid.
+/// DuoHive's tmux clients (the control client, plus the live view's with
+/// `--view`) and DuoHive's tmux server, sampled by pid.
 struct Procs {
-    client: Option<u32>,
+    clients: Vec<u32>,
     server: Option<u32>,
     client_peak_mb: f64,
     server_peak_mb: f64,
 }
 
 impl Procs {
-    /// The control client is a child of this process on the bench socket; the
+    /// The clients are children of this process on the bench socket; the
     /// server's pid is whatever tmux says it is.
     fn find(socket: &str) -> Self {
-        let client = measure::child_pids_matching(socket).first().copied();
+        let clients = measure::child_pids_matching(socket);
         let server = Process::new("tmux")
             .args([
                 "-f",
@@ -208,16 +240,24 @@ impl Procs {
             .ok()
             .and_then(|o| String::from_utf8_lossy(&o.stdout).trim().parse().ok());
         Self {
-            client,
+            clients,
             server,
             client_peak_mb: 0.0,
             server_peak_mb: 0.0,
         }
     }
 
-    /// Reads both processes, keeping the largest resident size seen.
+    /// Reads the clients (summed) and the server, keeping the largest resident
+    /// sizes seen.
     fn sample(&mut self) -> (Option<measure::ProcStats>, Option<measure::ProcStats>) {
-        let client = self.client.and_then(measure::process_stats);
+        let client = self
+            .clients
+            .iter()
+            .filter_map(|pid| measure::process_stats(*pid))
+            .reduce(|a, b| measure::ProcStats {
+                cpu: a.cpu + b.cpu,
+                rss_mb: a.rss_mb + b.rss_mb,
+            });
         let server = self.server.and_then(measure::process_stats);
         if let Some(c) = client {
             self.client_peak_mb = self.client_peak_mb.max(c.rss_mb);
@@ -332,13 +372,25 @@ impl Drop for BenchEnv {
     }
 }
 
-/// The system, its hook tap and the screen stand-in, driven together.
+/// The bench gives work in the agent's own directory, never a worktree.
+fn give_work_command(agent: AgentName, task: String) -> Command {
+    Command::GiveWork {
+        agent,
+        task,
+        run: RunIn::Directory,
+    }
+}
+
+/// The system, its hook tap and the screen stand-in (plus, with `--view`, the
+/// live stream), driven together.
 struct Run {
     handle: SystemHandle,
     tap: mpsc::UnboundedReceiver<HookMessage>,
     observer: Observer,
     names: Vec<AgentName>,
     procs: Procs,
+    paths: Paths,
+    live: Option<LiveView>,
 }
 
 impl Run {
@@ -353,12 +405,15 @@ impl Run {
         }
         self.wait_all("every agent to start", START_WAIT, at_rest)
             .await?;
+        if a.view {
+            self.open_view().await?;
+        }
         self.procs.sample();
         for turn in 1..=a.turns {
             let task = format!("bench task {turn}");
             for agent in self.names.clone() {
                 let task = task.clone();
-                self.send(Command::GiveWork { agent, task }).await?;
+                self.send(give_work_command(agent, task)).await?;
             }
             let reply = format!("done: {task}");
             self.wait_all("every agent to finish a turn", TURN_WAIT, move |m, n| {
@@ -391,6 +446,29 @@ impl Run {
             hook_samples: samples.len(),
             server_cpu_pct: server.map(|u| measure::cpu_percent(u, wall)),
         })
+    }
+
+    /// Opens the one live stream, on the first agent, and waits for its first chunk.
+    async fn open_view(&mut self) -> Result<(), BenchError> {
+        let agent = self
+            .names
+            .first()
+            .cloned()
+            .ok_or_else(|| BenchError::View("no agent to view".to_owned()))?;
+        let socket = self.paths.tmux_socket.clone();
+        let mut live = LiveView::attach(tmux_config(&self.paths), &socket, agent).await?;
+        let first = tokio::time::timeout(VIEW_WAIT, live.next())
+            .await
+            .map_err(|_| BenchError::Timeout("the live view's first chunk"))?;
+        live.take(first);
+        if !live.is_open() {
+            return Err(BenchError::View("the stream closed at once".to_owned()));
+        }
+        if let Some(pid) = live.client_pid() {
+            self.procs.clients.push(pid);
+        }
+        self.live = Some(live);
+        Ok(())
     }
 
     async fn send(&self, command: Command) -> Result<(), BenchError> {
@@ -455,6 +533,11 @@ impl Run {
                     Some(msg) => self.observer.hook(&msg),
                     None => tap_open = false,
                 },
+                chunk = next_chunk(self.live.as_mut()) => {
+                    if let Some(live) = self.live.as_mut() {
+                        live.take(chunk);
+                    }
+                }
                 () = sleep_until_some(frame_at) => {}
                 () = tokio::time::sleep_until(deadline) => return Ok(done(self.observer.model())),
             }
@@ -478,6 +561,19 @@ fn at_rest(m: &UiModel, name: &AgentName) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn existing_call_sites_give_work_in_directory() {
+        let agent = AgentName::parse("a-1").unwrap();
+        assert_eq!(
+            give_work_command(agent.clone(), "bench task 1".to_owned()),
+            Command::GiveWork {
+                agent,
+                task: "bench task 1".to_owned(),
+                run: duohive_core::worktree::RunIn::Directory,
+            }
+        );
+    }
 
     #[test]
     fn percentiles_of_known_samples() {
@@ -559,6 +655,17 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
                 rss_mb: 5.0,
             }),
             control_client: true,
+            live_view: Some(LiveViewUse {
+                agent: "bench-1".to_owned(),
+                streams_opened: 1,
+                open_at_end: true,
+                closed: None,
+                chunks: 12,
+                bytes: 2048,
+                foreign_output_lines: 0,
+                client_pid: Some(7),
+                client_counted: true,
+            }),
             hook_samples: 4,
             pid: 1,
         };
@@ -568,6 +675,11 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
         assert!(text.contains("not measured"), "{text}");
         assert!(text.contains("10-agent targets"), "{text}");
         assert_eq!(outcome.to_json()["tmux_server"]["rss_mb"], 5.0);
+        assert!(
+            text.contains("1 stream on bench-1 · open to the end · 2.0 KB in 12 chunks"),
+            "{text}"
+        );
+        assert_eq!(outcome.to_json()["live_view"]["streams_opened"], 1);
     }
 
     #[test]
@@ -584,6 +696,7 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
             },
             tmux_server: None,
             control_client: true,
+            live_view: None,
             hook_samples: 0,
             pid: 1,
         };
@@ -595,7 +708,7 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
 
     #[test]
     fn a_newer_hook_replaces_an_older_one_for_the_same_agent() {
-        let mut obs = observe::Observer::new(Org::blank(CliKind::Claude), "sock");
+        let mut obs = observe::Observer::new(Org::blank(CliKind::Claude));
         let hook = |event: &str| HookMessage {
             token: String::new(),
             agent: "bench-1".to_owned(),

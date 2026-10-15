@@ -9,6 +9,7 @@ use duohive_core::org::Org;
 use duohive_core::ports::{OrgFileError, SessionRow, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_core::time::Millis;
+use duohive_core::worktree::{TaskId, WorktreeRow};
 use duohive_store::SqliteStore;
 
 use crate::hook_listener::{AgentClis, enrich_message};
@@ -64,6 +65,18 @@ impl Store for EnrichingStore {
 
     fn delete_session(&mut self, agent: &AgentName) -> Result<(), StoreError> {
         self.inner.delete_session(agent)
+    }
+
+    fn load_worktrees(&mut self) -> Result<Vec<WorktreeRow>, StoreError> {
+        self.inner.load_worktrees()
+    }
+
+    fn save_worktree(&mut self, row: &WorktreeRow) -> Result<(), StoreError> {
+        self.inner.save_worktree(row)
+    }
+
+    fn delete_worktree(&mut self, agent: &AgentName, task: &TaskId) -> Result<(), StoreError> {
+        self.inner.delete_worktree(agent, task)
     }
 
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {

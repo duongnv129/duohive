@@ -19,6 +19,7 @@ use crate::names::AgentName;
 use crate::org::Org;
 use crate::ports::{LiveWindow, OrgFileError, SessionRow};
 use crate::status::{AgentState, Trigger};
+use crate::worktree::TaskId;
 
 /// What start-up holds until the inventory arrives.
 #[derive(Debug)]
@@ -69,9 +70,26 @@ impl Engine {
             reconnecting: u32::try_from(running).unwrap_or(u32::MAX),
         });
         self.needs_you_shown = self.needs_you();
+        self.replaying = true;
         self.ports.runtime.inventory();
+        // The restored sessions say which worktrees are in use (P2-D6).
+        self.reset_removing(&mut out);
+        self.worktrees_stale = true;
+        self.publish_worktrees(&mut out);
         out.insert(0, Event::Snapshot(Box::new(self.snapshot())));
+        self.alerts_unavailable(&mut out);
         out
+    }
+
+    /// Whether a session row the inventory hasn't settled yet, for an agent
+    /// the org doesn't name, ran in `task`'s worktree: it may still be live,
+    /// so the worktree counts as in use (P2-D6).
+    pub(super) fn orphan_in(&self, agent: &AgentName, task: &TaskId) -> bool {
+        self.reconnect.as_ref().is_some_and(|r| {
+            r.orphans
+                .iter()
+                .any(|row| &row.agent == agent && row.worktree.as_ref() == Some(task))
+        })
     }
 
     /// Shutdown (Review Focus 3): hooks taken but not applied (the start-up
@@ -151,6 +169,9 @@ impl Engine {
         let items = self.needs_you();
         self.needs_you_shown.clone_from(&items);
         out.push(Event::NeedsYouChanged(items));
+        self.replaying = false;
+        // Orphan sessions no longer hold their worktrees in use.
+        self.worktrees_stale = true;
         out.push(Event::Reconnected);
     }
 
@@ -168,6 +189,7 @@ impl Engine {
         rt.task_at_launch = row.task_at_launch;
         rt.saw_end_hook = row.saw_end_hook;
         rt.last_task = row.last_task;
+        rt.worktree = row.worktree;
         rt.last_signal_at = now;
         rt.start_deadline = deadline;
         row.agent

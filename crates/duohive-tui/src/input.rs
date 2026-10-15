@@ -7,7 +7,10 @@ use duohive_core::command::{Command, OrgEdit};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, Role, RoleKey};
 use duohive_core::status::AgentState;
+use duohive_core::view::PaneInput;
 
+use crate::chat::{chat_action, chat_key};
+use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome};
 use crate::model::{Confirm, Dialog, UiModel};
@@ -15,6 +18,10 @@ use crate::tree::tree_rows;
 
 const GROUP_START_STOP: &str = "s starts or stops an agent";
 const DUO_NOT_DELETABLE: &str = "Duo can't be deleted";
+/// Added to the stop question when the agent is in a worktree (UI §4.8).
+const STOP_KEEPS_WORKTREE: &str = "The worktree and its branch are kept.";
+/// Ends the delete-role and delete-team questions (UI §4.8).
+const WORKTREES_KEPT: &str = "Worktrees are kept and stay listed under w.";
 /// The engine refuses every edit while `org.toml` doesn't parse (Review Focus 2).
 const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
 
@@ -67,8 +74,30 @@ pub enum Action {
     DeleteForward,
     /// `ctrl+s`: save the form.
     Save,
-    /// `alt+enter`: a newline in a prompt field.
+    /// `alt+enter`: a newline in a prompt field or the chat input.
     NewLine,
+    /// `enter` in a pane: act on the selection, or send the chat.
+    Enter,
+    /// `ctrl+↑`: a taller chat.
+    ChatGrow,
+    /// `ctrl+↓`: a shorter chat.
+    ChatShrink,
+    /// `PgUp` in the agent pane: scroll back.
+    PageUp,
+    /// `PgDn` in the agent pane: scroll forward, and past the bottom back to live.
+    PageDown,
+    /// A key typed in Typing mode, for the agent.
+    Type(KeyEvent),
+    /// `ctrl+q` in Typing mode.
+    StopTyping,
+    /// `z`: zoom the selected agent, or restore.
+    Zoom,
+    /// `space`: Give work to the selected agent.
+    GiveWork,
+    /// `w`: the worktree list.
+    Worktrees,
+    /// `,`: Settings.
+    Settings,
 }
 
 /// What the app loop does after an action.
@@ -80,6 +109,13 @@ pub enum UiEffect {
     Quit,
     /// Hand the terminal to `$EDITOR` on this file, then reload the org.
     OpenEditor(PathBuf),
+    /// Send input to the live stream the agent pane shows.
+    Pane(PaneInput),
+    /// Scroll the agent pane's scrollback (P2-D12).
+    Scroll {
+        /// `PgUp`; else `PgDn`.
+        up: bool,
+    },
 }
 
 /// The action for a key press, given what has focus; `None` for keys with no meaning here.
@@ -90,10 +126,27 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
     }
-    if matches!(m.dialog, Some(Dialog::Form(_))) {
+    if m.typing() {
+        return Some(agent::typing_key(k));
+    }
+    if matches!(m.dialog, Some(Dialog::Form(_) | Dialog::GiveWork(_))) {
+        return form_key(k);
+    }
+    if matches!(&m.dialog, Some(Dialog::Settings(s)) if s.editing.is_some()) {
         return form_key(k);
     }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+    if m.dialog.is_none() {
+        match (ctrl, k.code) {
+            (true, KeyCode::Up) => return Some(Action::ChatGrow),
+            (true, KeyCode::Down) => return Some(Action::ChatShrink),
+            _ => {}
+        }
+        // The chat input always takes typed text (UI §5).
+        if m.focus.pane == Pane::Chat {
+            return chat_key(k);
+        }
+    }
     if ctrl {
         return (k.code == KeyCode::Char('c')).then_some(Action::Quit);
     }
@@ -117,13 +170,28 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
+        Some(Dialog::Worktrees(_)) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Char('d') => Some(Action::Delete),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        },
+        Some(Dialog::Settings(_)) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Left => Some(Action::Left),
+            KeyCode::Right => Some(Action::Right),
+            KeyCode::Enter | KeyCode::Char(' ') => Some(Action::DialogEnter),
+            _ => None,
+        },
         Some(Dialog::Chooser(_)) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Form(_)) | None => tree_key(k.code),
+        Some(Dialog::Form(_) | Dialog::GiveWork(_)) | None => panes::pane_key(m.focus.pane, k.code),
     }
 }
 
@@ -137,6 +205,8 @@ fn tree_key(code: KeyCode) -> Option<Action> {
         KeyCode::Char('d') => Some(Action::Delete),
         KeyCode::Char('v') => Some(Action::ToggleReplies),
         KeyCode::Char('o') => Some(Action::OpenOrgFile),
+        KeyCode::Char('z') => Some(Action::Zoom),
+        KeyCode::Char(' ') => Some(Action::GiveWork),
         _ => None,
     }
 }
@@ -168,6 +238,8 @@ fn form_key(k: KeyEvent) -> Option<Action> {
 /// Applies an action to the model; pure. Any key clears the footer note.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
+    // A refusal arrives before any further input; later ones aren't about the last send.
+    m.give_sent = None;
     if a == Action::Quit {
         return vec![UiEffect::Quit];
     }
@@ -178,11 +250,82 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             chooser_action(m, c, a);
             return Vec::new();
         }
+        Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
+        Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
+        Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         None => {}
     }
+    if m.zoomed_agent().is_some()
+        && matches!(
+            a,
+            Action::Tab | Action::BackTab | Action::ChatGrow | Action::ChatShrink
+        )
+    {
+        // The zoomed pane is the only pane.
+        return Vec::new();
+    }
+    match a {
+        Action::Esc if m.zoomed_agent().is_some() => {
+            panes::restore_zoom(m);
+            return Vec::new();
+        }
+        Action::Worktrees => return worktrees::open(m),
+        Action::Settings => return settings::open(m),
+        Action::Zoom => {
+            panes::toggle_zoom(m);
+            return agent::view_if_finished(m);
+        }
+        Action::Tab | Action::BackTab => {
+            panes::move_focus(m, a == Action::Tab);
+            return agent::view_if_finished(m);
+        }
+        Action::ChatGrow | Action::ChatShrink => {
+            panes::resize_chat(m, a == Action::ChatGrow);
+            return Vec::new();
+        }
+        _ => {}
+    }
+    match m.focus.pane {
+        Pane::Org => org_action(m, a),
+        Pane::NeedsYou => {
+            match a {
+                Action::Up | Action::Down => panes::needs_you_move(m, a == Action::Down),
+                Action::Enter => {
+                    return panes::needs_you_enter(m)
+                        .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
+                        .into_iter()
+                        .collect();
+                }
+                _ => {}
+            }
+            Vec::new()
+        }
+        Pane::Agent => agent::agent_action(m, a),
+        Pane::Chat => chat_action(m, a),
+    }
+}
+
+/// An action in the org pane.
+fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match a {
         Action::Up => select_next(m, false),
         Action::Down => select_next(m, true),
+        Action::Left => {
+            panes::fold(m);
+            Vec::new()
+        }
+        Action::Right => {
+            panes::unfold(m);
+            Vec::new()
+        }
+        Action::Enter => {
+            panes::enter(m);
+            if m.focus.pane == Pane::Agent {
+                agent::view_if_finished(m)
+            } else {
+                Vec::new()
+            }
+        }
         Action::StartStop => start_stop(m),
         Action::Delete => delete(m),
         Action::New => new_here(m),
@@ -192,16 +335,27 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             vec![UiEffect::Send(Command::UpdateSettings(m.settings.clone()))]
         }
         Action::OpenOrgFile => vec![UiEffect::OpenEditor(m.org_toml.clone())],
+        Action::GiveWork => give_work::open(m),
         _ => Vec::new(),
     }
 }
 
-/// Pasted text goes to the open form's focused field; elsewhere it is dropped.
-pub fn paste(m: &mut UiModel, text: &str) {
-    if let Some(Dialog::Form(f)) = &mut m.dialog {
-        f.paste(text, &m.org);
-        f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+/// Pasted text goes to the agent while typing (as a bracketed paste), to the open form's
+/// focused field, or to the focused chat input; elsewhere it is dropped.
+pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
+    if m.typing() {
+        return vec![UiEffect::Pane(PaneInput::Paste(text.to_owned()))];
     }
+    match &mut m.dialog {
+        Some(Dialog::Form(f)) => {
+            f.paste(text, &m.org);
+            f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+        }
+        Some(Dialog::GiveWork(g)) => g.paste(text),
+        None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
+        _ => {}
+    }
+    Vec::new()
 }
 
 /// `y`, `n`, `enter`, `esc` and `tab` in a confirmation; one a form asked goes back to it.
@@ -223,6 +377,9 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
     if let Some(mut back) = c.back {
         back.saving = yes;
         m.dialog = Some(Dialog::Form(back));
+    }
+    if let Some(list) = c.back_list {
+        m.dialog = Some(Dialog::Worktrees(list));
     }
     if yes {
         vec![UiEffect::Send(c.on_yes)]
@@ -289,7 +446,10 @@ fn edit_here(m: &mut UiModel) -> Vec<UiEffect> {
     let form = match &m.selected {
         NodeKey::Duo => Form::edit_org(&m.org, m.view(&m.org.duo.name)),
         NodeKey::Agent(a) if m.org.is_duo(a) => Form::edit_org(&m.org, m.view(a)),
-        NodeKey::Agent(a) => Form::edit_agent(&m.org, a, m.view(a), dirs, home),
+        NodeKey::Agent(a) => {
+            let has_worktrees = m.worktrees.iter().any(|r| &r.agent == a);
+            Form::edit_agent(&m.org, a, m.view(a), has_worktrees, dirs, home)
+        }
         NodeKey::Role(k) => Form::edit_role(&m.org, k, dirs, home),
         NodeKey::Team(t) => Form::edit_team(&m.org, t, dirs, home),
     };
@@ -345,7 +505,12 @@ fn start_stop(m: &mut UiModel) -> Vec<UiEffect> {
             let age = age_of(status, m.now)
                 .map(|d| format!(" ({})", format_age(d)))
                 .unwrap_or_default();
-            let line = format!("Stop {agent}? It is {}{age}.", status_word(status));
+            let word = status_word(status);
+            let line = if m.view(&agent).worktree.is_some() {
+                format!("Stop {agent}? It is {word}{age} in a worktree. {STOP_KEEPS_WORKTREE}")
+            } else {
+                format!("Stop {agent}? It is {word}{age}.")
+            };
             m.dialog = Some(confirm(
                 "Stop agent?",
                 vec![line],
@@ -404,7 +569,11 @@ fn delete(m: &mut UiModel) -> Vec<UiEffect> {
     }
     let lines = match &key {
         NodeKey::Agent(_) => vec![first],
-        _ => removes(m, &first, &agents),
+        _ => {
+            let mut lines = removes(m, &first, &agents);
+            lines.push(WORKTREES_KEPT.to_owned());
+            lines
+        }
     };
     let on_yes = Command::EditOrg(OrgEdit::Delete(key));
     m.dialog = Some(confirm(title, lines, "Delete", on_yes));
@@ -456,8 +625,25 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
         focus_yes: false,
         on_yes,
         back: None,
+        back_list: None,
     }))
 }
 
+mod agent;
+mod give_work;
+mod panes;
+mod settings;
+mod worktrees;
+
+#[cfg(test)]
+mod agent_tests;
+#[cfg(test)]
+mod pane_tests;
+#[cfg(test)]
+mod settings_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod worktree_tests;
+#[cfg(test)]
+mod zoom_tests;

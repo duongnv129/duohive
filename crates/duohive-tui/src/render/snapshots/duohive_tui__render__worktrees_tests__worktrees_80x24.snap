@@ -1,0 +1,27 @@
+---
+source: crates/duohive-tui/src/render/worktrees_tests.rs
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│    ● working                                 │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
+┃▌    auth-service     ●   2m  ┃│                                              │
+┃     billing-api      ◆   4m  ┃│                                              │
+┃┌─ Worktrees · 4 · removed automatically once merged and clean ──────────────┐│
+┃│   Agent         Branch                   State                             ││
+┃│▌  auth-service  duohive/aut…/retry-loop  in use                            ││
+┃│   pay-qa        duohive/pay…retry-cases  merged · removing                 ││
+┃│   squad-2       duohive/squ…/flaky-date  not merged · 2 files changed      ││
+┃│   squad-1       duohive/squad-1/readme   merged · uncommitted changes, kept││
+┃│                                                                            ││
+┃│ checked 3m ago against origin/main                                         ││
+┣│ enter open in agent · d remove (asks unless merged and clean) · esc back   ││
+┃└────────────────────────────────────────────────────────────────────────────┘│
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘

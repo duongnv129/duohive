@@ -142,6 +142,20 @@ fn s_on_running_opens_stop_confirm_focused_on_cancel() {
 }
 
 #[test]
+fn stop_dialog_mentions_worktree() {
+    let mut m = spec_model();
+    m.agents.get_mut(&n("auth-service")).unwrap().worktree =
+        Some(duohive_core::worktree::TaskId("retry-loop".to_owned()));
+    assert_eq!(update(&mut m, Action::StartStop), []);
+    assert_eq!(
+        confirm(&m).lines,
+        [
+            "Stop auth-service? It is working (2m) in a worktree. The worktree and its branch are kept."
+        ]
+    );
+}
+
+#[test]
 fn s_on_groups_and_duo() {
     let mut m = spec_model();
     m.selected = NodeKey::Team(nn("Payments"));
@@ -225,7 +239,8 @@ fn d_on_role_lists_its_agents() {
         c.lines,
         [
             "Delete role QA in Payments? It removes 1 agent:",
-            "  pay-qa (stopped)"
+            "  pay-qa (stopped)",
+            "Worktrees are kept and stay listed under w.",
         ]
     );
     assert_eq!(c.yes_label, "Delete");
@@ -277,6 +292,7 @@ fn d_on_a_stopped_team_lists_every_agent() {
             "  auth-service (stopped)",
             "  billing-api (stopped)",
             "  pay-qa (stopped)",
+            "Worktrees are kept and stay listed under w.",
         ]
     );
 }
@@ -345,6 +361,7 @@ fn rejection_shows_in_footer_until_next_key() {
     assert!(m.apply(Event::GiveWorkRefused {
         agent: n("auth-service"),
         state: AgentState::Working,
+        pending: false,
     }));
     assert_eq!(m.footer_note.as_deref(), Some("auth-service is working"));
     update(&mut m, Action::Esc);

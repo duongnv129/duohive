@@ -13,7 +13,10 @@ use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
 
 use crate::model::UiModel;
-use crate::render::{RenderCtx, render};
+use duohive_core::view::PaneChunk;
+
+use crate::render::{LiveScreen, RenderCtx, live_size, render, render_live};
+use crate::term_view::TermView;
 use crate::theme::Palette;
 
 /// "Now" in every test.
@@ -52,6 +55,8 @@ pub fn view(status: Status) -> AgentView {
         last_reply: None,
         notice: None,
         problem: None,
+        worktree: None,
+        delivery_pending: false,
     }
 }
 
@@ -129,7 +134,7 @@ pub fn spec_model() -> UiModel {
     m
 }
 
-/// Static glyphs (mock-ups draw `●`), dark palette, the default socket.
+/// Static glyphs (mock-ups draw `●`), dark palette.
 pub fn ctx() -> RenderCtx {
     RenderCtx {
         now: NOW,
@@ -139,7 +144,7 @@ pub fn ctx() -> RenderCtx {
             reduce_motion: true,
             ..Settings::default()
         },
-        tmux_socket: "duohive".to_owned(),
+        utc_offset_secs: 0,
     }
 }
 
@@ -163,4 +168,61 @@ pub fn render_lines(m: &UiModel, ctx: &RenderCtx, w: u16, h: u16) -> Vec<String>
 /// The first `n` characters of a line.
 pub fn cols(line: &str, n: usize) -> String {
     line.chars().take(n).collect()
+}
+
+/// A terminal the size of `m`'s live pane on a `w`×`h` screen, showing `screen` with the
+/// cursor at `cursor`.
+pub fn term_for(m: &UiModel, w: u16, h: u16, screen: &[u8], cursor: (u16, u16)) -> TermView {
+    let mut m = m.clone();
+    m.screen = ratatui::layout::Rect::new(0, 0, w, h);
+    let mut term = TermView::new(live_size(&m).unwrap());
+    term.apply(&PaneChunk::Reset {
+        bytes: screen.to_vec(),
+        cursor,
+    });
+    term
+}
+
+pub fn render_live_lines(
+    m: &UiModel,
+    ctx: &RenderCtx,
+    live: Option<LiveScreen<'_>>,
+    w: u16,
+    h: u16,
+) -> Vec<String> {
+    let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
+    t.draw(|f| render_live(f, m, ctx, live)).unwrap();
+    lines_of(t.backend().buffer())
+}
+
+/// A worktree row of `agent` for `task`, checked 3 minutes ago against `origin/main`.
+pub fn worktree_row(
+    agent: &str,
+    task: &str,
+    state: duohive_core::worktree::WorktreeState,
+) -> duohive_core::worktree::WorktreeRow {
+    use duohive_core::worktree::{BaseRef, TaskId, WorktreeRow};
+    WorktreeRow {
+        agent: n(agent),
+        task: TaskId(task.to_owned()),
+        repo: "/repo".into(),
+        path: format!("/wt/{agent}/{task}").into(),
+        branch: format!("duohive/{agent}/{task}"),
+        created_at: ago(mins(60)),
+        created_from: "abc123".to_owned(),
+        state,
+        checked_at: Some(ago(mins(3))),
+        base: Some(BaseRef("origin/main".to_owned())),
+    }
+}
+
+/// UI §4.9's four rows.
+pub fn spec_worktrees() -> Vec<duohive_core::worktree::WorktreeRow> {
+    use duohive_core::worktree::WorktreeState as S;
+    vec![
+        worktree_row("auth-service", "retry-loop", S::InUse),
+        worktree_row("pay-qa", "retry-cases", S::Removing),
+        worktree_row("squad-2", "flaky-date", S::NotMerged { files_changed: 2 }),
+        worktree_row("squad-1", "readme", S::MergedDirty),
+    ]
 }

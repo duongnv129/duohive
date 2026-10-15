@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/render/settings_tests.rs
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                                                                               │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
+┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                                                                            │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                         ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐                                         │
+┃                                         │                                                                          │                                         │
+┃                                         │  You                                                                     │                                         │
+┃                                         │    Your name          ▌[ Duong ]                                         │                                         │
+┃                                         │  Attention                                                               │                                         │
+┃                                         │    Quiet after         [ 5 ] minutes                                     │                                         │
+┃                                         │    Desktop alerts      [x] needs you   [ ] finished                      │                                         │
+┃                                         │  Look                                                                    │                                         │
+┃                                         │    Theme               [ auto ▾ ]                                        │                                         │
+┃                                         │    Last reply under agents [x]  Reduce motion [ ]                        │                                         │
+┃                                         │                                                                          │                                         │
+┃                                         │    org defaults and Duo: e on Duo (Edit org)                             │                                         │
+┃                                         │                                                                          │                                         │
+┃                                         │  changes save immediately · esc back                                     │                                         │
+┃                                         └──────────────────────────────────────────────────────────────────────────┘                                         │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom

@@ -17,6 +17,7 @@ use duohive_core::validate::{DirProbe, DirStatus};
 use ratatui::buffer::Buffer;
 
 mod agent;
+mod give_work;
 mod groups;
 mod keys;
 
@@ -101,7 +102,7 @@ fn text(f: &Form, id: FieldId) -> String {
 }
 
 fn edit_billing(org: &Org, v: &AgentView) -> Form {
-    Form::edit_agent(org, &n("billing-api"), v, &dirs(), Path::new(HOME))
+    Form::edit_agent(org, &n("billing-api"), v, false, &dirs(), Path::new(HOME))
 }
 
 /// A model over [`org`] with the fake directories, billing-api running and selected.

@@ -66,7 +66,8 @@ pub fn status_word(s: &Status) -> &'static str {
     if s.quiet { "quiet" } else { s.state.word() }
 }
 
-fn marker(s: &Status) -> char {
+/// `~` when the state was read from the screen, else a space (UI §2.1).
+pub fn marker(s: &Status) -> char {
     if s.from_screen { '~' } else { ' ' }
 }
 

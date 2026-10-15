@@ -215,6 +215,8 @@ async fn notice_loop(shared: Arc<Shared>, mut notices: mpsc::UnboundedReceiver<N
             Notice::Reattached => {
                 let _ = poll(&shared).await;
             }
+            // The main connection is silenced and sends no tagged lines.
+            Notice::WindowAdd(_) | Notice::Output { .. } | Notice::Reply { .. } => {}
             Notice::Lost(reason) => {
                 let _guard = shared.table.lock().await;
                 shared.emit(RuntimeEvent::ConnectionLost { reason }).await;

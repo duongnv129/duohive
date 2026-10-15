@@ -49,6 +49,9 @@ pub struct LaunchSpec {
     pub hook_exe: PathBuf,
     /// The user's home directory.
     pub home: PathBuf,
+    /// Where to run instead of the agent's directory: a new worktree (TD §5.3).
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
 }
 
 /// A file to write before launching; always under the run dir, mode 0600.

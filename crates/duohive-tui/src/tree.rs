@@ -1,6 +1,7 @@
 //! The org tree as rows (UI §2.2, §4.1): connectors, labels, state cells and roll-ups.
 
 use duohive_core::event::AgentView;
+use duohive_core::names::NodeName;
 use duohive_core::org::{NodeKey, Role, RoleKey};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
@@ -13,11 +14,16 @@ const ELBOW: &str = "└─ ";
 const PIPE: &str = "│  ";
 const GAP: &str = "   ";
 const OPEN: &str = "▾ ";
+const FOLDED: &str = "▸ ";
 const EMPTY_ROLE: &str = "no agents yet · n to add one";
 /// Hint after an error on Duo's row (D17): Duo's CLI is set in Edit org.
 const DUO_ERROR_HINT: &str = " · e Edit org";
-/// Hint after an error on an agent's row (D16).
-const AGENT_ERROR_HINT: &str = " · s stop";
+/// Hint after an error on an agent's row (D16, UI §4.12): `space` gives work, which
+/// starts a fresh session.
+const AGENT_ERROR_HINT: &str = " · space retry · s stop";
+/// A reason the engine already ends with `· space` (a worktree that couldn't be created).
+const SPACE_SUFFIX: &str = " · space";
+const STOP_HINT: &str = " · s stop";
 const FIX_HINT: &str = " · e to fix";
 const HINT_SEP: &str = " · ";
 
@@ -38,7 +44,7 @@ pub enum TreeRowKind {
     Problem,
     /// The line under a role with no agents.
     EmptyRole,
-    /// An org with no teams or roles (the message itself is in the side pane).
+    /// An org with no teams or roles (the message itself is in the agent pane).
     EmptyOrg,
 }
 
@@ -112,14 +118,16 @@ pub fn tree_rows(m: &UiModel, compact: bool, show_replies: bool, now: Millis) ->
         let last = i + 1 == children;
         let (prefix, cont) = c.branch("", last, "");
         let agents: Vec<&AgentView> = team.roles.iter().flat_map(|r| c.views(r)).collect();
-        let label = if compact { OPEN } else { "▣ " };
-        c.rows.push(TreeRow::node(
-            TreeRowKind::Team,
-            NodeKey::Team(team.name.clone()),
-            prefix,
-            format!("{label}{}", team.name),
-            roll_up(&agents),
-        ));
+        let key = NodeKey::Team(team.name.clone());
+        let folded = m.folded.contains(&key);
+        let count = team.roles.iter().map(|r| r.agents.len()).sum();
+        let label = c.group_label("▣ ", &team.name, folded.then_some(count));
+        let right = group_right(&agents, folded);
+        c.rows
+            .push(TreeRow::node(TreeRowKind::Team, key, prefix, label, right));
+        if folded {
+            continue;
+        }
         for (j, role) in team.roles.iter().enumerate() {
             let key = RoleKey {
                 team: Some(team.name.clone()),
@@ -185,17 +193,31 @@ impl Ctx<'_> {
         self.detail(view, true, "    ".to_owned());
     }
 
+    /// A team or role label: `▾`/`▸` when compact, else its glyph; a folded group adds
+    /// how many agents it hides.
+    fn group_label(&self, glyph: &str, name: &NodeName, folded: Option<usize>) -> String {
+        let lead = match (self.compact, folded) {
+            (false, _) => glyph,
+            (true, None) => OPEN,
+            (true, Some(_)) => FOLDED,
+        };
+        match folded {
+            Some(n) => format!("{lead}{name} ({n})"),
+            None => format!("{lead}{name}"),
+        }
+    }
+
     fn role(&mut self, role: &Role, key: RoleKey, parent: &str, last: bool, indent: &str) {
         let (prefix, cont) = self.branch(parent, last, indent);
-        let label = if self.compact { OPEN } else { "◇ " };
-        let right = roll_up(&self.views(role));
-        self.rows.push(TreeRow::node(
-            TreeRowKind::Role,
-            NodeKey::Role(key),
-            prefix,
-            format!("{label}{}", role.name),
-            right,
-        ));
+        let key = NodeKey::Role(key);
+        let folded = self.m.folded.contains(&key);
+        let label = self.group_label("◇ ", &role.name, folded.then_some(role.agents.len()));
+        let right = group_right(&self.views(role), folded);
+        self.rows
+            .push(TreeRow::node(TreeRowKind::Role, key, prefix, label, right));
+        if folded {
+            return;
+        }
         if role.agents.is_empty() {
             let prefix = self.detail_prefix(parent, last, "    ");
             let row = TreeRow::detail(TreeRowKind::EmptyRole, prefix, EMPTY_ROLE.to_owned());
@@ -227,12 +249,14 @@ impl Ctx<'_> {
             .as_deref()
             .filter(|_| s.state == AgentState::Errored);
         let line = if let Some(e) = error {
-            let hint = if is_duo {
-                DUO_ERROR_HINT
+            let text = if is_duo {
+                with_hint(e, DUO_ERROR_HINT)
+            } else if e.ends_with(SPACE_SUFFIX) {
+                format!("{e}{STOP_HINT}")
             } else {
-                AGENT_ERROR_HINT
+                with_hint(e, AGENT_ERROR_HINT)
             };
-            Some((TreeRowKind::Problem, with_hint(e, hint)))
+            Some((TreeRowKind::Problem, text))
         } else if let Some(p) = &view.problem {
             let p = if p.starts_with('✕') {
                 p.clone()
@@ -260,6 +284,20 @@ fn with_hint(text: &str, hint: &str) -> String {
         text.to_owned()
     } else {
         format!("{text}{hint}")
+    }
+}
+
+/// A group's right column: its roll-up; a folded group with none shows the state its
+/// agents share, so the hidden rows still read (`▸ QA (1)  ○`).
+fn group_right(agents: &[&AgentView], folded: bool) -> String {
+    let rolled = roll_up(agents);
+    if !folded || !rolled.is_empty() {
+        return rolled;
+    }
+    let mut states = agents.iter().map(|v| v.status.state);
+    match states.next() {
+        Some(first) if states.all(|s| s == first) => format!(" {}", first.glyph()),
+        _ => rolled,
     }
 }
 

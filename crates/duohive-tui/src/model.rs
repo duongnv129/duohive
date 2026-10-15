@@ -1,6 +1,6 @@
 //! The UI's copy of engine state, updated from events.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -14,8 +14,13 @@ use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 use duohive_core::validate::{DirProbe, DirStatus};
+use duohive_core::worktree::{RunIn, WorktreeRow};
 
-use crate::forms::{Chooser, Form};
+use ratatui::layout::Rect;
+
+use crate::chat::{self, ChatLines};
+use crate::focus::Focus;
+use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +31,19 @@ pub enum Dialog {
     Form(Box<Form>),
     /// What `n` can create here (UI §4.4.2).
     Chooser(Chooser),
+    /// Hand an agent a task (UI §4.5).
+    GiveWork(Box<GiveWork>),
+    /// DuoHive's worktrees (UI §4.9).
+    Worktrees(WorktreeList),
+    /// Personal settings (UI §4.10).
+    Settings(SettingsState),
+}
+
+/// The worktree list's own state; its rows are `UiModel::worktrees`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorktreeList {
+    /// The selected row.
+    pub cursor: usize,
 }
 
 /// A confirmation dialog (UI §4.8).
@@ -43,6 +61,8 @@ pub struct Confirm {
     pub on_yes: Command,
     /// The form that asked: cancel goes back to it, yes leaves it waiting for the engine.
     pub back: Option<Box<Form>>,
+    /// The worktree list that asked, with its cursor: cancel and yes go back to it.
+    pub back_list: Option<WorktreeList>,
 }
 
 /// The directory probe forms use; equal only to itself, so the model stays comparable.
@@ -110,6 +130,35 @@ pub struct UiModel {
     pub dirs: SharedDirs,
     /// The home directory `~` expands to.
     pub home: PathBuf,
+    /// Which pane has focus.
+    pub focus: Focus,
+    /// Folded teams and roles.
+    pub folded: BTreeSet<NodeKey>,
+    /// Rows `ctrl+↑` added to the chat, within P2-D3's bounds.
+    pub chat_rows_extra: i16,
+    /// The chat history (P2-D8).
+    pub chat: ChatLines,
+    /// The chat input.
+    pub chat_input: LineEdit,
+    /// The last text the chat sent, put back if Duo doesn't take it.
+    pub chat_sent: Option<String>,
+    /// The terminal's size, which bounds the chat's resizing.
+    pub screen: Rect,
+    /// The agent pane shows a frozen scrollback snapshot (P2-D12), not the live terminal.
+    pub scrolled: bool,
+    /// The agent whose live terminal the pane shows (its stream has delivered a `Reset`);
+    /// kept by the app loop. Typing needs it.
+    pub live_agent: Option<AgentName>,
+    /// `z`: the selected agent's pane fills the screen (UI §4.2).
+    pub zoomed: bool,
+    /// The pane that had focus when zoom started; restoring goes back to it.
+    pub zoom_from: crate::focus::Pane,
+    /// The last Give work the dialog sent, put back if the engine refuses it.
+    pub give_sent: Option<(AgentName, String, RunIn)>,
+    /// A task that couldn't be put back yet; the next `space` on its agent opens it.
+    pub give_later: Option<(AgentName, String, Option<RunIn>)>,
+    /// The worktrees the engine lists, as it last published them.
+    pub worktrees: Vec<WorktreeRow>,
 }
 
 impl UiModel {
@@ -130,6 +179,20 @@ impl UiModel {
             org_toml: PathBuf::new(),
             dirs: SharedDirs(Arc::new(NoProbe)),
             home: PathBuf::new(),
+            focus: Focus::default(),
+            folded: BTreeSet::new(),
+            chat_rows_extra: 0,
+            chat: ChatLines::default(),
+            chat_input: LineEdit::default(),
+            chat_sent: None,
+            screen: Rect::default(),
+            scrolled: false,
+            live_agent: None,
+            zoomed: false,
+            zoom_from: crate::focus::Pane::Org,
+            give_sent: None,
+            give_later: None,
+            worktrees: Vec::new(),
         }
     }
 
@@ -145,7 +208,13 @@ impl UiModel {
                 }
             }
             Event::AgentStatusChanged { agent, status } => {
-                return self.update_view(&agent, |v| v.status = status);
+                let before = self.view(&agent).status.state;
+                let changed = self.update_view(&agent, |v| v.status = status);
+                if changed && self.org.is_duo(&agent) {
+                    chat::duo_status_changed(self, before);
+                }
+                self.sync_give_work(&agent);
+                return changed;
             }
             Event::LastReplyChanged { agent, reply } => {
                 return self.update_view(&agent, |v| v.last_reply = reply);
@@ -153,18 +222,173 @@ impl UiModel {
             Event::AgentNoticeChanged { agent, notice } => {
                 return self.update_view(&agent, |v| v.notice = notice);
             }
-            Event::NeedsYouChanged(items) => self.needs_you = items,
+            Event::NeedsYouChanged(items) => {
+                self.set_needs_you(items);
+            }
             Event::OrgFileError(e) => self.org_error = e,
             Event::CommandRejected { reason } => match &mut self.dialog {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
-                _ => self.footer_note = Some(reason),
+                _ => match self.give_sent.clone() {
+                    Some((agent, task, run)) => {
+                        self.reopen_give_work(&agent, &task, Some(run), reason, "");
+                    }
+                    None => self.footer_note = Some(reason),
+                },
             },
-            Event::GiveWorkRefused { agent, state } => {
-                self.footer_note = Some(format!("{agent} is {}", state.word()));
+            // Phase 2 gives Duo work only from the chat (P2-D8, P2-D10).
+            Event::GiveWorkRefused {
+                agent,
+                state,
+                pending,
+            } if self.org.is_duo(&agent) => chat::refused(self, state, pending),
+            Event::GiveWorkRefused {
+                agent,
+                state,
+                pending,
+            } => {
+                let reason = if pending {
+                    chat::still_taking(&agent)
+                } else {
+                    format!("{agent} is {}", state.word())
+                };
+                self.refused_give_work(&agent, reason);
+            }
+            Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
+                chat::not_taken(self);
+            }
+            Event::GiveWorkNotTaken { agent, task, .. } => {
+                let reason = format!("{agent} didn't take the task");
+                self.give_sent = None;
+                self.reopen_give_work(&agent, &task, None, reason, NOT_TAKEN_RETRY);
             }
             Event::Reconnected => self.reconnecting = 0,
+            Event::AgentRunChanged {
+                agent,
+                worktree,
+                delivery_pending,
+            } => {
+                let changed = self.update_view(&agent, |v| {
+                    v.worktree = worktree;
+                    v.delivery_pending = delivery_pending;
+                });
+                self.sync_give_work(&agent);
+                return changed;
+            }
+            Event::AlertClicked { agent } => {
+                self.reveal_agent(&agent);
+            }
+            // The engine publishes this once per session (UI §4.1.4).
+            Event::AlertsUnavailable => {
+                self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
+            }
+            Event::Worktrees(rows) => self.set_worktrees(rows),
+            // The desktop notice reaches the screen in a later task.
+            Event::Alert(_) => {}
         }
         true
+    }
+
+    /// The open Give work dialog follows its agent's state.
+    fn sync_give_work(&mut self, agent: &AgentName) {
+        let view = self.view(agent).clone();
+        if let Some(Dialog::GiveWork(g)) = &mut self.dialog
+            && &g.agent == agent
+        {
+            g.sync(&view);
+        }
+    }
+
+    /// The engine refused the last Give work: its text comes back in the dialog.
+    fn refused_give_work(&mut self, agent: &AgentName, reason: String) {
+        match self.give_sent.clone() {
+            Some((a, task, run)) if &a == agent => {
+                self.reopen_give_work(agent, &task, Some(run), reason, "");
+            }
+            _ => self.footer_note = Some(reason),
+        }
+    }
+
+    /// Give work opens again with `task` in the box and `reason` under it (P2-D11, P2-D20).
+    /// Typing mode, a chat draft and another dialog keep the keyboard: the footer says
+    /// why and the task waits for the next `space` on the agent.
+    fn reopen_give_work(
+        &mut self,
+        agent: &AgentName,
+        task: &str,
+        run: Option<RunIn>,
+        reason: String,
+        dialog_suffix: &str,
+    ) {
+        if self.org.find_agent(agent).is_none() {
+            return;
+        }
+        self.give_sent = None;
+        let busy = self.dialog.is_some()
+            || self.typing()
+            || (self.focus.pane == crate::focus::Pane::Chat && !self.chat_input.text().is_empty());
+        if busy {
+            self.give_later = Some((agent.clone(), task.to_owned(), run));
+            self.footer_note = Some(format!("{reason} · space to try again"));
+            return;
+        }
+        self.give_later = None;
+        let mut g = GiveWork::new(
+            &self.org,
+            agent,
+            self.view(agent),
+            task,
+            self.dirs.probe(),
+            &self.home,
+        );
+        g.set_run(run);
+        g.note = Some(format!("{reason}{dialog_suffix}"));
+        self.dialog = Some(Dialog::GiveWork(Box::new(g)));
+    }
+
+    /// Selects `agent`, unfolding its team and role, and focuses the agent pane in
+    /// Selected mode (UI §4.1.3, §4.1.4). `false` when the org doesn't name it.
+    pub fn reveal_agent(&mut self, agent: &AgentName) -> bool {
+        if self.org.is_duo(agent) {
+            self.selected = NodeKey::Duo;
+        } else {
+            let Some(loc) = self.org.find_agent(agent) else {
+                return false;
+            };
+            let team = loc.team.map(|t| t.name.clone());
+            let role = RoleKey {
+                team: team.clone(),
+                role: loc.role.name.clone(),
+            };
+            if let Some(t) = team {
+                self.folded.remove(&NodeKey::Team(t));
+            }
+            self.folded.remove(&NodeKey::Role(role));
+            self.selected = NodeKey::Agent(agent.clone());
+        }
+        self.focus.pane = crate::focus::Pane::Agent;
+        self.focus.agent_mode = crate::focus::AgentMode::Selected;
+        true
+    }
+
+    /// Typing mode has the keys: the agent pane is focused and Typing, under no dialog.
+    pub fn typing(&self) -> bool {
+        self.dialog.is_none()
+            && self.focus.pane == crate::focus::Pane::Agent
+            && self.focus.agent_mode == crate::focus::AgentMode::Typing
+    }
+
+    /// The agent whose pane fills the screen: the selected agent while `z` has zoomed.
+    pub fn zoomed_agent(&self) -> Option<&AgentName> {
+        self.zoomed.then(|| self.selected_agent()).flatten()
+    }
+
+    /// The agent a selection shows: Duo's name for Duo, `None` for teams and roles.
+    pub fn selected_agent(&self) -> Option<&AgentName> {
+        match &self.selected {
+            NodeKey::Duo => Some(&self.org.duo.name),
+            NodeKey::Agent(a) => Some(a),
+            NodeKey::Team(_) | NodeKey::Role(_) => None,
+        }
     }
 
     /// Whether `key` names a node of the current org.
@@ -186,13 +410,37 @@ impl UiModel {
         }
     }
 
+    /// Replaces the Needs you list. The cursor stays on the same agent; when that agent
+    /// has left, it keeps its row number, clamped to the new last row (UI §4.1.3).
+    fn set_needs_you(&mut self, items: Vec<NeedsYouItem>) {
+        let at = self.focus.needs_you_cursor;
+        let under_cursor = self.needs_you.get(at).map(|i| i.agent.clone());
+        let same = under_cursor.and_then(|a| items.iter().position(|i| i.agent == a));
+        let last = items.len().saturating_sub(1);
+        self.focus.needs_you_cursor = same.unwrap_or(at).min(last);
+        self.needs_you = items;
+    }
+
+    /// Replaces the worktree rows. An open list's cursor stays on the same row, or keeps its
+    /// row number when that row has gone, clamped to the last.
+    fn set_worktrees(&mut self, rows: Vec<WorktreeRow>) {
+        let key = |r: &WorktreeRow| (r.agent.clone(), r.task.clone());
+        if let Some(Dialog::Worktrees(l)) = &mut self.dialog {
+            let under = self.worktrees.get(l.cursor).map(key);
+            let same = under.and_then(|k| rows.iter().position(|r| key(r) == k));
+            l.cursor = same.unwrap_or(l.cursor).min(rows.len().saturating_sub(1));
+        }
+        self.worktrees = rows;
+    }
+
     fn apply_snapshot(&mut self, s: Snapshot) {
         self.org = s.org;
         self.agents = s.agents;
-        self.needs_you = s.needs_you;
+        self.set_needs_you(s.needs_you);
         self.org_error = s.org_error;
         self.settings_error = s.settings_error;
         self.reconnecting = s.reconnecting;
+        self.set_worktrees(s.worktrees);
         self.keep_selection_valid();
     }
 
@@ -240,6 +488,18 @@ impl UiModel {
         if !self.has_node(&self.selected) {
             self.selected = NodeKey::Duo;
         }
+        if self.selected_agent().is_none() {
+            self.zoomed = false;
+        }
+        let gone: Vec<NodeKey> = self
+            .folded
+            .iter()
+            .filter(|k| !self.has_node(k))
+            .cloned()
+            .collect();
+        for key in gone {
+            self.folded.remove(&key);
+        }
     }
 }
 
@@ -256,7 +516,15 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     last_reply: None,
     notice: None,
     problem: None,
+    worktree: None,
+    delivery_pending: false,
 };
+
+/// The footer note when the system has no desktop notifier (UI §4.1.4).
+/// What the reopened dialog adds when the task wasn't taken.
+const NOT_TAKEN_RETRY: &str = " · enter to try again";
+
+const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
 
 #[cfg(test)]
 mod tests {
@@ -270,6 +538,45 @@ mod tests {
 
     use super::*;
     use crate::fixtures::{NOW, mins, spec_model, status};
+
+    #[test]
+    fn alerts_unavailable_note_once() {
+        let mut m = spec_model();
+        m.apply(Event::AlertsUnavailable);
+        assert_eq!(m.footer_note.as_deref(), Some("desktop alerts unavailable"));
+        m.footer_note = None;
+        m.apply(Event::Reconnected);
+        assert_eq!(m.footer_note, None);
+    }
+
+    #[test]
+    fn alert_click_selects_agent() {
+        let mut m = spec_model();
+        let agent = n("pay-qa");
+        m.focus.pane = crate::focus::Pane::Org;
+        m.apply(Event::AlertClicked {
+            agent: agent.clone(),
+        });
+        assert_eq!(m.selected, NodeKey::Agent(agent));
+        assert_eq!(m.focus.pane, crate::focus::Pane::Agent);
+        assert_eq!(m.focus.agent_mode, crate::focus::AgentMode::Selected);
+    }
+
+    #[test]
+    fn alert_click_unfolds_parents() {
+        let mut m = spec_model();
+        let agent = n("pay-qa");
+        let loc = m.org.find_agent(&agent).unwrap();
+        let team = NodeKey::Team(loc.team.unwrap().name.clone());
+        let role = NodeKey::Role(RoleKey {
+            team: loc.team.map(|t| t.name.clone()),
+            role: loc.role.name.clone(),
+        });
+        m.folded.insert(team.clone());
+        m.folded.insert(role.clone());
+        m.apply(Event::AlertClicked { agent });
+        assert!(!m.folded.contains(&team) && !m.folded.contains(&role));
+    }
 
     #[test]
     fn apply_events_update_model() {
@@ -366,6 +673,7 @@ mod tests {
                 message: "x".into(),
             }),
             reconnecting: 3,
+            worktrees: Vec::new(),
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);

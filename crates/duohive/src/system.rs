@@ -13,6 +13,8 @@ mod enriching_store;
 
 pub use enriching_store::EnrichingStore;
 
+use std::collections::HashMap;
+use std::ffi::OsString;
 use std::future::Future;
 use std::io;
 use std::path::PathBuf;
@@ -28,14 +30,16 @@ use duohive_core::event::Event;
 use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
-use duohive_core::ports::{OrgFileError, Store, StoreError};
+use duohive_core::ports::{Git, NoNotifier, Notifier, OrgFileError, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::{AbortHandle, JoinHandle};
 
+use crate::git::GitCli;
 use crate::hook_listener::{AgentClis, HookListener, InstanceLock, ListenerError};
+use crate::notifier::{ALERT_TIMEOUT, DesktopNotifier, Platform};
 use crate::real_ports::{FsDirProbe, RandomIds, SystemClock};
 use detection::{detect_all, first_found, run_detection};
 
@@ -60,6 +64,16 @@ pub struct SystemOptions {
     /// The home directory `~` expands to and Duo works in (D5), read from the
     /// environment by the caller; empty is [`StartError::NoHome`].
     pub home: PathBuf,
+    /// Replaces the desktop notifier: tests and the bench set it so none posts a
+    /// real alert. `None` detects the system's own ([`DesktopNotifier::detect`]).
+    pub notifier: Option<Box<dyn Notifier>>,
+    /// Replaces git: tests that don't exercise worktrees set [`NoGit`](duohive_core::ports::NoGit).
+    /// `None` runs the `git` binary ([`GitCli`]).
+    pub git: Option<Box<dyn Git>>,
+    /// Added to every git child's environment when `git` is `None`: the app
+    /// passes none; tests point `HOME` and `GIT_CONFIG_GLOBAL` at a temp dir,
+    /// so the user's global git config is never read or written.
+    pub git_env: Vec<(OsString, OsString)>,
 }
 
 /// The system could not start.
@@ -183,6 +197,9 @@ pub async fn start_system(
         return Err(StartError::NoHome);
     }
     let home = opts.home;
+    let notifier_override = opts.notifier;
+    let git_override = opts.git;
+    let git_env = opts.git_env;
     let hook_exe = std::env::current_exe().map_err(StartError::Exe)?;
     let agents = AgentClis::default();
     let files = {
@@ -233,12 +250,25 @@ pub async fn start_system(
 
     let (inputs_tx, inputs_rx) = mpsc::channel(INPUT_QUEUE);
     let runtime = TmuxRuntime::connect(tmux_config(paths), inputs_tx.clone()).await?;
+    let notifier = match notifier_override {
+        Some(notifier) => notifier,
+        None => detect_notifier(inputs_tx.clone()).await,
+    };
+    let git = git_override.unwrap_or_else(|| {
+        Box::new(GitCli::new(
+            paths.worktrees_dir(),
+            inputs_tx.clone(),
+            git_env,
+        ))
+    });
     let ports = Ports {
         runtime: Box::new(runtime),
         store: Box::new(store),
         clock: Box::new(SystemClock),
         ids: Box::new(RandomIds),
         dirs: Arc::new(FsDirProbe),
+        notifier,
+        git,
     };
     let cfg = EngineConfig {
         home: home.clone(),
@@ -301,6 +331,25 @@ pub async fn start_system(
     })
 }
 
+/// The system's own notifier, or none where the platform has no support.
+/// `notify-send --help` blocks, so detection runs off the executor.
+async fn detect_notifier(inputs: mpsc::Sender<Input>) -> Box<dyn Notifier> {
+    let Some(platform) = Platform::current() else {
+        return Box::new(NoNotifier);
+    };
+    let path_env: HashMap<String, String> = std::env::var("PATH")
+        .map(|path| HashMap::from([("PATH".to_owned(), path)]))
+        .unwrap_or_default();
+    let detect = move || DesktopNotifier::detect(platform, &path_env, inputs, ALERT_TIMEOUT);
+    match tokio::task::spawn_blocking(detect).await {
+        Ok(notifier) => Box::new(notifier),
+        Err(e) => {
+            tracing::warn!(error = %e, "desktop alert detection failed");
+            Box::new(NoNotifier)
+        }
+    }
+}
+
 /// What start-up reads from disk.
 struct Files {
     store: EnrichingStore,
@@ -356,8 +405,9 @@ fn boxed(f: impl Future<Output = ()> + Send + 'static) -> Task {
     Box::pin(f)
 }
 
-/// DuoHive's tmux server for `paths` (D31).
-pub(crate) fn tmux_config(paths: &Paths) -> TmuxConfig {
+/// DuoHive's tmux server for `paths` (D31): the system's runtime and the live
+/// pane view both connect with it.
+pub fn tmux_config(paths: &Paths) -> TmuxConfig {
     TmuxConfig {
         tmux_bin: PathBuf::from("tmux"),
         socket: paths.tmux_socket.clone(),

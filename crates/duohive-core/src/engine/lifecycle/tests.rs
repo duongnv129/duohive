@@ -116,8 +116,9 @@ fn give_work_finished_types_next_turn() {
             vec![Key::Enter]
         )]
     );
-    assert_eq!(h.state("squad-2"), AgentState::Working);
-    assert!(!h.rt("squad-2").status.from_screen);
+    // P2-D11: the paste moves nothing; a busy hook does.
+    assert_eq!(h.state("squad-2"), AgentState::Finished);
+    assert!(h.rt("squad-2").delivery.is_some());
 }
 
 #[test]
@@ -133,7 +134,7 @@ fn give_work_idle_types_next_turn() {
             vec![Key::Enter]
         )]
     );
-    assert_eq!(h.state("squad-1"), AgentState::Working);
+    assert_eq!(h.state("squad-1"), AgentState::Idle);
     assert_eq!(h.rt("squad-1").last_task.as_deref(), Some("Add a test"));
 }
 
@@ -145,6 +146,7 @@ fn give_work_working_is_refused() {
     assert!(events.contains(&Event::GiveWorkRefused {
         agent: n("auth-service"),
         state: AgentState::Working,
+        pending: false,
     }));
     assert!(h.calls().is_empty());
     assert_eq!(h.state("auth-service"), AgentState::Working);
@@ -158,6 +160,7 @@ fn give_work_waiting_is_refused() {
     assert!(events.contains(&Event::GiveWorkRefused {
         agent: n("billing-api"),
         state: AgentState::Waiting,
+        pending: false,
     }));
     assert!(h.calls().is_empty());
     assert_eq!(h.state("billing-api"), AgentState::Waiting);
@@ -174,6 +177,7 @@ fn give_work_starting_is_refused() {
         vec![Event::GiveWorkRefused {
             agent: n("pay-qa"),
             state: AgentState::Starting,
+            pending: false,
         }]
     );
     assert!(h.calls().is_empty());

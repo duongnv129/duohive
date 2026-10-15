@@ -73,8 +73,8 @@ pub struct Observer {
 }
 
 impl Observer {
-    /// An observer over `org`, drawing at 160×48 on socket `tmux_socket`.
-    pub fn new(org: Org, tmux_socket: &str) -> Self {
+    /// An observer over `org`, drawing at 160×48.
+    pub fn new(org: Org) -> Self {
         let Ok(terminal) = Terminal::new(TestBackend::new(COLUMNS, ROWS));
         Self {
             model: UiModel::new(org),
@@ -84,7 +84,7 @@ impl Observer {
                 spinner: 0,
                 palette: Palette::dark(),
                 settings: Settings::default(),
-                tmux_socket: tmux_socket.to_owned(),
+                utc_offset_secs: 0,
             },
             dirty: false,
             last_frame: None,
