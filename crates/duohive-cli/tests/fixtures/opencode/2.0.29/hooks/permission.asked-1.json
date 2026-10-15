@@ -1,0 +1,30 @@
+{
+ "t": 1792087340732,
+ "dt": 10730,
+ "pid": 18507,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140bab6bb002lRvazPu0KFKHw3",
+  "created": 1792087340731,
+  "type": "permission.asked",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "id": "per_140bab6bb001eM405E3j0qGgZt",
+   "sessionID": "ses_ebf457343ffePN36U3niXLbDu7",
+   "action": "shell",
+   "resources": [
+    "ls -la"
+   ],
+   "save": [
+    "ls *"
+   ],
+   "source": {
+    "type": "tool",
+    "messageID": "msg_140ba8f4f0012TTkZKrUuPC8Ol",
+    "id": "call_979522656d4d42fbbff1929e"
+   }
+  }
+ }
+}

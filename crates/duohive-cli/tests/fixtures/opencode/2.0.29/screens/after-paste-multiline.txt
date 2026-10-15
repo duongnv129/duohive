@@ -1,0 +1,40 @@
+   Sentinel definit   Ping-pong connec   Malformed shell    Ping test          Ping-pong test   • What is the sentine +
+
+  ┃
+  ┃  What is the sentinel?
+  ┃  Use no tools.
+  ┃
+
+     HIVE-SENTINEL
+
+     Build · GLM 5.2 · 2.9s · 2.8 tok/s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · GLM 5.2 LiteLLM (Cake)
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj  33.8K (17%)  ctrl+p commands
+

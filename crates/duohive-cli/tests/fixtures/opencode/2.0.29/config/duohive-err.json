@@ -1,0 +1,26 @@
+{
+ "plugins": [
+  {
+   "package": "file://<spike>/plugins/duohive",
+   "options": {
+    "instructions": "<spike>/cfg/instr.md"
+   }
+  }
+ ],
+ "providers": {
+  "spikeerr": {
+   "name": "SpikeErr",
+   "package": "aisdk:@ai-sdk/openai-compatible",
+   "settings": {
+    "apiKey": "x",
+    "baseURL": "http://127.0.0.1:18471/v1"
+   },
+   "models": {
+    "m1": {
+     "name": "Spike M1"
+    }
+   }
+  }
+ },
+ "model": "spikeerr/m1"
+}

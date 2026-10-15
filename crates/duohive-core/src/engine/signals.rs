@@ -91,6 +91,7 @@ impl Engine {
         let state = self.state_of(agent);
         let is_duo = self.org.is_duo(agent);
         let task_at_launch = self.rt_mut(agent).task_at_launch;
+        let mut error = None;
         let (trigger, prompt, reply) = match signal {
             HookSignal::Ready => (
                 Trigger::Ready {
@@ -109,6 +110,12 @@ impl Engine {
             HookSignal::TurnEnded { last_reply } => {
                 (Trigger::TurnEnded { is_duo }, None, last_reply)
             }
+            // P2-D24: errored with the reason; the window stays recorded, so
+            // `s` or a fresh launch kills the session still up in it.
+            HookSignal::TurnFailed { reason } => {
+                error = Some(reason);
+                (Trigger::TurnFailed, None, None)
+            }
             HookSignal::SessionEnded => return false,
         };
         if transition(state, &trigger).is_none() {
@@ -117,7 +124,7 @@ impl Engine {
         // The reply goes out before the state change it came with, so a turn end lands
         // with its reply already current (P2-D8).
         out.extend(self.take_reply(agent, reply));
-        self.change(agent, &trigger, None, out);
+        self.change(agent, &trigger, error, out);
         if trigger == Trigger::NeedsInput {
             self.rt_mut(agent).waiting_prompt = prompt;
         }
@@ -448,6 +455,8 @@ fn same_token(expected: &str, given: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+#[cfg(test)]
+mod failed;
 #[cfg(test)]
 mod order;
 #[cfg(test)]

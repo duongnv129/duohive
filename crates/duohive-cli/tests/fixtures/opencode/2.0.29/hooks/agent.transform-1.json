@@ -1,0 +1,283 @@
+{
+ "t": 1792088507381,
+ "dt": 435,
+ "pid": 43046,
+ "kind": "agent.transform",
+ "data": [
+  {
+   "id": "build",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "question",
+     "resource": "*",
+     "effect": "allow"
+    }
+   ]
+  },
+  {
+   "id": "general",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "question",
+     "resource": "*",
+     "effect": "deny"
+    },
+    {
+     "action": "subagent",
+     "resource": "*",
+     "effect": "deny"
+    }
+   ]
+  },
+  {
+   "id": "explore",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "deny"
+    },
+    {
+     "action": "shell",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "grep",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "glob",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "webfetch",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "websearch",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "subagent",
+     "resource": "*",
+     "effect": "deny"
+    },
+    {
+     "action": "external_directory",
+     "resource": "*",
+     "effect": "allow"
+    }
+   ]
+  },
+  {
+   "id": "compaction",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    }
+   ]
+  },
+  {
+   "id": "title",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "deny"
+    }
+   ]
+  },
+  {
+   "id": "summary",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "deny"
+    }
+   ]
+  },
+  {
+   "id": "plan",
+   "permissions": [
+    {
+     "action": "*",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "read",
+     "resource": "*.env",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.*",
+     "effect": "ask"
+    },
+    {
+     "action": "read",
+     "resource": "*.env.example",
+     "effect": "allow"
+    },
+    {
+     "action": "question",
+     "resource": "*",
+     "effect": "allow"
+    },
+    {
+     "action": "edit",
+     "resource": "*",
+     "effect": "deny"
+    },
+    {
+     "action": "edit",
+     "resource": "/Users/me/.opencode/plan/*",
+     "effect": "allow"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "t": 1792087340605,
+ "dt": 10603,
+ "pid": 18507,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140bab61f0015Yr9Vo18zx4kpp",
+  "created": 1792087340575,
+  "type": "session.tool.called",
+  "durable": {
+   "aggregateID": "ses_ebf457343ffePN36U3niXLbDu7",
+   "seq": 11,
+   "version": 1
+  },
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "sessionID": "ses_ebf457343ffePN36U3niXLbDu7",
+   "assistantMessageID": "msg_140ba8f4f0012TTkZKrUuPC8Ol",
+   "id": "call_979522656d4d42fbbff1929e",
+   "input": {
+    "command": "ls -la"
+   },
+   "executed": false
+  }
+ }
+}

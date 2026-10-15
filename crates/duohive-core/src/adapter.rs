@@ -25,6 +25,12 @@ pub enum HookSignal {
         /// The agent's last reply, if the hook carries it.
         last_reply: Option<String>,
     },
+    /// A turn ended in an error the CLI reported, such as a provider or API
+    /// failure (P2-D24). The session is still up; the agent is errored.
+    TurnFailed {
+        /// What failed, shown on the agent's row.
+        reason: String,
+    },
     /// The CLI session ended.
     SessionEnded,
 }

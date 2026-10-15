@@ -1,0 +1,33 @@
+{
+ "t": 1792088028541,
+ "dt": 32109,
+ "pid": 33239,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c53575001Db4KmSqCSBmUmC",
+  "created": 1792088028533,
+  "type": "session.retry.scheduled",
+  "durable": {
+   "aggregateID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "seq": 17,
+   "version": 1
+  },
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "sessionID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "assistantMessageID": "msg_140c52e8600105vfuA000fALKq",
+   "attempt": 3,
+   "at": 1792088031979,
+   "error": {
+    "type": "provider.internal",
+    "message": "spike: model not found",
+    "status": 500,
+    "response": {
+     "body": "{\"error\": {\"message\": \"spike: model not found\", \"type\": \"invalid_request_error\", \"code\": \"model_not_found\"}}"
+    }
+   }
+  }
+ }
+}

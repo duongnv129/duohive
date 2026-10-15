@@ -1,0 +1,27 @@
+{
+ "t": 1792088001592,
+ "dt": 5160,
+ "pid": 33239,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c4cc31001eYJFd3ORcrb7sB",
+  "created": 1792088001585,
+  "type": "session.execution.failed",
+  "durable": {
+   "aggregateID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "seq": 7,
+   "version": 1
+  },
+  "data": {
+   "sessionID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+   "error": {
+    "type": "provider.invalid-request",
+    "message": "spike: model not found",
+    "status": 400,
+    "response": {
+     "body": "{\"error\": {\"message\": \"spike: model not found\", \"type\": \"invalid_request_error\", \"code\": \"model_not_found\"}}"
+    }
+   }
+  }
+ }
+}

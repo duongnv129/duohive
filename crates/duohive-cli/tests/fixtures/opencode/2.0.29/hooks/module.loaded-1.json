@@ -1,0 +1,22 @@
+{
+ "t": 1792088506946,
+ "dt": 0,
+ "pid": 43046,
+ "kind": "module.loaded",
+ "data": {
+  "argv": [
+   "bun",
+   "/$bunfs/root/opencode",
+   "serve",
+   "--stdio",
+   "--port",
+   "0"
+  ],
+  "ppid": 43044,
+  "cwd": "/private/tmp/duohive-spike/oc2/proj3",
+  "env": {
+   "PROBE_LOG": "/private/tmp/duohive-spike/oc2/out/kill9.jsonl",
+   "OPENCODE_CONFIG": "/private/tmp/duohive-spike/oc2/cfg/probe.json"
+  }
+ }
+}

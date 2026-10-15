@@ -1,0 +1,40 @@
+   Sentinel definition q   Ping-pong connectivit   Malformed shell comm   Ping test              Ping-pong test       +
+
+  ┃
+  ┃  Reply with the single word pong.
+  ┃
+
+     Error: spike: model not found
+
+     Build · Spike M1 · 45ms
+
+  ┃
+  ┃  Reply with the single word pong again.
+  ┃
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Spike M1 SpikeErr
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj  shift+tab agents  ctrl+p commands
+

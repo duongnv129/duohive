@@ -260,12 +260,15 @@ impl Engine {
 }
 
 impl Engine {
-    /// Whether a live session runs in `row` (P2-D6): its agent is running and
-    /// its current session was launched there. `SessionRow.worktree` restores
-    /// this after a restart; a held row (a running agent no org names) counts.
+    /// Whether a live session runs in `row` (P2-D6): its agent is running, or
+    /// errored with its window still recorded (a failed turn, P2-D24), and its
+    /// current session was launched there. `SessionRow.worktree` restores this
+    /// after a restart; a held row (a running agent no org names) counts.
     fn in_use(&self, row: &WorktreeRow) -> bool {
         let running = self.agents.get(&row.agent).is_some_and(|rt| {
-            rt.status.state.is_running() && rt.worktree.as_ref() == Some(&row.task)
+            let live = rt.status.state.is_running()
+                || (rt.status.state == AgentState::Errored && rt.window.is_some());
+            live && rt.worktree.as_ref() == Some(&row.task)
         });
         running || self.held_in(&row.agent, &row.task) || self.orphan_in(&row.agent, &row.task)
     }

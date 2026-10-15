@@ -1,0 +1,15 @@
+{"t": 1792088555317, "agent": "final", "event": "session-start", "payload": {}}
+{"t": 1792088559474, "agent": "final", "event": "busy", "payload": {"sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088567658, "agent": "final", "event": "needs-input", "payload": {"type": "permission.asked", "properties": {"id": "per_140cd6f37001JqzkZsiZ3xBvaQ", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "action": "edit", "resources": ["e.txt"]}}}
+{"t": 1792088569087, "agent": "final", "event": "busy", "payload": {"type": "permission.replied", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088571024, "agent": "final", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "duohive_last_reply": "done"}}
+{"t": 1792088571511, "agent": "final", "event": "busy", "payload": {"sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088576068, "agent": "final", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "duohive_last_reply": "done"}}
+{"t": 1792088577075, "agent": "final", "event": "busy", "payload": {"sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088580459, "agent": "final", "event": "needs-input", "payload": {"type": "permission.asked", "properties": {"id": "per_140cda143001EfVmsdr2lUux7B", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "action": "shell", "resources": ["touch d.txt"]}}}
+{"t": 1792088581259, "agent": "final", "event": "turn-end", "payload": {"type": "session.execution.interrupted", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "reason": "shutdown", "duohive_last_reply": null}}
+{"t": 1792088582654, "agent": "final", "event": "busy", "payload": {"sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088593308, "agent": "final", "event": "needs-input", "payload": {"type": "form.created", "properties": {"id": "frm_140cdd365001minev7hV0yujpN", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "title": "Questions"}}}
+{"t": 1792088594556, "agent": "final", "event": "busy", "payload": {"type": "form.replied", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO"}}
+{"t": 1792088600588, "agent": "final", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf32b0e4ffekL8lraTy42k0AO", "duohive_last_reply": "A"}}
+{"t": 1792088601277, "agent": "final", "event": "session-end", "payload": {}}

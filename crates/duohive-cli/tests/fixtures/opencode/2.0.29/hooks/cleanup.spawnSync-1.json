@@ -1,0 +1,9 @@
+{
+ "t": 1792088512729,
+ "dt": 5783,
+ "pid": 43046,
+ "kind": "cleanup.spawnSync",
+ "data": {
+  "status": 0
+ }
+}

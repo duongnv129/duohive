@@ -1,0 +1,1 @@
+{ "agents": { "build": { "model": "litellm/kimi-k3#high" } } }

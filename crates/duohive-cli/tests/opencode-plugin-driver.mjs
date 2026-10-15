@@ -1,32 +1,37 @@
-// Test driver for src/assets/opencode-plugin.js (plugin_replays_recorded_events).
+// Test driver for src/assets/opencode-plugin/index.js (plugin_replays_recorded_events).
 // Runs under node or bun:
-//   <runtime> opencode-plugin-driver.mjs <plugin.js> <hook-exe> <hang-exe> <log-dir> <events.jsonl>...
-// It loads the plugin the way OpenCode does (an async factory returning hooks),
-// replays each recorded event log through the `event` hook, one plugin instance
-// per launch, and prints a JSON summary on stdout: the events fed to each
-// instance, the composed sample configs, and any error the plugin let escape.
-// The fake hook exe (written by the Rust test) logs each delivery to
+//   <runtime> opencode-plugin-driver.mjs <index.mjs> <hook-exe> <hang-exe> <log-dir> <instructions> <probe.jsonl>...
+// It loads the plugin the way OpenCode 2.0 does (a default export
+// `{ id, setup(ctx) }`, `setup` returning a cleanup function) with a fake
+// `ctx`: `event.subscribe()` (an async iterator the driver feeds),
+// `permission.hook`, `session.hook` and `options`. It replays each recorded
+// probe log (spike S2.14: one OpenCode launch each) through the event stream
+// and the `evaluate` hook, one plugin instance per log, then runs the
+// scenarios below, and prints a JSON summary on stdout: the `evaluate`
+// results, the scenario results, and any error the plugin let escape. The
+// fake hook exe (written by the Rust test) logs each delivery to
 // <log-dir>/<agent>.jsonl.
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const [pluginPath, hookExe, hangExe, logDir, ...eventFiles] = process.argv.slice(2);
+const [pluginPath, hookExe, hangExe, logDir, instructionsPath, ...probeFiles] =
+  process.argv.slice(2);
 const FALLBACK_MS = 100;
-// A hook must return without waiting for its child: the hanging exe sleeps
-// 10 s and its delivery is cut at 2 s here, so a hook that did wait would take
-// 2 s or more. 1 s keeps that meaning while tolerating this process being descheduled
-// for a few hundred ms in a fully loaded workspace test run.
+const START_DELAY_MS = 50;
+// `setup` and every hook must return without waiting for a child: the
+// hanging exe sleeps 10 s and its delivery is cut at 2 s here, so a call
+// that did wait would take 2 s or more. 1 s keeps that meaning while
+// tolerating this process being descheduled in a fully loaded test run.
 const RETURNS_AT_ONCE_MS = 1000;
-// Dispose is bounded by a 1 s chain wait plus a 1 s session-end spawn (2 s),
-// plus slack for the same scheduling noise; far below the 10 s a hung exe runs.
-const DISPOSE_LIMIT_MS = 4500;
+// The cleanup is one session-end spawn bounded at 1 s, plus slack for the same
+// scheduling noise; far below the 10 s a hung exe runs.
+const CLEANUP_LIMIT_MS = 3000;
 // Session-end spawn limit for instances whose deliveries must complete: the
 // 1 s product default is for hung exes (the `hang` instance keeps it).
 const SESSION_END_LIMIT_MS = 10000;
-
 // Per-delivery kill limit for instances whose deliveries must complete. The
-// `hang` and `slow` instances cut deliveries at 2 s instead of the 10 s product
-// default, to keep the run short; `patient` keeps the default.
+// `hang` and `slow` instances cut deliveries at 2 s instead, to keep the run
+// short; `patient` keeps the 10 s product default.
 const DELIVERY_LIMIT_MS = 10000;
 
 const errors = [];
@@ -34,54 +39,132 @@ process.on("uncaughtException", (e) => errors.push(`uncaught: ${e}`));
 process.on("unhandledRejection", (e) => errors.push(`unhandled rejection: ${e}`));
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const tick = () => new Promise((resolve) => setImmediate(resolve));
 
-const plugin = await import(pathToFileURL(pluginPath).href);
-const factories = Object.values(plugin).filter((v) => typeof v === "function");
-if (factories.length !== 1) errors.push(`expected one plugin export, got ${factories.length}`);
-const factory = factories[0];
-
-const ctx = {
-  directory: "/work",
-  worktree: "/",
-  project: {},
-  client: {},
-  serverUrl: new URL("http://localhost:4096/"),
-};
-
-// `deliveryLimitMs` null leaves the product default in force.
-async function instance(agent, exe, endLimitMs = SESSION_END_LIMIT_MS, deliveryLimitMs = DELIVERY_LIMIT_MS) {
-  if (deliveryLimitMs === null) delete process.env.DUOHIVE_DELIVERY_LIMIT_MS;
-  else process.env.DUOHIVE_DELIVERY_LIMIT_MS = String(deliveryLimitMs);
-  process.env.DUOHIVE_SESSION_END_LIMIT_MS = String(endLimitMs);
-  process.env.DUOHIVE_HOOK_EXE = exe;
-  process.env.DUOHIVE_HOOK_AGENT = agent;
-  process.env.DUOHIVE_START_FALLBACK_MS = String(FALLBACK_MS);
-  return { agent, hooks: await factory(ctx) };
+const plugin = (await import(pathToFileURL(pluginPath).href)).default;
+if (plugin?.id !== "duohive" || typeof plugin?.setup !== "function") {
+  errors.push(`expected a default export { id: "duohive", setup }, got ${JSON.stringify(plugin)}`);
 }
 
-// Calls a hook, recording a throw or a call slower than `limitMs`.
+// A fake OpenCode 2.0 plugin context.
+function fakeCtx(options) {
+  const queue = [];
+  let waiting = null;
+  let closed = false;
+  const hooks = {};
+  const register = async (name, fn) => {
+    (hooks[name] ??= []).push(fn);
+  };
+  const iterator = {
+    next() {
+      if (queue.length > 0) return Promise.resolve({ value: queue.shift(), done: false });
+      if (closed) return Promise.resolve({ value: undefined, done: true });
+      return new Promise((resolve) => {
+        waiting = resolve;
+      });
+    },
+    return() {
+      closed = true;
+      return Promise.resolve({ value: undefined, done: true });
+    },
+  };
+  return {
+    ctx: {
+      options,
+      event: { subscribe: () => ({ [Symbol.asyncIterator]: () => iterator }) },
+      permission: { hook: register },
+      session: { hook: register },
+    },
+    hooks,
+    push(ev) {
+      if (waiting) {
+        const resolve = waiting;
+        waiting = null;
+        resolve({ value: ev, done: false });
+      } else {
+        queue.push(ev);
+      }
+    },
+    // Resolves once the plugin has taken every queued event and waits for the next.
+    async drained() {
+      for (let i = 0; i < 2000 && (queue.length > 0 || !waiting); i += 1) await tick();
+    },
+    close() {
+      closed = true;
+      if (waiting) {
+        const resolve = waiting;
+        waiting = null;
+        resolve({ value: undefined, done: true });
+      }
+    },
+  };
+}
+
+// Calls `fn`, recording a throw or a call slower than `limitMs`.
 async function timed(label, limitMs, fn) {
   const started = Date.now();
+  let value;
   try {
-    await fn();
+    value = await fn();
   } catch (e) {
     errors.push(`${label} threw: ${e}`);
   }
   const took = Date.now() - started;
   if (took > limitMs) errors.push(`${label} took ${took} ms (limit ${limitMs})`);
-  return took;
+  return value;
 }
 
-// Waits until an agent's delivery log has not grown for 250 ms (at most 5 s),
-// so dispose's own 1 s wait is not what keeps the order in a slow test run.
-// `minLines` first waits for that many deliveries to be logged (a readiness
-// signal, so a delivery slow to start is not mistaken for a quiet log).
-async function quiet(agent, minLines = 0) {
+// `deliveryLimitMs` null leaves the product default in force.
+async function instance(agent, exe, opts = {}) {
+  const {
+    options = {},
+    endLimitMs = SESSION_END_LIMIT_MS,
+    deliveryLimitMs = DELIVERY_LIMIT_MS,
+    startDelayMs = START_DELAY_MS,
+    fallbackMs = FALLBACK_MS,
+  } = opts;
+  if (deliveryLimitMs === null) delete process.env.DUOHIVE_DELIVERY_LIMIT_MS;
+  else process.env.DUOHIVE_DELIVERY_LIMIT_MS = String(deliveryLimitMs);
+  process.env.DUOHIVE_SESSION_END_LIMIT_MS = String(endLimitMs);
+  process.env.DUOHIVE_START_DELAY_MS = String(startDelayMs);
+  process.env.DUOHIVE_START_FALLBACK_MS = String(fallbackMs);
+  process.env.DUOHIVE_HOOK_EXE = exe;
+  process.env.DUOHIVE_HOOK_AGENT = agent;
+  const fake = fakeCtx(options);
+  const cleanup = await timed(`${agent} setup`, RETURNS_AT_ONCE_MS, () => plugin.setup(fake.ctx));
+  if (typeof cleanup !== "function") errors.push(`${agent} setup returned no cleanup`);
+  return {
+    agent,
+    fake,
+    async event(type, data) {
+      fake.push({ id: "evt", type, data });
+      await fake.drained();
+    },
+    evaluate(input) {
+      for (const fn of fake.hooks.evaluate ?? []) fn(input);
+      return input.effect;
+    },
+    async cleanup() {
+      await timed(`${agent} cleanup`, CLEANUP_LIMIT_MS, () => cleanup?.());
+      fake.close();
+    },
+  };
+}
+
+function lines(agent) {
   const file = `${logDir}/${agent}.jsonl`;
-  const lines = () => (existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).length : 0);
+  return existsSync(file) ? readFileSync(file, "utf8").split("\n").filter(Boolean).length : 0;
+}
+
+// Waits until an agent's delivery log has not grown for `stableMs` (at most
+// 10 s), first waiting for `minLines` deliveries (a readiness signal, so a
+// delivery slow to start is not mistaken for a quiet log). The cleanup drops
+// queued deliveries, so a replay waits for its log to settle first.
+async function quiet(agent, minLines = 0, stableMs = 750) {
+  const file = `${logDir}/${agent}.jsonl`;
   const ready = Date.now() + 10000;
-  while (lines() < minLines && Date.now() < ready) await sleep(25);
-  const end = Date.now() + 5000;
+  while (lines(agent) < minLines && Date.now() < ready) await sleep(25);
+  const end = Date.now() + 10000;
   let size = -1;
   let stableSince = Date.now();
   while (Date.now() < end) {
@@ -89,7 +172,7 @@ async function quiet(agent, minLines = 0) {
     if (now !== size) {
       size = now;
       stableSince = Date.now();
-    } else if (Date.now() - stableSince >= 250) {
+    } else if (Date.now() - stableSince >= stableMs) {
       return;
     }
     await sleep(25);
@@ -104,265 +187,266 @@ async function running(agent) {
   while (!existsSync(file) && Date.now() < end) await sleep(25);
 }
 
-const feed = [];
-
-async function finish(inst) {
-  await sleep(FALLBACK_MS * 3);
-  // Every instance has started by now (an event or the fallback timer), so
-  // session-start is on its way: wait until it is logged, not for a quiet
-  // moment that a slow spawn could fake.
-  await quiet(inst.agent, 1);
-  feed.push({ agent: inst.agent, type: "dispose" });
-  await timed(`${inst.agent} dispose`, DISPOSE_LIMIT_MS, () => inst.hooks.dispose());
-}
-
-// Replay. A `{"plugin":"init"}` line starts an instance; a `{"plugin":"dispose"}`
-// line ends the newest one, and later events go to the one still running (the
-// `opencode mcp list` run started and ended in the middle of a2's session).
-// Other marker lines (`process.exit`, `config`) are skipped.
-for (const [f, path] of eventFiles.entries()) {
-  const open = [];
-  let launches = 0;
-  const lines = readFileSync(path, "utf8").split("\n").filter((l) => l.trim() !== "");
-  for (const line of lines) {
-    const event = JSON.parse(line);
-    if (event.plugin === "init") {
-      launches += 1;
-      open.push(await instance(`f${f + 1}-l${launches}`, hookExe));
-      continue;
+// Replay: each probe log is one launch, agent p<n>. Its `event.iter` lines are
+// the events OpenCode sent, its `permission.evaluate` lines the evaluate calls.
+const evaluations = [];
+for (const [i, path] of probeFiles.entries()) {
+  const agent = `p${i + 1}`;
+  const inst = await instance(agent, hookExe);
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    if (line.trim() === "") continue;
+    const record = JSON.parse(line);
+    if (record.kind === "event.iter") {
+      inst.fake.push(record.data);
+      await inst.fake.drained();
+    } else if (record.kind === "permission.evaluate") {
+      const input = JSON.parse(JSON.stringify(record.data.before));
+      await timed(`${agent} evaluate`, RETURNS_AT_ONCE_MS, () => inst.evaluate(input));
+      evaluations.push({ agent, action: input.action, before: record.data.before.effect, after: input.effect });
     }
-    if (event.plugin === "dispose") {
-      const inst = open.pop();
-      if (inst) await finish(inst);
-      continue;
-    }
-    if (event.plugin !== undefined) continue;
-    const inst = open[open.length - 1];
-    if (!inst) continue;
-    const item = { agent: inst.agent, type: event.type };
-    if (event.type === "session.status") item.status = event.properties?.status?.type ?? null;
-    if (event.type === "permission.asked") item.properties = event.properties;
-    feed.push(item);
-    await timed(`${inst.agent} ${event.type}`, RETURNS_AT_ONCE_MS, () => inst.hooks.event({ event }));
   }
-  while (open.length > 0) await finish(open.pop());
+  await quiet(agent, 1);
+  await inst.cleanup();
 }
 
-// The `config` hook composes edit and bash (S2.11). What counts is the
-// decision OpenCode reaches: its rules are the default ("*" allow), the
-// agent's built-in rules (as `opencode agent list` showed them for 1.18.34),
-// the top-level `permission`, then the agent's, each in key order, and the
-// last rule whose permission and pattern match wins (`rules.findLast`).
-const samples = [
-  {},
-  { permission: "allow" },
-  { permission: "deny" },
-  { permission: { "*": "ask", edit: "allow" } },
-  {
-    permission: {
-      edit: "deny",
-      bash: { "*": "allow", "rm *": "deny", "git push*": "ask" },
-      webfetch: "allow",
+const results = {};
+
+// A missing hook exe: nothing throws, nothing is rejected, garbage is ignored.
+{
+  const m = await instance("missing", `${logDir}/no-such-duohive`, {
+    options: { instructions: instructionsPath },
+  });
+  const calls = [
+    () => m.event("plugin.updated", {}),
+    () => m.event("session.execution.started", { sessionID: "s" }),
+    () => m.event("permission.asked", { id: "p", sessionID: "s", action: "edit", resources: ["a"] }),
+    () => m.event("permission.replied", { sessionID: "s", requestID: "p", reply: "once" }),
+    () => m.event("form.created", { form: { id: "f", sessionID: "s", fields: [null] } }),
+    () => m.event("form.replied", { id: "f", sessionID: "s" }),
+    () => m.event("session.text.ended", { sessionID: "s", ordinal: "x", text: null }),
+    () => m.event("session.execution.failed", { sessionID: "s", error: "garbage" }),
+    () => m.event("session.execution.succeeded", null),
+    () => m.event(undefined, undefined),
+    async () => {
+      m.fake.push(null);
+      m.fake.push(42);
+      m.fake.push({ type: 7 });
+      await m.fake.drained();
     },
-    agent: {
-      build: { permission: { edit: "allow", bash: { "git commit*": "deny" } } },
-      plan: { permission: "allow" },
-      review: { model: "x" },
-      docs: { permission: { edit: { "*": "allow", "docs/**": "allow" } } },
+    () => m.evaluate({ action: "edit", effect: "allow", resources: 5 }),
+    () => {
+      for (const fn of m.fake.hooks.evaluate ?? []) {
+        fn(null);
+        fn(undefined);
+      }
     },
-  },
-  // "*" after edit and bash: under last-match-wins it would decide for them.
-  { permission: { edit: "allow", "*": "allow" } },
-  { permission: { bash: { "git *": "allow" }, "*": "allow" } },
-  { agent: { build: { permission: { bash: "allow", "*": "allow" } } } },
-  // A pattern object without "*": its own patterns still decide.
-  { permission: { edit: { "src/**": "deny" } } },
-  // A stricter "*" after edit or bash still decides for them.
-  { permission: { edit: "ask", "*": "deny" } },
-  { permission: { bash: "allow", "*": "deny" } },
-  { agent: { plan: { permission: { edit: "allow", "*": "deny" } } } },
-  { permission: { edit: { "*": "ask" }, "*": "deny" } },
-  // The user's own top-level allow overrides plan's built-in deny: it asks.
-  { permission: { edit: "allow" } },
-  // All-digit pattern keys come first in a JS object, whatever their place.
-  { permission: { edit: { 5: "deny" } } },
-  { permission: { edit: { "?": "allow" } }, agent: { build: { permission: { edit: { 5: "deny" } } } } },
-];
-const queries = [
-  ["build", "edit", "a.txt"],
-  ["build", "edit", "src/x.ts"],
-  ["build", "bash", "ls"],
-  ["build", "bash", "rm -rf x"],
-  ["build", "bash", "git push"],
-  ["build", "bash", "git commit -m x"],
-  ["build", "webfetch", "x"],
-  ["plan", "edit", "a.txt"],
-  ["plan", "edit", ".opencode/plans/p.md"],
-  ["plan", "bash", "rm -rf x"],
-  ["docs", "edit", "a.txt"],
-  ["docs", "edit", "docs/a.md"],
-  ["explore", "edit", "a.txt"],
-  ["explore", "bash", "ls"],
-  ["general", "edit", "a.txt"],
-  ["title", "bash", "ls"],
-  ["build", "edit", "5"],
-  ["plan", "edit", "5"],
-];
-
-const DENY_ALL = [{ permission: "*", pattern: "*", action: "deny" }];
-const BUILTIN = {
-  plan: [
-    { permission: "edit", pattern: "*", action: "deny" },
-    { permission: "edit", pattern: ".opencode/plans/*.md", action: "allow" },
-  ],
-  explore: [...DENY_ALL, { permission: "bash", pattern: "*", action: "allow" }],
-  compaction: DENY_ALL,
-  summary: DENY_ALL,
-  title: DENY_ALL,
-};
-
-function wildcard(pattern, text) {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`, "s").test(text);
-}
-
-function rules(block) {
-  if (block === undefined) return [];
-  if (typeof block === "string") return [{ permission: "*", pattern: "*", action: block }];
-  return Object.entries(block).flatMap(([permission, value]) =>
-    typeof value === "string"
-      ? [{ permission, pattern: "*", action: value }]
-      : Object.entries(value).map(([pattern, action]) => ({ permission, pattern, action })),
-  );
-}
-
-function decide(cfg, agent, permission, pattern) {
-  const all = [
-    { permission: "*", pattern: "*", action: "allow" },
-    ...(BUILTIN[agent] ?? []),
-    ...rules(cfg.permission),
-    ...rules(cfg.agent?.[agent]?.permission),
+    () => {
+      for (const fn of m.fake.hooks.context ?? []) {
+        fn(null);
+        fn({ sessionID: "s" });
+        fn({ sessionID: "s", system: "not a list" });
+      }
+    },
   ];
-  const hit = all.findLast((r) => wildcard(r.permission, permission) && wildcard(r.pattern, pattern));
-  return hit?.action;
+  for (const [i, call] of calls.entries()) await timed(`missing exe call ${i}`, RETURNS_AT_ONCE_MS, call);
+  await sleep(300);
+  await m.cleanup();
+  await m.cleanup();
 }
 
-const composer = await instance("config", "");
-const decisions = [];
-const before = [];
-const decideAll = (cfg) => queries.map(([agent, permission, pattern]) => decide(cfg, agent, permission, pattern));
-for (const sample of samples) {
-  const cfg = JSON.parse(JSON.stringify(sample));
-  before.push(decideAll(cfg));
-  await timed("config", RETURNS_AT_ONCE_MS, () => composer.hooks.config(cfg));
-  decisions.push(decideAll(cfg));
+// A context whose hooks throw, and one with no event stream: setup still returns.
+{
+  process.env.DUOHIVE_HOOK_EXE = `${logDir}/no-such-duohive`;
+  process.env.DUOHIVE_HOOK_AGENT = "broken";
+  const throwing = async () => {
+    throw new Error("boom");
+  };
+  const ctxs = [
+    {
+      options: { instructions: instructionsPath },
+      event: {
+        subscribe: () => {
+          throw new Error("boom");
+        },
+      },
+      permission: { hook: throwing },
+      session: { hook: throwing },
+    },
+    {},
+    undefined,
+  ];
+  for (const [i, ctx] of ctxs.entries()) {
+    const cleanup = await timed(`broken ctx ${i} setup`, RETURNS_AT_ONCE_MS, () => plugin.setup(ctx));
+    await timed(`broken ctx ${i} cleanup`, CLEANUP_LIMIT_MS, () => cleanup?.());
+  }
 }
-await timed("config dispose", DISPOSE_LIMIT_MS, () => composer.hooks.dispose());
 
-// A missing hook exe: nothing throws, nothing is rejected.
-const missing = await instance("missing", `${logDir}/no-such-duohive`);
-const h = missing.hooks;
-const sample = (type, properties) => ({ event: { type, properties } });
-const calls = [
-  () => h.event(sample("catalog.updated", {})),
-  () => h["chat.message"]({ sessionID: "s" }, { parts: [] }),
-  () => h.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
-  () => h["tool.execute.before"]({ tool: "write" }, { args: {} }),
-  () => h.event(sample("permission.asked", { permission: "edit", patterns: ["a"] })),
-  () => h.event(sample("permission.replied", { reply: "once" })),
-  () => h["tool.execute.after"]({ tool: "write" }, {}),
-  () => h.event(sample("session.idle", { sessionID: "s" })),
-  () => h.event({ event: null }),
-  () => h.event(undefined),
-  () => h.config(undefined),
-];
-for (const [i, call] of calls.entries()) await timed(`missing exe call ${i}`, RETURNS_AT_ONCE_MS, call);
-await sleep(300);
-await timed("missing exe dispose", DISPOSE_LIMIT_MS, () => h.dispose());
+// A hook exe that hangs: hooks still return at once, and the cleanup is
+// bounded (a session-end spawn bounded at 1 s).
+{
+  const hang = await instance("hang", hangExe, { endLimitMs: 1000, deliveryLimitMs: 2000 });
+  await timed("hang event", RETURNS_AT_ONCE_MS, () => hang.event("session.execution.started", { sessionID: "s" }));
+  const started = Date.now();
+  await hang.cleanup();
+  results.hangCleanupMs = Date.now() - started;
+}
 
-// A hook exe that hangs: hooks still return at once, and dispose is bounded
-// (1 s for the chain, then a session-end spawn bounded at 1 s).
-const hang = await instance("hang", hangExe, 1000, 2000);
-await timed("hang event", RETURNS_AT_ONCE_MS, () =>
-  hang.hooks.event(sample("catalog.updated", {})),
-);
-await timed("hang busy", RETURNS_AT_ONCE_MS, () =>
-  hang.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
-);
-const hangDispose = await timed("hang dispose", DISPOSE_LIMIT_MS, () => hang.hooks.dispose());
-
-// Dispose kills a delivery still running, so session-end is the last one
+// The cleanup kills a delivery still running, so session-end is the last one
 // (its session-start would be logged 1.5 s in, after session-end, if it lived).
-const inflight = await instance("inflight", hookExe);
-await timed("inflight event", RETURNS_AT_ONCE_MS, () =>
-  inflight.hooks.event(sample("catalog.updated", {})),
-);
-await running("inflight");
-await timed("inflight dispose", DISPOSE_LIMIT_MS, () => inflight.hooks.dispose());
+{
+  const inflight = await instance("inflight", hookExe);
+  await inflight.event("session.execution.started", { sessionID: "s" });
+  await running("inflight");
+  await inflight.cleanup();
+}
 
 // A delivery that hangs is killed at its (shortened) 2 s limit and the chain goes on.
-const slow = await instance("slow", hookExe, SESSION_END_LIMIT_MS, 2000);
-await timed("slow event", RETURNS_AT_ONCE_MS, () => slow.hooks.event(sample("catalog.updated", {})));
-await timed("slow busy", RETURNS_AT_ONCE_MS, () =>
-  slow.hooks.event(sample("session.status", { sessionID: "s", status: { type: "busy" } })),
-);
-await running("slow");
-await sleep(2600);
-await quiet("slow", 1);
-await timed("slow dispose", DISPOSE_LIMIT_MS, () => slow.hooks.dispose());
+{
+  const slow = await instance("slow", hookExe, { deliveryLimitMs: 2000 });
+  await slow.event("session.execution.started", { sessionID: "s" });
+  await running("slow");
+  await sleep(2600);
+  await quiet("slow", 1);
+  await slow.cleanup();
+}
 
 // A delivery slower than 2 s (a loaded machine) still lands under the
 // product default limit.
-const patient = await instance("patient", hookExe, SESSION_END_LIMIT_MS, null);
-await timed("patient event", RETURNS_AT_ONCE_MS, () =>
-  patient.hooks.event(sample("catalog.updated", {})),
-);
-await quiet("patient", 1);
-await timed("patient dispose", DISPOSE_LIMIT_MS, () => patient.hooks.dispose());
+{
+  const patient = await instance("patient", hookExe, { deliveryLimitMs: null });
+  await patient.event("plugin.updated", {});
+  await quiet("patient", 1);
+  await patient.cleanup();
+}
 
-// Subagent sessions (with a parentID) neither busy nor end the agent's turn.
-const sub = await instance("subagent", hookExe);
-const subEvents = [
-  sample("catalog.updated", {}),
-  sample("session.created", { info: { id: "c", parentID: "p" } }),
-  sample("session.status", { sessionID: "c", status: { type: "busy" } }),
-  sample("session.idle", { sessionID: "c" }),
-  sample("session.status", { sessionID: "p", status: { type: "busy" } }),
-  sample("session.updated", { info: { id: "c2", parentID: "p" } }),
-  sample("session.idle", { sessionID: "c2" }),
-  sample("session.idle", { sessionID: "p" }),
-];
-for (const e of subEvents) await timed("subagent event", RETURNS_AT_ONCE_MS, () => sub.hooks.event(e));
-await quiet("subagent", 3);
-await timed("subagent dispose", DISPOSE_LIMIT_MS, () => sub.hooks.dispose());
+// session-start comes the start delay after `plugin.updated`, not at it.
+{
+  const delayed = await instance("delayed", hookExe, { startDelayMs: 600, fallbackMs: 60000 });
+  await delayed.event("plugin.updated", {});
+  await delayed.event("plugin.updated", {});
+  await sleep(150);
+  results.delayedEarly = lines("delayed");
+  await quiet("delayed", 1);
+  await delayed.cleanup();
+}
 
-// Busy payloads carry only what DuoHive reads, never a tool's full output.
-const trim = await instance("trim", hookExe);
-const big = "x".repeat(100000);
-await timed("trim tool", RETURNS_AT_ONCE_MS, () =>
-  trim.hooks["tool.execute.after"](
-    { tool: "write", sessionID: "s", callID: "c" },
-    { title: "t", output: big, metadata: { diff: big } },
-  ),
-);
-await timed("trim asked", RETURNS_AT_ONCE_MS, () =>
-  trim.hooks.event(
-    sample("permission.asked", {
-      id: "per_1",
-      sessionID: "s",
-      permission: "edit",
-      patterns: ["a.txt"],
-      metadata: { filepath: "/w/a.txt", diff: big },
-      always: ["*"],
-    }),
-  ),
-);
-await timed("trim chat", RETURNS_AT_ONCE_MS, () =>
-  trim.hooks["chat.message"]({ sessionID: "s", agent: "build" }, { parts: [{ type: "text", text: big }] }),
-);
-await quiet("trim", 4);
-await timed("trim dispose", DISPOSE_LIMIT_MS, () => trim.hooks.dispose());
+// With no event at all, the fallback timer sends session-start.
+{
+  const fallback = await instance("fallback", hookExe, { fallbackMs: 100 });
+  await quiet("fallback", 1);
+  await fallback.cleanup();
+}
+
+// Child sessions (subagents) neither busy, ask, reply nor end the agent's turn.
+{
+  const sub = await instance("subagent", hookExe);
+  await sub.event("session.execution.started", { sessionID: "p" });
+  await sub.event("session.created", { sessionID: "c", parentID: "p" });
+  await sub.event("session.execution.started", { sessionID: "c" });
+  await sub.event("session.text.ended", { sessionID: "c", assistantMessageID: "mc", ordinal: 0, text: "child" });
+  await sub.event("permission.asked", { id: "pc", sessionID: "c", action: "edit", resources: ["x"] });
+  await sub.event("permission.replied", { requestID: "pc", sessionID: "c", reply: "once" });
+  await sub.event("form.created", { form: { id: "fc", sessionID: "c", title: "Questions" } });
+  await sub.event("session.execution.succeeded", { sessionID: "c" });
+  await sub.event("session.execution.failed", { sessionID: "c", error: { message: "child failed" } });
+  await sub.event("session.text.ended", { sessionID: "p", assistantMessageID: "m1", ordinal: 1, text: "two" });
+  await sub.event("session.text.ended", { sessionID: "p", assistantMessageID: "m1", ordinal: 0, text: "one" });
+  await sub.event("session.execution.succeeded", { sessionID: "p" });
+  await quiet("subagent", 3);
+  await sub.cleanup();
+}
+
+// The reply is the last assistant message's text parts; a new turn starts with none.
+{
+  const reply = await instance("reply", hookExe);
+  await reply.event("session.execution.started", { sessionID: "s" });
+  await reply.event("session.text.ended", { sessionID: "s", assistantMessageID: "m1", ordinal: 0, text: "first message" });
+  await reply.event("session.text.ended", { sessionID: "s", assistantMessageID: "m2", ordinal: 0, text: "last" });
+  await reply.event("session.text.ended", { sessionID: "s", assistantMessageID: "m2", ordinal: 1, text: "message" });
+  await reply.event("session.execution.interrupted", { sessionID: "s", reason: "user" });
+  await reply.event("session.execution.started", { sessionID: "s" });
+  await reply.event("session.execution.succeeded", { sessionID: "s" });
+  await quiet("reply", 5);
+  await reply.cleanup();
+}
+
+// Payloads carry only what DuoHive reads, never a diff, a tool's output or an
+// error's response body, and long text is cut.
+{
+  const trim = await instance("trim", hookExe);
+  const big = "x".repeat(100000);
+  await trim.event("permission.asked", {
+    id: "per_1",
+    sessionID: "s",
+    action: "shell",
+    resources: Array.from({ length: 20 }, (_, i) => `${i} ${big}`),
+    save: ["*"],
+    metadata: { diff: big },
+    source: { type: "tool" },
+  });
+  await trim.event("permission.replied", { requestID: "per_1", sessionID: "s", reply: "reject" });
+  await trim.event("form.created", {
+    form: { id: "f", sessionID: "s", title: "Questions", fields: [{ key: "q0", description: big, options: [big] }] },
+  });
+  await trim.event("form.replied", { id: "f", sessionID: "s", answer: { q0: big } });
+  await trim.event("session.execution.failed", {
+    sessionID: "s",
+    error: { type: "provider.internal", message: big, status: 500, response: { body: big } },
+  });
+  await quiet("trim", 5);
+  await trim.cleanup();
+}
+
+// `evaluate` raises only allow → ask, only for edit and shell, and keeps an
+// "Always allow" answer's save patterns from asking again.
+{
+  const ev = await instance("evaluate", "");
+  const query = (action, effect, resources) => ev.evaluate({ sessionID: "s", agent: "build", action, effect, resources });
+  const actions = ["edit", "shell", "read", "grep", "webfetch", "question", "subagent", "bash", "write"];
+  results.evaluateTable = actions.map((action) =>
+    ["allow", "ask", "deny"].map((effect) => query(action, effect, ["a.txt"])),
+  );
+  await ev.event("permission.asked", { id: "p1", sessionID: "s", action: "shell", resources: ["ls -la"], save: ["ls *"] });
+  await ev.event("permission.replied", { requestID: "p1", sessionID: "s", reply: "always" });
+  await ev.event("permission.asked", { id: "p2", sessionID: "s", action: "edit", resources: ["b.txt"], save: ["b.txt"] });
+  await ev.event("permission.replied", { requestID: "p2", sessionID: "s", reply: "once" });
+  await ev.event("permission.asked", { id: "p3", sessionID: "s", action: "edit", resources: ["c.txt"], save: [] });
+  await ev.event("permission.replied", { requestID: "p3", sessionID: "s", reply: "always" });
+  await ev.event("permission.replied", { requestID: "unknown", sessionID: "s", reply: "always" });
+  results.evaluateAlways = [
+    query("shell", "allow", ["ls -la"]),
+    query("shell", "allow", ["ls src", "ls -l"]),
+    query("shell", "allow", ["ls -la", "rm -rf x"]),
+    query("shell", "allow", []),
+    query("shell", "deny", ["ls -la"]),
+    query("edit", "allow", ["ls -la"]),
+    query("edit", "allow", ["b.txt"]),
+    query("edit", "allow", ["c.txt"]),
+  ];
+  await ev.cleanup();
+}
+
+// `context` adds the instructions to the agent's own sessions only; with no
+// instructions file (or an unreadable one) no context hook is registered.
+{
+  const withFile = await instance("context", "", { options: { instructions: instructionsPath } });
+  await withFile.event("session.created", { sessionID: "c", parentID: "p" });
+  const run = (sessionID) => {
+    const input = { sessionID, agent: "build", system: [{ type: "text", text: "base" }] };
+    for (const fn of withFile.fake.hooks.context ?? []) fn(input);
+    return input.system;
+  };
+  results.context = { own: run("p"), child: run("c") };
+  await withFile.cleanup();
+  const registered = [];
+  for (const options of [{}, { instructions: `${logDir}/no-such-file.md` }, { instructions: 5 }, undefined]) {
+    const none = await instance("context-none", "", { options });
+    registered.push((none.fake.hooks.context ?? []).length);
+    await none.cleanup();
+  }
+  results.contextWithout = registered;
+}
 
 await sleep(200);
-process.stdout.write(JSON.stringify({ feed, decisions, before, queries, errors, hangDispose }));
+process.stdout.write(JSON.stringify({ evaluations, results, errors }));
 process.exit(0);

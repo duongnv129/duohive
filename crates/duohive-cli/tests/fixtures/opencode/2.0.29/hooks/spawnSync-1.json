@@ -1,0 +1,10 @@
+{
+ "t": 1792088507080,
+ "dt": 134,
+ "pid": 43046,
+ "kind": "spawnSync",
+ "data": {
+  "status": 0,
+  "stdout": "spawned-43046\nstdin-ok"
+ }
+}

@@ -90,11 +90,17 @@ pub enum WaitingOn {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Trigger {
     Launch,
-    Ready { has_task: bool },
+    Ready {
+        has_task: bool,
+    },
     LaunchFailed,
     NeedsInput,
     Answered,
-    TurnEnded { is_duo: bool },
+    TurnEnded {
+        is_duo: bool,
+    },
+    /// The CLI reported that a turn failed (a provider or API error, P2-D24).
+    TurnFailed,
     Viewed,
     NewWork,
     UnexpectedExit,
@@ -105,7 +111,7 @@ pub enum Trigger {
 pub fn transition(from: AgentState, t: &Trigger) -> Option<AgentState> {
     use AgentState::{Errored, Finished, Idle, Starting, Stopped, Waiting, Working};
     use Trigger::{
-        Answered, Launch, LaunchFailed, NeedsInput, NewWork, Ready, Stop, TurnEnded,
+        Answered, Launch, LaunchFailed, NeedsInput, NewWork, Ready, Stop, TurnEnded, TurnFailed,
         UnexpectedExit, Viewed,
     };
     match (from, t) {
@@ -119,7 +125,9 @@ pub fn transition(from: AgentState, t: &Trigger) -> Option<AgentState> {
         (Working | Waiting, TurnEnded { is_duo: true }) => Some(Idle),
         (Finished, Viewed) => Some(Idle),
         (Finished | Idle, NewWork) => Some(Working),
-        (Starting | Working | Waiting | Finished | Idle, UnexpectedExit) => Some(Errored),
+        (Starting | Working | Waiting | Finished | Idle, UnexpectedExit | TurnFailed) => {
+            Some(Errored)
+        }
         (Starting | Working | Waiting | Finished | Idle | Errored, Stop) => Some(Stopped),
         _ => None,
     }
@@ -144,6 +152,7 @@ mod tests {
             Answered,
             TurnEnded { is_duo: false },
             TurnEnded { is_duo: true },
+            TurnFailed,
             Viewed,
             NewWork,
             UnexpectedExit,
@@ -171,6 +180,7 @@ mod tests {
         }
         for from in [Starting, Working, Waiting, Finished, Idle] {
             t.push((from, UnexpectedExit, Errored));
+            t.push((from, TurnFailed, Errored));
         }
         for from in [Starting, Working, Waiting, Finished, Idle, Errored] {
             t.push((from, Stop, Stopped));

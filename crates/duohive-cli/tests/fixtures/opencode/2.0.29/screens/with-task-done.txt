@@ -1,0 +1,40 @@
+   Sentinel definition question    Ping-pong connectivity check  • Malformed shell command input +
+
+  ┃
+  ┃  -rf é/ünï 日本 $(id) `x`
+  ┃  /second line: reply with the single word OK and use no tools.
+  ┃
+
+     + Thought · 262ms
+
+     OK
+
+     Build · GLM 5.2 · 13.1s · 2.5 tok/s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · GLM 5.2 LiteLLM (Cake)
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj  33.8K (17%)  ctrl+p commands
+
