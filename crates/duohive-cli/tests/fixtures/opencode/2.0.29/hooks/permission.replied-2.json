@@ -1,0 +1,19 @@
+{
+ "t": 1792087786828,
+ "dt": 66822,
+ "pid": 26407,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c1854b001mbXJsrAejf9r7F",
+  "created": 1792087786827,
+  "type": "permission.replied",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "sessionID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "requestID": "per_140c148db0012Y9OZeYQRp7n8m",
+   "reply": "once"
+  }
+ }
+}

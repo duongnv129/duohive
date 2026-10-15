@@ -1,0 +1,21 @@
+{
+ "t": 1792088462306,
+ "dt": 76979,
+ "pid": 40792,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140cbd3d30014tapr22SFh0OzC",
+  "created": 1792088462291,
+  "type": "form.replied",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3"
+  },
+  "data": {
+   "id": "frm_140cb8e0c001Yv2vaL2dXb6wNK",
+   "sessionID": "ses_ebf354159ffep9RaaLjoEPu1NH",
+   "answer": {
+    "q0": "A"
+   }
+  }
+ }
+}

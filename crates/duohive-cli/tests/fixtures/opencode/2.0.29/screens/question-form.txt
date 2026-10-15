@@ -1,0 +1,40 @@
+   Create allowed/a.txt with hi  ? Subagent ping pong test       +
+
+  ┃
+  ┃  Use the subagent tool with agent general and the prompt 'Reply with the single word pong. Use no tools.' Then
+  ┃  reply with what it said.
+  ┃
+
+     + Thought · 965ms
+
+     ✓ General Subagent — Ping test
+
+     pong
+
+     Build · Model 1 · 8.9s · 17.4 tok/s
+
+  ┃
+  ┃  Use the question tool to ask me whether I prefer A or B. Then reply with my choice in one word.
+  ┃
+
+     → Asked 1 question
+
+     → Asked 1 question
+
+
+
+
+  ┃
+  ┃  Questions
+  ┃
+  ┃  Which do you prefer?
+  ┃
+  ┃  1. A
+  ┃     Option A
+  ┃  2. B
+  ┃     Option B
+  ┃  3. Type your own answer
+  ┃
+  ┃  ↑↓ select  enter submit  esc dismiss
+  ┃
+

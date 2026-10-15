@@ -1,0 +1,1 @@
+{ "plugins": [{ "package": "file://<spike>/plugins/duohive", "options": { "instructions": "<spike>/cfg/instr-b.md" } }], "model": "litellm/model-2" }

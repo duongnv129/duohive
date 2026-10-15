@@ -1,0 +1,40 @@
+ ? Create e.txt containing hi    +
+  ┃
+
+     done
+
+     Build · Model 1 · 4.5s · 4.7 tok/s
+
+  ┃
+  ┃  Run the shell command: touch d.txt
+  ┃
+
+  ┃
+  ┃  $ touch d.txt
+  ┃
+  ┃  The user declined this tool call
+  ┃
+
+     Build · Model 1 · 4.2s · 3.9 tok/s · interrupted
+
+  ┃
+  ┃  Use the question tool to ask me whether I prefer A or B (give each option a description). Then reply with my
+  ┃  choice in one word.
+  ┃
+
+     → Asked 1 question
+
+  ┃
+  ┃  Questions
+  ┃
+  ┃  Which do you prefer?
+  ┃
+  ┃  1. A
+  ┃     The first option — a solid, conventional choice.
+  ┃  2. B
+  ┃     The second option — an alternative, more adventurous choice.
+  ┃  3. Type your own answer
+  ┃
+  ┃  ↑↓ select  enter submit  esc dismiss
+  ┃
+

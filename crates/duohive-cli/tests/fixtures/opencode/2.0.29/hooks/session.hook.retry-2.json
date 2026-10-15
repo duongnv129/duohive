@@ -1,0 +1,28 @@
+{
+ "t": 1792088026801,
+ "dt": 30369,
+ "pid": 33239,
+ "kind": "session.hook.retry",
+ "data": {
+  "sessionID": "ses_ebf3b3439fferAuuPVvi2ZvOo8",
+  "agent": "build",
+  "model": {
+   "id": "m1",
+   "providerID": "spikeerr",
+   "variant": "default"
+  },
+  "error": {
+   "type": "provider.internal",
+   "message": "spike: model not found",
+   "status": 500,
+   "response": {
+    "body": "{\"error\": {\"message\": \"spike: model not found\", \"type\": \"invalid_request_error\", \"code\": \"model_not_found\"}}"
+   }
+  },
+  "attempt": 2,
+  "decision": {
+   "retry": true,
+   "delay": 1657
+  }
+ }
+}

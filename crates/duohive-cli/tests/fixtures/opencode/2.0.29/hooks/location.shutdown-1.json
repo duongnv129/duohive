@@ -1,0 +1,15 @@
+{
+ "t": 1792088512711,
+ "dt": 5765,
+ "pid": 43046,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140cc98bf001isSpuKrTFux5Zu",
+  "created": 1792088512703,
+  "type": "location.shutdown",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3"
+  },
+  "data": {}
+ }
+}

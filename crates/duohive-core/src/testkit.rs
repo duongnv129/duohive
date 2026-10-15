@@ -441,6 +441,12 @@ impl CliAdapter for StubAdapter {
             "turn-end" => Some(HookSignal::TurnEnded {
                 last_reply: payload["last_reply"].as_str().map(str::to_owned),
             }),
+            "turn-failed" => Some(HookSignal::TurnFailed {
+                reason: payload["reason"]
+                    .as_str()
+                    .unwrap_or("turn failed")
+                    .to_owned(),
+            }),
             "session-end" => Some(HookSignal::SessionEnded),
             _ => None,
         }

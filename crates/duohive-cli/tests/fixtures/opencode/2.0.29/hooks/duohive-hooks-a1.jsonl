@@ -1,0 +1,13 @@
+{"t": 1792088122585, "agent": "alpha", "event": "session-start", "payload": {}}
+{"t": 1792088123025, "agent": "alpha", "event": "busy", "payload": {"sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W"}}
+{"t": 1792088125931, "agent": "alpha", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "duohive_last_reply": "HIVE-SENTINEL"}}
+{"t": 1792088175900, "agent": "alpha", "event": "busy", "payload": {"sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W"}}
+{"t": 1792088179840, "agent": "alpha", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "duohive_last_reply": "HIVE-SENTINEL"}}
+{"t": 1792088206585, "agent": "alpha", "event": "busy", "payload": {"sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W"}}
+{"t": 1792088213435, "agent": "alpha", "event": "needs-input", "payload": {"type": "permission.asked", "properties": {"id": "per_140c80787001wJV3hoMyLwlkzv", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "action": "edit", "resources": ["e.txt"]}}}
+{"t": 1792088214394, "agent": "alpha", "event": "busy", "payload": {"type": "permission.replied", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W"}}
+{"t": 1792088222073, "agent": "alpha", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "duohive_last_reply": "Done"}}
+{"t": 1792088224847, "agent": "alpha", "event": "busy", "payload": {"sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W"}}
+{"t": 1792088226366, "agent": "alpha", "event": "needs-input", "payload": {"type": "permission.asked", "properties": {"id": "per_140c839fc001fCbdXYzABfkD5n", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "action": "edit", "resources": ["f.txt"]}}}
+{"t": 1792088236810, "agent": "alpha", "event": "turn-end", "payload": {"type": "session.execution.interrupted", "sessionID": "ses_ebf3959c8ffeUoWFCrrwVo2X1W", "reason": "shutdown", "duohive_last_reply": null}}
+{"t": 1792088537511, "agent": "alpha", "event": "session-end", "payload": {}}

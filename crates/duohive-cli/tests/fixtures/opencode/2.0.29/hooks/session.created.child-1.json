@@ -1,0 +1,37 @@
+{
+ "t": 1792088394879,
+ "dt": 9552,
+ "pid": 40792,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140cacc76001Vz4Pwp5SAwpG7k",
+  "created": 1792088394870,
+  "type": "session.created",
+  "durable": {
+   "aggregateID": "ses_ebf35338bffefPGq4OOyCxrlBt",
+   "seq": 0,
+   "version": 1
+  },
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj3"
+  },
+  "data": {
+   "sessionID": "ses_ebf35338bffefPGq4OOyCxrlBt",
+   "projectID": "e6e311cc43ae423760f04c5ce60e76d708d37f73",
+   "location": {
+    "directory": "/private/tmp/duohive-spike/oc2/proj3"
+   },
+   "subpath": "",
+   "parentID": "ses_ebf354159ffep9RaaLjoEPu1NH",
+   "slug": "gentle-rocket",
+   "title": "Ping test",
+   "agent": "general",
+   "model": {
+    "id": "model-1",
+    "providerID": "litellm",
+    "variant": "default"
+   },
+   "version": "2.0.29"
+  }
+ }
+}

@@ -1,0 +1,8 @@
+{"t": 1792088259725, "agent": "gamma", "event": "session-start", "payload": {}}
+{"t": 1792088263865, "agent": "gamma", "event": "busy", "payload": {"sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U"}}
+{"t": 1792088266987, "agent": "gamma", "event": "needs-input", "payload": {"type": "permission.asked", "properties": {"id": "per_140c8d8bd001x1pL191p4i3sGt", "sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U", "action": "edit", "resources": ["e.txt"]}}}
+{"t": 1792088268426, "agent": "gamma", "event": "busy", "payload": {"type": "permission.replied", "sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U"}}
+{"t": 1792088271045, "agent": "gamma", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U", "duohive_last_reply": "Done."}}
+{"t": 1792088278832, "agent": "gamma", "event": "busy", "payload": {"sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U"}}
+{"t": 1792088287405, "agent": "gamma", "event": "turn-end", "payload": {"type": "session.execution.succeeded", "sessionID": "ses_ebf3733a1ffeN1lMsYT35c6f9U", "duohive_last_reply": "Done."}}
+{"t": 1792088312848, "agent": "gamma", "event": "session-end", "payload": {}}

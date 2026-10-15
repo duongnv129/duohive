@@ -1,0 +1,34 @@
+{
+ "t": 1792087740363,
+ "dt": 20357,
+ "pid": 26407,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c0cfc8001y7Mp7C4oEbnfd2",
+  "created": 1792087740360,
+  "type": "session.created",
+  "durable": {
+   "aggregateID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "seq": 0,
+   "version": 1
+  },
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "sessionID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "projectID": "1c7144ac9737363ebda748ebaed3ced9fa0b0216",
+   "location": {
+    "directory": "/private/tmp/duohive-spike/oc2/proj"
+   },
+   "subpath": "",
+   "slug": "calm-meadow",
+   "agent": "build",
+   "model": {
+    "id": "model-1",
+    "providerID": "litellm"
+   },
+   "version": "2.0.29"
+  }
+ }
+}

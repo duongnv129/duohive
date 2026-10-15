@@ -1,0 +1,40 @@
+   Sentinel definition question  +
+
+  ┃
+  ┃  What is the sentinel? Reply in one word, use no tools.
+  ┃
+
+     + Thought · 766ms
+
+     Vigilance.
+
+     Build · Model 1 · 2.8s · 19.9 tok/s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Model 1 Provider (Ex.)
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj  33.8K (17%)  ctrl+p commands
+

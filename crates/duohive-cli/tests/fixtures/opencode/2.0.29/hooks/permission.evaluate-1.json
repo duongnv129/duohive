@@ -1,0 +1,27 @@
+{
+ "t": 1792087340641,
+ "dt": 10639,
+ "pid": 18507,
+ "kind": "permission.evaluate",
+ "data": {
+  "before": {
+   "sessionID": "ses_ebf457343ffePN36U3niXLbDu7",
+   "agent": "build",
+   "action": "grep",
+   "resources": [
+    "sentinel"
+   ],
+   "metadata": {
+    "root": ".",
+    "caseSensitive": false
+   },
+   "source": {
+    "type": "tool",
+    "messageID": "msg_140ba8f4f0012TTkZKrUuPC8Ol",
+    "id": "call_dff86c5d7d4444c0b8cc1a3a"
+   },
+   "effect": "allow"
+  },
+  "after": "allow"
+ }
+}

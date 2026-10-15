@@ -1,0 +1,16 @@
+{
+ "t": 1792087740382,
+ "dt": 20376,
+ "pid": 26407,
+ "kind": "session.hook.prompt",
+ "data": {
+  "sessionID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+  "messageID": "msg_140c0cfc1001OVqJSzdgKQpagN",
+  "prompt": {
+   "text": "Reply with the single word pong. Use no tools.",
+   "files": [],
+   "agents": []
+  },
+  "delivery": "steer"
+ }
+}

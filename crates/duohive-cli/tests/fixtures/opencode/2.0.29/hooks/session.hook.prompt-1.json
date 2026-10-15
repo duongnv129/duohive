@@ -1,0 +1,15 @@
+{
+ "t": 1792087330494,
+ "dt": 492,
+ "pid": 18507,
+ "kind": "session.hook.prompt",
+ "data": {
+  "sessionID": "ses_ebf457343ffePN36U3niXLbDu7",
+  "messageID": "msg_140ba8cc7001pUys4o4LsTzFwB",
+  "prompt": {
+   "text": "\"What is the sentinel?\"",
+   "files": []
+  },
+  "delivery": "steer"
+ }
+}

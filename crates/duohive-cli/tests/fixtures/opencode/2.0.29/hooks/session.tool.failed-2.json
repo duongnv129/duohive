@@ -1,0 +1,29 @@
+{
+ "t": 1792087816937,
+ "dt": 96931,
+ "pid": 26407,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c1fae10023qhL7LAY49vEau",
+  "created": 1792087816929,
+  "type": "session.tool.failed",
+  "durable": {
+   "aggregateID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "seq": 43,
+   "version": 2
+  },
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "sessionID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "assistantMessageID": "msg_140c1de0b001R7f8xAl1PQgS2k",
+   "id": "call_a3155b3ee86a4a2b9232b2c9",
+   "error": {
+    "type": "aborted",
+    "message": "The user declined this tool call"
+   },
+   "executed": false
+  }
+ }
+}

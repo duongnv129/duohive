@@ -1,0 +1,40 @@
+ ! New session                   +
+
+  ┃
+  ┃  Create a file e.txt containing hi with the write tool, then reply done.
+  ┃
+
+     + Thought · 453ms
+
+     ← Write e.txt
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃  △ Permission required
+  ┃    → Edit e.txt
+  ┃
+  ┃  1 + hi
+  ┃
+  ┃
+  ┃
+  ┃
+  ┃
+  ┃
+  ┃
+  ┃
+  ┃   Allow once   Always allow   Reject                                 ctrl+f fullscreen  ⇆ select  enter confirm
+  ┃
+

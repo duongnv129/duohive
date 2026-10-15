@@ -1,0 +1,1 @@
+{ "plugins": ["file://<spike>/plugins/duohive-transform"], "permissions": [{"action":"shell","resource":"rm *","effect":"deny"},{"action":"edit","resource":"allowed/*","effect":"allow"}] }

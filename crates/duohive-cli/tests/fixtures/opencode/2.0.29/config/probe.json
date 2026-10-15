@@ -1,0 +1,1 @@
+{ "plugins": ["file://<spike>/plugins/probe"], "instructions": ["<spike>/cfg/instr.md"] }

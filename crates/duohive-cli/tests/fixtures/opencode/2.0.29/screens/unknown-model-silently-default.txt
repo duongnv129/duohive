@@ -1,0 +1,40 @@
+   Sentinel definition questio   Ping-pong connectivity che   Malformed shell command in   Ping test                  +
+
+  ┃
+  ┃  Reply with the single word pong.
+  ┃
+
+     pong
+
+     Build · Model 1 · 5.3s · 0.6 tok/s
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Model 1 Provider (Ex.)
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj  33.8K (17%)  ctrl+p commands
+

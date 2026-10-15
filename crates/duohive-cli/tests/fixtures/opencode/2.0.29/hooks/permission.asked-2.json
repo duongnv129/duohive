@@ -1,0 +1,41 @@
+{
+ "t": 1792087771356,
+ "dt": 51350,
+ "pid": 26407,
+ "kind": "event.iter",
+ "data": {
+  "id": "evt_140c148db0027T6EjtESVZ6Y2u",
+  "created": 1792087771355,
+  "type": "permission.asked",
+  "location": {
+   "directory": "/private/tmp/duohive-spike/oc2/proj"
+  },
+  "data": {
+   "id": "per_140c148db0012Y9OZeYQRp7n8m",
+   "sessionID": "ses_ebf3f3042ffe1yhXbDKcIJbtV8",
+   "action": "edit",
+   "resources": [
+    "c.txt"
+   ],
+   "save": [
+    "*"
+   ],
+   "metadata": {
+    "files": [
+     {
+      "file": "c.txt",
+      "patch": "Index: c.txt\n===================================================================\n--- c.txt\n+++ c.txt\n@@ -0,0 +1,1 @@\n+hi\n\\ No newline at end of file\n",
+      "status": "added",
+      "additions": 1,
+      "deletions": 0
+     }
+    ]
+   },
+   "source": {
+    "type": "tool",
+    "messageID": "msg_140c132a1001rAW72YQp96TaUS",
+    "id": "call_5fecf0b300544a53941eb19d"
+   }
+  }
+ }
+}

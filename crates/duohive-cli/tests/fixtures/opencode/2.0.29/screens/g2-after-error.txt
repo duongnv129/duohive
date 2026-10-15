@@ -1,0 +1,40 @@
+   Create e.txt containing hi      New session                   +
+                                                                                          ┃                          ┃
+  ┃                                                                                       ┃  Session failed       x  ┃
+  ┃  Reply with the single word pong.                                                     ┃                          ┃
+  ┃                                                                                       ┃  spike: model not found  ┃
+                                                                                          ┃                          ┃
+     Error: spike: model not found
+
+     Build · Spike M1 · 20ms
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ┃
+  ┃
+  ┃
+  ┃  Build · Spike M1 SpikeErr
+  ╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+  /private/tmp/duohive-spike/oc2/proj4  shift+tab agents  ctrl+p commands
+

@@ -27,7 +27,7 @@
 | 1 | 2026-10-15 | Stop (Claude) | With Claude's vim editor mode, stop's `/exit` became vim commands and Enter re-ran the last task until the 5 s grace kill | 1 | `fix: vim-safe quit keys for Claude Code` |
 | 2 | 2026-10-15 | Give work (OpenCode) | OpenCode's "Update Available" dialog, `Confirm` highlighted, swallowed a pasted task and Enter would start an upgrade | 1 | `fix: close OpenCode dialogs before delivering a task` |
 | 3 | 2026-10-15 | Agent pane (Claude, new worktree) | The trust dialog's default is `No, exit`, so a reflex `enter` kills the agent | 2 | `feat: hint how to answer Claude's trust dialog` (P2-D23) |
-| 4 | 2026-10-15 | Status (OpenCode) | An invalid API key or a model outside the plan ends the turn as finished with no reply, not errored | 2 | open |
+| 4 | 2026-10-15 | Status (OpenCode) | An invalid API key or a model outside the plan ends the turn as finished with no reply, not errored | 2 | `fix: error an OpenCode agent whose turn fails` (P2-D24) |
 | 5 | 2026-10-15 | Agent pane (OpenCode) | OpenCode doesn't draw CJK characters; the text reaches the model intact | 3 | OpenCode's own drawing; not fixed |
 | 6 | 2026-10-15 | Give work (OpenCode) | The update dialog can still open in the 150 ms between `Escape` and the paste, for a Give work sent right after launch | 3 | open |
 | 7 | 2026-10-15 | Agent pane | UX F1: the title dropped `· TYPING` and `· scrolled` when cut | 2 | `fix: keep the agent pane's mode word when its title is cut` |
@@ -43,6 +43,7 @@
 | 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | open (theme `auto` lands in 4.9) |
 | 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
 | 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
+| 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
 
 ## Live checks
 
@@ -55,6 +56,7 @@ These are carried from phase 1 and spike S3. Record the result and the CLI versi
 | A task starting with `/` on OpenCode | OpenCode 1.18.35 | pass | Taken as text via `--prompt=`. A later pasted `/` task is not checked |
 | A Claude turn that runs on past `Escape` | Claude Code 2.1.300 | fixed | Failed under vim mode (entry 1). The new keys exit with status 0 in 6 of 6 runs (vim and normal; at rest, early, late) |
 | S3.7: the trust dialog in a new worktree path | Claude Code 2.1.300; OpenCode 1.18.35 | decided | Claude shows it, default `No, exit`; the author chose `~◆ waiting` plus a hint (P2-D23, entry 3). OpenCode shows none |
+| The OpenCode 2.0 adapter: launch, hooks, reply, approvals, failed turn | OpenCode 2.0.29 | pass (plugin) | 2026-10-16, real TUI in a throwaway tmux socket with the shipped plugin and a logging hook: session-start, busy, turn-end with the reply, per-launch instructions, `edit` asked then busy on Allow once, `/exit` → session-end; a 400 from a local stub → turn-end `session.execution.failed` with its error. A full DuoHive session on 2.0.29 is part of the three-day run |
 
 ## UI/UX pass
 
