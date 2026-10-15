@@ -19,6 +19,8 @@ const PREFIX: u16 = 3;
 const FOCUS: &str = "▌";
 /// The longest an Agent column grows.
 const AGENT_MAX: usize = 16;
+/// The padding cell kept before the right border.
+const PAD_CELLS: usize = 1;
 /// Cells kept between Branch and State.
 const BRANCH_GAP: usize = 2;
 /// The least a Branch column keeps when the State words need room.
@@ -69,13 +71,20 @@ fn check_line(rows: &[WorktreeRow], now: Millis) -> String {
     }
 }
 
-/// The three column widths (Agent, Branch, State) within `room` cells.
+/// The longest a State column grows: the longest fixed state; a longer `couldn't check`
+/// reason is cut with `…`.
+fn state_max() -> usize {
+    width(&state_word(&WorktreeState::MergedDirty))
+}
+
+/// The three column widths (Agent, Branch, State) within `room` cells, leaving a padding
+/// cell before the border.
 fn columns(rows: &[WorktreeRow], room: usize) -> (usize, usize, usize) {
     let longest = |f: &dyn Fn(&WorktreeRow) -> usize| rows.iter().map(f).max().unwrap_or(0);
     let agent = (longest(&|r| width(r.agent.as_str())).clamp(5, AGENT_MAX)) + 2;
     let want_branch = longest(&|r| width(&r.branch)).max(6) + 2;
-    let want_state = longest(&|r| width(&state_word(&r.state))).max(5);
-    let avail = room.saturating_sub(agent);
+    let want_state = longest(&|r| width(&state_word(&r.state))).clamp(5, state_max());
+    let avail = room.saturating_sub(agent + PAD_CELLS);
     let branch = if want_branch + want_state <= avail {
         want_branch
     } else {
