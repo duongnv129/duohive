@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use super::worktrees::Creating;
 use super::{AgentRt, Engine};
 use crate::event::{Event, NeedsYouItem};
 use crate::names::AgentName;
@@ -52,7 +53,8 @@ impl Engine {
     }
 
     /// A timer is due: zero exits past their grace, start timeouts, screen
-    /// reads, quiet, deliveries waiting past `DELIVERY_WAIT` and the 10-minute
+    /// reads, quiet, deliveries waiting past `DELIVERY_WAIT`, worktree creations
+    /// waiting past `CREATE_WAIT` and the 10-minute
     /// worktree check.
     pub(super) fn on_tick(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
@@ -75,6 +77,7 @@ impl Engine {
         if rt.delivery.as_ref().is_some_and(|d| d.due <= now) {
             out.extend(self.not_taken(agent, NO_SIGN.to_owned()));
         }
+        out.extend(self.expire_creation(agent, now));
         let Some(rt) = self.agents.get(agent) else {
             return;
         };
@@ -205,7 +208,8 @@ impl Engine {
 
     /// When the next timer is due: settle reads, start timeouts, pre-timeout
     /// reads, zero exits waiting for their end hook, quiet thresholds,
-    /// deliveries waiting for a sign they were taken, and, while there are
+    /// deliveries waiting for a sign they were taken, worktree creations
+    /// waiting for git, and, while there are
     /// worktrees, the 10-minute check.
     /// Each is cleared or acted on by the `Tick` that reaches it.
     pub fn next_deadline(&self) -> Option<Millis> {
@@ -221,6 +225,7 @@ impl Engine {
                     rt.exit_pending.as_ref().map(|p| p.due),
                     quiet_at(rt, quiet_after),
                     rt.delivery.as_ref().map(|d| d.due),
+                    rt.creating.as_ref().map(Creating::due),
                 ]
             })
             .flatten()

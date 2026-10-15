@@ -282,7 +282,7 @@ impl UiModel {
                 self.footer_note = Some(ALERTS_UNAVAILABLE.to_owned());
             }
             Event::Worktrees(rows) => self.set_worktrees(rows),
-            // The desktop notice reaches the screen in a later task.
+            // The engine hands alerts to the notifier itself; the row's state already shows here.
             Event::Alert(_) => {}
         }
         true

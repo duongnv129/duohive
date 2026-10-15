@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use super::lifecycle::{getting_ready, not_found};
 use super::timers::WORKTREE_CHECK_EVERY;
@@ -17,6 +18,7 @@ use crate::inherit::{expand_home, resolve};
 use crate::names::AgentName;
 use crate::ports::{CheckWorktree, CreateWorktree, GitError, RemoveWorktree};
 use crate::status::AgentState;
+use crate::time::Millis;
 use crate::validate::{DirStatus, agent_problem};
 use crate::worktree::{
     BaseRef, MergeState, TaskId, WorktreeRow, WorktreeState, branch_name, task_id, task_slug,
@@ -25,6 +27,10 @@ use crate::worktree::{
 
 /// P2-D7: how many branch names are tried before giving up.
 const CREATE_ATTEMPTS: u8 = 9;
+/// P2-D22: how long one creation try waits for git's answer before giving up.
+pub(super) const CREATE_WAIT: Duration = Duration::from_secs(120);
+/// P2-D22's reason when git never answered.
+const NO_ANSWER: &str = "git didn't answer";
 
 /// A worktree being created for `agent`'s next launch (P2-D20).
 #[derive(Clone, Debug)]
@@ -35,6 +41,15 @@ pub(super) struct Creating {
     attempt: u8,
     /// The row saved for this try.
     row: WorktreeRow,
+    /// When this try gives up waiting for git (P2-D22).
+    due: Millis,
+}
+
+impl Creating {
+    /// When this try gives up waiting for git (P2-D22).
+    pub(super) fn due(&self) -> Millis {
+        self.due
+    }
 }
 
 impl Engine {
@@ -124,7 +139,13 @@ impl Engine {
             path: row.path.clone(),
             branch: row.branch.clone(),
         });
-        self.rt_mut(agent).creating = Some(Creating { task, attempt, row });
+        let due = self.ports.clock.now() + CREATE_WAIT;
+        self.rt_mut(agent).creating = Some(Creating {
+            task,
+            attempt,
+            row,
+            due,
+        });
         self.worktrees_stale = true;
         Ok(())
     }
@@ -189,6 +210,22 @@ impl Engine {
         };
         self.store_row(&row, &mut out);
         out
+    }
+
+    /// No answer from git by `due` (P2-D22): creation fails as any other
+    /// failure would, but the row stays, since git may yet make the worktree;
+    /// a later check or `d` deals with it.
+    pub(super) fn expire_creation(&mut self, agent: &AgentName, now: Millis) -> Vec<Event> {
+        let overdue = self
+            .agents
+            .get(agent)
+            .and_then(|rt| rt.creating.as_ref())
+            .is_some_and(|c| c.due <= now);
+        if !overdue {
+            return Vec::new();
+        }
+        tracing::warn!(%agent, "no answer from git for a worktree creation");
+        self.creation_failed(agent, NO_ANSWER)
     }
 
     /// Creation failed: a stopped agent stays stopped and an errored one stays
