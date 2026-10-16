@@ -21,7 +21,7 @@ use duohive_core::view::PaneSize;
 use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 pub use screens::{BlockingScreen, render_blocking};
 pub(crate) use worktrees::files_changed;
@@ -236,10 +236,33 @@ pub fn live_size(m: &UiModel) -> Option<PaneSize> {
 /// The border lines and inside style for a pane, heavy and on `bg.panel` when it has focus.
 fn pane_style(p: &Palette, focused: bool) -> (&'static Lines, Style, Style) {
     if focused {
-        (&HEAVY, fg(p.border_focus), Style::default().bg(p.bg_panel))
+        (
+            &HEAVY,
+            fg(p.border_focused),
+            Style::default().bg(p.bg_panel),
+        )
     } else {
         (&LIGHT, fg(p.border), Style::default().bg(p.bg))
     }
+}
+
+/// Restyles the title `draw_box` put in `r`'s top edge: the focused pane's title is
+/// `border.focus` and bold (UI §2.3: one accent, for focus).
+fn focus_title(buf: &mut Buffer, r: Rect, title: &str, p: &Palette) {
+    let room = usize::from(r.width).saturating_sub(5);
+    if title.is_empty() || room == 0 {
+        return;
+    }
+    let shown = width(&crate::format::truncate_end(title, room));
+    let at = Rect {
+        x: r.x + 3,
+        y: r.y,
+        width: u16::try_from(shown)
+            .unwrap_or(0)
+            .min(r.width.saturating_sub(3)),
+        height: 1,
+    };
+    buf.set_style(at, fg(p.border_focus).add_modifier(Modifier::BOLD));
 }
 
 /// A style with only a foreground colour.
@@ -367,6 +390,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
 
 #[cfg(test)]
 mod auto_tests;
+#[cfg(test)]
+mod colour_tests;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]

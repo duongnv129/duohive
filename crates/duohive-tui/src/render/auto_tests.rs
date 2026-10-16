@@ -47,6 +47,7 @@ fn auto_uses_terminal_foreground_and_ansi() {
         (p.fg, p.bg, p.bg_panel, p.selection),
         (Color::Reset, Color::Reset, Color::Reset, Color::Reset)
     );
+    // One accent (blue, for focus); colour only for states that need you.
     assert_eq!(
         (
             p.working,
@@ -57,11 +58,11 @@ fn auto_uses_terminal_foreground_and_ansi() {
             p.border_focus
         ),
         (
-            Color::Blue,
+            Color::Reset,
             Color::Yellow,
             Color::Green,
             Color::Red,
-            Color::Magenta,
+            Color::Reset,
             Color::Blue
         )
     );

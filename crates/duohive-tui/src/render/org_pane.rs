@@ -4,9 +4,11 @@ use duohive_core::names::AgentName;
 use duohive_core::org::NodeKey;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Modifier;
 
 use super::{
-    At, RenderCtx, draw_box, fg, glyph_color, needs_you, pane_style, put, put_pieces, state_color,
+    At, RenderCtx, draw_box, fg, focus_title, glyph_color, needs_you, pane_style, put, put_pieces,
+    state_color,
 };
 use crate::focus::{Layout, Pane};
 use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_capped};
@@ -40,6 +42,9 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
     };
     let (lines, border, inside) = pane_style(p, m.focus.pane == Pane::Org);
     draw_box(buf, r, "Org", lines, border, inside);
+    if m.focus.pane == Pane::Org {
+        focus_title(buf, r, "Org", p);
+    }
     needs_you::draw(buf, l.needs_you, m, ctx, compact);
     if r.width < 6 || l.org.height < 2 {
         return;
@@ -145,7 +150,14 @@ fn draw_row(
         TreeRowKind::Duo => {
             let name = m.org.duo.name.to_string();
             let head = format!("⬢ {name}");
-            let x = put(buf, x, s.y, &head, label_room, fg(p.accent_duo));
+            let x = put(
+                buf,
+                x,
+                s.y,
+                &head,
+                label_room,
+                fg(p.accent_duo).add_modifier(Modifier::BOLD),
+            );
             let rest = label_room.saturating_sub(width(&head));
             let tail = row.label.strip_prefix(head.as_str()).unwrap_or_default();
             put(buf, x, s.y, tail, rest, fg(p.fg_muted));
@@ -228,9 +240,14 @@ fn draw_state(
     let (marker, rest) = cell.split_at(1.min(cell.len()));
     let (state, age) = rest.split_at(rest.len().saturating_sub(AGE_CELLS));
     let text = |chars: &[char]| chars.iter().collect::<String>();
+    let colour = state_color(p, status);
+    // Under `auto` only the glyph carries the state's colour; the word is muted.
+    let (glyph, word) = state.split_at(if p.glyph_only { 1.min(state.len()) } else { 0 });
+    let word_colour = if p.glyph_only { p.fg_muted } else { colour };
     let parts = [
         (text(marker), p.fg),
-        (text(state), state_color(p, status)),
+        (text(glyph), colour),
+        (text(word), word_colour),
         (text(age), p.fg_muted),
     ];
     put_pieces(buf, at, parts);
