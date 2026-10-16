@@ -141,9 +141,9 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 - **No per-agent polling:** one activity query a second covers every agent (spike S0: about 0.2–0.3 % of a core in the reader at 100 windows).
 - **One pane stream, the viewed one (phase 2, spike S3):** the main connection stays `no-output`, so it carries only command replies and the once-a-second activity poll (`no-output` has no per-pane exception, spike S0).
   - **The viewer:** the agent pane's live view (`PaneView`, §3.1) uses a second control client, `attach-session -f no-output,ignore-size`.
-  - **Opening a view** is one command line, in this order: `refresh-client -f '!no-output'` (it resets every pane's on/off state, so it comes first), `refresh-client -A '%N:off'` for every other pane, `-A '%P:on'` for the viewed pane, then `display -p '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}'` and `capture-pane -e -N -p` for the first frame (`-N` keeps the background of trailing blanks).
+  - **Opening a view** is one command line, in this order: `refresh-client -f '!no-output'` (it resets every pane's on/off state, so it comes first), `refresh-client -A '%N:off'` for every other pane, `-A '%P:on'` for the viewed pane, then `display -p '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on} #{mouse_any_flag} #{mouse_sgr_flag}'` (the mouse flags since P2-D25) and `capture-pane -e -N -p` for the first frame (`-N` keeps the background of trailing blanks).
   - **The stream:** the `%output %P` lines after the capture's reply continue exactly where the capture ends.
-  - **Keys and resizes:** `send-keys -t %P` and `resize-window -t @W`, over the same connection. They fail once the window is gone.
+  - **Keys, mouse and resizes:** `send-keys -t %P`, `send-keys -H -t %P` for wheel events already encoded as SGR or X10 bytes (P2-D25), and `resize-window -t @W`, over the same connection. They fail once the window is gone.
   - **A window added while viewing** is turned `off` on its `%window-add`.
   - **Closing:** `refresh-client -f no-output`.
   - **Cost:** about 0.1 % of a core, with keystroke echo at a p95 under 2 ms, at 100 noisy windows on tmux 3.2a and latest. A 50 ms `capture-pane` timer cost about 15 times as much, with its p95 at about 50 ms.

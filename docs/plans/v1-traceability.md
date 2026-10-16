@@ -38,7 +38,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Should | Type straight into an agent's pane | 2 | 2.7 |
 | Should | Worktree option when giving work; removed once merged | 2 | 2.11–2.16 |
 | Should | Model and effort picked from what each CLI offers | 4 | 4.5 (replaces D14) |
-| Should | Every action by key and by mouse; `?` key map | 4 | 4.6–4.9 |
+| Should | Every action by key and by mouse: the wheel and click to select (P2-D25) | 2 | 2.20 |
+| Should | Every action by key and by mouse: the rest; `?` key map | 4 | 4.6–4.9 |
 | Must | Setup templates | 4 | 4.3, 4.4 |
 | Must | Give a task to a role; none free → card | 3 | 3.7, 3.11 |
 | Could | Zoom the agent pane | 2 | 2.8 |
@@ -121,7 +122,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.11 Key map: phase 1 keys (D8) | 1 | T24 |
 | §4.11 Key map: phase 2 keys (P2-D9) | 2 | 2.5–2.8, 2.15–2.17 |
 | §4.11 Key map: chat and card keys | 3 | 3.9, 3.10 |
-| §4.11 Key map: `?`, `f`, `m`, mouse, rebinding | 4 | 4.6–4.9 |
+| §4.11 Key map: mouse wheel and click to select (P2-D25) | 2 | 2.20 |
+| §4.11 Key map: `?`, `f`, `m`, the rest of the mouse, rebinding | 4 | 4.6–4.9 |
 | §4.12 Errors and empty states: tmux missing, row errors (without `space retry`), banner, empty role (held-back copy) | 1 | T23 |
 | §4.12 Errors and empty states: errored row's `space retry` | 2 | 2.15 |
 | §4.12 Errors and empty states: empty role, full copy (`… or ask Duo`) | 3 | 3.9 |
@@ -184,7 +186,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §8 Errors: message undeliverable | 3 | 3.4 |
 | §8 Errors: no agent CLI at first run (D28) | 4 | 4.3 |
 | §9 Testing: core, adapters, tmux, store, TUI at 80×24 and 160×48, key tests | 1 | T6–T29 |
-| §9 Testing: mouse tests for every action | 4 | 4.7 |
+| §9 Testing: mouse tests for the wheel and click to select (P2-D25) | 2 | 2.20 |
+| §9 Testing: mouse tests for every other action | 4 | 4.7 |
 | §9 Testing: git integration tests | 2 | 2.14 |
 | §9 Testing: end-to-end story | 3 | 3.12 |
 | §10 Benchmark: basic | 1 | T28 |
