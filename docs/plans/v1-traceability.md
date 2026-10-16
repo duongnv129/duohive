@@ -129,7 +129,8 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §5 Interaction rules: keys, typing, quit, destructive confirms, calm | 1 | T24 |
 | §5 Interaction rules: typing goes where focus is (agent pane, chat) | 2 | 2.5, 2.7 |
 | §5 Interaction rules: cards answer only with focus | 3 | 3.10 |
-| §5 Interaction rules: mouse parity | 4 | 4.7 |
+| §5 Interaction rules: mouse wheel (Typing too) and click to select and focus (P2-D25) | 2 | 2.20 |
+| §5 Interaction rules: mouse parity (right-click, drag, header counts) | 4 | 4.7 |
 | §6 Accessibility: glyph and word, `NO_COLOR` | 1 | T23 |
 | §6 Accessibility: colour-blind and contrast re-check | 4 | 4.9 |
 | §7 Copy: phase 1–2 screens | 2 | 2.20 |
@@ -209,5 +210,5 @@ Interim behaviour that a later phase removes. They are listed in the plans and h
 | P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9 |
 | P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11 |
 | P2-D13: Settings without the Keys and Org rows; theme `auto` renders dark | 2.17 | 4.4, 4.6, 4.9 |
-| P2-D9: no `?` (footer and header), `f`, `m` or mouse | phase 2 | 4.6–4.9 |
+| P2-D9: no `?` (footer and header), `f`, `m` or mouse beyond P2-D25's wheel and click | phase 2 | 4.6–4.9 |
 | T23: errored-row hint without `space retry` | phase 1 | 2.15 |

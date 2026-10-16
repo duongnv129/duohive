@@ -206,7 +206,11 @@ The agent pane has two modes.
 
 To zoom while typing, press `ctrl+q`, then `z`.
 
-**Scrolling back:** `PgUp` freezes a snapshot of the agent's scrollback (up to 2 000 lines) and the title gains `· scrolled`; the agent keeps running. `PgDn` past the bottom, or `enter` to type, returns to the live terminal.
+**Scrolling back:** `PgUp`, or the wheel (a touchpad's two-finger scroll), freezes a snapshot of the agent's scrollback (up to 2 000 lines) and the title gains `· scrolled`; the agent keeps running. The wheel moves 3 lines per tick. `PgDn` or the wheel past the bottom, or `enter` to type, returns to the live terminal.
+
+**The wheel while typing:** it scrolls too, and Typing mode stays: the title reads `TYPING · scrolled`. The wheel past the bottom returns to live, and any key while scrolled returns to live and goes to the agent. When the agent's CLI turns on mouse reporting itself (OpenCode does), the wheel goes to the agent instead, in both modes.
+
+**Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. A click elsewhere while typing leaves Typing, as `ctrl+q` does. Clicks do nothing while zoomed.
 
 ```
 ┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
@@ -294,7 +298,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval · Add pay-web`, §4.6).
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
-  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode.
+  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode. A click elsewhere in the pane focuses it.
   - On a card row, it focuses that card in the chat.
 
 #### 4.1.4 Desktop alerts
@@ -962,7 +966,7 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
 | Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`. The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
-| Mouse parity | Click selects and focuses. Right-click opens the node's menu. The wheel scrolls the pane under the pointer. Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters |
+| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. With the mouse on, the terminal's own text selection is `⌥`-drag (macOS) or `shift`-drag |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
 | Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |
