@@ -223,7 +223,7 @@ fn no_color_keeps_heavy_border_and_bar() {
     );
     assert_eq!(
         palette_for(Theme::Auto, false),
-        crate::theme::Palette::dark()
+        crate::theme::Palette::auto()
     );
     assert_eq!(
         palette_for(Theme::Light, false),

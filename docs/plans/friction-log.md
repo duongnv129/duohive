@@ -40,13 +40,15 @@
 | 14 | 2026-10-15 | Role summary | UX F8: the Defaults line wraps without its indent at 80×24 and 100×30 | 3 | open |
 | 15 | 2026-10-15 | Give work (80×24) | UX F9: the task box wraps mid-word | 3 | open |
 | 16 | 2026-10-15 | Footers | UX F10: `enter type` shown for a stopped agent zoomed, and agent-pane keys on a team or role | 3 | open |
-| 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | open (theme `auto` lands in 4.9) |
+| 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | resolved under `auto` by P2-D26 (Task 2.22); `dark` and `light` keep it |
 | 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
 | 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
 | 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
 | 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25; `faeeea2`, `ba0bbd5`) |
 | 22 | 2026-10-16 | Agent pane | `auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watch for it; clip the terminal widget to its pane when fixed; it would also offset P2-D25's wheel cell |
 | 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25; `28e31f1`, `ba0bbd5`) |
+| 24 | 2026-10-16 | Every screen | The painted black background clashes with the author's iTerm theme; theme `auto` should follow the terminal | 2 | `feat: theme auto follows the terminal, transparent by default` (P2-D26) |
+| 25 | 2026-10-16 | Every screen | Design review: five accent hues, blue meaning both focus and working, whole status words coloured, over-saturated accents, and heavy blue focus borders made the screen look unprofessional and drew the eye from the agents' code | 2 | `feat: quiet colour, one accent and glyph-only status colour` (P2-D27) |
 
 ## Live checks
 
@@ -60,9 +62,9 @@ These are carried from phase 1 and spike S3. Record the result and the CLI versi
 | A Claude turn that runs on past `Escape` | Claude Code 2.1.300 | fixed | Failed under vim mode (entry 1). The new keys exit with status 0 in 6 of 6 runs (vim and normal; at rest, early, late) |
 | S3.7: the trust dialog in a new worktree path | Claude Code 2.1.300; OpenCode 1.18.35 | decided | Claude shows it, default `No, exit`; the author chose `~◆ waiting` plus a hint (P2-D23, entry 3). OpenCode shows none |
 | The OpenCode 2.0 adapter: launch, hooks, reply, approvals, failed turn | OpenCode 2.0.29 | pass (plugin) | 2026-10-16, real TUI in a throwaway tmux socket with the shipped plugin and a logging hook: session-start, busy, turn-end with the reply, per-launch instructions, `edit` asked then busy on Allow once, `/exit` → session-end; a 400 from a local stub → turn-end `session.execution.failed` with its error. A full DuoHive session on 2.0.29 is part of the three-day run |
-| Mouse reporting in agent panes (P2-D25) | Claude Code 2.1.301; OpenCode 2.0.29 | Claude: on | 2026-10-16: all four live Claude panes are full-screen with mouse reporting on (`mouse_any_flag=1`, `mouse_sgr_flag=1`, `alternate_on=1`), so the wheel goes to Claude and DuoHive's snapshot holds no history for them. OpenCode not yet checked (P2-D25 assumes nothing for it: the flags decide); Claude's own wheel and `PgUp` scrolling to be confirmed when P2-D25 is built |
-| `send-keys -H` wheel bytes with Claude's extended keys on (P2-D25) | tmux 3.2a and latest | open | Claude sets modifyOtherKeys and kitty keys; check the `ESC` byte arrives unchanged |
-| Text selection with mouse reporting on (P2-D25) | iTerm2 | open | `⌥`-drag expected; check it, and Terminal.app's modifier, when P2-D25 is built |
+| Mouse reporting in agent panes (P2-D25) | Claude Code 2.1.301; OpenCode 2.0.29; tmux 3.7c | pass | 2026-10-16, throwaway socket: both turn on any-motion reporting with SGR (`mouse_all_flag=1`, `mouse_sgr_flag=1`, `mouse_utf8_flag=0`, so mode 1005 never applies) on the alternate screen. Forwarded wheel ticks scroll each CLI's own view and come back at the bottom (Claude: one line a tick over `!seq 1 300`; OpenCode: over 14 `!echo` blocks); `PgUp`/`PgDn` scroll both |
+| `send-keys -H` wheel bytes with Claude's extended keys on (P2-D25) | tmux 3.7c | pass | The SGR bytes reach Claude intact with its modifyOtherKeys and kitty keys on (the wheel scrolls it). tmux 3.2a is not installed here; not checked on it |
+| Text selection with mouse reporting on (P2-D25) | iTerm2 | open | `⌥`-drag expected; needs a person at the terminal |
 
 ## UI/UX pass
 

@@ -401,9 +401,9 @@ Errors are shown where they apply, never only in a log.
 | PRD phase | Built here |
 |---|---|
 | 1. Org and agents | Spike S0 and the adapter spikes (S1 Claude Code, S2 OpenCode); `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli` (the Claude Code and OpenCode adapters); a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
-| 2. One screen | `duohive-tui`: three-pane layout, agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option, touchpad scrolling and click to select; the `PaneView`, `Notifier` and `Git` ports and their adapters; the UI/UX improvement pass at the end |
+| 2. One screen | `duohive-tui`: three-pane layout, agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option, touchpad scrolling and click to select, theme `auto` following the terminal; the `PaneView`, `Notifier` and `Git` ports and their adapters; the UI/UX improvement pass at the end |
 | 3. Duo and messaging | `duohive-mcp` and token-checked tool rights (tokens exist since phase 1), inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
-| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor, theme `auto` and the accessibility re-check |
+| 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor, the accessibility re-check |
 | 5. Open-source launch | The pre-launch UX check, CI release gate, `cargo-dist` release, docs |
 
 ## 13. Risks

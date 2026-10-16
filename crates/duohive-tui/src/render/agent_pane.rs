@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 
-use super::{LiveScreen, RenderCtx, draw_box, fg, pane_style, put};
+use super::{LiveScreen, RenderCtx, draw_box, fg, focus_title, pane_style, put};
 use crate::focus::Pane;
 use crate::format::{
     marker, one_line, status_glyph, status_word, truncate_end, truncate_middle, width,
@@ -61,6 +61,9 @@ pub(super) fn draw(
     let (title, lines) = content(m, ctx, cells, rows);
     let (border_lines, border, inside) = pane_style(p, m.focus.pane == Pane::Agent);
     draw_box(buf, r, &title, border_lines, border, inside);
+    if m.focus.pane == Pane::Agent {
+        focus_title(buf, r, &title, p);
+    }
     if r.width < 5 || r.height < 3 {
         return;
     }

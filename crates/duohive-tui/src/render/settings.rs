@@ -101,7 +101,7 @@ fn draw_pieces(
     let mut cursor = None;
     for piece in pieces {
         let style = if piece.focused {
-            Style::default().fg(p.fg).bg(p.selection)
+            p.selected().fg(p.fg)
         } else {
             Style::default().fg(p.fg).bg(p.bg_panel)
         };

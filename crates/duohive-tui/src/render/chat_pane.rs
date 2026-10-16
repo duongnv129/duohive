@@ -5,7 +5,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Color;
 
-use super::{At, RenderCtx, draw_box, pane_style, put_pieces};
+use super::{At, RenderCtx, draw_box, focus_title, pane_style, put_pieces};
 use crate::chat::{ChatLine, Who};
 use crate::focus::Pane;
 use crate::format::{marker, pad_right, status_glyph, status_word, width, wrap_words};
@@ -45,6 +45,9 @@ pub(super) fn draw(
     );
     let (lines, border, inside) = pane_style(p, focused);
     draw_box(buf, r, &title, lines, border, inside);
+    if focused {
+        focus_title(buf, r, &title, p);
+    }
     if r.width < 6 || r.height < 3 {
         return None;
     }

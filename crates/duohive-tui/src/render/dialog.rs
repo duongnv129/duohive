@@ -96,7 +96,7 @@ fn draw_buttons(buf: &mut Buffer, r: Rect, c: &Confirm, p: &Palette) {
     let start = u16::try_from(start).unwrap_or(r.x).max(r.x + 1);
     let button = |focused: bool| {
         if focused {
-            Style::default().fg(p.fg).bg(p.selection)
+            p.selected().fg(p.fg)
         } else {
             fg(p.fg_muted)
         }

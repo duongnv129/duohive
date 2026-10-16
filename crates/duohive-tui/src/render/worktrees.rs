@@ -181,7 +181,7 @@ pub(super) fn draw(
         let y = r.y + 2 + u16::try_from(i - first).unwrap_or(0);
         let selected = i == cursor;
         let base = if selected {
-            Style::default().fg(p.fg).bg(p.selection)
+            p.selected().fg(p.fg)
         } else {
             Style::default().fg(p.fg).bg(p.bg_panel)
         };

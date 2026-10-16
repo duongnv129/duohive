@@ -31,7 +31,7 @@ Each state has a glyph and a word, so it reads without colour. Rows use the shor
 |---|---|---|---|---|
 | `○` | stopped | No live session | `fg.muted` | no |
 | `◌` | starting | The CLI is launching | `fg.muted` | no |
-| `●` | working | Running a turn. Animated as a spinner (below) | `status.working` | no |
+| `●` | working | Running a turn. Animated as a spinner (below) | `status.working` (`fg`: no colour) | no |
 | `◆` | waiting (on you) | The CLI is asking you something | `status.attention` (amber) | yes |
 | `✓` | finished | The turn just ended and you haven't looked. Selecting the agent makes it idle | `status.done` | no (desktop alert) |
 | `◦` | idle | At rest with a live session and nothing new | `fg.muted` | no |
@@ -55,23 +55,34 @@ Each state has a glyph and a word, so it reads without colour. Rows use the shor
 | `▌` | Selected row (left bar, plus the `selection` background) |
 | `✉ 1` | Messages waiting for this agent |
 
-- **Focused pane:** always drawn with a heavy border (`┏━┓`); other panes use a light one (`┌─┐`). Colour (`border.focus`) is added, never relied on.
+- **Focused pane:** always drawn with a heavy border (`┏━┓`); other panes use a light one (`┌─┐`). Both are `border`; the focused pane's title takes the accent (`border.focus`), which is added, never relied on.
 
 ### 2.3 Colour tokens
 
-Themes map tokens to colours. Every text token meets 4.5:1 on `bg`, `bg.panel` and `selection` in both default themes (§6 lists the ratios).
+The screen exists to show the agents' code, so DuoHive's own chrome stays quiet:
 
-| Token | Use | Default (dark) | Default (light) |
-|---|---|---|---|
-| `fg` / `fg.muted` | Text / secondary text, inherited values, stopped, starting, idle, worktree states | #D6DAE0 / #8B949E | #1F2328 / #57606A |
-| `bg` / `bg.panel` | Screen / focused pane | #0F1115 / #161A21 | #FFFFFF / #F6F8FA |
-| `border` / `border.focus` | Pane borders / focused pane | #2A2F38 / #6CA0F5 | #D0D7DE / #0B5CD5 |
-| `status.working` | ● | #6CA0F5 | #0B5CD5 |
-| `status.attention` | ◆ ◷, Needs you, approval cards | **#F2B33D** (amber) | **#8A5A00** |
-| `status.done` | ✓ | #3FB950 | #116329 |
-| `status.error` | ✕, error lines, the `org.toml` banner | #FF6B61 | #C11C28 |
-| `accent.duo` | ⬢ and Duo's name | #C9A227 (honey) | #7D5300 |
-| `selection` | Selected row background | #1E2738 | #EAF4FF |
+- **One accent, for focus only.** `border.focus` colours the focused pane's title and the selected row's `▌`. Nothing else uses it, and no other accent exists: Duo is bold, not coloured.
+- **Colour only where you're needed.** `status.attention`, `status.error` and `status.done` colour their glyph, never the word or the time (which are `fg.muted`). Working, starting, idle and stopped carry no colour: the spinner already says "working".
+- **Neutral lines.** Every border, focused or not, is `border`. Focus is the heavy border shape (§2.2) and the accent title. There is one surface colour: `bg.panel` is `bg`.
+- **Restrained colour.** One neutral family per theme; accents below 80% saturation.
+
+There are three themes:
+
+- **`auto`, the default, follows the terminal.** DuoHive paints no background: the screen, the focused pane and the selected row show the terminal's own background, and text is the terminal's own foreground. The other tokens are the terminal's ANSI colours, so the terminal's theme decides their exact shades and DuoHive never clashes with it. The selected row is its `▌` bar and bold text, with no background.
+- **`dark` and `light`** paint their own palettes. Every text token meets 4.5:1 on `bg` and `selection` in both (§6 lists the ratios).
+
+| Token | Use | `auto` (default) | `dark` | `light` |
+|---|---|---|---|---|
+| `fg` / `fg.muted` | Text / secondary text, status words and times, inherited values, worktree states | terminal foreground / terminal foreground, dim | #D4D4D8 / #8E8E99 | #27272A / #5E5E68 |
+| `bg` / `bg.panel` | Screen / focused pane (the same) | terminal background (not painted) | #111113 | #FAFAFA |
+| `border` | Every pane border, focused or not | terminal foreground, dim | #2A2A2E | #E4E4E7 |
+| `border.focus` | The accent: the focused pane's title, the selected row's `▌` | ANSI blue | #7DA3E0 | #2F5BB8 |
+| `status.working` | ● (no colour of its own) | `fg` | `fg` | `fg` |
+| `status.attention` | ◆ ◷ glyphs, Needs you, approval cards | **ANSI yellow** | **#D9A94E** (amber) | **#835B10** |
+| `status.done` | ✓ glyph | ANSI green | #6DB585 | #2A6E43 |
+| `status.error` | ✕ glyph, error lines, the `org.toml` banner | ANSI red | #E07A7A | #A8323A |
+| Duo | ⬢ and Duo's name | bold `fg` | bold `fg` | bold `fg` |
+| `selection` | Selected row background | none: `▌` and bold | #1F2430 | #ECEFF5 |
 
 ### 2.4 Text
 
@@ -978,17 +989,16 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 
 - **State without colour:** every state has a glyph and a word; `~` is a glyph, not a dimmed colour. Colour-blind safe palettes are tested (deuteranopia, protanopia).
 - **Monochrome (`NO_COLOR`):** the focused pane keeps its heavy border, and the selected row keeps its `▌` bar.
-- **Contrast:** computed with the WCAG formula; the lowest ratio of each text token across `bg`, `bg.panel` and `selection`:
+- **Contrast:** under `auto`, the terminal's theme sets every colour, so its contrast is the terminal theme's; `dim` and the ANSI colours are what terminal themes are designed to keep readable. For `dark` and `light`, computed with the WCAG formula; the lowest ratio of each text token across `bg` and `selection` (`status.working` and Duo are `fg`):
 
 | Token | Dark | Light |
 |---|---|---|
-| `fg` | 10.67 | 14.20 |
-| `fg.muted` | 4.87 | 5.75 |
-| `status.working` | 5.69 | 5.39 |
-| `status.attention` | 8.05 | 5.33 |
-| `status.done` | 5.89 | 6.65 |
-| `status.error` | 5.37 | 5.45 |
-| `accent.duo` | 6.19 | 6.07 |
+| `fg` | 10.50 | 12.93 |
+| `fg.muted` | 4.79 | 5.56 |
+| `border.focus` | 6.05 | 5.51 |
+| `status.attention` | 7.19 | 5.26 |
+| `status.done` | 6.35 | 5.35 |
+| `status.error` | 5.35 | 5.73 |
 
 - **No blinking text.**
 
