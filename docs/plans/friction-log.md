@@ -48,6 +48,7 @@
 | 22 | 2026-10-16 | Agent pane | `cakekyc-auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watch for it; clip the terminal widget to its pane when fixed; it would also offset P2-D25's wheel cell |
 | 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25; `28e31f1`, `ba0bbd5`) |
 | 24 | 2026-10-16 | Every screen | The painted black background clashes with the author's iTerm theme; theme `auto` should follow the terminal | 2 | `feat: theme auto follows the terminal, transparent by default` (P2-D26) |
+| 25 | 2026-10-16 | Every screen | Design review: five accent hues, blue meaning both focus and working, whole status words coloured, over-saturated accents, and heavy blue focus borders made the screen look unprofessional and drew the eye from the agents' code | 2 | `feat: quiet colour, one accent and glyph-only status colour` (P2-D27) |
 
 ## Live checks
 

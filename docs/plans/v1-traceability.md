@@ -90,6 +90,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §2.2 `✉` messages waiting | 3 | 3.4, 3.9 |
 | §2.2 `▾ ▸` folding | 2 | 2.5 |
 | §2.3 Theme `auto` follows the terminal (P2-D26) | 2 | 2.22 |
+| §2.1, §2.3, §6 Quiet colour: one accent, glyph-only status colour, new palettes (P2-D27) | 2 | 2.23 |
 | §3 Layout: three panes, sizes, shrink order, focus, keyboard resize | 2 | 2.5 |
 | §3 Layout: drag the chat edge | 4 | 4.7 |
 | §4.1 Main screen: header, tree, roll-ups | 1 | T23 |

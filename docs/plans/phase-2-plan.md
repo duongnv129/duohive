@@ -184,6 +184,8 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D18 | An alert click doesn't raise the terminal window | 2.10 |
 | P2-D25 | The wheel (touchpad scrolling) and left click ship in phase 2, not phase 4; text selection then takes the terminal's bypass modifier | 2.21 |
 | P2-D26 | Theme `auto` follows the terminal (transparent) in phase 2, instead of rendering dark until phase 4's background detection | 2.22 |
+| P2-D27 | One accent for focus; colour only on the glyphs of states that need you; Duo bold instead of honey; neutral borders; new `dark` and `light` palettes | 2.23 |
+| P2-D27 | **Quiet colour: one accent, colour only where you're needed.** Decided by the author on 2026-10-16 after a design review (friction entry 25): the palette read as unprofessional, and borders and colour competed with the agents' code. UI §2.3's rules, for every theme: `border.focus` is the one accent, on the focused pane's title (bold) and the selected row's `▌`; Duo is bold `fg`, not coloured; `status.working` is `fg`; attention, done and error colour their glyph only, with the word and time in `fg.muted`; every border is `border`, focused or not (focus stays the heavy shape plus the accent title); `bg.panel` equals `bg`. `dark` and `light` move to one zinc-like neutral family with accents below 80% saturation (UI §2.3, §6's new ratios, all ≥ 4.5:1). `auto` (P2-D26) follows the same rules with the terminal's ANSI colours. Built in Task 2.23. |
 | P2-D26 | **Theme `auto` follows the terminal: transparent by default.** Decided by the author on 2026-10-16 after friction entry 24: the painted #0F1115 background clashed with the author's iTerm theme. `auto`, the default, now paints no background and uses the terminal's own foreground and ANSI colours (UI §2.3's `auto` column): `bg`, `bg.panel` and `selection` are the terminal's default background (`Color::Reset`); `fg` is the default foreground and `fg.muted` and `border` the same with `DIM`; `border.focus` and `status.working` are ANSI blue, `status.attention` yellow, `status.done` green, `status.error` red and `accent.duo` magenta. The selected row keeps `▌` and becomes bold, with no background; focus stays the heavy border. `dark` and `light` are unchanged. This replaces phase 4's plan to detect the background for `auto` (P4-Q3) and P2-D13's "`auto` renders dark"; it also resolves friction entry 17 under `auto`. Built in Task 2.22. |
 
 ## Decisions this plan makes where the specs are silent
@@ -1211,6 +1213,27 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
 - [x] **Step 4: Run, see PASS.** `make check`
 - [x] **Step 5: Commit.** `feat: theme auto follows the terminal, transparent by default`
 
+### Task 2.23: TUI — quiet colour (P2-D27)
+
+**Files:**
+- Modify `crates/duohive-tui/src/theme.rs`: the new `dark` and `light` tokens (UI §2.3); `working` and `accent_duo` become `fg` in every palette; `bg_panel` equals `bg`; `Palette` gains `border_focused` (the focused pane's lines, `border` in every theme), `bold_marks` (`auto` only: the selected row is bold) and `glyph_only` (every theme).
+- Modify `render/mod.rs` (`pane_style`, `focus_title`), `render/org_pane.rs` (the state cell, Duo), `render/agent_pane.rs` and `render/chat_pane.rs` (the focused title).
+- Tests in `theme.rs` and `render/auto_tests.rs`.
+
+**Interfaces:**
+- Consumes `Palette`, `palette_for` and `Palette::selected()` (Task 2.22).
+- Produces `Palette::bold(Style) -> Style` and `render::focus_title(buf, r, title, p)`.
+
+- [x] **Step 1: Write the failing tests.**
+  - `dark_and_light_tokens_match_ui_2_3`: the new hex values, `working == fg`, `accent_duo == fg`, `bg_panel == bg`, `border_focused == border`.
+  - `working_glyph_is_fg_and_word_is_muted`, `attention_colours_only_its_glyph`: in every theme.
+  - `duo_is_bold_without_colour`, `focused_border_is_border_and_its_title_is_the_accent`: in every theme.
+  - `auto_selected_row_is_bar_and_bold` (Task 2.22) stays; under `dark` and `light` the selected row keeps its tint and isn't bold.
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: quiet colour, one accent and glyph-only status colour`
+
 ### Task 2.20: UI/UX improvement pass, then mark the phase done
 
 This is validated by snapshot diffs and the checklist below.
@@ -1255,6 +1278,7 @@ This is validated by snapshot diffs and the checklist below.
   | Give work with worktrees and merge clean-up | 2.11–2.16 |
   | Touchpad scrolling and click to select (P2-D25) | 2.21 |
   | Theme `auto` follows the terminal (P2-D26) | 2.22 |
+  | Quiet colour: one accent, glyph-only status colour (P2-D27) | 2.23 |
   | Friction log, then the UI/UX improvement pass | 2.19, 2.20 |
   | Settings (P2-D13) | 2.17 |
 
@@ -1265,4 +1289,4 @@ This is validated by snapshot diffs and the checklist below.
 - **Out of scope here** (owners are in the traceability matrix):
   - phase 3: Duo's tools, the inbox, the real chat, cards, Give work to a role, Send as message instead;
   - phase 4: `?`, `f`, `m`, the mouse beyond P2-D25 (right-click, drag, header counts, the wheel over the org pane and Needs you), the key-binding editor, New org from template, first run, the model picker, theme auto-detection.
-- **Size and proportion:** 22 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.
+- **Size and proportion:** 23 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.
