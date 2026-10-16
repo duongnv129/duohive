@@ -1101,7 +1101,7 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
     - `ChatLines` gains `scroll: Option<usize>` (`None` follows the newest line).
   - `WHEEL_LINES: u16 = 3`.
 
-- [ ] **Step 1: Write the failing tests for the wheel.**
+- [x] **Step 1: Write the failing tests for the wheel.**
   - `duohive-core`: `pane_input_mouse_round_trips_serde`.
   - `duohive-tmux` (`view/commands.rs` tests):
     - `mouse_flags_in_first_frame_format`: `CURSOR_FORMAT` ends `#{mouse_any_flag} #{mouse_sgr_flag}`. With flags `1 1`, `first_frame` holds `ESC[?1000h` and `ESC[?1006h`; with `1 0`, only `ESC[?1000h`; with `0 0`, neither.
@@ -1146,8 +1146,8 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
     - `mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small`;
     - `motion_events_dropped`: `read_input` puts no `Moved` on the queue;
     - `mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor`: the bytes written hold `ESC[?1000l` on every path that writes `ESC[?2004l`, and `ESC[?1000h` after the editor returns.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core -p duohive-tmux -p duohive-tui`
-- [ ] **Step 3: Implement the wheel.**
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core -p duohive-tmux -p duohive-tui`
+- [x] **Step 3: Implement the wheel.**
   - Capture goes on with `EnableMouseCapture` beside `EnableBracketedPaste`, and off with `DisableMouseCapture` beside each `DisableBracketedPaste`.
   - `term_view.rs` reads the mode from the vt100 parser's mouse protocol mode and encoding, and carries it into the parser that `resize` rebuilds. The comment that says modes are not carried over goes.
   - `live.rs` drops the guard that refuses `on_scrollback` in Typing mode.
@@ -1155,12 +1155,13 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
   - Claude scrolls its own view on the wheel and on `PgUp`, while typing too;
   - the `send-keys -H` bytes arrive unchanged with Claude's extended keys on;
   - OpenCode's mouse flags are recorded, and its wheel works;
-  - `⌥`-drag selects text.
+  - `⌥`-drag selects text;
+  - a CLI that asks for UTF-8 mouse encoding (mode 1005) gets X10 bytes, which are not valid UTF-8 past column or row 95: check that no supported CLI asks for it.
 
   Record each result in the friction log's live checks.
-- [ ] **Step 5: Run, see PASS.** `make check`
-- [ ] **Step 6: Commit.** `feat: scroll agent panes and the chat with the touchpad, typing too`
-- [ ] **Step 7: Write the failing tests for the click.** In `input/mouse_tests.rs`, with the layout from `focus::layout` at 160×48 and 80×24:
+- [x] **Step 5: Run, see PASS.** `make check`
+- [x] **Step 6: Commit.** `feat: scroll agent panes and the chat with the touchpad, typing too`
+- [x] **Step 7: Write the failing tests for the click.** In `input/mouse_tests.rs`, with the layout from `focus::layout` at 160×48 and 80×24:
   - `click_pane_focuses`: a left press inside each of org, Needs you, agent and chat moves `Focus` there.
   - `click_agent_selects_and_shows_terminal`: a press on an agent's tree row selects it, and the stream opens per P2-D4.
   - `click_duo_selects`.
@@ -1175,10 +1176,10 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
   - `click_ignored_while_zoomed`.
   - `right_middle_click_and_drag_ignored`.
   - `click_release_ignored`: the press acts, and the release does nothing.
-- [ ] **Step 8: Run, see FAIL.** `cargo test -p duohive-tui mouse`
-- [ ] **Step 9: Implement the click** in `on_mouse`. Hit-testing maps a cell to the tree row the org pane drew there: the same `tree.rs` row order, and the scroll offset `render/org_pane.rs` uses.
-- [ ] **Step 10: Run, see PASS.** `make check`
-- [ ] **Step 11: Commit.** `feat: click to select agents and focus panes`
+- [x] **Step 8: Run, see FAIL.** `cargo test -p duohive-tui mouse`
+- [x] **Step 9: Implement the click** in `on_mouse`. Hit-testing maps a cell to the tree row the org pane drew there: the same `tree.rs` row order, and the scroll offset `render/org_pane.rs` uses.
+- [x] **Step 10: Run, see PASS.** `make check`
+- [x] **Step 11: Commit.** `feat: click to select agents and focus panes`
 
 ### Task 2.20: UI/UX improvement pass, then mark the phase done
 
