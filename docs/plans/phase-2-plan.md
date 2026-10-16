@@ -1153,7 +1153,7 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
   - Capture goes on with `EnableMouseCapture` beside `EnableBracketedPaste`, and off with `DisableMouseCapture` beside each `DisableBracketedPaste`.
   - `term_view.rs` reads the mode from the vt100 parser's mouse protocol mode and encoding, and carries it into the parser that `resize` rebuilds. The comment that says modes are not carried over goes.
   - `live.rs` drops the guard that refuses `on_scrollback` in Typing mode.
-- [ ] **Step 4: Live checks.** Status 2026-10-16: open; the code is built and reviewed (`faeeea2`, `28e31f1`, `ba0bbd5`). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
+- [ ] **Step 4: Live checks.** Status 2026-10-16, automated on a throwaway socket (tmux 3.7c): Claude's and OpenCode's own wheel and `PgUp` scrolling, the `send-keys -H` bytes, their mouse flags and mode 1005 pass (friction-log live checks). Open: `⌥`-drag (needs a person) and tmux 3.2a (not installed). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
   - Claude scrolls its own view on the wheel and on `PgUp`, while typing too;
   - the `send-keys -H` bytes arrive unchanged with Claude's extended keys on;
   - OpenCode's mouse flags are recorded, and its wheel works;
