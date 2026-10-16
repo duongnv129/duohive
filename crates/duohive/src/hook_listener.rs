@@ -60,7 +60,7 @@ pub struct HookListener {
 
 /// The exclusive lock on `run.lock`: DuoHive's single-instance guard, released on drop.
 #[derive(Debug)]
-pub struct InstanceLock(#[allow(dead_code, reason = "held only for its drop")] File);
+pub struct InstanceLock(#[expect(dead_code, reason = "held only for its drop")] File);
 
 impl HookListener {
     /// Takes the instance lock (`run.lock` beside `sock`), then binds `sock`,

@@ -116,6 +116,16 @@ pub enum UiEffect {
         /// `PgUp`; else `PgDn`.
         up: bool,
     },
+    /// One wheel tick over the agent pane (P2-D25): to the agent if its CLI took the
+    /// mouse, else DuoHive's snapshot. `col` and `row` are 1-based in the live terminal.
+    Wheel {
+        /// Up; else down.
+        up: bool,
+        /// The pointer's column.
+        col: u16,
+        /// The pointer's row.
+        row: u16,
+    },
 }
 
 /// The action for a key press, given what has focus; `None` for keys with no meaning here.
@@ -344,6 +354,8 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 /// focused field, or to the focused chat input; elsewhere it is dropped.
 pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
     if m.typing() {
+        // Scrolled back while typing: the paste returns to live, as any key (P2-D25).
+        m.scrolled = false;
         return vec![UiEffect::Pane(PaneInput::Paste(text.to_owned()))];
     }
     match &mut m.dialog {
@@ -631,12 +643,15 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 
 mod agent;
 mod give_work;
+pub(crate) mod mouse;
 mod panes;
 mod settings;
 mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
+#[cfg(test)]
+mod mouse_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

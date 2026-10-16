@@ -40,7 +40,7 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 
 ## Scope note
 
-- **What this phase adds beyond the roadmap's wording:** roadmap row 4 says "key and mouse completeness". This plan reads that as every remaining UI §4.11 binding (`?`, `f`, `m`), the mouse (UI §5), and Settings' Keys and Org rows (P2-D13).
+- **What this phase adds beyond the roadmap's wording:** roadmap row 4 says "key and mouse completeness". This plan reads that as every remaining UI §4.11 binding (`?`, `f`, `m`), the rest of the mouse (UI §5) beyond P2-D25's wheel and left click, and Settings' Keys and Org rows (P2-D13).
 - **Also assigned here:** theme `auto` and the accessibility re-check (UI §2.3, §6), as polish; no other phase owns them.
 - **The three phase tables match:** roadmap row 4, PRD Delivery Phases row 4 and TD §12 row 4 list theme `auto` and the accessibility re-check, since 2026-10-05. The rest falls under their "key and mouse completeness", "the key-binding editor" and "first-run setup with templates".
 - **Recorded as P4-D1:** theme `auto`, the accessibility re-check, `f`, `m` and Settings' Keys and Org rows belong to phase 4. The UI spec requires them, and no other phase owns them.
@@ -55,7 +55,7 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 | New org from template, replace confirmation, timestamped backup | PRD The org file; UI §4.8, §4.10; TD §7 | 4.4 |
 | Model and effort picker | PRD Should; TD §5.2; UI §4.4.1; replaces D14 | 4.5 |
 | `?` key map; key-binding editor; bindings applied everywhere | PRD Should; UI §4.10, §4.11 | 4.6 |
-| Mouse parity: click, right-click menu, wheel, drag node, drag chat edge, header counts | PRD Should; UI §4.4.2, §5 | 4.7 |
+| Mouse parity: right-click menu, the wheel over the org pane and Needs you, drag node, drag chat edge, header counts (wheel and click to select: P2-D25) | PRD Should; UI §4.4.2, §5 | 4.7 |
 | `m` Move to… with the inherited-values diff | UI §4.4.2 | 4.8 |
 | `f` filter by state | UI §4.1.1 | 4.9 |
 | Theme `auto` follows the terminal; colour-blind palettes checked | UI §2.3, §4.10, §6 | 4.9 |
@@ -71,7 +71,7 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 | 4.4 | **New org from template.** The Settings Org row opens step 2 of first run. Confirm with UI §4.8's `Replace your org?` (focus on Cancel). Running agents are stopped first; the backup is written as `org.toml.<timestamp>.bak` | `duohive-core` `Command::NewOrgFromTemplate`; `duohive-store/src/org_file.rs`; TUI settings | `replace_stops_agents_then_writes`, `timestamped_backup_kept`, `cancel_changes_nothing` | PRD The org file; TD §7; UI §4.8 |
 | 4.5 | **Model and effort picker.** Adapters list models and efforts asynchronously after the first frame, cached per CLI version. Form fields become dropdowns (`▾`) with `inherit: <v>`; `loading models…`; on failure, typing a name | `duohive-core/src/adapter.rs` (`list_models`); `duohive-cli/src/{claude,opencode}.rs`; `duohive-tui/src/forms/*` | Adapter tests parse recorded `claude --help` and `opencode models --verbose` fixtures; `loading_then_list`, `failure_allows_typing`, form snapshots | PRD Should; TD §5.2; UI §4.4.1 |
 | 4.6 | **Keys.** `?` opens the key map (three columns at 100 wide or more, one scrolling column below). The key-binding editor (Settings → Keys): `enter` rebinds by pressing the new key, `backspace` restores the default, and conflicts are refused with the clashing action named. `settings.keys` is applied to every binding, the footers and the map | `duohive-tui/src/{keymap.rs, render/help.rs, render/keys_editor.rs}`; `input.rs` reads bindings | `help_lists_current_bindings`, `rebind_applies_everywhere`, `conflict_refused`, `typing_and_forms_unaffected`; snapshots at 160×48 and 80×24 | UI §4.10, §4.11; PRD Should |
-| 4.7 | **Mouse.** Click selects and focuses; right-click opens the node menu (every action with its key; disabled actions give the reason); the wheel scrolls the pane under the pointer; dragging a node moves it, highlighting valid targets and refusing invalid ones with the reason; dragging the chat edge resizes; clicking a header count filters | `duohive-tui/src/{mouse.rs, render/menu.rs}`; `app/terminal.rs` (enable mouse capture) | One test per gesture with synthetic `MouseEvent`s; `invalid_drop_refused_with_reason`; `typing_mode_passes_mouse_to_agent_or_ignores` (decided at expansion) | UI §4.4.2, §5; PRD Should |
+| 4.7 | **Mouse.** Builds on P2-D25 (mouse reporting, the wheel, click to select and focus, already in phase 2). Right-click opens the node menu (every action with its key; disabled actions give the reason); the wheel over the org pane and Needs you; dragging a node moves it, highlighting valid targets and refusing invalid ones with the reason; dragging the chat edge resizes; clicking a header count filters | `duohive-tui/src/{mouse.rs, render/menu.rs}`; (mouse capture is on since P2-D25) | One test per gesture with synthetic `MouseEvent`s; `invalid_drop_refused_with_reason`; `typing_mode_right_click_and_drag_ignored` | UI §4.4.2, §5; PRD Should |
 | 4.8 | **Move to….** `OrgEdit::Move`; the picker lists valid targets and the inherited values that change (`worktrees off → on`) before you confirm; drag and drop shares it | `duohive-core/src/engine/org_edit.rs`; `duohive-tui/src/forms/move_to.rs` | `move_lists_inherited_changes`, `move_running_agent_applies_next_start`, `invalid_targets_absent` | UI §4.4.2 |
 | 4.9 | **Filter, theme and accessibility.** `f` cycles `◆ need you`, `● working`, `✓ finished`, off, with a chip in the header; `esc` clears it. Theme `auto` detects the terminal background (P4-Q3). The colour-blind palettes are checked (deuteranopia, protanopia) and the contrast table re-verified | `duohive-tui/src/{filter.rs, theme.rs}` | `filter_keeps_matches_and_parents`, `esc_clears_filter`, `auto_theme_from_background_reply`, `contrast_ratios_meet_4_5` | UI §2.3, §4.1.1, §6 |
 | 4.10 | **Acceptance.** Run the full bench at 10 and 100 on Apple M-series (three runs each); every target passes; record in `bench-results.md`; mark roadmap row 4 and the PRD row done; check TD §12 | docs | All targets pass in three runs out of three | Roadmap row 4 |
@@ -84,7 +84,7 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 |---|---|
 | A target misses at 100 agents (CPU or `~` freshness) | 4.2 tunes with numbers; the S0 fallback (pause unselected panes harder, read on settle only) stays available (TD §13) |
 | `claude --help` changes its format | Recorded fixtures per pinned version; on a parse failure the field falls back to typing a name |
-| Mouse capture breaks text selection in some terminals | Shift-drag selection stays the terminal's; noted in the key map |
+| Mouse capture breaks text selection in some terminals | The terminal's bypass modifier (`⌥`-drag in iTerm2) keeps its own selection, since P2-D25; noted in the key map |
 | Templates' starter prompts are opinionated | Wording approved by the author (P4-Q1); everything stays editable |
 
 ## Open questions (decide when the phase starts)
@@ -94,5 +94,5 @@ Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for template
 | P4-Q1 | The wording of the template starter prompts (Generalist, Backend, Frontend, QA) | Drafted in 4.3; approved by the author |
 | P4-Q2 | The bench's "realistic output" profile | Replayed recorded CLI output at its recorded pace, plus a spinner burst every 2 s |
 | P4-Q3 | How `auto` detects the background | OSC 11 query with a 100 ms timeout; dark on no answer |
-| P4-Q4 | The mouse while the agent pane is in Typing mode | Passed through to the agent when the CLI enables mouse reporting, otherwise ignored |
+| P4-Q4 | The mouse while the agent pane is in Typing mode | The wheel is settled by P2-D25 (scrolls DuoHive's snapshot, or passes to the agent when its CLI enables mouse reporting). Clicks: P2-D25 keeps them for DuoHive. Right-click and drags in Typing mode: ignored |
 | P4-Q5 | The timestamped backup's name (TD §7 says only "timestamped") | `org.toml.<YYYYMMDD-HHMMSS>.bak` beside `org.toml` |

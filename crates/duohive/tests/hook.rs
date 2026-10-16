@@ -2,6 +2,8 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::panic,
+    clippy::match_wild_err_arm,
     reason = "test helpers fail loudly on setup errors"
 )]
 
@@ -214,7 +216,7 @@ fn terminal_stdin_is_not_read() {
     let touched = Arc::new(AtomicBool::new(false));
     let code = run_hook(
         &s(&["hook", "pay-qa", "busy"]),
-        PanicReader(touched.clone()),
+        PanicReader(Arc::clone(&touched)),
         true,
         &vars(Some("tok-1"), tmp.path()),
     );

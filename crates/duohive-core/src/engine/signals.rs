@@ -191,7 +191,7 @@ impl Engine {
         let task_at_launch = self.rt_mut(agent).task_at_launch;
         let trigger = signal
             .state
-            .and_then(|seen| screen_trigger(state, seen, &coverage, task_at_launch, is_duo));
+            .and_then(|seen| screen_trigger(state, seen, coverage, task_at_launch, is_duo));
         let reply_event = if coverage.last_reply {
             None
         } else {
@@ -409,7 +409,7 @@ impl Engine {
 fn screen_trigger(
     state: AgentState,
     seen: ScreenState,
-    coverage: &HookCoverage,
+    coverage: HookCoverage,
     task_at_launch: bool,
     is_duo: bool,
 ) -> Option<Trigger> {

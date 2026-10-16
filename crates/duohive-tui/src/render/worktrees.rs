@@ -97,10 +97,14 @@ fn columns(rows: &[WorktreeRow], room: usize) -> (usize, usize, usize) {
 }
 
 /// Draws the list centred over `area`.
+#[expect(
+    clippy::too_many_lines,
+    reason = "one screen's layout, top to bottom; split when it next changes"
+)]
 pub(super) fn draw(
     buf: &mut Buffer,
     area: Rect,
-    l: &WorktreeList,
+    l: WorktreeList,
     m: &UiModel,
     now: Millis,
     p: &Palette,

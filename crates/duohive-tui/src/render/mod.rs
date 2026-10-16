@@ -144,6 +144,72 @@ pub(crate) fn chat_extra_limit(m: &UiModel) -> i16 {
     chat_extra_max_below(m.screen, rows)
 }
 
+/// Where each pane is on the model's screen, as [`render`] draws it (P2-D25 hit-tests
+/// against it). Zoomed, only `agent` and `live` count.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PaneAreas {
+    /// The org tree.
+    pub org: Rect,
+    /// Needs you.
+    pub needs_you: Rect,
+    /// The agent pane, border included (the zoomed pane when zoomed).
+    pub agent: Rect,
+    /// The chat pane.
+    pub chat: Rect,
+    /// The live terminal inside the agent pane.
+    pub live: Rect,
+    /// The agent pane fills the screen.
+    pub zoomed: bool,
+    /// The 80–99 × 24 layout.
+    pub compact: bool,
+}
+
+/// [`PaneAreas`] for the model's screen; `None` when the main screen doesn't fit.
+pub fn pane_areas(m: &UiModel) -> Option<PaneAreas> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let l =
+        layout_below(m.screen, rows, m.chat_rows_extra, typing)?.with_needs_you(m.needs_you.len());
+    let zoomed = m.zoomed_agent().is_some();
+    let agent = if zoomed {
+        zoom_area(m.screen, rows)?
+    } else {
+        l.agent
+    };
+    Some(PaneAreas {
+        org: l.org,
+        needs_you: l.needs_you,
+        agent,
+        chat: l.chat,
+        live: agent_pane::live_area(agent),
+        zoomed,
+        compact: l.compact,
+    })
+}
+
+/// The tree node drawn on screen row `y` of the org pane, as drawn now.
+pub(crate) fn org_key_at(m: &UiModel, y: u16) -> Option<duohive_core::org::NodeKey> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let l =
+        layout_below(m.screen, rows, m.chat_rows_extra, typing)?.with_needs_you(m.needs_you.len());
+    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    org_pane::key_at(&l, m, replies, y)
+}
+
+/// The Needs you item drawn on screen row `y`, as drawn now.
+pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
+    needs_you::item_at(pane_areas(m)?.needs_you, m, y)
+}
+
+/// The chat history's rows and the rows it can show, as drawn now.
+pub(crate) fn chat_history_fit(m: &UiModel) -> Option<(usize, usize)> {
+    let a = pane_areas(m)?;
+    chat_pane::history_fit(a.chat, m, a.compact)
+}
+
 /// The live terminal's size for the model's screen: the agent pane inside its border and
 /// side padding (P2-D5). `None` when the main screen doesn't fit (the pane is hidden).
 pub fn live_size(m: &UiModel) -> Option<PaneSize> {

@@ -116,6 +116,11 @@ pub fn child_pids_matching(needle: &str) -> Vec<u32> {
 }
 
 /// The `p`-quantile (0..=1) of sorted samples, by linear interpolation.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "the rank is floored and within 0..=len-1, so it is a valid index"
+)]
 fn quantile(sorted: &[f64], p: f64) -> f64 {
     let Some(last) = sorted.len().checked_sub(1) else {
         return 0.0;

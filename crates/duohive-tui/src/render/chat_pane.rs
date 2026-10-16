@@ -33,10 +33,15 @@ pub(super) fn draw(
     let status = &m.view(duo).status;
     let marker = Some(marker(status)).filter(|c| *c != ' ');
     let title = format!(
-        "⬢ {duo} · {}{} {}",
+        "⬢ {duo} · {}{} {}{}",
         marker.map(String::from).unwrap_or_default(),
         status_glyph(status, ctx.spinner()),
-        status_word(status)
+        status_word(status),
+        if m.chat.scroll.is_some() {
+            " · scrolled"
+        } else {
+            ""
+        }
     );
     let (lines, border, inside) = pane_style(p, focused);
     draw_box(buf, r, &title, lines, border, inside);
@@ -51,11 +56,9 @@ pub(super) fn draw(
     let who_cells = width(duo.as_str()).max(width(YOU)) + gap;
     let history = history_rows(m, &m.chat.lines, cells, who_cells, ctx);
     let room = rows - 1;
-    for (i, pieces) in history
-        .iter()
-        .skip(history.len().saturating_sub(room))
-        .enumerate()
-    {
+    let bottom = history.len().saturating_sub(room);
+    let top = m.chat.scroll.map_or(bottom, |t| t.min(bottom));
+    for (i, pieces) in history.iter().skip(top).take(room).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
         put_pieces(buf, At { x, y, room: cells }, pieces.iter().cloned());
     }
@@ -65,6 +68,28 @@ pub(super) fn draw(
     put_pieces(buf, At { x, y, room: cells }, prompt);
     let col = u16::try_from(width(PROMPT) + col).unwrap_or(u16::MAX);
     focused.then_some(Position { x: x + col, y })
+}
+
+/// How many rows the history takes in a chat pane at `r`, and how many it can show.
+pub(super) fn history_fit(r: Rect, m: &UiModel, compact: bool) -> Option<(usize, usize)> {
+    if r.width < 6 || r.height < 3 {
+        return None;
+    }
+    let cells = usize::from(r.width - 4);
+    let rows = usize::from(r.height - 2);
+    let gap = if compact { COMPACT_GAP } else { WIDE_GAP };
+    let who_cells = width(m.org.duo.name.as_str()).max(width(YOU)) + gap;
+    // `10:05 ` is six cells whatever the offset.
+    let indent = width("00:00 ") + who_cells;
+    let text_cells = cells.saturating_sub(indent).max(1);
+    let len = m
+        .chat
+        .lines
+        .iter()
+        .flat_map(|line| line.text.split('\n'))
+        .map(|para| wrap_words(para, text_cells).len())
+        .sum();
+    Some((len, rows - 1))
 }
 
 /// Every history line as screen rows: `10:05 Duo   text`, wrapped under the text.

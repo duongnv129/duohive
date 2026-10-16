@@ -350,10 +350,10 @@ mod tests {
 
     #[test]
     fn wide_rows_carry_keys_prefixes_and_roll_ups() {
+        use TreeRowKind::*;
         let m = spec_model();
         let rows = tree_rows(&m, false, true, NOW);
         let kinds: Vec<_> = rows.iter().map(|r| r.kind).collect();
-        use TreeRowKind::*;
         assert_eq!(
             kinds,
             [

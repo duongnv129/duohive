@@ -6,3 +6,7 @@ ratatui = "ratatui"
 Ratatui = "Ratatui"
 # A branch name cut in the middle in a snapshot (duohive/pay…etry-cases).
 etry = "etry"
+
+[default]
+# Short git hashes in backticks (`ba0bbd5`) are not words.
+extend-ignore-re = ["`[0-9a-f]{7,40}`"]

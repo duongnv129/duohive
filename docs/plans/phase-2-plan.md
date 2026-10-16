@@ -115,7 +115,7 @@ New in this phase:
 ## Review Focus
 
 1. **Typing mode keeps every key, and `ctrl+q` always gets you out.**
-   - While typing, `q`, `esc`, `tab`, `ctrl+c`, `?` and `space` all go to the agent; only `ctrl+q` leaves.
+   - While typing, `q`, `esc`, `tab`, `ctrl+c`, `?` and `space` all go to the agent; only `ctrl+q` leaves. The one exception is P2-D25: while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it.
    - Keys go to the stream that was opened, never to a newer window for the same agent (P2-D1). If that window dies, Typing mode ends with a footer note.
    - Tests: Task 2.7 `typing_forwards_every_key_but_ctrl_q`, `typing_ends_when_window_dies`; Task 2.3 `send_to_stale_stream_fails`.
 2. **Worktree removal never loses work.**
@@ -138,6 +138,10 @@ New in this phase:
    - A task of `/`, `..`, emoji, 2 000 characters or only whitespace gives a safe slug (`task` when empty) inside the worktrees dir.
    - An existing branch is never reused or reset (P2-D7).
    - Tests: Task 2.11 `task_slugs_are_safe`; Task 2.12 `existing_branch_takes_next_suffix_then_errors`; Task 2.14 `existing_branch_is_an_error_not_reused`.
+6. **The mouse never leaks or surprises (P2-D25).**
+   - After exit, a panic or the `$EDITOR` hand-over, the shell and the editor get no mouse escape codes.
+   - A stray click never types into an agent, and the wheel never moves focus.
+   - Tests: Task 2.21 `mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor`, `click_never_reaches_agent`, `click_agent_pane_does_not_start_typing`, `wheel_does_not_move_focus`.
 
 ---
 
@@ -178,6 +182,7 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D20 | While a worktree is being created for an agent, `StartAgent` and `GiveWork` for it are refused, which narrows the PRD's "stopped (or errored): starts a fresh session with the task". Phase 3 (3.7) also leaves such an agent out of "free" | 2.12 |
 | P2-D13 | Settings (You, Attention, Look) ships in phase 2, not phase 4 | 2.17 |
 | P2-D18 | An alert click doesn't raise the terminal window | 2.10 |
+| P2-D25 | The wheel (touchpad scrolling) and left click ship in phase 2, not phase 4; text selection then takes the terminal's bypass modifier | 2.21 |
 
 ## Decisions this plan makes where the specs are silent
 
@@ -190,11 +195,11 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D5 | **The viewed window is resized** to the agent pane's inner size when it is viewed, zoomed or restored (`resize-window`, verified by S3.5). A window that stops being viewed keeps its last size. |
 | P2-D6 | **"In use"** means the agent is running and its current session was launched in that worktree. `SessionRow.worktree` records it, so a restart keeps it. In-use worktrees are never removed, automatically or by hand; `d` shows `<agent> is running in it · stop it first`. Once the agent stops, the next check in the PRD's list removes it: when the list opens, or the 10-minute timer. This pins the PRD's "keeps it while the work is in progress", and Task 2.13 edits TD §5.3 to say so. |
 | P2-D7 | **Task ids and branches.** The slug is D11's slug of the task's first line, cut to 32 characters, or `task` when empty. The task id is the slug (cut to 28 characters when a suffix is needed, with a trailing `-` stripped), made unique among this agent's worktree rows with `-2`, `-3`, and so on. The branch is `duohive/<agent>/<task-id>`. When git reports that the branch already exists (a kept unmerged branch, or anything else), the engine tries the next suffix, up to 9 attempts. After that, the row error is `couldn't create worktree: branch exists · space`. An existing branch is never reused or reset. |
-| P2-D8 | **The phase-2 chat pane.** It is drawn at UI §3 sizes, titled `⬢ Duo · <state>`, with an input.<br>• **`enter`** sends the line as `GiveWork { agent: Duo, run: Directory }`.<br>• **A refusal** (Duo starting, working or waiting) shows `<Duo's name> is <state word> · send again when it is at rest`, and the text stays in the input.<br>• **`GiveWorkNotTaken` for Duo** puts the text back in the input with P2-D11's note.<br>• **History:** in-memory `you` lines, and Duo's replies taken at each Duo turn end (`AgentStatusChanged` to idle, with the reply current then), stamped like `10:05`.<br>A line starting with `@agent` goes to Duo as written, since routing arrives with the inbox. Phase 3 (3.9) replaces this pane. |
-| P2-D9 | **Phase-2 keys:**<br>• `tab`/`shift+tab` move focus.<br>• `space` gives work, in the org pane and the agent pane.<br>• `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or role it folds.<br>• `←`/`→` fold and unfold; `z` zooms; `w` opens worktrees; `,` opens Settings.<br>• `ctrl+↑`/`ctrl+↓` resize the chat.<br>• Needs you: `↑↓` and `enter`.<br>• Agent pane: `enter`/`ctrl+q`, `PgUp`/`PgDn`.<br>Still phase 4: `?`, `f`, `m`, the mouse and the key-binding editor. The footers and the header leave out `? help` until phase 4. |
+| P2-D8 | **The phase-2 chat pane.** It is drawn at UI §3 sizes, titled `⬢ Duo · <state>`, with an input.<br>• **`enter`** sends the line as `GiveWork { agent: Duo, run: Directory }`.<br>• **A refusal** (Duo starting, working or waiting) shows `<Duo's name> is <state word> · send again when it is at rest`, and the text stays in the input.<br>• **`GiveWorkNotTaken` for Duo** puts the text back in the input with P2-D11's note.<br>• **History:** in-memory `you` lines, and Duo's replies taken at each Duo turn end (`AgentStatusChanged` to idle, with the reply current then), stamped like `10:05`.<br>A line starting with `@agent` goes to Duo as written, since routing arrives with the inbox. Scrolling the history: P2-D25. Phase 3 (3.9) replaces this pane. |
+| P2-D9 | **Phase-2 keys:**<br>• `tab`/`shift+tab` move focus.<br>• `space` gives work, in the org pane and the agent pane.<br>• `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or role it folds.<br>• `←`/`→` fold and unfold; `z` zooms; `w` opens worktrees; `,` opens Settings.<br>• `ctrl+↑`/`ctrl+↓` resize the chat.<br>• Needs you: `↑↓` and `enter`.<br>• Agent pane: `enter`/`ctrl+q`, `PgUp`/`PgDn`.<br>• Chat pane: `PgUp`/`PgDn` scroll its history (P2-D25).<br>Still phase 4: `?`, `f`, `m`, the mouse (except P2-D25's wheel and click) and the key-binding editor. The footers and the header leave out `? help` until phase 4. |
 | P2-D10 | **Phase-2 Give work goes to agents only.**<br>• **`space` on a role:** shows `select an agent to give work`.<br>• **On a team, or on Duo (in the tree or the agent pane):** shows `space gives work to an agent or a role`, as UI §4.5 has it.<br>• **The busy dialog** reads `<agent> is <state word>. Give work when it is at rest.`, with Give work disabled.<br>Task to a role and **Send as message instead** arrive in 3.11. |
 | P2-D11 | **A typed-in task counts as taken only when the agent leaves rest.** This narrows the PRD's "finished or idle: types the task in" for the few seconds a delivery is pending; it is listed under "Author decisions" above. This changes TD §4.2's row "finished, idle → New work → working". The paste no longer fires `NewWork`. A `busy` or prompt-submit hook does, or a `~` busy read for hookless coverage.<br>• **Until then:** the agent stays finished or idle, with `delivery_pending`. A further Give work is refused as `GiveWorkRefused { state, pending: true }`, shown as `<agent> is still taking the last task`.<br>• **No sign within 5 s:** the engine publishes `GiveWorkNotTaken { agent, task, reason: "no sign it started" }`. `RuntimeEvent::PasteFailed` gives the same event, with its reason.<br>• **The TUI** shows `<agent> didn't take the task`, and Give work opens pre-filled with `· enter to try again`; when a dialog, typing or a chat draft is open, the footer says `· space to try again` and the task waits. For Duo (P2-D8) the note is `· enter to send again`.<br>Task 2.12 edits TD §4.2, §5.1 and §6.3. Phase 3's inbox delivery uses the same rule. |
-| P2-D12 | **Scrolling back.** `PgUp` freezes a snapshot (`capture-pane -e -p -S -<n>`, at most 2 000 lines), and the pane title gains `· scrolled`. `PgDn` past the bottom, or `enter` to type, returns to live. |
+| P2-D12 | **Scrolling back.** `PgUp` freezes a snapshot (`capture-pane -e -p -S -<n>`, at most 2 000 lines), and the pane title gains `· scrolled`. `PgDn` past the bottom, or `enter` to type, returns to live. The wheel, and scrolling while typing, follow P2-D25. |
 | P2-D13 | **Settings moves into phase 2** because alerts ship here, and the PRD, TD §4.2 and UI §4.1.4 say each alert kind "can be turned off in Settings". The `,` screen has UI §4.10's You, Attention and Look groups. The Keys and Org rows arrive in phase 4. Theme `auto` keeps phase 1's rendering, dark, until 4.9. Roadmap row 2 and UI §8 item 2 were edited to match on 2026-10-05. |
 | P2-D14 | **No alerts for replayed history.** From `start_up` until `Reconnected`, state changes publish no `Alert`. |
 | P2-D15 | **`z` on a team or role** shows `z zooms an agent`. `z` on any agent zooms it, whatever its state: a stopped agent's zoomed pane shows its stopped line. |
@@ -207,6 +212,7 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D22 | **A worktree creation git never answers fails after 120 s.** Added after Task 2.18's review: a lost `Created` answer would otherwise keep P2-D20's guard for good, refusing even `StopAgent`. The try fails with `git didn't answer`, as any creation failure (P2-D21), but its row is kept, since git may still make the worktree; its checks and `d` deal with it. A late answer is ignored. P2-D20's guard, as built, also refuses `StopAgent` and the org edits that would orphan the creation; TD §5.3 says so. |
 | P2-D23 | **Claude's trust dialog in a new worktree: waiting, with a hint.** Decided by the author on 2026-10-16 after live check S3.7 (Claude Code 2.1.300). Claude asks to trust each new worktree path, and the highlighted choice is `No, exit`, so a reflex `enter` (or `Escape`) ends the agent. The agent stays `~◆ waiting` and in Needs you (D2), and the adapter's screen read says what it waits on (`ScreenSignal.waiting_on`, carried as `Status.waiting_on`, read from the screen and never saved). While it waits on the dialog, the agent pane's bottom edge, zoomed too, reads `Claude asks to trust this folder · choose Yes (↓ then enter) · enter alone exits`, or `To trust: ↓ then enter · enter alone exits` where that doesn't fit. The hint clears with the next state change. DuoHive never answers the dialog and never touches Claude's global configuration. |
 | P2-D24 | **OpenCode 2.0 port, and a failed turn errors the agent.** Decided on 2026-10-16 after spike S2's addendum (S2.14, OpenCode 2.0.29), which found the 1.18 plugin no longer loaded (friction entries 4 and 20). DuoHive launches `opencode --standalone` (without it the TUI uses the user's shared background service, which never reads `OPENCODE_CONFIG`, and every hook is lost) with `--prompt=<task>`; `--model` and `--agent` are gone. The per-launch config sets `plugins` (the directory `<run>/opencode-plugin`, holding `index.js`, with the instructions path in `options`, since 2.0 ignores the `instructions` key), `model` as `<model>#<effort>`, and `default_agent: "build"` unless the user's flags pass `--agent`. An effort with no model is left out: 2.0 has effort only inside a model. The plugin maps `session.execution.*`, `permission.*`, `form.*` and `session.text.ended`, ignores child sessions, adds the instructions in the `context` session hook, and raises `edit` and `shell` from `allow` to `ask` in the `evaluate` permission hook, remembering "Always allow" answers. **A failed turn** (`session.execution.failed`, such as an invalid key or a model outside the plan) reaches the engine as `HookSignal::TurnFailed { reason }`: any running agent becomes errored with `turn failed: <message> (<status>)` on its row, joins Needs you and alerts, and then follows the errored rules (`s` stops it; Give work is a fresh launch). Its window stays recorded, since the CLI session is still up: `s` and a fresh launch kill it, its late hooks carry a dead token, its pane's own exit is ignored, and its worktree stays in use until then. Hooks and screen reads after the failure move nothing. An interrupted turn (`reason: "user"` or `"shutdown"`) is a normal turn end. Claude Code's adapter does not use the new signal. Not handled: a 5xx is retried without end, so the agent stays working, then quiet; an unknown model silently runs on the default. TD §4.2, §5.2, §5.5 and §6.5 say so. |
+| P2-D25 | **Touchpad scrolling and click to select, pulled forward from phase 4.** Decided by the author on 2026-10-16 after friction entries 21 and 23: reading back meant `esc`, `PgUp`, `enter`, the wheel leaked into the terminal's own scrollback, and moving around was keyboard only. DuoHive turns on mouse reporting and, in phase 2, handles the wheel and the left click; right-click, drag and header-count clicks stay in phase 4 (Task 4.7 builds on this). Listed under "Author decisions" above; built in Task 2.21.<br>• **The wheel goes to the pane under the pointer**, without moving focus or changing mode. A touchpad's two-finger scroll arrives as the wheel.<br>• **Agent pane and zoomed agent, when the agent's CLI asks for the mouse** (it has turned on mouse reporting; Claude Code 2.1.301 full-screen does, live check 2026-10-16; OpenCode is a pending live check): the wheel is passed to the agent, in Selected and Typing modes alike, and the CLI scrolls its own view. `PgUp` / `PgDn` are sent to the agent as keys in both modes, since P2-D12's snapshot of a full-screen CLI holds no history; no DuoHive snapshot is taken for such an agent. The mouse mode is the one the CLI set in the pane's terminal view (DECSET 1000/1002/1003, with 1006 for SGR). `CURSOR_FORMAT` gains `#{mouse_any_flag} #{mouse_sgr_flag}`, and `first_frame` writes `ESC[?1000h` (plus `ESC[?1006h` when SGR) into the `Reset` bytes, so every stream open and every `Reset` re-seeds the view's mode with no new `PaneChunk` field. A resize sends no `Reset`, so `TermView::resize` must carry the mouse mode and encoding into the parser it rebuilds (its comment saying modes are not carried over goes). Live `%output` that turns mouse reporting on or off switches the wheel's route at once. Each tick becomes `PaneInput::Mouse { wheel: Up | Down, col, row, sgr }` (plain data in `duohive-core`): `col` and `row` are 1-based within the pane's inner area, a pointer on the border taking the nearest inner cell. `duohive-tmux` encodes it, SGR `ESC[<64;col;rowM` (up) or `65` (down), or X10 with `col` and `row` clamped to 223 when `sgr` is false, and sends the bytes with `send-keys -H`. A horizontal wheel is ignored.<br>• **Agent pane and zoomed agent, when the CLI doesn't ask for the mouse:** wheel-up, or `PgUp` in Selected mode (in Typing mode an unscrolled `PgUp` goes to the agent, as every key does), freezes P2-D12's snapshot (at most 2 000 lines) and scrolls it 3 lines per tick; the title gains `· scrolled` (`· TYPING · scrolled` while typing; friction entry 7's cut rule keeps both). Wheel-down or `PgDn` past the bottom returns to live, in Typing mode too (Typing stays). In Selected mode, P2-D12's keys are unchanged. If the CLI turns mouse reporting on while scrolled, the snapshot stays until it returns to live. In Typing mode the mode is kept: `PgUp` / `PgDn` page the snapshot, `ctrl+q` leaves Typing and stays scrolled, and any other key returns to live and goes to the agent (`enter` too, as in a terminal).<br>• **A stopped agent, or one with no live stream yet:** the wheel does nothing.<br>• **The chat pane (P2-D8):** the wheel scrolls its history 3 lines per tick, and `PgUp` / `PgDn` a page (its height less one line) while it has focus; the title gains `· scrolled`, and new lines don't move the view. The wheel past the bottom, or sending a line, returns to following the newest line.<br>• **Org pane and Needs you:** the wheel does nothing in phase 2.<br>• **Clicks do what a key does.** A click on a pane focuses it (`tab`). A click on an agent or Duo in the org tree selects it, so the agent pane shows its terminal (`↑↓`); on a team or role it selects without folding. A click on a Needs you agent row does what `enter` does there (UI §4.1.3); card rows arrive in phase 3, with their click. A click on the agent pane focuses it in Selected mode and never starts typing; while typing, a click inside it keeps Typing and a click elsewhere leaves Typing (`ctrl+q`), then acts. Clicks are DuoHive's and never go to the agent; a click acts on press. Right-click, middle click, drag and release do nothing in phase 2. A click doesn't end a scrolled view, except that selecting another agent shows that agent live.<br>• **Ignored:** clicks while zoomed; the wheel and clicks while a dialog, a confirmation, Settings (`,`), Worktrees (`w`) or the too-small screen is open; mouse movement (crossterm reports motion, so `read_input` drops `Moved` events before the input queue).<br>• **The terminal:** mouse capture is turned on with bracketed paste and off on every path that turns paste off: normal exit, `restore_terminal`, the panic hook and the `$EDITOR` hand-over (off before, on after).<br>• **Text selection:** with mouse reporting on, the terminal's own selection takes its bypass modifier: `⌥`-drag in iTerm2 (the author's terminal). Other terminals differ and are recorded as a live check. The footers don't change.<br>UI §4.1.2, §4.1.3, §4.11 and §5 say so. |
 
 ---
 
@@ -256,7 +262,9 @@ This is a spike: the code is throwaway, under `spikes/s3/`, with no code under t
 // view.rs
 pub struct PaneSize { pub cols: u16, pub rows: u16 }
 pub struct StreamId(pub u64);
-pub enum PaneInput { Text(String), Key(PaneKey), Paste(String) }             // Paste = bracketed
+pub enum PaneInput { Text(String), Key(PaneKey), Paste(String),               // Paste = bracketed
+                     Mouse { wheel: Wheel, col: u16, row: u16, sgr: bool } } // P2-D25, Task 2.20
+pub enum Wheel { Up, Down }
 pub enum PaneKey { Enter, Tab, BackTab, Backspace, Delete, Escape, Up, Down, Left, Right, Home, End,
                    PageUp, PageDown, Insert, F(u8), Ctrl(char), Alt(char) }
 pub enum PaneChunk { Reset { bytes: Vec<u8>, cursor: (u16, u16) }, Bytes(Vec<u8>), Closed { reason: String } }
@@ -342,6 +350,7 @@ pub struct NoGit;       impl Git for NoGit { /* answers nothing; used until 2.14
   | `PaneInput` | tmux command |
   |---|---|
   | `Text` | `send-keys -l` |
+  | `Mouse` (P2-D25) | `send-keys -H`, SGR or X10 bytes |
   | `Key` | tmux key names: `Enter`, `BTab`, `C-x`, `M-x`, `F1`… |
   | `Paste` | `load-buffer` + `paste-buffer -p` |
 
@@ -1049,6 +1058,7 @@ This is acceptance, with no code under test.
 
 - [x] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
 - [ ] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
+  - Status 2026-10-16: day 1 needed `tmux attach` (reason not recorded); the count starts again.
 - [x] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
   - a newline and non-ASCII text in OpenCode's `--prompt=`;
   - `--effort=` on a real turn;
@@ -1058,6 +1068,120 @@ This is acceptance, with no code under test.
 
   If the trust dialog appears, decide with the author whether to accept the `~◆ waiting` it shows or to pre-trust per launch, which must never touch global config.
 - [ ] **Step 4: Commit.** `docs: phase 2 friction log and live checks`
+  - Status 2026-10-16: the friction log and live checks are committed as they stand (entries 1–23); this step closes with Step 2.
+
+### Task 2.21: TUI — touchpad scrolling and click to select (P2-D25)
+
+Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D25 holds every rule; this task fixes the names, the files and the tests.
+
+**Files:**
+- `duohive-core`: modify `crates/duohive-core/src/view.rs` (`PaneInput::Mouse`, `Wheel`).
+- `duohive-tmux`:
+  - modify `crates/duohive-tmux/src/view/commands.rs`: `CURSOR_FORMAT`, `first_frame`, `input_line` for `Mouse`, and the encoder;
+  - modify `crates/duohive-tmux/src/view.rs`: `send` accepts `Mouse`.
+- `duohive-tui`:
+  - modify `app/terminal.rs`: capture on and off, mouse events into `InputEvent`, `Moved` dropped;
+  - modify `app.rs`: `InputEvent::Mouse`;
+  - create `input/mouse.rs` and `input/mouse_tests.rs`: hit-testing against `focus::Layout` and dispatch;
+  - modify `term_view.rs`: `mouse_mode()`, and the mode carried across `resize`;
+  - modify `live.rs`: the wheel route, scrolling while typing, and the keys while scrolled;
+  - modify `chat.rs` and `render/chat_pane.rs`: chat scroll state and `· scrolled`;
+  - modify `render/agent_pane.rs`: the `· TYPING · scrolled` title.
+- Docs: the friction-log live checks for mouse reporting, `send-keys -H` and text selection, with results.
+
+**Interfaces:**
+- Consumes:
+  - `PaneView::send` (Task 2.2), `TermView` (Task 2.4), `focus::layout` and `focus::Layout` (Task 2.5);
+  - `LiveView::scroll` and P2-D12's snapshot (Task 2.7), zoom (Task 2.8), `ChatLines` (P2-D8).
+- Produces:
+  - `duohive-core`: `PaneInput::Mouse { wheel: Wheel, col: u16, row: u16, sgr: bool }` and `pub enum Wheel { Up, Down }`. `col` and `row` are 1-based within the pane's inner area.
+  - `duohive-tmux`: `pub(super) fn encode_wheel(wheel: Wheel, col: u16, row: u16, sgr: bool) -> Vec<u8>`. SGR gives `ESC[<64;col;rowM` (up) and `ESC[<65;col;rowM` (down). X10 gives `ESC[M` and then the bytes `32+64|65`, `32+col` and `32+row`, with `col` and `row` clamped to 223. `input_line` sends it as `send-keys -H -t %P <hex bytes>`.
+  - `duohive-tui`:
+    - `InputEvent::Mouse(MouseEvent)`;
+    - `pub enum MouseMode { Off, On { sgr: bool } }`, with `TermView::mouse_mode(&self) -> MouseMode`;
+    - `pub(crate) fn on_mouse(m: &mut UiModel, layout: &Layout, ev: MouseEvent) -> Vec<UiEffect>` in `input/mouse.rs`;
+    - `ChatLines` gains `scroll: Option<usize>` (`None` follows the newest line).
+  - `WHEEL_LINES: u16 = 3`.
+
+- [x] **Step 1: Write the failing tests for the wheel.**
+  - `duohive-core`: `pane_input_mouse_round_trips_serde`.
+  - `duohive-tmux` (`view/commands.rs` tests):
+    - `mouse_flags_in_first_frame_format`: `CURSOR_FORMAT` ends `#{mouse_any_flag} #{mouse_sgr_flag}`. With flags `1 1`, `first_frame` holds `ESC[?1000h` and `ESC[?1006h`; with `1 0`, only `ESC[?1000h`; with `0 0`, neither.
+    - `mouse_input_sends_sgr_bytes_with_send_keys_h`: `Mouse { Up, 5, 7, sgr: true }` gives `send-keys -H -t %3 1b 5b 3c 36 34 3b 35 3b 37 4d`.
+    - `mouse_input_sends_x10_clamped_to_223`: `Mouse { Down, 300, 2, sgr: false }` gives `1b 5b 4d 61 ff 22`.
+  - `duohive-tui`, the wheel to the agent (the agent's screen has sent `ESC[?1000h ESC[?1006h`):
+    - `wheel_goes_to_agent_that_wants_mouse_in_selected_and_typing`: wheel-up over the agent pane sends `Mouse { Up, .. }` in both modes; the mode and the focus don't change.
+    - `pgup_goes_to_agent_that_wants_mouse_in_selected_and_typing`: `PgUp` gives `Key(PageUp)`, and no snapshot is requested.
+    - `wheel_to_agent_in_zoom`.
+    - `mouse_mode_seeded_on_open_and_reset`.
+    - `mouse_mode_kept_across_resize_that_drops_rows`.
+    - `mouse_mode_change_in_live_output_switches_route`: `ESC[?1000l` in the stream sends the next tick to the snapshot.
+    - `wheel_cell_is_inner_pane_relative_and_border_clamped`: the pane's top-left inner cell is `(1, 1)`, and a pointer on the left border gives `col` 1.
+    - `horizontal_wheel_ignored`.
+  - `duohive-tui`, the snapshot fallback (no mouse mode):
+    - `wheel_up_freezes_snapshot_three_lines_per_tick`: one tick requests the scrollback and moves 3 lines.
+    - `wheel_down_past_bottom_returns_live`.
+    - `typing_wheel_past_bottom_returns_live_and_stays_typing`.
+    - `typing_scrolled_title_keeps_both_words`: a snapshot at 50 columns keeps `· TYPING · scrolled` (friction entry 7's cut).
+    - `typing_scrolled_pgup_pages_snapshot`.
+    - `typing_scrolled_pgdn_past_bottom_returns_live_and_stays_typing`.
+    - `typing_scrolled_ctrl_q_leaves_typing_and_stays_scrolled`.
+    - `typing_scrolled_key_returns_live_and_is_delivered`: `x` returns to live and sends `Text("x")`.
+    - `typing_scrolled_paste_returns_live_and_is_delivered`.
+    - `typing_unscrolled_pgup_goes_to_agent`.
+    - `mouse_reporting_turned_on_while_scrolled_keeps_snapshot`.
+    - `snapshot_fallback_in_zoom`.
+    - P2-D12's `pgup_enters_scrolled_snapshot_and_pgdn_returns_live` stays, for a CLI without mouse reporting.
+  - `duohive-tui`, the other panes:
+    - `wheel_over_stopped_agent_does_nothing`;
+    - `wheel_with_no_live_stream_does_nothing`;
+    - `wheel_does_not_move_focus`;
+    - `wheel_ignored_over_org_and_needs_you`.
+  - `duohive-tui`, the chat pane:
+    - `wheel_scrolls_chat_history`: 3 lines per tick;
+    - `chat_pgup_pgdn_page_with_focus`: the pane height less one line;
+    - `chat_scrolled_title`: `⬢ Duo · <state> · scrolled`;
+    - `chat_scrolled_stays_put_on_new_line`;
+    - `chat_wheel_past_bottom_follows_newest`;
+    - `chat_send_returns_to_newest`.
+  - `duohive-tui`, gating and the terminal:
+    - `mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small`;
+    - `motion_events_dropped`: `read_input` puts no `Moved` on the queue;
+    - `mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor`: the bytes written hold `ESC[?1000l` on every path that writes `ESC[?2004l`, and `ESC[?1000h` after the editor returns.
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core -p duohive-tmux -p duohive-tui`
+- [x] **Step 3: Implement the wheel.**
+  - Capture goes on with `EnableMouseCapture` beside `EnableBracketedPaste`, and off with `DisableMouseCapture` beside each `DisableBracketedPaste`.
+  - `term_view.rs` reads the mode from the vt100 parser's mouse protocol mode and encoding, and carries it into the parser that `resize` rebuilds. The comment that says modes are not carried over goes.
+  - `live.rs` drops the guard that refuses `on_scrollback` in Typing mode.
+- [ ] **Step 4: Live checks.** Status 2026-10-16: open; the code is built and reviewed (`faeeea2`, `28e31f1`, `ba0bbd5`). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
+  - Claude scrolls its own view on the wheel and on `PgUp`, while typing too;
+  - the `send-keys -H` bytes arrive unchanged with Claude's extended keys on;
+  - OpenCode's mouse flags are recorded, and its wheel works;
+  - `⌥`-drag selects text;
+  - a CLI that asks for UTF-8 mouse encoding (mode 1005) gets X10 bytes, which are not valid UTF-8 past column or row 95: check that no supported CLI asks for it.
+
+  Record each result in the friction log's live checks.
+- [x] **Step 5: Run, see PASS.** `make check`
+- [x] **Step 6: Commit.** `feat: scroll agent panes and the chat with the touchpad, typing too`
+- [x] **Step 7: Write the failing tests for the click.** In `input/mouse_tests.rs`, with the layout from `focus::layout` at 160×48 and 80×24:
+  - `click_pane_focuses`: a left press inside each of org, Needs you, agent and chat moves `Focus` there.
+  - `click_agent_selects_and_shows_terminal`: a press on an agent's tree row selects it, and the stream opens per P2-D4.
+  - `click_duo_selects`.
+  - `click_team_and_role_select_without_folding`.
+  - `click_needs_you_row_acts_as_enter`: the agent is selected and the agent pane focused in Selected mode.
+  - `click_agent_pane_does_not_start_typing`.
+  - `click_inside_while_typing_keeps_typing`.
+  - `click_outside_while_typing_leaves_typing`: a press on another tree row leaves Typing and selects that row.
+  - `click_never_reaches_agent`: no `PaneInput` is sent for any click.
+  - `click_keeps_scrolled_view`.
+  - `click_other_agent_shows_it_live`.
+  - `click_ignored_while_zoomed`.
+  - `right_middle_click_and_drag_ignored`.
+  - `click_release_ignored`: the press acts, and the release does nothing.
+- [x] **Step 8: Run, see FAIL.** `cargo test -p duohive-tui mouse`
+- [x] **Step 9: Implement the click** in `on_mouse`. Hit-testing maps a cell to the tree row the org pane drew there: the same `tree.rs` row order, and the scroll offset `render/org_pane.rs` uses.
+- [x] **Step 10: Run, see PASS.** `make check`
+- [x] **Step 11: Commit.** `feat: click to select agents and focus panes`
 
 ### Task 2.20: UI/UX improvement pass, then mark the phase done
 
@@ -1066,7 +1190,7 @@ This is validated by snapshot diffs and the checklist below.
 **Files:**
 - Fixes as found, each with a test or snapshot.
 - Docs:
-  - `docs/ux/ui-spec.md`: §4.12 (P2-D21, an errored agent stays errored), §3 (P2-D19, mixed sizes), §4.1.2 (P2-D12, `· scrolled`), §4.1.4 (P2-D18), §4.2 (P2-D15), §4.5 (P2-D11's pending variant and not-taken note), §4.9 (P2-D16's state words; P2-D6's in-use refusal), plus any screen the pass changes;
+  - `docs/ux/ui-spec.md`: §4.1.2, §4.1.3, §4.11 and §5 (P2-D25, wheel and click), §4.12 (P2-D21, an errored agent stays errored), §3 (P2-D19, mixed sizes), §4.1.2 (P2-D12, `· scrolled`), §4.1.4 (P2-D18), §4.2 (P2-D15), §4.5 (P2-D11's pending variant and not-taken note), §4.9 (P2-D16's state words; P2-D6's in-use refusal), plus any screen the pass changes;
   - `docs/design/technical-design.md` §12: check row 2 against what phase 2 built;
   - `docs/plans/v1-roadmap.md`: row 2 is marked done, and row 3 becomes next;
   - `docs/product/prd.md`: the status in Delivery Phases row 2;
@@ -1074,6 +1198,8 @@ This is validated by snapshot diffs and the checklist below.
   - `docs/plans/v1-traceability.md`.
 
 - [ ] **Step 1: Fix the top friction-log items.**
+  - Status 2026-10-16: severity 1 all fixed (1, 2, 20). Severity 2 fixed: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21); open: 22. The carried long-name item passes. Severity 3: 8 fixed, the rest open.
+  - P2-D25 (friction entries 21 and 23) is built in [Task 2.21](#task-221-tui--touchpad-scrolling-and-click-to-select-p2-d25), before this step.
   - Every severity-1 item, then severity-2 items by count.
   - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.
   - Each fix starts with a failing test or snapshot.
@@ -1099,6 +1225,7 @@ This is validated by snapshot diffs and the checklist below.
   | Needs you you can act on | 2.6 |
   | Desktop alerts | 2.9, 2.10 |
   | Give work with worktrees and merge clean-up | 2.11–2.16 |
+  | Touchpad scrolling and click to select (P2-D25) | 2.21 |
   | Friction log, then the UI/UX improvement pass | 2.19, 2.20 |
   | Settings (P2-D13) | 2.17 |
 
@@ -1108,5 +1235,5 @@ This is validated by snapshot diffs and the checklist below.
   - no desktop notifier: 2.10.
 - **Out of scope here** (owners are in the traceability matrix):
   - phase 3: Duo's tools, the inbox, the real chat, cards, Give work to a role, Send as message instead;
-  - phase 4: `?`, `f`, `m`, the mouse, the key-binding editor, New org from template, first run, the model picker, theme auto-detection.
-- **Size and proportion:** 20 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.
+  - phase 4: `?`, `f`, `m`, the mouse beyond P2-D25 (right-click, drag, header counts, the wheel over the org pane and Needs you), the key-binding editor, New org from template, first run, the model picker, theme auto-detection.
+- **Size and proportion:** 21 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.

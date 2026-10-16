@@ -81,9 +81,10 @@ const BENCH_MAX: u64 = 1000;
 
 /// An agent or turn count: 1 to [`BENCH_MAX`].
 fn count(n: u64) -> Result<u32, String> {
-    u32::try_from(n)
-        .ok()
-        .filter(|n| (1..=BENCH_MAX as u32).contains(n))
+    (1..=BENCH_MAX)
+        .contains(&n)
+        .then(|| u32::try_from(n).ok())
+        .flatten()
         .ok_or_else(|| BENCH_RUN_USAGE.to_owned())
 }
 

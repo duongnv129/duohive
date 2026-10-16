@@ -188,6 +188,10 @@ impl Drop for SystemHandle {
 /// # Errors
 /// Another instance running, no home, `state.db`, `run.sock`, tmux or the
 /// core thread failing.
+#[expect(
+    clippy::too_many_lines,
+    reason = "wires every port in one place; split when a port is added"
+)]
 pub async fn start_system(
     paths: &Paths,
     adapters: Arc<Adapters>,

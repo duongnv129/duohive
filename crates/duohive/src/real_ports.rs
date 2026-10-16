@@ -167,7 +167,8 @@ mod tests {
         let sys = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
-            .as_millis() as u64;
+            .as_millis();
+        let sys = u64::try_from(sys).unwrap();
         assert!(SystemClock.now().0.abs_diff(sys) < 1_000);
     }
 

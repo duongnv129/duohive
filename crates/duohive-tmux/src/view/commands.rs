@@ -1,12 +1,31 @@
 //! The tmux command lines the view sends, and the first frame built from their replies.
 
 use duohive_core::names::AgentName;
-use duohive_core::view::{PaneChunk, PaneInput, PaneKey, PaneSize, ViewError};
+use duohive_core::view::{PaneChunk, PaneInput, PaneKey, PaneSize, ViewError, Wheel};
 
 use crate::quote::tmux_quote;
 
-/// The first frame's cursor line: column, row, visibility, alternate screen.
-const CURSOR_FORMAT: &str = "#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}";
+/// The first frame's cursor line: column, row, visibility, alternate screen, then the
+/// CLI's mouse reporting and its SGR encoding (P2-D25).
+const CURSOR_FORMAT: &str =
+    "#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on} #{mouse_any_flag} #{mouse_sgr_flag}";
+
+/// X10 encodes a cell as one byte past 32, so 223 is its last column and row.
+const X10_MAX: u16 = 223;
+
+/// One wheel tick as the bytes a terminal sends: SGR `ESC[<64;col;rowM` (65 for
+/// down), or X10 `ESC[M` with each value offset by 32 and the cell clamped to 223.
+pub(super) fn encode_wheel(wheel: Wheel, col: u16, row: u16, sgr: bool) -> Vec<u8> {
+    let button: u8 = match wheel {
+        Wheel::Up => 64,
+        Wheel::Down => 65,
+    };
+    if sgr {
+        return format!("\x1b[<{button};{col};{row}M").into_bytes();
+    }
+    let cell = |v: u16| u8::try_from(v.clamp(1, X10_MAX) + 32).unwrap_or(u8::MAX);
+    vec![0x1b, b'[', b'M', button + 32, cell(col), cell(row)]
+}
 
 /// tmux's name for `key`.
 pub(super) fn key_name(key: PaneKey) -> Result<String, ViewError> {
@@ -74,6 +93,18 @@ pub(super) fn input_line(
             vec![format!("send-keys -t {target} {}", q(&name)?)]
         }
         PaneInput::Paste(_) => vec![format!("paste-buffer -d -p -b {} -t {target}", q(buffer)?)],
+        PaneInput::Mouse {
+            wheel,
+            col,
+            row,
+            sgr,
+        } => {
+            let hex: Vec<String> = encode_wheel(*wheel, *col, *row, *sgr)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect();
+            vec![format!("send-keys -H -t {target} {}", hex.join(" "))]
+        }
     };
     Ok((cmds.join(" ; "), cmds.len()))
 }
@@ -174,6 +205,13 @@ pub(super) fn first_frame(cursor_line: &[String], capture: &[String]) -> PaneChu
     let mut bytes = Vec::new();
     if alternate {
         bytes.extend_from_slice(b"\x1b[?1049h\x1b[H\x1b[2J");
+    }
+    // The capture carries no modes, so the CLI's mouse reporting is replayed (P2-D25).
+    if field(4) == 1 {
+        bytes.extend_from_slice(b"\x1b[?1000h");
+        if field(5) == 1 {
+            bytes.extend_from_slice(b"\x1b[?1006h");
+        }
     }
     bytes.extend_from_slice(capture.join("\r\n").as_bytes());
     bytes.extend_from_slice(format!("\x1b[{};{}H", y + 1, x + 1).as_bytes());
@@ -294,7 +332,7 @@ mod tests {
             "resize-window -t '@2' -x 80 -y 1 ; refresh-client -f '!no-output' ; \
              refresh-client -A '%0:off' ; refresh-client -A '%5:off' ; \
              refresh-client -A '%2:on' ; \
-             display -p -t '%2' '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on}' ; \
+             display -p -t '%2' '#{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_on} #{mouse_any_flag} #{mouse_sgr_flag}' ; \
              capture-pane -e -N -p -t '%2'"
         );
         assert_eq!(blocks, 7);
@@ -318,6 +356,51 @@ mod tests {
         assert_eq!(
             bytes,
             b"\x1b[?1049h\x1b[H\x1b[2Jx\x1b[1;1H\x1b[?25l".to_vec()
+        );
+    }
+    #[test]
+    fn mouse_flags_in_first_frame_format() {
+        assert!(CURSOR_FORMAT.ends_with("#{mouse_any_flag} #{mouse_sgr_flag}"));
+        let bytes = |line: &str| match first_frame(&rows(&[line]), &rows(&["x"])) {
+            PaneChunk::Reset { bytes, .. } => String::from_utf8(bytes).unwrap(),
+            other => panic!("not a Reset: {other:?}"),
+        };
+        let sgr = bytes("0 0 1 1 1 1");
+        assert!(sgr.contains("\x1b[?1000h") && sgr.contains("\x1b[?1006h"));
+        let x10 = bytes("0 0 1 1 1 0");
+        assert!(x10.contains("\x1b[?1000h") && !x10.contains("\x1b[?1006h"));
+        let off = bytes("0 0 1 1 0 0");
+        assert!(!off.contains("\x1b[?1000h") && !off.contains("\x1b[?1006h"));
+    }
+
+    #[test]
+    fn mouse_input_sends_sgr_bytes_with_send_keys_h() {
+        let input = PaneInput::Mouse {
+            wheel: Wheel::Up,
+            col: 5,
+            row: 7,
+            sgr: true,
+        };
+        assert_eq!(
+            input_line("%3", &input, "b").unwrap(),
+            (
+                "send-keys -H -t '%3' 1b 5b 3c 36 34 3b 35 3b 37 4d".to_owned(),
+                1
+            )
+        );
+    }
+
+    #[test]
+    fn mouse_input_sends_x10_clamped_to_223() {
+        let input = PaneInput::Mouse {
+            wheel: Wheel::Down,
+            col: 300,
+            row: 2,
+            sgr: false,
+        };
+        assert_eq!(
+            input_line("%3", &input, "b").unwrap().0,
+            "send-keys -H -t '%3' 1b 5b 4d 61 ff 22"
         );
     }
 }
