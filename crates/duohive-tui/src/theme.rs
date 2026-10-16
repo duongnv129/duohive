@@ -32,6 +32,10 @@ pub struct Palette {
     pub selection: Color,
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "each cast keeps one byte of the 0xRRGGBB value on purpose"
+)]
 const fn hex(rgb: u32) -> Color {
     Color::Rgb((rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8)
 }

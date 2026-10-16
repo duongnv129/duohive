@@ -1,6 +1,12 @@
 //! Integration tests: the live pane view against a real tmux server on a throwaway socket.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::match_wild_err_arm,
+    reason = "test-only helpers"
+)]
 
 mod support;
 

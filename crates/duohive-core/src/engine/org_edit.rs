@@ -26,17 +26,17 @@ const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees"
 
 impl Engine {
     /// `EditOrg`: check, apply to a copy, validate, save, then replace the org.
-    pub(super) fn edit_org(&mut self, edit: OrgEdit) -> Vec<Event> {
+    pub(super) fn edit_org(&mut self, edit: &OrgEdit) -> Vec<Event> {
         if self.org_error.is_some() {
             return reject(ORG_FILE_BROKEN);
         }
-        if let Err(reason) = self.check_edit(&edit) {
+        if let Err(reason) = self.check_edit(edit) {
             return reject(reason);
         }
-        if let Err(reason) = self.check_rename_worktrees(&edit) {
+        if let Err(reason) = self.check_rename_worktrees(edit) {
             return reject(reason);
         }
-        let org = match preview_edit(&self.org, &edit) {
+        let org = match preview_edit(&self.org, edit) {
             Ok(org) => org,
             Err(errors) => {
                 let reason = errors.into_iter().next().map(|e| e.message);
@@ -48,7 +48,7 @@ impl Engine {
         }
         let old = std::mem::replace(&mut self.org, org);
         let mut out = Vec::new();
-        self.follow_edit(&old, &edit, &mut out);
+        self.follow_edit(&old, edit, &mut out);
         out.insert(0, self.org_changed(&old));
         out
     }

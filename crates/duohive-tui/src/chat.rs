@@ -40,6 +40,8 @@ pub struct ChatLine {
 pub struct ChatLines {
     /// The lines.
     pub lines: Vec<ChatLine>,
+    /// Scrolled back (P2-D25): the first history row shown. `None` follows the newest.
+    pub scroll: Option<usize>,
 }
 
 /// Keys while the chat input has focus: every character types, so no letter quits or opens
@@ -60,6 +62,8 @@ pub(crate) fn chat_key(k: KeyEvent) -> Option<Action> {
         KeyCode::Right => Action::Right,
         KeyCode::Home => Action::Home,
         KeyCode::End => Action::End,
+        KeyCode::PageUp => Action::PageUp,
+        KeyCode::PageDown => Action::PageDown,
         KeyCode::Backspace => Action::Backspace,
         KeyCode::Delete => Action::DeleteForward,
         KeyCode::Char(c) => Action::Char(c),
@@ -80,6 +84,12 @@ pub(crate) fn chat_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Action::Backspace => input.backspace(),
         Action::DeleteForward => input.delete(),
         Action::Enter => return send(m),
+        Action::PageUp | Action::PageDown => {
+            if let Some((_, room)) = crate::render::chat_history_fit(m) {
+                let page = room.saturating_sub(1).max(1);
+                scroll(m, a == Action::PageUp, page);
+            }
+        }
         _ => {}
     }
     Vec::new()
@@ -108,6 +118,7 @@ fn send(m: &mut UiModel) -> Vec<UiEffect> {
     }
     m.chat_input = LineEdit::default();
     m.chat_sent = Some(text.clone());
+    m.chat.scroll = None;
     push(
         &mut m.chat,
         ChatLine {
@@ -121,6 +132,23 @@ fn send(m: &mut UiModel) -> Vec<UiEffect> {
         task: text,
         run: RunIn::Directory,
     })]
+}
+
+/// Scrolls the history `rows` up or down (P2-D25). Down to the bottom follows the newest
+/// line again.
+pub(crate) fn scroll(m: &mut UiModel, up: bool, rows: usize) {
+    let Some((len, room)) = crate::render::chat_history_fit(m) else {
+        return;
+    };
+    let bottom = len.saturating_sub(room);
+    let top = m.chat.scroll.unwrap_or(bottom).min(bottom);
+    m.chat.scroll = if up {
+        Some(top.saturating_sub(rows))
+    } else if top + rows >= bottom {
+        None
+    } else {
+        Some(top + rows)
+    };
 }
 
 /// The engine refused what the chat sent: the text goes back into the input.

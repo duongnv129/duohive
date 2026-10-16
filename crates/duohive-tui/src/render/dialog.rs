@@ -35,7 +35,7 @@ pub(super) fn draw(
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
         Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, p),
         Dialog::Settings(s) => return super::settings::draw(buf, area, s, m, p),
-        Dialog::Worktrees(l) => super::worktrees::draw(buf, area, l, m, now, p),
+        Dialog::Worktrees(l) => super::worktrees::draw(buf, area, *l, m, now, p),
     }
     None
 }

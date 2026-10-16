@@ -1,0 +1,43 @@
+# Clippy's settings for duohive-core: the workspace's clippy.toml, plus the ban on I/O.
+# AGENTS.md: duohive-core does no I/O; adapters live in the other crates. Keep the
+# shared settings in step with ../../clippy.toml (Clippy reads the nearest file only).
+
+msrv = "1.99"
+# A binary and its internal crates: lints may suggest changes to public items.
+avoid-breaking-exported-api = false
+
+# Size and complexity (coding style: small, focused functions; no deep nesting).
+too-many-lines-threshold = 100
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250
+max-fn-params-bools = 2
+max-struct-bools = 3
+excessive-nesting-threshold = 5
+# Arrays above 64 KiB belong on the heap.
+array-size-threshold = 65536
+future-size-threshold = 16384
+
+# Tests may unwrap, expect, print and panic.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-print-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "AGENTS.md: no process-wide env changes; pass the value explicitly" },
+    { path = "std::env::remove_var", reason = "AGENTS.md: no process-wide env changes; pass the value explicitly" },
+    { path = "std::fs::read", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::fs::read_to_string", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::fs::write", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::process::Command::new", reason = "duohive-core does no I/O; use a port" },
+]
+
+# The core does no I/O (AGENTS.md, TD §3.4): it talks to the world through its ports.
+disallowed-types = [
+    { path = "std::fs::File", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::net::TcpStream", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::os::unix::net::UnixStream", reason = "duohive-core does no I/O; use a port" },
+    { path = "std::process::Command", reason = "duohive-core does no I/O; use a port" },
+]

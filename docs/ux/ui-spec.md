@@ -201,12 +201,19 @@ The agent pane has two modes.
 
 | Mode | Enter / leave | Keys |
 |---|---|---|
-| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` scroll the agent's scrollback, `enter` starts typing |
-| **Typing** | `enter` starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent). The title shows `TYPING` and the border is heavy |
+| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` or the wheel scroll the agent's scrollback, `enter` starts typing |
+| **Typing** | `enter` starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent), except while scrolled back (below). The wheel still scrolls. The title shows `TYPING` and the border is heavy |
 
 To zoom while typing, press `ctrl+q`, then `z`.
 
-**Scrolling back:** `PgUp` freezes a snapshot of the agent's scrollback (up to 2 000 lines) and the title gains `· scrolled`; the agent keeps running. `PgDn` past the bottom, or `enter` to type, returns to the live terminal.
+**Scrolling back:** the wheel (a touchpad's two-finger scroll) goes to the pane under the pointer, without moving focus or changing mode.
+
+- **When the agent's CLI turns on mouse reporting** (Claude Code full-screen does), the wheel and `PgUp` / `PgDn` go to the agent, in Selected and Typing modes alike, and the CLI scrolls its own view. DuoHive takes no snapshot of it.
+- **Otherwise,** the wheel, or `PgUp` in Selected mode, freezes a snapshot of the agent's scrollback (up to 2 000 lines), 3 lines per wheel tick, and the title gains `· scrolled`; the agent keeps running. `PgDn` or the wheel past the bottom, or `enter` to type, returns to the live terminal.
+- **Scrolled while typing** (snapshot only): Typing stays, and the title reads `· TYPING · scrolled`. `PgUp` / `PgDn` page the snapshot, `ctrl+q` leaves Typing and stays scrolled, the wheel or `PgDn` past the bottom returns to live (Typing stays), and any other key returns to live and goes to the agent.
+- **A stopped agent, or one not shown live yet:** the wheel does nothing. A horizontal wheel does nothing anywhere.
+
+**Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts. Clicks are DuoHive's and never reach the agent. Clicks do nothing while zoomed, and the mouse does nothing while a dialog, a confirmation, Settings, Worktrees or the too-small screen is open. Right-click and drag come with §4.4.2.
 
 ```
 ┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
@@ -294,7 +301,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval · Add pay-web`, §4.6).
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
-  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode.
+  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode. A click elsewhere in the pane focuses it.
   - On a card row, it focuses that card in the chat.
 
 #### 4.1.4 Desktop alerts
@@ -879,7 +886,7 @@ Below 100 columns it becomes one scrolling column:
 | Agent pane | `enter` / `ctrl+q` | Start / stop typing |
 | | `z` | Zoom / restore |
 | | `space` | Give work |
-| | `PgUp` / `PgDn` | Scroll the agent's scrollback |
+| | `PgUp` / `PgDn` | Scroll the agent's scrollback (sent to the agent when its CLI takes the mouse, §4.1.2) |
 | Chat | `enter` / `alt+enter` | Send / new line |
 | | `@` / `/` | Agent / command suggestions |
 | | `↑` | From an empty input: focus the newest approval card |
@@ -887,7 +894,7 @@ Below 100 columns it becomes one scrolling column:
 | | `PgUp` / `PgDn` | Scroll the chat history |
 | Dialogs and forms | `enter`, `esc`, `ctrl+s` | Act on the focused button, cancel, save |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
-| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll; move a node or resize the chat |
+| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
 
 ### 4.12 Errors and empty states
 
@@ -960,9 +967,9 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 | Rule | Detail |
 |---|---|
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
-| Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`. The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
+| Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
-| Mouse parity | Click selects and focuses. Right-click opens the node's menu. The wheel scrolls the pane under the pointer. Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters |
+| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
 | Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |

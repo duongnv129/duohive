@@ -23,15 +23,16 @@ use std::time::Duration;
 use duohive_core::names::AgentName;
 use duohive_core::ports::PaneView;
 use duohive_core::status::Status;
-use duohive_core::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId};
+use duohive_core::view::{PaneChunk, PaneInput, PaneKey, PaneSize, PaneStream, StreamId, Wheel};
 use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
 use crate::focus::AgentMode;
+use crate::input::mouse::WHEEL_LINES;
 use crate::model::UiModel;
 use crate::render::{LiveScreen, live_size};
-use crate::term_view::TermView;
+use crate::term_view::{MouseMode, TermView};
 
 /// How long the selection must rest before a stream opens (P2-D4).
 pub(crate) const SETTLE: Duration = Duration::from_millis(100);
@@ -73,6 +74,9 @@ pub(crate) struct Live {
     term: Option<TermView>,
     snapshot: Option<Snapshot>,
     scrollback: Option<oneshot::Receiver<Vec<u8>>>,
+    /// The awaited history's first move up (a page, or a wheel tick), and the mode it
+    /// was asked in: a mode change before it arrives drops it.
+    scroll_asked: (u16, AgentMode),
     /// A stream for this agent closed while it had this status: not opened again until
     /// the status changes.
     blocked: Option<(AgentName, Status)>,
@@ -102,6 +106,7 @@ impl Live {
             term: None,
             snapshot: None,
             scrollback: None,
+            scroll_asked: (0, AgentMode::Selected),
             blocked: None,
             recheck: None,
             reopen_deferred: false,
@@ -353,19 +358,66 @@ impl Live {
         }
     }
 
-    /// `PgUp` / `PgDn` (P2-D12). The first `PgUp` asks for the history; once it arrives
-    /// the pane shows it a page up from the bottom.
+    /// `PgUp` / `PgDn` (P2-D12): a page of the snapshot. With no snapshot, a CLI that
+    /// took the mouse gets the key itself (P2-D25: its own view scrolls; a snapshot of a
+    /// full-screen CLI holds no history), and otherwise `PgUp` asks for the history.
     pub(crate) fn scroll(&mut self, up: bool, m: &mut UiModel) {
+        if self.snapshot.is_none() && self.wants_mouse().is_some() {
+            let key = if up {
+                PaneKey::PageUp
+            } else {
+                PaneKey::PageDown
+            };
+            self.send(PaneInput::Key(key));
+            return;
+        }
+        let page = self.page();
+        self.scroll_by(up, page, m);
+    }
+
+    /// One wheel tick over the agent pane at `col`, `row` (P2-D25): the snapshot moves
+    /// [`WHEEL_LINES`]; with none, a CLI that took the mouse gets the tick, and otherwise
+    /// a tick up asks for the history. Nothing for an agent not shown live.
+    pub(crate) fn wheel(&mut self, up: bool, col: u16, row: u16, m: &mut UiModel) {
+        if self.shown_agent().is_none() {
+            return;
+        }
+        if self.snapshot.is_none()
+            && let Some(sgr) = self.wants_mouse()
+        {
+            let wheel = if up { Wheel::Up } else { Wheel::Down };
+            self.send(PaneInput::Mouse {
+                wheel,
+                col,
+                row,
+                sgr,
+            });
+            return;
+        }
+        self.scroll_by(up, WHEEL_LINES, m);
+    }
+
+    /// `Some(sgr)` when the live terminal's program turned mouse reporting on.
+    fn wants_mouse(&self) -> Option<bool> {
+        match self.term.as_ref()?.mouse_mode() {
+            MouseMode::On { sgr } => Some(sgr),
+            MouseMode::Off => None,
+        }
+    }
+
+    /// Moves the snapshot `lines` up or down; down past the bottom returns to live. The
+    /// first move up asks for the history, and makes that move once it arrives.
+    fn scroll_by(&mut self, up: bool, lines: u16, m: &mut UiModel) {
         let page = self.page();
         match (&mut self.snapshot, up) {
-            (Some(s), true) => s.top = s.top.saturating_sub(page),
+            (Some(s), true) => s.top = s.top.saturating_sub(lines),
             (Some(s), false) => {
                 let bottom = s.term.rows().saturating_sub(page);
-                if s.top.saturating_add(page) >= bottom {
+                if s.top.saturating_add(lines) >= bottom {
                     self.snapshot = None;
                     m.scrolled = false;
                 } else {
-                    s.top += page;
+                    s.top += lines;
                 }
             }
             (None, true) => {
@@ -374,19 +426,22 @@ impl Live {
                 };
                 if open.had_reset && self.scrollback.is_none() {
                     self.scrollback = self.view.scrollback(open.id, SCROLLBACK_LINES).ok();
+                    self.scroll_asked = (lines, m.focus.agent_mode);
                 }
             }
             (None, false) => {}
         }
     }
 
-    /// The history arrived: freeze it (unless typing started meanwhile).
+    /// The history arrived: freeze it, moved up as asked (unless the mode changed
+    /// meanwhile: typing started, or ended).
     pub(crate) fn on_scrollback(&mut self, bytes: Option<Vec<u8>>, m: &mut UiModel) -> bool {
         self.scrollback = None;
         let (Some(bytes), Some(open)) = (bytes, &self.stream) else {
             return false;
         };
-        if m.focus.agent_mode == AgentMode::Typing {
+        let (lines, mode) = self.scroll_asked;
+        if m.focus.agent_mode != mode {
             return false;
         }
         let term = snapshot_term(&bytes, open.size.cols);
@@ -394,7 +449,7 @@ impl Live {
         let bottom = term.rows().saturating_sub(page);
         self.snapshot = Some(Snapshot {
             term,
-            top: bottom.saturating_sub(page),
+            top: bottom.saturating_sub(lines),
         });
         m.scrolled = true;
         true

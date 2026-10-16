@@ -1,6 +1,6 @@
 # Phase 2 Friction Log
 
-**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
+**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-16: every severity-1 entry is fixed; severity 2 has one open (22); no day without `tmux attach` yet. Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
 
 ## How to log
 
@@ -16,7 +16,7 @@
 
 | Day | Date | Needed `tmux attach`? | Notes |
 |---|---|---|---|
-| 1 | | | |
+| 1 | 2026-10-16 | yes | Reason not recorded. Scrolling an agent while typing (21) and clicking to jump (23) fixed the same day (P2-D25); the oversized window that broke the screen (22) is open. The three days start again |
 | 2 | | | |
 | 3 | | | |
 
@@ -44,6 +44,9 @@
 | 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
 | 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
 | 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
+| 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25; `faeeea2`, `ba0bbd5`) |
+| 22 | 2026-10-16 | Agent pane | `auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watch for it; clip the terminal widget to its pane when fixed; it would also offset P2-D25's wheel cell |
+| 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25; `28e31f1`, `ba0bbd5`) |
 
 ## Live checks
 
@@ -57,6 +60,9 @@ These are carried from phase 1 and spike S3. Record the result and the CLI versi
 | A Claude turn that runs on past `Escape` | Claude Code 2.1.300 | fixed | Failed under vim mode (entry 1). The new keys exit with status 0 in 6 of 6 runs (vim and normal; at rest, early, late) |
 | S3.7: the trust dialog in a new worktree path | Claude Code 2.1.300; OpenCode 1.18.35 | decided | Claude shows it, default `No, exit`; the author chose `~◆ waiting` plus a hint (P2-D23, entry 3). OpenCode shows none |
 | The OpenCode 2.0 adapter: launch, hooks, reply, approvals, failed turn | OpenCode 2.0.29 | pass (plugin) | 2026-10-16, real TUI in a throwaway tmux socket with the shipped plugin and a logging hook: session-start, busy, turn-end with the reply, per-launch instructions, `edit` asked then busy on Allow once, `/exit` → session-end; a 400 from a local stub → turn-end `session.execution.failed` with its error. A full DuoHive session on 2.0.29 is part of the three-day run |
+| Mouse reporting in agent panes (P2-D25) | Claude Code 2.1.301; OpenCode 2.0.29 | Claude: on | 2026-10-16: all four live Claude panes are full-screen with mouse reporting on (`mouse_any_flag=1`, `mouse_sgr_flag=1`, `alternate_on=1`), so the wheel goes to Claude and DuoHive's snapshot holds no history for them. OpenCode not yet checked (P2-D25 assumes nothing for it: the flags decide); Claude's own wheel and `PgUp` scrolling to be confirmed when P2-D25 is built |
+| `send-keys -H` wheel bytes with Claude's extended keys on (P2-D25) | tmux 3.2a and latest | open | Claude sets modifyOtherKeys and kitty keys; check the `ESC` byte arrives unchanged |
+| Text selection with mouse reporting on (P2-D25) | iTerm2 | open | `⌥`-drag expected; check it, and Terminal.app's modifier, when P2-D25 is built |
 
 ## UI/UX pass
 

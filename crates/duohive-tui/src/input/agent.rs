@@ -1,5 +1,5 @@
 //! The agent pane's keys: Selected and Typing modes, and scrolling back (UI §4.1.2,
-//! P2-D9, P2-D12).
+//! P2-D9, P2-D12, P2-D25).
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use duohive_core::command::Command;
@@ -23,7 +23,7 @@ pub(super) fn typing_key(k: KeyEvent) -> Action {
 /// An action while the agent pane has focus.
 pub(super) fn agent_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match a {
-        Action::Type(k) => key_to_input(k).map(UiEffect::Pane).into_iter().collect(),
+        Action::Type(k) => typed(m, k),
         Action::StopTyping => {
             m.focus.agent_mode = AgentMode::Selected;
             Vec::new()
@@ -37,6 +37,20 @@ pub(super) fn agent_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Action::PageDown => vec![UiEffect::Scroll { up: false }],
         _ => Vec::new(),
     }
+}
+
+/// A key while typing. Scrolled back in DuoHive's snapshot (P2-D25), `PgUp` / `PgDn`
+/// page it, and any other key returns to live and goes to the agent; `ctrl+q` never gets
+/// here, so leaving Typing keeps the snapshot.
+fn typed(m: &mut UiModel, k: KeyEvent) -> Vec<UiEffect> {
+    if m.scrolled {
+        match k.code {
+            KeyCode::PageUp => return vec![UiEffect::Scroll { up: true }],
+            KeyCode::PageDown => return vec![UiEffect::Scroll { up: false }],
+            _ => m.scrolled = false,
+        }
+    }
+    key_to_input(k).map(UiEffect::Pane).into_iter().collect()
 }
 
 /// `enter`: Typing mode, back on the live terminal (P2-D12), once the agent's live

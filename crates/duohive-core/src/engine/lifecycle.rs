@@ -211,11 +211,9 @@ impl Engine {
         let cli = r.cli;
         let adapters = Arc::clone(&self.adapters);
         let presence = self.cli.as_ref().and_then(|m| m.get(&cli)).cloned();
-        let (adapter, version) = match (presence, adapters.get(cli)) {
-            (Some(CliPresence::Found { version }), Some(a)) => (a, version),
-            _ => {
-                return self.launch_fails(agent, task, not_found(cli));
-            }
+        let (Some(CliPresence::Found { version }), Some(adapter)) = (presence, adapters.get(cli))
+        else {
+            return self.launch_fails(agent, task, not_found(cli));
         };
         let mut out = Vec::new();
         if let Some(old) = self.rt_mut(agent).window.take() {
@@ -343,7 +341,7 @@ impl Engine {
         let mut out = Vec::new();
         let mut task = None;
         self.update_run(agent, &mut out, |rt| {
-            task = rt.delivery.take().map(|d| d.task)
+            task = rt.delivery.take().map(|d| d.task);
         });
         if let Some(task) = task {
             out.insert(

@@ -298,6 +298,7 @@ fn check_replay(log_dir: &Path, summary: &Value) {
 
 /// The scenarios after the replay.
 fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
+    use HookSignal::{Busy, Ready, SessionEnded, TurnEnded};
     // The cleanup kills an in-flight delivery; a 2 s kill lets the chain go on;
     // a 3 s delivery lands under the default limit.
     assert_eq!(events(log_dir, "inflight"), ["session-end"]);
@@ -311,7 +312,6 @@ fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
         assert_eq!(events(log_dir, agent), ["session-start", "session-end"]);
     }
     assert!(results["hangCleanupMs"].as_u64().unwrap() < 3000);
-    use HookSignal::{Busy, Ready, SessionEnded, TurnEnded};
     assert_eq!(
         delivered(log_dir, "subagent"),
         [

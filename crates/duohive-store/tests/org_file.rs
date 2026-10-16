@@ -1,4 +1,10 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::match_wild_err_arm,
+    reason = "test-only helpers"
+)]
 
 use std::path::PathBuf;
 

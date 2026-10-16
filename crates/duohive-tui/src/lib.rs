@@ -15,11 +15,6 @@ pub mod theme;
 pub mod tree;
 
 #[cfg(test)]
-#[allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    reason = "test-only fixtures"
-)]
 mod fixtures;
 
 pub use app::{
