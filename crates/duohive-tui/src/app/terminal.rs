@@ -31,6 +31,10 @@ const POLL: Duration = Duration::from_millis(50);
 /// How long to wait for the reader to park before handing the tty over anyway.
 const PARK_WAIT: Duration = Duration::from_secs(1);
 const INPUT_QUEUE: usize = 64;
+/// How long to wait for more input while dropping what the terminal already sent.
+const DRAIN_WAIT: Duration = Duration::from_millis(50);
+/// The most events dropped in one drain, so a stuck terminal can't hold it forever.
+const DRAIN_MAX: usize = 1_000;
 
 /// Requests to the reader thread.
 enum Gate {
@@ -95,7 +99,7 @@ pub async fn run_app(
     // The reader may already be gone; it ends within one poll either way.
     let _ = gate_tx.send(Gate::Stop);
     // What the `Terminal`'s Drop would do, with errors ignored rather than printed.
-    let _ = input_modes_off(&mut stdout());
+    let _ = release_input(&mut stdout(), drain_input, || Ok(()));
     let _ = execute!(stdout(), Show);
     let restored = ratatui::try_restore();
     if signals.hung_up() {
@@ -222,6 +226,29 @@ fn input_modes_on(w: &mut impl Write) -> io::Result<()> {
     execute!(w, EnableBracketedPaste, EnableMouseCapture)
 }
 
+/// Turns paste and the mouse off, drops the input the terminal already sent (mouse
+/// reports still in flight, a touchpad's momentum included), then runs `raw_off`; in
+/// that order, so neither the shell nor `$EDITOR` gets a mouse report (P2-D25).
+fn release_input(
+    w: &mut impl Write,
+    drain: impl FnOnce(),
+    raw_off: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    input_modes_off(w)?;
+    drain();
+    raw_off()
+}
+
+/// Reads and drops every event already sent, waiting [`DRAIN_WAIT`] for stragglers.
+fn drain_input() {
+    for _ in 0..DRAIN_MAX {
+        match event::poll(DRAIN_WAIT) {
+            Ok(true) if event::read().is_ok() => {}
+            _ => return,
+        }
+    }
+}
+
 /// Turns off bracketed paste and mouse reporting.
 fn input_modes_off(w: &mut impl Write) -> io::Result<()> {
     execute!(w, DisableBracketedPaste, DisableMouseCapture)
@@ -278,8 +305,7 @@ impl TerminalHost for CrosstermHost {
 }
 
 fn suspend() -> io::Result<()> {
-    disable_raw_mode()?;
-    input_modes_off(&mut stdout())?;
+    release_input(&mut stdout(), drain_input, disable_raw_mode)?;
     execute!(stdout(), LeaveAlternateScreen, Show)
 }
 
@@ -326,6 +352,28 @@ mod tests {
     }
 
     #[test]
+    fn release_input_turns_mouse_off_then_drains_then_leaves_raw_mode() {
+        use std::cell::RefCell;
+        let steps = RefCell::new(Vec::new());
+        let mut out = Vec::new();
+        release_input(
+            &mut out,
+            || steps.borrow_mut().push("drain"),
+            || {
+                steps.borrow_mut().push("raw off");
+                Ok(())
+            },
+        )
+        .unwrap();
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("\x1b[?1000l") && out.contains("\x1b[?2004l"),
+            "{out:?}"
+        );
+        assert_eq!(*steps.borrow(), ["drain", "raw off"]);
+    }
+
+    #[test]
     fn mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor() {
         let mut on = Vec::new();
         input_modes_on(&mut on).unwrap();
@@ -353,8 +401,13 @@ mod tests {
         );
         assert_eq!(
             body.matches("input_modes_off(").count(),
-            5,
-            "exit, restore, panic, suspend + fn"
+            4,
+            "release, restore, panic + fn"
+        );
+        assert_eq!(
+            body.matches("release_input(").count(),
+            3,
+            "exit, suspend + fn"
         );
         assert_eq!(
             body.matches("input_modes_on(").count(),

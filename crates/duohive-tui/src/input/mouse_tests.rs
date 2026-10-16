@@ -490,3 +490,25 @@ fn click_release_ignored() {
     );
     assert_eq!(m, before);
 }
+
+#[test]
+fn click_with_chat_focused_hits_the_row_drawn() {
+    // The chat grows while it has focus; the click is on the layout drawn then.
+    let mut m = model();
+    m.focus.pane = Pane::Chat;
+    let a = areas(&m);
+    let (x, y) = cell_of(&m, a.needs_you, "billing-api");
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(
+        effects,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("billing-api")
+        })]
+    );
+    let mut m = model();
+    m.focus.pane = Pane::Chat;
+    let (x, y) = cell_of(&m, areas(&m).org, "squad-1");
+    on_mouse(&mut m, press(x, y));
+    assert_eq!(m.selected, NodeKey::Agent(n("squad-1")));
+}

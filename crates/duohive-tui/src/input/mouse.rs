@@ -4,6 +4,7 @@
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use duohive_core::command::Command;
+use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
@@ -35,45 +36,40 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
 
 /// A left press: focus the pane under it (`tab`), and act on the row under it. Leaving
 /// the agent pane leaves Typing (`ctrl+q`); a press inside keeps it. The scrolled view
-/// stays.
+/// stays. The row is read before focus moves: the chat grows while it has focus, so the
+/// layout after the move isn't the one that was clicked.
 fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     if areas.agent.contains(at) {
         m.focus.pane = Pane::Agent;
         return agent::view_if_finished(m);
     }
-    let pane = if areas.org.contains(at) {
-        Pane::Org
+    let (pane, key, item) = if areas.org.contains(at) {
+        (Pane::Org, org_key_at(m, at.y), None)
     } else if areas.needs_you.contains(at) {
-        Pane::NeedsYou
+        (Pane::NeedsYou, None, needs_you_item_at(m, at.y))
     } else if areas.chat.contains(at) {
-        Pane::Chat
+        (Pane::Chat, None, None)
     } else {
         return Vec::new();
     };
     m.focus.agent_mode = AgentMode::Selected;
     m.focus.pane = pane;
-    match pane {
-        Pane::Org => select_row(m, at.y),
-        Pane::NeedsYou => match needs_you_item_at(m, at.y) {
-            Some(i) => {
-                m.focus.needs_you_cursor = i;
-                panes::needs_you_enter(m)
-                    .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
-                    .into_iter()
-                    .collect()
-            }
-            None => Vec::new(),
-        },
-        Pane::Agent | Pane::Chat => Vec::new(),
+    if let Some(key) = key {
+        return select(m, key);
     }
-}
-
-/// Selects the tree node on row `y`, as `↑↓` onto it would (a finished agent is marked
-/// seen); a team or role isn't folded.
-fn select_row(m: &mut UiModel, y: u16) -> Vec<UiEffect> {
-    let Some(key) = org_key_at(m, y) else {
+    let Some(i) = item else {
         return Vec::new();
     };
+    m.focus.needs_you_cursor = i;
+    panes::needs_you_enter(m)
+        .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
+        .into_iter()
+        .collect()
+}
+
+/// Selects `key`, as `↑↓` onto it would (a finished agent is marked seen); a team or
+/// role isn't folded.
+fn select(m: &mut UiModel, key: NodeKey) -> Vec<UiEffect> {
     if key == m.selected {
         return Vec::new();
     }
