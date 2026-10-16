@@ -135,13 +135,8 @@ impl TermView {
                 let Some(cell) = screen.cell(row, dx) else {
                     continue;
                 };
-                let mut style = cell_style(cell, no_color);
-                if draw_cursor && row == cursor_row && dx == cursor_col {
-                    style = style.add_modifier(Modifier::REVERSED);
-                    if cell.inverse() {
-                        style = style.remove_modifier(Modifier::REVERSED);
-                    }
-                }
+                let at_cursor = draw_cursor && row == cursor_row && dx == cursor_col;
+                let style = cursor_style(cell_style(cell, no_color), cell, at_cursor);
                 let target = &mut buf[(area.x + dx, area.y + dy)];
                 target.reset();
                 // A wide glyph whose second half is clipped would overflow.
@@ -195,6 +190,15 @@ fn mouse_seed(screen: &vt100::Screen) -> Vec<u8> {
         vt100::MouseProtocolEncoding::Sgr => seed.extend_from_slice(b"\x1b[?1006h"),
     }
     seed
+}
+
+/// The cursor cell is drawn inverted: an inverse cell turns plain.
+fn cursor_style(style: Style, cell: &vt100::Cell, at_cursor: bool) -> Style {
+    match (at_cursor, cell.inverse()) {
+        (false, _) => style,
+        (true, false) => style.add_modifier(Modifier::REVERSED),
+        (true, true) => style.remove_modifier(Modifier::REVERSED),
+    }
 }
 
 fn cell_style(cell: &vt100::Cell, no_color: bool) -> Style {

@@ -60,6 +60,10 @@ pub struct ScreenSignal {
 
 /// Which of the five Sn.3 events a CLI hooks, and where the reply comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "one independent flag per hook event, as the spike's coverage table has them"
+)]
 pub struct HookCoverage {
     /// Ready hook.
     pub ready: bool,
@@ -77,7 +81,7 @@ pub struct HookCoverage {
 
 impl HookCoverage {
     /// All five events are hooked and the reply comes from a hook.
-    pub fn complete(&self) -> bool {
+    pub fn complete(self) -> bool {
         self.ready
             && self.busy
             && self.needs_input
@@ -166,7 +170,7 @@ pub fn untested_notice(binary: &str, version: &str, tested: &[&str]) -> Option<S
     let version = version.trim();
     let mut parts = version.split('.');
     let major_minor = match (parts.next(), parts.next()) {
-        (Some(""), _) | (None, _) => return None,
+        (Some("") | None, _) => return None,
         (Some(major), Some(minor)) => format!("{major}.{minor}"),
         (Some(major), None) => major.to_owned(),
     };
@@ -302,7 +306,7 @@ mod tests {
     #[test]
     fn stub_records_launch_specs_and_uses_agent_directory() {
         let a = StubAdapter::new(CliKind::Claude);
-        let seen = a.launches.clone();
+        let seen = std::sync::Arc::clone(&a.launches);
         let boxed: Box<dyn CliAdapter> = Box::new(a);
         let cmd = boxed.launch(&spec(Some("~/code"), Some("t"))).unwrap();
         assert_eq!(cmd.cwd, std::path::PathBuf::from("/h/code"));

@@ -96,6 +96,11 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        clippy::disallowed_types,
+        reason = "the test runs sh to prove the quoting; the crate itself does no I/O"
+    )]
     fn sh_quote_handles_hostile_text() {
         for text in ["$(rm -rf ~)", "`x`", "-x", "a\nb", "é", "it's", "", "''"] {
             let script = format!("printf %s {}", sh_quote(text));

@@ -26,7 +26,7 @@ pub(super) fn action(m: &mut UiModel, mut s: SettingsState, a: Action) -> Vec<Ui
         Action::Up | Action::BackTab => s.row = s.row.prev(),
         Action::Down | Action::Tab => s.row = s.row.next(),
         Action::DialogEnter if s.row.is_text() => {
-            s.editing = Some(LineEdit::new(&current(m, s.row)))
+            s.editing = Some(LineEdit::new(&current(m, s.row)));
         }
         Action::DialogEnter => next = Some(toggled(&m.settings, s.row)),
         Action::Left | Action::Right => next = stepped(m, s.row, a == Action::Right),

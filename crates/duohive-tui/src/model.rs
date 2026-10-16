@@ -230,7 +230,7 @@ impl UiModel {
                 Some(Dialog::Form(f)) if f.saving => f.reject(reason),
                 _ => match self.give_sent.clone() {
                     Some((agent, task, run)) => {
-                        self.reopen_give_work(&agent, &task, Some(run), reason, "");
+                        self.reopen_give_work(&agent, &task, Some(run), &reason, "");
                     }
                     None => self.footer_note = Some(reason),
                 },
@@ -259,7 +259,7 @@ impl UiModel {
             Event::GiveWorkNotTaken { agent, task, .. } => {
                 let reason = format!("{agent} didn't take the task");
                 self.give_sent = None;
-                self.reopen_give_work(&agent, &task, None, reason, NOT_TAKEN_RETRY);
+                self.reopen_give_work(&agent, &task, None, &reason, NOT_TAKEN_RETRY);
             }
             Event::Reconnected => self.reconnecting = 0,
             Event::AgentRunChanged {
@@ -302,7 +302,7 @@ impl UiModel {
     fn refused_give_work(&mut self, agent: &AgentName, reason: String) {
         match self.give_sent.clone() {
             Some((a, task, run)) if &a == agent => {
-                self.reopen_give_work(agent, &task, Some(run), reason, "");
+                self.reopen_give_work(agent, &task, Some(run), &reason, "");
             }
             _ => self.footer_note = Some(reason),
         }
@@ -316,7 +316,7 @@ impl UiModel {
         agent: &AgentName,
         task: &str,
         run: Option<RunIn>,
-        reason: String,
+        reason: &str,
         dialog_suffix: &str,
     ) {
         if self.org.find_agent(agent).is_none() {

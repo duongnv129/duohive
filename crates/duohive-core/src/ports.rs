@@ -116,6 +116,10 @@ pub struct LiveWindow {
     pub window: WindowId,
     /// `Some(status)` when the pane is dead (status `None` = killed by a signal).
     #[serde(with = "nested_option")]
+    #[expect(
+        clippy::option_option,
+        reason = "three states: alive, dead by a signal, dead with an exit status"
+    )]
     pub dead: Option<Option<i32>>,
     /// Unix seconds of the last activity.
     pub activity_secs: u64,
@@ -125,10 +129,17 @@ pub struct LiveWindow {
 mod nested_option {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+    #[expect(
+        clippy::option_option,
+        clippy::ref_option,
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's `with` fixes this signature"
+    )]
     pub fn serialize<S: Serializer>(v: &Option<Option<i32>>, s: S) -> Result<S::Ok, S::Error> {
         v.map(|inner| [inner]).serialize(s)
     }
 
+    #[expect(clippy::option_option, reason = "serde's `with` fixes this signature")]
     pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Option<i32>>, D::Error> {
         Ok(Option::<[Option<i32>; 1]>::deserialize(d)?.map(|[inner]| inner))
     }
@@ -427,7 +438,7 @@ mod tests {
     #[test]
     fn fake_runtime_records_calls() {
         let mut rt = FakeRuntime::default();
-        let calls = rt.calls.clone();
+        let calls = std::sync::Arc::clone(&rt.calls);
         rt.capture(&n("a"));
         rt.inventory();
         rt.kill(&n("a"), &WindowId("@1".into()));
@@ -488,7 +499,7 @@ mod tests {
     #[test]
     fn fake_store_is_observable_and_steerable_once_boxed() {
         let handle = FakeStore::default();
-        let state = handle.state.clone();
+        let state = std::sync::Arc::clone(&handle.state);
         let mut boxed: Box<dyn Store> = Box::new(handle.clone());
         boxed.save_org(&example_org()).unwrap();
         boxed.save_settings(&Settings::default()).unwrap();
@@ -554,7 +565,7 @@ mod tests {
     #[test]
     fn fakes_record_calls() {
         let mut git = FakeGit::default();
-        let calls = git.calls.clone();
+        let calls = std::sync::Arc::clone(&git.calls);
         git.create(create_req());
         git.check(check_req());
         git.remove(remove_req());
@@ -568,7 +579,7 @@ mod tests {
         );
 
         let mut notifier = FakeNotifier::new(true);
-        let alerts = notifier.alerts.clone();
+        let alerts = std::sync::Arc::clone(&notifier.alerts);
         let alert = Alert {
             agent: n("a"),
             kind: AlertKind::NeedsYou,

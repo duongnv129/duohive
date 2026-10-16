@@ -78,7 +78,9 @@ mod tests {
     fn real_adapters_include_opencode() {
         let adapters = real_adapters();
         assert_eq!(
-            adapters.get(CliKind::Opencode).map(|a| a.kind()),
+            adapters
+                .get(CliKind::Opencode)
+                .map(duohive_core::adapter::CliAdapter::kind),
             Some(CliKind::Opencode)
         );
     }
@@ -87,7 +89,9 @@ mod tests {
     fn real_adapters_include_claude() {
         let adapters = real_adapters();
         assert_eq!(
-            adapters.get(CliKind::Claude).map(|a| a.kind()),
+            adapters
+                .get(CliKind::Claude)
+                .map(duohive_core::adapter::CliAdapter::kind),
             Some(CliKind::Claude)
         );
     }

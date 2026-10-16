@@ -1,3 +1,32 @@
+# Clippy's settings for the workspace: thresholds, test allowances and banned APIs.
+# Which lints run is set in Cargo.toml's [workspace.lints.clippy]; `make lint` denies
+# every warning. crates/duohive-core/clippy.toml repeats this file and adds its I/O ban
+# (Clippy reads the nearest clippy.toml only; keep the two in step).
+
+msrv = "1.99"
+# A binary and its internal crates: lints may suggest changes to public items.
+avoid-breaking-exported-api = false
+
+# Size and complexity (coding style: small, focused functions; no deep nesting).
+too-many-lines-threshold = 100
+cognitive-complexity-threshold = 25
+too-many-arguments-threshold = 7
+type-complexity-threshold = 250
+max-fn-params-bools = 2
+max-struct-bools = 3
+excessive-nesting-threshold = 5
+# Arrays above 64 KiB belong on the heap.
+array-size-threshold = 65536
+future-size-threshold = 16384
+
+# Tests may unwrap, expect, print and panic.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-print-in-tests = true
+allow-panic-in-tests = true
+allow-dbg-in-tests = true
+
+disallowed-methods = [
+    { path = "std::env::set_var", reason = "AGENTS.md: no process-wide env changes; pass the value explicitly" },
+    { path = "std::env::remove_var", reason = "AGENTS.md: no process-wide env changes; pass the value explicitly" },
+]

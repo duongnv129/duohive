@@ -83,7 +83,7 @@ pub(super) fn draw_form(buf: &mut Buffer, area: Rect, f: &Form, p: &Palette) -> 
                 line.put(x0 + x, text, fg(*color), buf);
             }
             Row::Stacked(level, prompt, level_w) => {
-                draw_stacked(buf, line, level, *prompt, *level_w, p)
+                draw_stacked(buf, line, level, *prompt, *level_w, p);
             }
             Row::Fields(group) => {
                 if let Some(c) = draw_fields(buf, line, f, group, p) {

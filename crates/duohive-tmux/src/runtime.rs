@@ -91,12 +91,12 @@ impl TmuxRuntime {
             watched("control client", conn_task, events.clone()),
             watched(
                 "activity poll",
-                tokio::spawn(poll_loop(shared.clone())),
+                tokio::spawn(poll_loop(Arc::clone(&shared))),
                 events.clone(),
             ),
             watched(
                 "notice loop",
-                tokio::spawn(notice_loop(shared.clone(), notices)),
+                tokio::spawn(notice_loop(Arc::clone(&shared), notices)),
                 events.clone(),
             ),
             watched(

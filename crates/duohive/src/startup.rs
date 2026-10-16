@@ -73,6 +73,10 @@ fn still_running(n: usize, socket: &str) -> Option<String> {
 }
 
 /// Runs the app; see the module docs.
+#[expect(
+    clippy::too_many_lines,
+    reason = "start-up in the order the module docs list; split when a step grows"
+)]
 pub async fn run_app_main() -> ExitCode {
     let env = env_vars();
     let paths = match Paths::from_vars(&env) {

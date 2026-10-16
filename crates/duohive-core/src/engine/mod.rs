@@ -119,6 +119,10 @@ struct Delivery {
 
 /// One agent's runtime state.
 #[derive(Clone, Debug)]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "independent per-agent flags read separately across the engine"
+)]
 struct AgentRt {
     status: Status,
     /// The current launch's token (D1).
@@ -344,7 +348,7 @@ impl Engine {
             Command::StopAgent { agent } => self.stop_agent(&agent),
             Command::GiveWork { agent, task, run } => self.give_work(agent, task, run),
             Command::ViewAgent { agent } => self.view_agent(&agent),
-            Command::EditOrg(edit) => self.edit_org(edit),
+            Command::EditOrg(edit) => self.edit_org(&edit),
             Command::ReloadOrg => self.reload_org(),
             Command::CheckWorktrees => {
                 let mut out = Vec::new();

@@ -20,5 +20,5 @@ pub mod view;
 pub mod worktree;
 
 #[cfg(any(test, feature = "testkit"))]
-#[allow(clippy::unwrap_used, clippy::expect_used, reason = "test-only helpers")]
+#[expect(clippy::unwrap_used, reason = "test-only helpers")]
 pub mod testkit;

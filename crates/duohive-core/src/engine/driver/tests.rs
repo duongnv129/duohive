@@ -85,7 +85,7 @@ async fn driver_ticks_at_next_deadline() {
 async fn driver_stops_on_shutdown() {
     let mut h = Harness::new();
     h.start("auth-service");
-    let calls = h.call_log.clone();
+    let calls = std::sync::Arc::clone(&h.call_log);
     let core = spawn(h);
     core.commands.send(Command::Shutdown).await.unwrap();
     tokio::time::timeout(Duration::from_secs(1), core.task)

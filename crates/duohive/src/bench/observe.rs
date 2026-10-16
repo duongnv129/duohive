@@ -140,7 +140,13 @@ impl Observer {
     }
 
     fn draw(&mut self) {
-        self.ctx.now = Millis(now_ms() as u64);
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "wall-clock milliseconds: positive and far below u64::MAX"
+        )]
+        let now = now_ms() as u64;
+        self.ctx.now = Millis(now);
         self.ctx.spinner = self.ctx.spinner.wrapping_add(1);
         self.model.now = self.ctx.now;
         let (model, ctx) = (&self.model, &self.ctx);

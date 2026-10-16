@@ -57,6 +57,10 @@ fn created(agent: &str, id: &str, result: Result<(BaseRef, String), GitError>) -
     })
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "the answer the fake git gives for a created worktree"
+)]
 fn ok() -> Result<(BaseRef, String), GitError> {
     Ok((BaseRef("origin/main".into()), "abc123".into()))
 }
@@ -390,7 +394,7 @@ fn creation_with_no_answer_times_out() {
     let mut h = in_repo();
     h.give_in("pay-qa", TASK, RunIn::NewWorktree);
     assert_eq!(h.engine.next_deadline(), Some(h.t0 + CREATE_WAIT));
-    h.tick_at(CREATE_WAIT - Duration::from_secs(1));
+    h.tick_at(CREATE_WAIT.saturating_sub(Duration::from_secs(1)));
     assert!(rejected(&h.start("pay-qa"), READY));
     let events = h.tick_at(CREATE_WAIT);
     let reason = "couldn't create worktree: git didn't answer · space";

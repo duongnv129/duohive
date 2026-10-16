@@ -44,6 +44,10 @@ pub(super) fn item_at(r: Rect, m: &UiModel, y: u16) -> Option<usize> {
     (i < shown.min(m.needs_you.len())).then_some(i)
 }
 
+#[expect(
+    clippy::too_many_lines,
+    reason = "one pane's layout, top to bottom; split when it next changes"
+)]
 pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
     let p = &ctx.palette;
     if r.height < 2 || r.width < 2 {

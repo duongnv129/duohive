@@ -362,6 +362,10 @@ fn running_agents(m: &UiModel) -> usize {
     clippy::too_many_arguments,
     reason = "the loop's seams, each injected for tests"
 )]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one select! over every wake source; split its arms out when it next grows"
+)]
 pub(crate) async fn run_loop<B: Backend>(
     terminal: &mut Terminal<B>,
     mut input: mpsc::Receiver<InputEvent>,
