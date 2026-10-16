@@ -188,6 +188,22 @@ pub fn pane_areas(m: &UiModel) -> Option<PaneAreas> {
     })
 }
 
+/// The tree node drawn on screen row `y` of the org pane, as drawn now.
+pub(crate) fn org_key_at(m: &UiModel, y: u16) -> Option<duohive_core::org::NodeKey> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let l =
+        layout_below(m.screen, rows, m.chat_rows_extra, typing)?.with_needs_you(m.needs_you.len());
+    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    org_pane::key_at(&l, m, replies, y)
+}
+
+/// The Needs you item drawn on screen row `y`, as drawn now.
+pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
+    needs_you::item_at(pane_areas(m)?.needs_you, m, y)
+}
+
 /// The chat history's rows and the rows it can show, as drawn now.
 pub(crate) fn chat_history_fit(m: &UiModel) -> Option<(usize, usize)> {
     let a = pane_areas(m)?;

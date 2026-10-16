@@ -1,8 +1,11 @@
 //! The mouse on the main screen (P2-D25): where the wheel goes, what it never does, and
 //! the chat history's scrolling.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+use duohive_core::command::Command;
+use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
+use duohive_core::testkit::n;
 use duohive_core::time::Millis;
 use ratatui::layout::Rect;
 
@@ -263,4 +266,227 @@ fn chat_pgup_pgdn_page_with_focus() {
     assert_eq!(m.chat.scroll, Some(len - room - page));
     chat_action(&mut m, pgdn);
     assert_eq!(m.chat.scroll, None);
+}
+
+fn press(x: u16, y: u16) -> MouseEvent {
+    mouse(MouseEventKind::Down(MouseButton::Left), x, y)
+}
+
+/// The screen cell where `text` is drawn inside `r`, found on the rendered frame.
+fn cell_of(m: &UiModel, r: Rect, text: &str) -> (u16, u16) {
+    let lines = render_lines(m, &ctx(), W, H);
+    for y in r.y..r.bottom() {
+        let line: String = lines[usize::from(y)]
+            .chars()
+            .skip(usize::from(r.x))
+            .take(usize::from(r.width))
+            .collect();
+        if let Some(i) = line.find(text) {
+            let x = u16::try_from(line[..i].chars().count()).unwrap();
+            return (r.x + x, y);
+        }
+    }
+    panic!("{text} not drawn in {r:?}");
+}
+
+fn no_pane_input(effects: &[UiEffect]) -> bool {
+    effects
+        .iter()
+        .all(|e| !matches!(e, UiEffect::Pane(_) | UiEffect::Wheel { .. }))
+}
+
+#[test]
+fn click_pane_focuses() {
+    for pane in [Pane::Org, Pane::NeedsYou, Pane::Agent, Pane::Chat] {
+        let mut m = model();
+        m.focus.pane = if pane == Pane::Org {
+            Pane::Chat
+        } else {
+            Pane::Org
+        };
+        let a = areas(&m);
+        let r = match pane {
+            Pane::Org => a.org,
+            Pane::NeedsYou => a.needs_you,
+            Pane::Agent => a.agent,
+            Pane::Chat => a.chat,
+        };
+        // A cell with no row: Needs you's title row, else the bottom-right inner corner.
+        let at = if pane == Pane::NeedsYou {
+            press(r.x + 2, r.y)
+        } else {
+            press(r.right() - 2, r.bottom() - 2)
+        };
+        on_mouse(&mut m, at);
+        assert_eq!(m.focus.pane, pane, "{pane:?}");
+    }
+}
+
+#[test]
+fn click_agent_selects_and_shows_terminal() {
+    let mut m = model();
+    let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+    assert_eq!(m.focus.pane, Pane::Org);
+    assert!(no_pane_input(&effects));
+    // A finished agent is marked seen, as `↓` onto it does.
+    let (x, y) = cell_of(&m, areas(&m).org, "squad-2");
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(
+        effects,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("squad-2")
+        })]
+    );
+}
+
+#[test]
+fn click_duo_selects() {
+    let mut m = model();
+    let (x, y) = cell_of(&m, areas(&m).org, "your manager agent");
+    on_mouse(&mut m, press(x, y));
+    assert_eq!(m.selected, NodeKey::Duo);
+}
+
+#[test]
+fn click_team_and_role_select_without_folding() {
+    let mut m = model();
+    let (x, y) = cell_of(&m, areas(&m).org, "Payments");
+    on_mouse(&mut m, press(x, y));
+    assert!(matches!(m.selected, NodeKey::Team(_)), "{:?}", m.selected);
+    assert!(m.folded.is_empty());
+    let (x, y) = cell_of(&m, areas(&m).org, "Backend");
+    on_mouse(&mut m, press(x, y));
+    assert!(matches!(m.selected, NodeKey::Role(_)), "{:?}", m.selected);
+    assert!(m.folded.is_empty());
+}
+
+#[test]
+fn click_needs_you_row_acts_as_enter() {
+    let mut m = model();
+    let a = areas(&m);
+    let (x, y) = cell_of(&m, a.needs_you, "billing-api");
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(
+        effects,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("billing-api")
+        })]
+    );
+}
+
+#[test]
+fn click_agent_pane_does_not_start_typing() {
+    let mut m = model();
+    m.focus.pane = Pane::Org;
+    let (x, y) = middle(areas(&m).live);
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert!(no_pane_input(&effects));
+}
+
+fn typing() -> UiModel {
+    let mut m = model();
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = AgentMode::Typing;
+    m
+}
+
+#[test]
+fn click_inside_while_typing_keeps_typing() {
+    let mut m = typing();
+    let (x, y) = middle(areas(&m).live);
+    let effects = on_mouse(&mut m, press(x, y));
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert!(no_pane_input(&effects));
+}
+
+#[test]
+fn click_outside_while_typing_leaves_typing() {
+    let mut m = typing();
+    let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.focus.pane, Pane::Org);
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+}
+
+#[test]
+fn click_never_reaches_agent() {
+    let mut m = typing();
+    let a = areas(&m);
+    for r in [a.live, a.agent, a.org, a.needs_you, a.chat] {
+        let (x, y) = middle(r);
+        assert!(no_pane_input(&on_mouse(&mut m, press(x, y))));
+    }
+}
+
+#[test]
+fn click_keeps_scrolled_view() {
+    let mut m = model();
+    m.scrolled = true;
+    let (x, y) = middle(areas(&m).live);
+    on_mouse(&mut m, press(x, y));
+    assert!(m.scrolled);
+    let (x, y) = middle(areas(&m).chat);
+    on_mouse(&mut m, press(x, y));
+    assert!(m.scrolled);
+}
+
+#[test]
+fn click_other_agent_shows_it_live() {
+    let mut m = model();
+    m.scrolled = true;
+    let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    // The selection moved: the app loop drops the old stream and its snapshot, and
+    // opens billing-api's (live_tests: stream_closes_on_selection_change).
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+}
+
+#[test]
+fn click_ignored_while_zoomed() {
+    let mut m = model();
+    m.focus.pane = Pane::Agent;
+    m.zoomed = true;
+    let before = m.clone();
+    let a = areas(&m);
+    for (x, y) in [middle(a.live), (0, 3), (W - 1, H - 2)] {
+        assert_eq!(on_mouse(&mut m, press(x, y)), []);
+    }
+    assert_eq!(m, before);
+}
+
+#[test]
+fn right_middle_click_and_drag_ignored() {
+    let mut m = model();
+    m.focus.pane = Pane::Chat;
+    let before = m.clone();
+    let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Right),
+        MouseEventKind::Down(MouseButton::Middle),
+        MouseEventKind::Drag(MouseButton::Left),
+    ] {
+        assert_eq!(on_mouse(&mut m, mouse(kind, x, y)), []);
+    }
+    assert_eq!(m, before);
+}
+
+#[test]
+fn click_release_ignored() {
+    let mut m = model();
+    m.focus.pane = Pane::Chat;
+    let before = m.clone();
+    let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
+    assert_eq!(
+        on_mouse(&mut m, mouse(MouseEventKind::Up(MouseButton::Left), x, y)),
+        []
+    );
+    assert_eq!(m, before);
 }

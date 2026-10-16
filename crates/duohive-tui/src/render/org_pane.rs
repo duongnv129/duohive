@@ -72,6 +72,28 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
     }
 }
 
+/// The node drawn on screen row `y` of the tree, as [`draw`] lays it out; a detail line
+/// (a reply, a problem) belongs to the node above it.
+pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
+    let r = l.org;
+    if r.width < 6 || r.height < 2 || y <= r.y {
+        return None;
+    }
+    let tree_h = usize::from(r.height - 1);
+    let row = usize::from(y - r.y - 1);
+    if row >= tree_h {
+        return None;
+    }
+    let content = usize::from(r.width - 4);
+    let rows = wrap_problems(tree_rows(m, l.compact, replies, m.now), content);
+    let skip = scroll(&rows, &m.selected, tree_h);
+    rows.iter()
+        .take(skip + row + 1)
+        .skip(skip)
+        .rev()
+        .find_map(|r| r.key.clone())
+}
+
 /// Errors and problems wrap onto more lines rather than lose their hint (UI §4.12: errors
 /// show how to fix them); replies and notices are cut at the pane edge instead.
 fn wrap_problems(rows: Vec<TreeRow>, content: usize) -> Vec<TreeRow> {

@@ -28,6 +28,22 @@ const HEAVY_BELOW: [&str; 2] = ["┢", "┪"];
 
 /// Draws the `┣━ Needs you (n) ━┫` separator at `r.y`, the rows under it and the org pane's
 /// bottom border at `r.bottom() - 1`. With focus, this part's border is heavy (UI §2.2).
+/// The Needs you item drawn on screen row `y` of `r`, as [`draw`] lays them out; not
+/// the `… n more` row.
+pub(super) fn item_at(r: Rect, m: &UiModel, y: u16) -> Option<usize> {
+    if r.height < 2 || r.width < 2 || y <= r.y {
+        return None;
+    }
+    let rows = usize::from(r.height.saturating_sub(2));
+    let shown = if m.needs_you.len() > rows {
+        rows.saturating_sub(1)
+    } else {
+        rows
+    };
+    let i = usize::from(y - r.y - 1);
+    (i < shown.min(m.needs_you.len())).then_some(i)
+}
+
 pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
     let p = &ctx.palette;
     if r.height < 2 || r.width < 2 {
