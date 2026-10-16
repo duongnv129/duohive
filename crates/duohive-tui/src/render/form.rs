@@ -337,7 +337,7 @@ fn draw_buttons(buf: &mut Buffer, line: Line, f: &Form, p: &Palette) {
         if !enabled {
             fg(p.fg_muted)
         } else if focused {
-            Style::default().fg(p.fg).bg(p.selection)
+            p.selected().fg(p.fg)
         } else {
             fg(p.fg)
         }
@@ -373,7 +373,7 @@ pub(super) fn draw_chooser(buf: &mut Buffer, area: Rect, c: &Chooser, p: &Palett
         let style = if !item.enabled {
             fg(p.fg_muted)
         } else if focused {
-            Style::default().fg(p.fg).bg(p.selection)
+            p.selected().fg(p.fg)
         } else {
             fg(p.fg)
         };

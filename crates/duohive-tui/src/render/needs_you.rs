@@ -120,7 +120,7 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
                 width: r.width - 2,
                 height: 1,
             };
-            buf.set_style(bar, Style::default().bg(p.selection));
+            buf.set_style(bar, p.selected());
             put(buf, r.x + 1, y, "▌", 1, fg(p.border_focus));
         }
         let (glyph, word) = if item.quiet {

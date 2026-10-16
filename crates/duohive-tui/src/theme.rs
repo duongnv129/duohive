@@ -1,7 +1,15 @@
 //! Colour tokens (UI §2.3) and the palettes that map them.
 
 use duohive_core::settings::Theme;
-use ratatui::style::Color;
+use ratatui::buffer::Buffer;
+use ratatui::style::{Color, Modifier, Style};
+
+/// `auto`'s `fg.muted` and `border` (P2-D26): reserved colours that [`finish`] turns
+/// into the terminal's own foreground, dimmed. Colours travel through the renderers as
+/// plain `Color`s, which can't carry `DIM`; the live terminal never draws these two
+/// (`TermView` nudges them), so only DuoHive's own cells hold them.
+pub(crate) const DIM_MUTED: Color = Color::Rgb(3, 1, 4);
+pub(crate) const DIM_BORDER: Color = Color::Rgb(1, 5, 9);
 
 /// Every UI §2.3 colour token.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +38,8 @@ pub struct Palette {
     pub accent_duo: Color,
     /// `selection`: the selected row's background.
     pub selection: Color,
+    /// The selected row is bold (`auto`, which paints no background behind it).
+    pub selection_bold: bool,
 }
 
 #[expect(
@@ -56,6 +66,7 @@ impl Palette {
             error: hex(0xFF6B61),
             accent_duo: hex(0xC9A227),
             selection: hex(0x1E2738),
+            selection_bold: false,
         }
     }
 
@@ -74,6 +85,38 @@ impl Palette {
             error: hex(0xC11C28),
             accent_duo: hex(0x7D5300),
             selection: hex(0xEAF4FF),
+            selection_bold: false,
+        }
+    }
+
+    /// `auto`, the default (UI §2.3, P2-D26): the terminal's own background and
+    /// foreground, its ANSI colours, dim for muted text and borders, and a bold selected
+    /// row with no background.
+    pub fn auto() -> Self {
+        Self {
+            fg: Color::Reset,
+            fg_muted: DIM_MUTED,
+            bg: Color::Reset,
+            bg_panel: Color::Reset,
+            border: DIM_BORDER,
+            border_focus: Color::Blue,
+            working: Color::Blue,
+            attention: Color::Yellow,
+            done: Color::Green,
+            error: Color::Red,
+            accent_duo: Color::Magenta,
+            selection: Color::Reset,
+            selection_bold: true,
+        }
+    }
+
+    /// The selected row's style: its background, and bold where the palette says.
+    pub fn selected(&self) -> Style {
+        let style = Style::default().bg(self.selection);
+        if self.selection_bold {
+            style.add_modifier(Modifier::BOLD)
+        } else {
+            style
         }
     }
 
@@ -92,17 +135,39 @@ impl Palette {
             error: Color::Reset,
             accent_duo: Color::Reset,
             selection: Color::Reset,
+            selection_bold: false,
         }
     }
 }
 
-/// The palette for a theme; `Auto` is dark in phase 1, and `NO_COLOR` wins over any theme.
+/// Turns `auto`'s reserved dim colours into the terminal's foreground with `DIM`; a
+/// no-op for every other palette. Run once a frame is drawn.
+pub(crate) fn finish(buf: &mut Buffer) {
+    for cell in &mut buf.content {
+        if cell.fg == DIM_MUTED || cell.fg == DIM_BORDER {
+            cell.fg = Color::Reset;
+            cell.modifier.insert(Modifier::DIM);
+        }
+    }
+}
+
+/// An agent's own colour, kept off `auto`'s two reserved ones by one step of blue.
+pub(crate) const fn not_reserved(c: Color) -> Color {
+    match c {
+        Color::Rgb(3, 1, 4) => Color::Rgb(3, 1, 5),
+        Color::Rgb(1, 5, 9) => Color::Rgb(1, 5, 8),
+        other => other,
+    }
+}
+
+/// The palette for a theme; `NO_COLOR` wins over any theme.
 pub fn palette_for(theme: Theme, no_color: bool) -> Palette {
     if no_color {
         return Palette::mono();
     }
     match theme {
-        Theme::Auto | Theme::Dark => Palette::dark(),
+        Theme::Auto => Palette::auto(),
+        Theme::Dark => Palette::dark(),
         Theme::Light => Palette::light(),
     }
 }
@@ -127,7 +192,7 @@ mod tests {
 
     #[test]
     fn palette_follows_theme_and_no_color() {
-        assert_eq!(palette_for(Theme::Auto, false), Palette::dark());
+        assert_eq!(palette_for(Theme::Auto, false), Palette::auto());
         assert_eq!(palette_for(Theme::Dark, false), Palette::dark());
         assert_eq!(palette_for(Theme::Light, false), Palette::light());
         for t in [Theme::Auto, Theme::Dark, Theme::Light] {

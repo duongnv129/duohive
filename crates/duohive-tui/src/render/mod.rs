@@ -84,6 +84,11 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
 
 /// Draws the main screen; the agent pane shows `live` when it belongs to the selection.
 pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveScreen<'_>>) {
+    draw_live(frame, m, ctx, live);
+    crate::theme::finish(frame.buffer_mut());
+}
+
+fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveScreen<'_>>) {
     let area = frame.area();
     let p = &ctx.palette;
     let buf = frame.buffer_mut();
@@ -360,6 +365,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
     edge(buf, bottom, l.bottom, "", l, border);
 }
 
+#[cfg(test)]
+mod auto_tests;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]

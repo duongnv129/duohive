@@ -1188,25 +1188,28 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
 ### Task 2.22: TUI — theme `auto` follows the terminal (P2-D26)
 
 **Files:**
-- Modify `crates/duohive-tui/src/theme.rs`: an `auto` palette, and `palette_for(Theme::Auto, _)` returns it; dim and bold come with it.
-- Modify the renderers that paint `bg`, `bg.panel` or `selection`, so the `auto` palette's `Color::Reset` paints nothing and the selected row is bold.
-- Snapshots: `_auto` variants of the main screen at 80×24 and 160×48.
+- Modify `crates/duohive-tui/src/theme.rs`: an `auto` palette, and `palette_for(Theme::Auto, _)` returns it.
+- Modify the renderers that paint `selection`, so the selected row takes `Palette::selected()` (bold under `auto`), and `render_live` ends with `theme::finish`.
+- Modify `term_view.rs`: an agent's own colour never equals `auto`'s reserved ones.
+- Create `render/auto_tests.rs`. The text snapshots record no colours, so `auto` has no snapshot of its own; the style tests below cover it.
 
 **Interfaces:**
 - Consumes `Palette` (Task 1.24) and `palette_for` (Task 2.17).
-- Produces `Palette::auto()`, and `Palette` gains `dim: bool` and `selection_bold: bool` (both `false` for `dark` and `light`).
+- Produces `Palette::auto()` and `Palette::selected() -> Style`; `Palette` gains `selection_bold: bool` (`false` for `dark`, `light` and mono).
+- `fg.muted` and `border` can't carry `DIM` as a `Color`, so `auto` gives them two reserved colours (`DIM_MUTED`, `DIM_BORDER`) that `theme::finish(buf)` turns into the terminal's foreground with `DIM` once a frame is drawn; `TermView` moves an agent's cell off either one by one step of blue.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `auto_paints_no_background`: under `auto`, every cell of a rendered main screen has `bg == Color::Reset`, focused pane and selected row included.
   - `auto_uses_terminal_foreground_and_ansi`: `fg` is `Color::Reset`; `status.working` is `Color::Blue`, attention `Yellow`, done `Green`, error `Red`, `accent.duo` `Magenta`.
   - `auto_muted_and_borders_are_dim`: `fg.muted` and `border` cells carry `Modifier::DIM`.
   - `auto_selected_row_is_bar_and_bold`: the selected row has `▌` and `Modifier::BOLD`, and no background.
   - `dark_and_light_are_unchanged`: their existing snapshots still match.
-  - Snapshots `main_auto_80x24`, `main_auto_160x48`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui theme`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: theme auto follows the terminal, transparent by default`
+  - `auto_leaves_the_live_terminal_alone`: an agent's cell in a reserved colour is moved one step and isn't dimmed.
+  - The tests above run at 80×24 and 160×48 where the layout matters.
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui theme`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: theme auto follows the terminal, transparent by default`
 
 ### Task 2.20: UI/UX improvement pass, then mark the phase done
 

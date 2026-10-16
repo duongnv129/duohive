@@ -4,7 +4,6 @@ use duohive_core::names::AgentName;
 use duohive_core::org::NodeKey;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
 
 use super::{
     At, RenderCtx, draw_box, fg, glyph_color, needs_you, pane_style, put, put_pieces, state_color,
@@ -59,7 +58,7 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
                 width: r.width - 2,
                 height: 1,
             };
-            buf.set_style(bar, Style::default().bg(p.selection));
+            buf.set_style(bar, p.selected());
             put(buf, r.x + 1, y, "▌", 1, fg(p.border_focus));
         }
         let slot = Slot {

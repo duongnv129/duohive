@@ -226,6 +226,6 @@ const fn map_color(color: vt100::Color) -> Color {
     match color {
         vt100::Color::Default => Color::Reset,
         vt100::Color::Idx(i) => Color::Indexed(i),
-        vt100::Color::Rgb(r, g, b) => Color::Rgb(r, g, b),
+        vt100::Color::Rgb(r, g, b) => crate::theme::not_reserved(Color::Rgb(r, g, b)),
     }
 }
