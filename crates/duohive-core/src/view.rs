@@ -26,6 +26,27 @@ pub enum PaneInput {
     Key(PaneKey),
     /// Text sent as a bracketed paste.
     Paste(String),
+    /// One wheel tick for a CLI that turned on mouse reporting (P2-D25). `col` and
+    /// `row` are 1-based within the pane; `sgr` picks SGR over X10 encoding.
+    Mouse {
+        /// Which way the wheel turned.
+        wheel: Wheel,
+        /// The pointer's column in the pane, from 1.
+        col: u16,
+        /// The pointer's row in the pane, from 1.
+        row: u16,
+        /// The CLI asked for SGR encoding (mode 1006).
+        sgr: bool,
+    },
+}
+
+/// A wheel tick's direction.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Wheel {
+    /// Away from the user: older lines.
+    Up,
+    /// Towards the user: newer lines.
+    Down,
 }
 
 /// A key the pane understands.

@@ -1,7 +1,7 @@
 //! The real terminal: raw mode, the alternate screen and a panic hook that restores them;
 //! a reader thread that forwards crossterm input, and pauses while the editor has the tty.
 
-use std::io::{self, stdout};
+use std::io::{self, Write, stdout};
 use std::mem::ManuallyDrop;
 use std::process::{Command as Process, ExitStatus};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +12,8 @@ use std::time::Duration;
 
 use crossterm::cursor::{Hide, Show};
 use crossterm::event::{
-    self, DisableBracketedPaste, EnableBracketedPaste, Event as TermEvent, KeyEventKind,
+    self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+    Event as TermEvent, KeyEventKind, MouseEventKind,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -61,8 +62,9 @@ pub async fn run_app(
             return Err(e.into());
         }
     };
-    // Pasted text arrives whole, so a newline in it never reads as enter (forms).
-    let _ = execute!(stdout(), EnableBracketedPaste);
+    // Pasted text arrives whole, so a newline in it never reads as enter (forms); the
+    // wheel and clicks arrive as mouse events (P2-D25).
+    let _ = input_modes_on(&mut stdout());
     restore_paste_on_panic(Arc::clone(&cfg.halted));
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
@@ -93,7 +95,8 @@ pub async fn run_app(
     // The reader may already be gone; it ends within one poll either way.
     let _ = gate_tx.send(Gate::Stop);
     // What the `Terminal`'s Drop would do, with errors ignored rather than printed.
-    let _ = execute!(stdout(), DisableBracketedPaste, Show);
+    let _ = input_modes_off(&mut stdout());
+    let _ = execute!(stdout(), Show);
     let restored = ratatui::try_restore();
     if signals.hung_up() {
         // A closed terminal can't be restored (the attempt only returns errors); a
@@ -103,10 +106,11 @@ pub async fn run_app(
     result.and(restored.map_err(TuiError::from))
 }
 
-/// Puts the terminal back (bracketed paste off, raw mode off, main screen) for a caller
-/// that stopped [`run_app`] without letting it finish. Harmless when already restored.
+/// Puts the terminal back (bracketed paste and the mouse off, raw mode off, main screen)
+/// for a caller that stopped [`run_app`] without letting it finish. Harmless when already
+/// restored.
 pub fn restore_terminal() {
-    let _ = execute!(stdout(), DisableBracketedPaste);
+    let _ = input_modes_off(&mut stdout());
     let _ = ratatui::try_restore();
 }
 
@@ -151,13 +155,13 @@ fn blocking_loop(
 }
 
 /// Wraps the panic hook (ratatui's, which restores raw mode and the screen) so a panic
-/// first stops drawing (`halted`), and also turns bracketed paste off; otherwise the
-/// shell would get pastes wrapped in escapes.
+/// first stops drawing (`halted`), and also turns bracketed paste and the mouse off;
+/// otherwise the shell would get pastes wrapped in escapes, and mouse reports.
 fn restore_paste_on_panic(halted: Arc<AtomicBool>) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         halted.store(true, Ordering::SeqCst);
-        let _ = execute!(stdout(), DisableBracketedPaste);
+        let _ = input_modes_off(&mut stdout());
         previous(info);
     }));
 }
@@ -185,16 +189,42 @@ fn read_input(
             Err(_) => return,
         }
         let input = match event::read() {
-            Ok(TermEvent::Key(k)) if k.kind != KeyEventKind::Release => InputEvent::Key(k),
-            Ok(TermEvent::Resize(w, h)) => InputEvent::Resize(w, h),
-            Ok(TermEvent::Paste(text)) => InputEvent::Paste(text),
-            Ok(_) => continue,
+            Ok(ev) => match to_input(ev) {
+                Some(input) => input,
+                None => continue,
+            },
             Err(_) => return,
         };
         if tx.blocking_send(input).is_err() {
             return;
         }
     }
+}
+
+/// What the loop gets for a terminal event: key presses, resizes, pastes, and the
+/// wheel and button presses and releases. Movement and drags are dropped here, so a
+/// moving pointer can't fill the input queue (crossterm reports every motion).
+fn to_input(ev: TermEvent) -> Option<InputEvent> {
+    match ev {
+        TermEvent::Key(k) if k.kind != KeyEventKind::Release => Some(InputEvent::Key(k)),
+        TermEvent::Resize(w, h) => Some(InputEvent::Resize(w, h)),
+        TermEvent::Paste(text) => Some(InputEvent::Paste(text)),
+        TermEvent::Mouse(m) => match m.kind {
+            MouseEventKind::Moved | MouseEventKind::Drag(_) => None,
+            _ => Some(InputEvent::Mouse(m)),
+        },
+        _ => None,
+    }
+}
+
+/// Turns on bracketed paste and mouse reporting.
+fn input_modes_on(w: &mut impl Write) -> io::Result<()> {
+    execute!(w, EnableBracketedPaste, EnableMouseCapture)
+}
+
+/// Turns off bracketed paste and mouse reporting.
+fn input_modes_off(w: &mut impl Write) -> io::Result<()> {
+    execute!(w, DisableBracketedPaste, DisableMouseCapture)
 }
 
 /// Says it is parked, then waits for `Resume`; `false` when it should stop instead.
@@ -249,10 +279,87 @@ impl TerminalHost for CrosstermHost {
 
 fn suspend() -> io::Result<()> {
     disable_raw_mode()?;
-    execute!(stdout(), DisableBracketedPaste, LeaveAlternateScreen, Show)
+    input_modes_off(&mut stdout())?;
+    execute!(stdout(), LeaveAlternateScreen, Show)
 }
 
 fn resume() -> io::Result<()> {
-    execute!(stdout(), EnterAlternateScreen, EnableBracketedPaste, Hide)?;
+    execute!(stdout(), EnterAlternateScreen)?;
+    input_modes_on(&mut stdout())?;
+    execute!(stdout(), Hide)?;
     enable_raw_mode()
+}
+
+#[cfg(test)]
+mod tests {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+
+    use super::*;
+
+    fn mouse(kind: MouseEventKind) -> TermEvent {
+        TermEvent::Mouse(MouseEvent {
+            kind,
+            column: 3,
+            row: 4,
+            modifiers: KeyModifiers::NONE,
+        })
+    }
+
+    #[test]
+    fn motion_events_dropped() {
+        assert_eq!(to_input(mouse(MouseEventKind::Moved)), None);
+        assert_eq!(
+            to_input(mouse(MouseEventKind::Drag(MouseButton::Left))),
+            None
+        );
+        let TermEvent::Mouse(up) = mouse(MouseEventKind::ScrollUp) else {
+            unreachable!()
+        };
+        assert_eq!(to_input(TermEvent::Mouse(up)), Some(InputEvent::Mouse(up)));
+        let TermEvent::Mouse(down) = mouse(MouseEventKind::Down(MouseButton::Left)) else {
+            unreachable!()
+        };
+        assert_eq!(
+            to_input(TermEvent::Mouse(down)),
+            Some(InputEvent::Mouse(down))
+        );
+    }
+
+    #[test]
+    fn mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor() {
+        let mut on = Vec::new();
+        input_modes_on(&mut on).unwrap();
+        let on = String::from_utf8(on).unwrap();
+        assert!(
+            on.contains("\x1b[?2004h") && on.contains("\x1b[?1000h"),
+            "{on:?}"
+        );
+        let mut off = Vec::new();
+        input_modes_off(&mut off).unwrap();
+        let off = String::from_utf8(off).unwrap();
+        assert!(
+            off.contains("\x1b[?2004l") && off.contains("\x1b[?1000l"),
+            "{off:?}"
+        );
+        // Every path that turns paste on or off (start-up, exit, restore_terminal, the
+        // panic hook, suspend and resume around the editor) goes through these two.
+        let source = include_str!("terminal.rs");
+        let body = &source[..source.find("#[cfg(test)]").unwrap()];
+        // The two imports, then once in each helper.
+        assert_eq!(
+            body.matches("BracketedPaste").count(),
+            4,
+            "paste named outside the helpers"
+        );
+        assert_eq!(
+            body.matches("input_modes_off(").count(),
+            5,
+            "exit, restore, panic, suspend + fn"
+        );
+        assert_eq!(
+            body.matches("input_modes_on(").count(),
+            3,
+            "start-up, resume + fn"
+        );
+    }
 }

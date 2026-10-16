@@ -8,6 +8,18 @@ use ratatui::style::{Color, Modifier, Style};
 #[cfg(test)]
 mod tests;
 
+/// Whether the program in the terminal asked for mouse reports (P2-D25).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MouseMode {
+    /// It didn't: the wheel scrolls DuoHive's snapshot.
+    Off,
+    /// It did; `sgr` when it asked for SGR encoding (mode 1006).
+    On {
+        /// SGR encoding rather than X10.
+        sgr: bool,
+    },
+}
+
 /// A terminal emulator whose screen renders into a Ratatui buffer.
 pub struct TermView {
     parser: vt100::Parser,
@@ -44,9 +56,8 @@ impl TermView {
     ///
     /// When rows must go, the screen is rebuilt in a fresh parser from the
     /// kept rows, so a scroll region or the alternate screen cannot corrupt
-    /// the result. The hidden primary screen and other modes (mouse, bracketed
-    /// paste) are not carried over;
-    /// a `Reset` follows a real resize.
+    /// the result. The mouse mode is carried over (P2-D25: a resize sends no
+    /// `Reset`); the hidden primary screen and bracketed paste are not.
     pub fn resize(&mut self, size: PaneSize) {
         let (cols, rows) = (size.cols.max(1), size.rows.max(1));
         let screen = self.parser.screen();
@@ -61,6 +72,7 @@ impl TermView {
         if screen.alternate_screen() {
             seed.extend_from_slice(b"\x1b[?1049h");
         }
+        seed.extend_from_slice(&mouse_seed(screen));
         let width = old_cols.min(cols);
         for (i, row) in screen.rows_formatted(0, width).enumerate() {
             let i = u16::try_from(i).unwrap_or(u16::MAX);
@@ -145,6 +157,17 @@ impl TermView {
         }
     }
 
+    /// The mouse reporting the program turned on, if any.
+    pub fn mouse_mode(&self) -> MouseMode {
+        let screen = self.parser.screen();
+        match screen.mouse_protocol_mode() {
+            vt100::MouseProtocolMode::None => MouseMode::Off,
+            _ => MouseMode::On {
+                sgr: screen.mouse_protocol_encoding() == vt100::MouseProtocolEncoding::Sgr,
+            },
+        }
+    }
+
     /// The terminal's rows.
     pub fn rows(&self) -> u16 {
         self.parser.screen().size().0
@@ -154,6 +177,24 @@ impl TermView {
         let seq = format!("\x1b[{};{}H", row.saturating_add(1), col.saturating_add(1));
         self.parser.process(seq.as_bytes());
     }
+}
+
+/// The DECSET sequences that put a fresh parser in `screen`'s mouse mode and encoding.
+fn mouse_seed(screen: &vt100::Screen) -> Vec<u8> {
+    let mode = match screen.mouse_protocol_mode() {
+        vt100::MouseProtocolMode::None => return Vec::new(),
+        vt100::MouseProtocolMode::Press => 9,
+        vt100::MouseProtocolMode::PressRelease => 1000,
+        vt100::MouseProtocolMode::ButtonMotion => 1002,
+        vt100::MouseProtocolMode::AnyMotion => 1003,
+    };
+    let mut seed = format!("\x1b[?{mode}h").into_bytes();
+    match screen.mouse_protocol_encoding() {
+        vt100::MouseProtocolEncoding::Default => {}
+        vt100::MouseProtocolEncoding::Utf8 => seed.extend_from_slice(b"\x1b[?1005h"),
+        vt100::MouseProtocolEncoding::Sgr => seed.extend_from_slice(b"\x1b[?1006h"),
+    }
+    seed
 }
 
 fn cell_style(cell: &vt100::Cell, no_color: bool) -> Style {

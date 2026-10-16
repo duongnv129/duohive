@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
@@ -31,6 +31,7 @@ use tokio::time::Instant;
 pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
+use crate::input::mouse::on_mouse;
 use crate::input::{UiEffect, map_key, paste, update};
 use crate::live::{Live, next_chunk, next_scrollback};
 use crate::model::{SharedDirs, UiModel};
@@ -97,6 +98,8 @@ pub enum InputEvent {
     Paste(String),
     /// The terminal's new size.
     Resize(u16, u16),
+    /// The wheel, or a button press or release (P2-D25); movement is dropped earlier.
+    Mouse(MouseEvent),
 }
 
 /// Why the app stopped other than by `q`.
@@ -405,6 +408,16 @@ pub(crate) async fn run_loop<B: Backend>(
                     set_screen(&mut m, w, h);
                     clock.dirty = true;
                 }
+                InputEvent::Mouse(ev) => {
+                    let before = m.clone();
+                    for effect in on_mouse(&mut m, ev) {
+                        if let UiEffect::Wheel { up, col, row } = effect {
+                            live.wheel(up, col, row, &mut m);
+                            clock.dirty = true;
+                        }
+                    }
+                    clock.dirty |= m != before;
+                }
                 InputEvent::Paste(text) => {
                     let before = m.clone();
                     for effect in paste(&mut m, &text) {
@@ -432,6 +445,10 @@ pub(crate) async fn run_loop<B: Backend>(
                             UiEffect::Pane(input) => live.send(input),
                             UiEffect::Scroll { up } => {
                                 live.scroll(up, &mut m);
+                                clock.dirty = true;
+                            }
+                            UiEffect::Wheel { up, col, row } => {
+                                live.wheel(up, col, row, &mut m);
                                 clock.dirty = true;
                             }
                             UiEffect::OpenEditor(path) => {
@@ -552,5 +569,7 @@ fn draw<B: Backend>(
 
 #[cfg(test)]
 mod live_tests;
+#[cfg(test)]
+mod mouse_tests;
 #[cfg(test)]
 mod tests;

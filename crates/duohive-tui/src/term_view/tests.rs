@@ -256,3 +256,38 @@ fn resize_wide_glyph_on_the_bottom_kept_row_does_not_scroll() {
     v.resize(size(5, 2));
     assert_eq!(rows_of(&v, 5, 2), ["y", "abcd"]);
 }
+
+#[test]
+fn mouse_mode_seeded_on_open_and_reset() {
+    use super::MouseMode;
+    let mut v = TermView::new(size(10, 3));
+    assert_eq!(v.mouse_mode(), MouseMode::Off);
+    v.apply(&PaneChunk::Reset {
+        bytes: b"\x1b[?1000h\x1b[?1006hx".to_vec(),
+        cursor: (1, 0),
+    });
+    assert_eq!(v.mouse_mode(), MouseMode::On { sgr: true });
+    v.apply(&PaneChunk::Reset {
+        bytes: b"\x1b[?1000hx".to_vec(),
+        cursor: (1, 0),
+    });
+    assert_eq!(v.mouse_mode(), MouseMode::On { sgr: false });
+    v.apply(&bytes(b"\x1b[?1000l"));
+    assert_eq!(v.mouse_mode(), MouseMode::Off);
+}
+
+#[test]
+fn mouse_mode_kept_across_resize_that_drops_rows() {
+    use super::MouseMode;
+    let mut v = TermView::new(size(10, 4));
+    // The cursor on the last row, so shrinking to 2 rows drops rows and rebuilds.
+    v.apply(&PaneChunk::Reset {
+        bytes: b"\x1b[?1002h\x1b[?1006ha\r\nb\r\nc\r\nd".to_vec(),
+        cursor: (1, 3),
+    });
+    v.resize(size(10, 2));
+    assert_eq!(v.rows(), 2);
+    assert_eq!(v.mouse_mode(), MouseMode::On { sgr: true });
+    v.resize(size(8, 2));
+    assert_eq!(v.mouse_mode(), MouseMode::On { sgr: true });
+}
