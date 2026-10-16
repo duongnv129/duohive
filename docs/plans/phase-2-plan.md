@@ -1058,6 +1058,7 @@ This is acceptance, with no code under test.
 
 - [x] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
 - [ ] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
+  - Status 2026-10-16: day 1 needed `tmux attach` (reason not recorded); the count starts again.
 - [x] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
   - a newline and non-ASCII text in OpenCode's `--prompt=`;
   - `--effort=` on a real turn;
@@ -1067,6 +1068,7 @@ This is acceptance, with no code under test.
 
   If the trust dialog appears, decide with the author whether to accept the `~◆ waiting` it shows or to pre-trust per launch, which must never touch global config.
 - [ ] **Step 4: Commit.** `docs: phase 2 friction log and live checks`
+  - Status 2026-10-16: the friction log and live checks are committed as they stand (entries 1–23); this step closes with Step 2.
 
 ### Task 2.21: TUI — touchpad scrolling and click to select (P2-D25)
 
@@ -1151,7 +1153,7 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
   - Capture goes on with `EnableMouseCapture` beside `EnableBracketedPaste`, and off with `DisableMouseCapture` beside each `DisableBracketedPaste`.
   - `term_view.rs` reads the mode from the vt100 parser's mouse protocol mode and encoding, and carries it into the parser that `resize` rebuilds. The comment that says modes are not carried over goes.
   - `live.rs` drops the guard that refuses `on_scrollback` in Typing mode.
-- [ ] **Step 4: Live checks.** On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
+- [ ] **Step 4: Live checks.** Status 2026-10-16: open; the code is built and reviewed (`faeeea2`, `28e31f1`, `ba0bbd5`). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
   - Claude scrolls its own view on the wheel and on `PgUp`, while typing too;
   - the `send-keys -H` bytes arrive unchanged with Claude's extended keys on;
   - OpenCode's mouse flags are recorded, and its wheel works;
@@ -1196,6 +1198,7 @@ This is validated by snapshot diffs and the checklist below.
   - `docs/plans/v1-traceability.md`.
 
 - [ ] **Step 1: Fix the top friction-log items.**
+  - Status 2026-10-16: severity 1 all fixed (1, 2, 20). Severity 2 fixed: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21); open: 22. The carried long-name item passes. Severity 3: 8 fixed, the rest open.
   - P2-D25 (friction entries 21 and 23) is built in [Task 2.21](#task-221-tui--touchpad-scrolling-and-click-to-select-p2-d25), before this step.
   - Every severity-1 item, then severity-2 items by count.
   - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.

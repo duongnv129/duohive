@@ -1,6 +1,6 @@
 # Phase 2 Friction Log
 
-**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
+**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-16: every severity-1 entry is fixed; severity 2 has one open (22); no day without `tmux attach` yet. Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
 
 ## How to log
 
@@ -16,7 +16,7 @@
 
 | Day | Date | Needed `tmux attach`? | Notes |
 |---|---|---|---|
-| 1 | | | |
+| 1 | 2026-10-16 | yes | Reason not recorded. Scrolling an agent while typing (21) and clicking to jump (23) fixed the same day (P2-D25); the oversized window that broke the screen (22) is open. The three days start again |
 | 2 | | | |
 | 3 | | | |
 
@@ -44,9 +44,9 @@
 | 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
 | 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
 | 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
-| 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25) |
+| 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25; `faeeea2`, `ba0bbd5`) |
 | 22 | 2026-10-16 | Agent pane | `cakekyc-auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watch for it; clip the terminal widget to its pane when fixed; it would also offset P2-D25's wheel cell |
-| 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25) |
+| 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25; `28e31f1`, `ba0bbd5`) |
 
 ## Live checks
 
