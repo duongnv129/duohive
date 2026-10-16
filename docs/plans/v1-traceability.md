@@ -89,7 +89,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §2.1 Reduce motion toggle on screen | 2 | 2.17 |
 | §2.2 `✉` messages waiting | 3 | 3.4, 3.9 |
 | §2.2 `▾ ▸` folding | 2 | 2.5 |
-| §2.3 Theme `auto` (dark until then) | 4 | 4.9 |
+| §2.3 Theme `auto` follows the terminal (P2-D26) | 2 | 2.22 |
 | §3 Layout: three panes, sizes, shrink order, focus, keyboard resize | 2 | 2.5 |
 | §3 Layout: drag the chat edge | 4 | 4.7 |
 | §4.1 Main screen: header, tree, roll-ups | 1 | T23 |
@@ -212,6 +212,6 @@ Interim behaviour that a later phase removes. They are listed in the plans and h
 | D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3 |
 | P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9 |
 | P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11 |
-| P2-D13: Settings without the Keys and Org rows; theme `auto` renders dark | 2.17 | 4.4, 4.6, 4.9 |
+| P2-D13: Settings without the Keys and Org rows | 2.17 | 4.4, 4.6 |
 | P2-D9: no `?` (footer and header), `f`, `m` or mouse beyond P2-D25's wheel and click | phase 2 | 4.6–4.9 |
 | T23: errored-row hint without `space retry` | phase 1 | 2.15 |

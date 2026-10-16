@@ -183,6 +183,8 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D13 | Settings (You, Attention, Look) ships in phase 2, not phase 4 | 2.17 |
 | P2-D18 | An alert click doesn't raise the terminal window | 2.10 |
 | P2-D25 | The wheel (touchpad scrolling) and left click ship in phase 2, not phase 4; text selection then takes the terminal's bypass modifier | 2.21 |
+| P2-D26 | Theme `auto` follows the terminal (transparent) in phase 2, instead of rendering dark until phase 4's background detection | 2.22 |
+| P2-D26 | **Theme `auto` follows the terminal: transparent by default.** Decided by the author on 2026-10-16 after friction entry 24: the painted #0F1115 background clashed with the author's iTerm theme. `auto`, the default, now paints no background and uses the terminal's own foreground and ANSI colours (UI §2.3's `auto` column): `bg`, `bg.panel` and `selection` are the terminal's default background (`Color::Reset`); `fg` is the default foreground and `fg.muted` and `border` the same with `DIM`; `border.focus` and `status.working` are ANSI blue, `status.attention` yellow, `status.done` green, `status.error` red and `accent.duo` magenta. The selected row keeps `▌` and becomes bold, with no background; focus stays the heavy border. `dark` and `light` are unchanged. This replaces phase 4's plan to detect the background for `auto` (P4-Q3) and P2-D13's "`auto` renders dark"; it also resolves friction entry 17 under `auto`. Built in Task 2.22. |
 
 ## Decisions this plan makes where the specs are silent
 
@@ -200,7 +202,7 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D10 | **Phase-2 Give work goes to agents only.**<br>• **`space` on a role:** shows `select an agent to give work`.<br>• **On a team, or on Duo (in the tree or the agent pane):** shows `space gives work to an agent or a role`, as UI §4.5 has it.<br>• **The busy dialog** reads `<agent> is <state word>. Give work when it is at rest.`, with Give work disabled.<br>Task to a role and **Send as message instead** arrive in 3.11. |
 | P2-D11 | **A typed-in task counts as taken only when the agent leaves rest.** This narrows the PRD's "finished or idle: types the task in" for the few seconds a delivery is pending; it is listed under "Author decisions" above. This changes TD §4.2's row "finished, idle → New work → working". The paste no longer fires `NewWork`. A `busy` or prompt-submit hook does, or a `~` busy read for hookless coverage.<br>• **Until then:** the agent stays finished or idle, with `delivery_pending`. A further Give work is refused as `GiveWorkRefused { state, pending: true }`, shown as `<agent> is still taking the last task`.<br>• **No sign within 5 s:** the engine publishes `GiveWorkNotTaken { agent, task, reason: "no sign it started" }`. `RuntimeEvent::PasteFailed` gives the same event, with its reason.<br>• **The TUI** shows `<agent> didn't take the task`, and Give work opens pre-filled with `· enter to try again`; when a dialog, typing or a chat draft is open, the footer says `· space to try again` and the task waits. For Duo (P2-D8) the note is `· enter to send again`.<br>Task 2.12 edits TD §4.2, §5.1 and §6.3. Phase 3's inbox delivery uses the same rule. |
 | P2-D12 | **Scrolling back.** `PgUp` freezes a snapshot (`capture-pane -e -p -S -<n>`, at most 2 000 lines), and the pane title gains `· scrolled`. `PgDn` past the bottom, or `enter` to type, returns to live. The wheel, and scrolling while typing, follow P2-D25. |
-| P2-D13 | **Settings moves into phase 2** because alerts ship here, and the PRD, TD §4.2 and UI §4.1.4 say each alert kind "can be turned off in Settings". The `,` screen has UI §4.10's You, Attention and Look groups. The Keys and Org rows arrive in phase 4. Theme `auto` keeps phase 1's rendering, dark, until 4.9. Roadmap row 2 and UI §8 item 2 were edited to match on 2026-10-05. |
+| P2-D13 | **Settings moves into phase 2** because alerts ship here, and the PRD, TD §4.2 and UI §4.1.4 say each alert kind "can be turned off in Settings". The `,` screen has UI §4.10's You, Attention and Look groups. The Keys and Org rows arrive in phase 4. Theme `auto` kept phase 1's rendering, dark, until P2-D26 made it follow the terminal. Roadmap row 2 and UI §8 item 2 were edited to match on 2026-10-05. |
 | P2-D14 | **No alerts for replayed history.** From `start_up` until `Reconnected`, state changes publish no `Alert`. |
 | P2-D15 | **`z` on a team or role** shows `z zooms an agent`. `z` on any agent zooms it, whatever its state: a stopped agent's zoomed pane shows its stopped line. |
 | P2-D16 | **Worktree states.** A row is `Unchecked` until its first check. `InUse` takes precedence over every merge result. `Merged` (clean, not in use) is the instant before `Removing`. Two state words that UI §4.9 doesn't draw are decided here: `not checked yet` and `couldn't check · <reason>`. |
@@ -1183,6 +1185,29 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
 - [x] **Step 10: Run, see PASS.** `make check`
 - [x] **Step 11: Commit.** `feat: click to select agents and focus panes`
 
+### Task 2.22: TUI — theme `auto` follows the terminal (P2-D26)
+
+**Files:**
+- Modify `crates/duohive-tui/src/theme.rs`: an `auto` palette, and `palette_for(Theme::Auto, _)` returns it; dim and bold come with it.
+- Modify the renderers that paint `bg`, `bg.panel` or `selection`, so the `auto` palette's `Color::Reset` paints nothing and the selected row is bold.
+- Snapshots: `_auto` variants of the main screen at 80×24 and 160×48.
+
+**Interfaces:**
+- Consumes `Palette` (Task 1.24) and `palette_for` (Task 2.17).
+- Produces `Palette::auto()`, and `Palette` gains `dim: bool` and `selection_bold: bool` (both `false` for `dark` and `light`).
+
+- [ ] **Step 1: Write the failing tests.**
+  - `auto_paints_no_background`: under `auto`, every cell of a rendered main screen has `bg == Color::Reset`, focused pane and selected row included.
+  - `auto_uses_terminal_foreground_and_ansi`: `fg` is `Color::Reset`; `status.working` is `Color::Blue`, attention `Yellow`, done `Green`, error `Red`, `accent.duo` `Magenta`.
+  - `auto_muted_and_borders_are_dim`: `fg.muted` and `border` cells carry `Modifier::DIM`.
+  - `auto_selected_row_is_bar_and_bold`: the selected row has `▌` and `Modifier::BOLD`, and no background.
+  - `dark_and_light_are_unchanged`: their existing snapshots still match.
+  - Snapshots `main_auto_80x24`, `main_auto_160x48`.
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui theme`
+- [ ] **Step 3: Implement.**
+- [ ] **Step 4: Run, see PASS.** `make check`
+- [ ] **Step 5: Commit.** `feat: theme auto follows the terminal, transparent by default`
+
 ### Task 2.20: UI/UX improvement pass, then mark the phase done
 
 This is validated by snapshot diffs and the checklist below.
@@ -1226,6 +1251,7 @@ This is validated by snapshot diffs and the checklist below.
   | Desktop alerts | 2.9, 2.10 |
   | Give work with worktrees and merge clean-up | 2.11–2.16 |
   | Touchpad scrolling and click to select (P2-D25) | 2.21 |
+  | Theme `auto` follows the terminal (P2-D26) | 2.22 |
   | Friction log, then the UI/UX improvement pass | 2.19, 2.20 |
   | Settings (P2-D13) | 2.17 |
 
@@ -1236,4 +1262,4 @@ This is validated by snapshot diffs and the checklist below.
 - **Out of scope here** (owners are in the traceability matrix):
   - phase 3: Duo's tools, the inbox, the real chat, cards, Give work to a role, Send as message instead;
   - phase 4: `?`, `f`, `m`, the mouse beyond P2-D25 (right-click, drag, header counts, the wheel over the org pane and Needs you), the key-binding editor, New org from template, first run, the model picker, theme auto-detection.
-- **Size and proportion:** 21 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.
+- **Size and proportion:** 22 tasks. The plan gives signatures, rules and test names. Bodies appear only for the merge-detection order and the migration SQL, which the TD fixes.

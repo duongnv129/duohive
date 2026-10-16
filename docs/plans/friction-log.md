@@ -40,13 +40,14 @@
 | 14 | 2026-10-15 | Role summary | UX F8: the Defaults line wraps without its indent at 80×24 and 100×30 | 3 | open |
 | 15 | 2026-10-15 | Give work (80×24) | UX F9: the task box wraps mid-word | 3 | open |
 | 16 | 2026-10-15 | Footers | UX F10: `enter type` shown for a stopped agent zoomed, and agent-pane keys on a team or role | 3 | open |
-| 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | open (theme `auto` lands in 4.9) |
+| 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | resolved under `auto` by P2-D26 (Task 2.22); `dark` and `light` keep it |
 | 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
 | 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
 | 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
 | 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25; `faeeea2`, `ba0bbd5`) |
 | 22 | 2026-10-16 | Agent pane | `cakekyc-auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watch for it; clip the terminal widget to its pane when fixed; it would also offset P2-D25's wheel cell |
 | 23 | 2026-10-16 | Main panes | Moving between agents and panes is keyboard only; a click on an agent or a pane does nothing | 2 | `feat: click to select agents and focus panes` (P2-D25; `28e31f1`, `ba0bbd5`) |
+| 24 | 2026-10-16 | Every screen | The painted black background clashes with the author's iTerm theme; theme `auto` should follow the terminal | 2 | `feat: theme auto follows the terminal, transparent by default` (P2-D26) |
 
 ## Live checks
 
