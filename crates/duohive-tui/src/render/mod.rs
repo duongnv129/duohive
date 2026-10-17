@@ -393,6 +393,8 @@ mod auto_tests;
 #[cfg(test)]
 mod colour_tests;
 #[cfg(test)]
+mod give_work_tests;
+#[cfg(test)]
 mod live_tests;
 #[cfg(test)]
 mod pane_tests;

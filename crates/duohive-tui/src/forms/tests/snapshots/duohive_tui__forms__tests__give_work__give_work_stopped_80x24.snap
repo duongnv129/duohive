@@ -11,8 +11,8 @@ expression: "lines.join(\"\\n\")"
 ┃▌    billing-api      ○   3m  ┃│                                              │
 ┃   ▾ QA                       ┃│                                              │
 ┃ ┌─ Give work · billing-api · ○ stopped ────────────────────────────────────┐ │
-┃ │ Task ▌[ Add retry cases for PAY-88. AC: 3 tries, jitter, no double cha ] │ │
-┃ │       [ rge.__________________________________________________________ ] │ │
+┃ │ Task ▌[ Add retry cases for PAY-88. AC: 3 tries, jitter, no double ___ ] │ │
+┃ │       [ charge._______________________________________________________ ] │ │
 ┃ │ Run   ( ) new worktree   (•) ~/code/billing   agent default: directory   │ │
 ┃ │ Starts a fresh session.                                                  │ │
 ┃ │                     enter give · alt+enter new line · tab run · esc      │ │

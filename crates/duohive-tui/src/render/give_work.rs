@@ -24,38 +24,89 @@ const FOCUS: &str = "▌";
 /// Cells after the hint, as in the mock-ups.
 const HINT_RIGHT: u16 = 6;
 
-/// The task wrapped to `cells` columns, and the cursor's `(row, column)` in it.
-fn wrap_task(text: &str, cursor: usize, cells: usize) -> (Vec<String>, (usize, usize)) {
-    let mut rows = vec![String::new()];
-    let (mut col, mut at) = (0, (0, 0));
-    let mut count = 0;
-    for (i, g) in text.graphemes(true).enumerate() {
-        count = i + 1;
-        let newline = g == "\n" || g == "\r\n";
-        let w = width(g);
-        if !newline && col + w > cells && col > 0 {
-            rows.push(String::new());
-            col = 0;
-        }
-        if i == cursor {
-            at = (rows.len() - 1, col);
-        }
-        if newline {
-            rows.push(String::new());
-            col = 0;
-        } else if let Some(row) = rows.last_mut() {
-            row.push_str(g);
-            col += w;
+/// The task wrapped at word boundaries to `cells` columns, and the cursor's `(row, column)`
+/// in it. A word longer than a row is broken only as a last resort; spaces past the edge
+/// hang there and are not drawn.
+pub(super) fn wrap_task(text: &str, cursor: usize, cells: usize) -> (Vec<String>, (usize, usize)) {
+    let gs: Vec<&str> = text.graphemes(true).collect();
+    // `(start, end)` grapheme ranges, one per row; newlines belong to no row.
+    let mut ranges = Vec::new();
+    let mut line_start = 0;
+    for (i, g) in gs.iter().enumerate() {
+        if is_newline(g) {
+            ranges.extend(wrap_line(&gs, line_start, i, cells));
+            line_start = i + 1;
         }
     }
-    if cursor >= count {
-        if col >= cells {
-            rows.push(String::new());
-            col = 0;
-        }
-        at = (rows.len() - 1, col);
+    ranges.extend(wrap_line(&gs, line_start, gs.len(), cells));
+    let cols = |start: usize, end: usize| gs[start..end].iter().map(|g| width(g)).sum::<usize>();
+    // The row holding the cursor: the next row at a soft break, the row a newline ends.
+    let row = ranges
+        .iter()
+        .position(|&(s, e)| (s..e).contains(&cursor))
+        .or_else(|| ranges.iter().position(|&(_, e)| e == cursor))
+        .unwrap_or(ranges.len() - 1);
+    let (start, _) = ranges[row];
+    let mut at = (row, cols(start, cursor.min(gs.len())).min(cells));
+    let mut rows: Vec<String> = ranges
+        .iter()
+        .map(|&(s, e)| {
+            let mut used = 0;
+            gs[s..e]
+                .iter()
+                .take_while(|g| {
+                    used += width(g);
+                    used <= cells
+                })
+                .copied()
+                .collect()
+        })
+        .collect();
+    if cursor >= gs.len() && at.1 >= cells {
+        rows.push(String::new());
+        at = (rows.len() - 1, 0);
     }
     (rows, at)
+}
+
+fn is_newline(g: &str) -> bool {
+    g == "\n" || g == "\r\n"
+}
+
+/// The rows of the line `gs[start..end]` (no newlines in it), greedily by word.
+fn wrap_line(gs: &[&str], start: usize, end: usize, cells: usize) -> Vec<(usize, usize)> {
+    let is_space = |i: usize| gs[i].chars().all(char::is_whitespace);
+    let mut out = Vec::new();
+    let (mut row, mut col, mut i) = (start, 0, start);
+    while i < end {
+        let word_end = (i..end).find(|&j| is_space(j)).unwrap_or(end);
+        let spaces_end = (word_end..end).find(|&j| !is_space(j)).unwrap_or(end);
+        let word: usize = gs[i..word_end].iter().map(|g| width(g)).sum();
+        if col > 0 && col + word > cells {
+            out.push((row, i));
+            (row, col) = (i, 0);
+        }
+        if word > cells {
+            // The last resort: a word wider than a row is broken where the row ends.
+            for (j, g) in gs.iter().enumerate().take(word_end).skip(i) {
+                let w = width(g);
+                if col > 0 && col + w > cells {
+                    out.push((row, j));
+                    (row, col) = (j, 0);
+                }
+                col += w;
+            }
+        } else {
+            col += word;
+        }
+        col += gs[word_end..spaces_end]
+            .iter()
+            .map(|g| width(g))
+            .sum::<usize>();
+        i = spaces_end;
+    }
+    out.push((row, end));
+    out
 }
 
 /// Draws the dialog centred over `area`; returns where the terminal cursor goes.
