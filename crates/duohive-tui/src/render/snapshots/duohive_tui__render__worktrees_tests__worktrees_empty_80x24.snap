@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/worktrees_tests.rs
+assertion_line: 189
+expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│    ● working                                 │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
+┃▌    auth-service     ●   2m  ┃│                                              │
+┃     billing-api      ◆   4m  ┃│                                              │
+┃   ▾ QA                       ┃│                                              │
+┃┌─ Worktrees · 0 · removed automatically once merged and clean ──────────────┐│
+┃│                                                                            ││
+┃│ No worktrees yet. An agent gets one when you give it work in a new worktr… ││
+┃│                                                                            ││
+┃│                                                                            ││
+┃│ esc back                                                                   ││
+┃└────────────────────────────────────────────────────────────────────────────┘│
+┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘

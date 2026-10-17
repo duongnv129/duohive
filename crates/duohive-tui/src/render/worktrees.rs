@@ -28,6 +28,8 @@ const BRANCH_MIN: usize = 12;
 /// Border, header, a blank row, the check line, the hint, border.
 const CHROME_ROWS: u16 = 6;
 const HINT: &str = "enter open in agent · d remove (asks unless merged and clean) · esc back";
+/// The empty list's hint: no rows to open or remove.
+const EMPTY_HINT: &str = "esc back";
 const EMPTY: &str = "No worktrees yet. An agent gets one when you give it work in a new worktree.";
 const FAILED_REMOVAL: &str = "couldn't remove";
 
@@ -142,12 +144,29 @@ pub(super) fn draw(
     let x = r.x + 1;
     let room = usize::from(w - 2);
     let muted = Style::default().fg(p.fg_muted).bg(p.bg_panel);
+    if m.worktrees.is_empty() {
+        // No columns, check line or row keys: just what the list is for, cut with `…`.
+        let text_w = room.saturating_sub(1 + PAD_CELLS);
+        put(
+            buf,
+            x + 1,
+            r.y + 2,
+            &truncate_end(EMPTY, text_w),
+            text_w,
+            muted,
+        );
+        put(buf, x + 1, r.bottom() - 2, EMPTY_HINT, text_w, muted);
+        return;
+    }
     let (agent_w, branch_w, state_w) =
         columns(&m.worktrees, room.saturating_sub(usize::from(PREFIX)));
     let cells = |a: &str, b: &str, c: &str| {
         format!(
             "{}{}{}",
-            pad_right(&truncate_end(a, agent_w), agent_w),
+            pad_right(
+                &truncate_end(a, agent_w.saturating_sub(BRANCH_GAP)),
+                agent_w
+            ),
             pad_right(
                 &truncate_middle(b, branch_w.saturating_sub(BRANCH_GAP)),
                 branch_w
@@ -165,16 +184,6 @@ pub(super) fn draw(
         muted,
     );
     let rows_h = usize::from(h - CHROME_ROWS);
-    if m.worktrees.is_empty() {
-        put(
-            buf,
-            x + PREFIX,
-            r.y + 2,
-            EMPTY,
-            room.saturating_sub(usize::from(PREFIX)),
-            muted,
-        );
-    }
     let cursor = l.cursor.min(m.worktrees.len().saturating_sub(1));
     let first = (cursor + 1).saturating_sub(rows_h);
     for (i, row) in m.worktrees.iter().enumerate().skip(first).take(rows_h) {
@@ -190,7 +199,10 @@ pub(super) fn draw(
         put(buf, x, y, marker, 1, base.fg(p.border_focus));
         let first_cols = format!(
             "{}{}",
-            pad_right(&truncate_end(row.agent.as_str(), agent_w), agent_w),
+            pad_right(
+                &truncate_middle(row.agent.as_str(), agent_w.saturating_sub(BRANCH_GAP)),
+                agent_w
+            ),
             pad_right(
                 &truncate_middle(&row.branch, branch_w.saturating_sub(BRANCH_GAP)),
                 branch_w

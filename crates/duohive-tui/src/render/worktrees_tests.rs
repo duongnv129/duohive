@@ -142,3 +142,50 @@ fn long_check_failure_snapshots() {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
 }
+
+#[test]
+fn long_agent_names_are_cut_in_the_middle() {
+    let mut m = listed();
+    m.worktrees.push(worktree_row(
+        "billing-reconciliation-worker",
+        "webhooks",
+        S::InUse,
+    ));
+    let lines = render_lines(&m, &ctx(), 160, 48);
+    let row = lines.iter().find(|l| l.contains("webhooks")).unwrap();
+    // UI §2.4: names are cut in the middle, with a gap before Branch.
+    assert!(row.contains("billing-…-worker  duohive/"), "{row}");
+}
+
+#[test]
+fn the_empty_list_drops_columns_and_row_keys() {
+    let mut m = listed();
+    m.worktrees.clear();
+    for (w, h) in [(80, 24), (100, 30), (160, 48)] {
+        let text = render_lines(&m, &ctx(), w, h).join("\n");
+        assert!(!text.contains("Agent "), "{w}x{h}\n{text}");
+        assert!(!text.contains("enter open in agent"), "{w}x{h}\n{text}");
+        assert!(text.contains("esc back"), "{w}x{h}\n{text}");
+    }
+}
+
+#[test]
+fn the_empty_list_is_cut_with_an_ellipsis() {
+    let mut m = listed();
+    m.worktrees.clear();
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    let row = lines.iter().find(|l| l.contains("No worktrees")).unwrap();
+    assert!(row.contains("…"), "{row}");
+}
+
+#[test]
+fn empty_worktrees_snapshots() {
+    let mut m = listed();
+    m.worktrees.clear();
+    for (name, w, h) in [
+        ("worktrees_empty_80x24", 80, 24),
+        ("worktrees_empty_160x48", 160, 48),
+    ] {
+        insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
+    }
+}
