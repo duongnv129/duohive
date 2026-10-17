@@ -907,6 +907,34 @@ Below 100 columns it becomes one scrolling column:
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
 
+### 4.13 Resume an old session (after v1)
+
+Not in v1 (PRD *Resume an old session*). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
+
+```
+┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐
+│ ⌕ Search…                                                                  │
+│                                                                            │
+│ ▌ Retry loop for failed payouts                                            │
+│   3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere        │
+│                                                                            │
+│   Payout ledger migration                                                  │
+│   1 day ago · main · 7.3MB                                                 │
+│                                                                            │
+│   Flaky webhook test                                                       │
+│   2 days ago · fix/webhook-flake · 610KB                                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ enter resume · type to search · ↑↓ move · esc cancel                       │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its first prompt, cut with `…`.
+- **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
+- **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
+- **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
+- **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
+- **Empty:** `No <CLI> sessions for <dir>` with `esc close`. **Unreadable** (an untested Claude Code session format, or `opencode session list` failing): `Couldn't read <CLI>'s sessions: <reason>` in `status.error`, and the agent is unchanged.
+
 ### 4.12 Errors and empty states
 
 Errors are shown where they apply, with how to fix them.
