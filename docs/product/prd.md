@@ -45,7 +45,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 |---|---|
 | Agents that delegate to agents (a chain of command) | The tree organises; you direct. Autonomous delegation is a different, riskier product (cost, loops, trust) |
 | Jira or any ticket system | Work is given in plain language, directly or through Duo; integrations come after the core is proven |
-| Reviving or forking an agent's old conversation | A stopped agent starts fresh. Simpler, and enough to test the hypothesis. Resuming an old session is planned after v1 (see *Resume an old session*); forking is not planned |
+| Reviving or forking an agent's old conversation | A stopped agent starts fresh. Simpler, and enough to test the hypothesis. Resuming an old session is planned for v1.1 (see *Resume an old session*); forking is not planned |
 | Diff review inside DuoHive | Agents and git already cover review; not core to "managing a team" |
 | Shared task lists and file locks | Duo and messaging cover coordination for v1 |
 | Shell terminals nested under agents | Not needed to manage agents |
@@ -120,8 +120,8 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
 | **Must** | Give a task to a role: a free agent in it takes the task; if none is free, Duo proposes a new agent through an approval card | Task runners never have to pick a teammate |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
-| **Later (after v1)** | Resume an old session: pick a past Claude Code or OpenCode session for an agent's directory, including ones started outside DuoHive, and the agent continues it with its full context | Finish work an earlier session started without briefing the agent again |
-| **Won't (v1)** | Delegation chains, Jira, revive or fork (resume comes after v1), diff review, shared tasks and locks, nested terminals, Codex (deferred to after v1), custom CLIs | See *What We're NOT Building* |
+| **v1.1** | Resume an old session: pick a past Claude Code or OpenCode session for an agent's directory, including ones started outside DuoHive, and the agent continues it with its full context | Finish work an earlier session started without briefing the agent again |
+| **Won't (v1)** | Delegation chains, Jira, revive or fork (resume comes in v1.1), diff review, shared tasks and locks, nested terminals, Codex (deferred to after v1), custom CLIs | See *What We're NOT Building* |
 
 ### The org model
 
@@ -283,7 +283,7 @@ Templates give a ready-made org in seconds; everything they create stays editabl
 - **Agent Squad tasks:** with a squad, tasks go to the Generalist role, not to an agent (task to a role). Worktrees default to **on**, so squad agents never collide in the shared directory.
 - **More templates later:** the set can grow, and saving your own org as a template is a later candidate.
 
-### Resume an old session (after v1)
+### Resume an old session (v1.1)
 
 **Why:** an author often starts work in Claude Code or OpenCode directly, outside DuoHive. Later they want the repo's standing agent to finish it, and re-briefing it from the beginning throws the context away. Resuming hands the agent that whole conversation.
 
@@ -356,7 +356,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 - **Phase 3:** the author directs the team through Duo. Done when a "what's blocked, then fix it" round trip happens entirely in chat, and a task given to a role reaches a free agent.
 - **Phase 4:** DuoHive meets every target in Success Metrics on the release benchmark.
 - **Phase 5:** DuoHive is public, and the key hypothesis is tested (30 days of daily use, under 10 minutes to the first team).
-- **After v1, planned:** resuming an old session (*Resume an old session*). Codex stays a candidate.
+- **v1.1, after v1 is released:** resuming an old session (*Resume an old session*), tracked in the [v1.1 roadmap](../plans/v1.1-roadmap.md). Codex stays a candidate.
 
 ---
 
@@ -367,7 +367,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Product model | Org chart of standing agents | Session per task (market default); chain of command | Matches "manage a team over days"; confirmed by the primary user, who assigns story subtasks to teammates by role; delegation deferred |
 | Supported CLIs | Claude Code and OpenCode in v1; Codex deferred to after v1 (decided 2026-10-03) | Claude Code, OpenCode and Codex in v1 | Two CLIs done well beat three done thinly; Codex stays a later candidate |
 | Agent identity | One standing agent, one live session | Agent as a template with many sessions | The tree shows what's really running; simple to reason about |
-| Resuming old sessions | After v1: `r` opens a picker of the sessions in the agent's directory and its kept worktrees, including those started outside DuoHive; the original session continues; one live in another DuoHive agent is refused; one written in the last 5 minutes warns and asks (decided 2026-10-17) | A picker on every start; continuing in a copy; refusing recently active sessions | Gets an earlier session's full context back without re-briefing; the author wants the original continued, with a warning rather than a refusal when it may be open elsewhere |
+| Resuming old sessions | v1.1: `r` opens a picker of the sessions in the agent's directory and its kept worktrees, including those started outside DuoHive; the original session continues; one live in another DuoHive agent is refused; one written in the last 5 minutes warns and asks (decided 2026-10-17) | A picker on every start; continuing in a copy; refusing recently active sessions | Gets an earlier session's full context back without re-briefing; the author wants the original continued, with a warning rather than a refusal when it may be open elsewhere |
 | Two kinds of user | Setup templates (Agent Squad, Product Team, Engineering Org, Blank) and tasks given to a role | Managers only; task-per-session mode | One product serves managers and task runners; the org model stays intact |
 | Hierarchy | 3 fixed levels: team → role → agent | Free-form nesting | Clear, readable, enough for real orgs |
 | Inheritance | Prompts stack; other fields nearest-wins | Override everything | Shared rules written once |

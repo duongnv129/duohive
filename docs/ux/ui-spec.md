@@ -907,9 +907,9 @@ Below 100 columns it becomes one scrolling column:
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
 
-### 4.13 Resume an old session (after v1)
+### 4.13 Resume an old session (v1.1)
 
-Not in v1 (PRD *Resume an old session*). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
+Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
 
 ```
 ┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐

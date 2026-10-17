@@ -45,6 +45,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Could | Zoom the agent pane | 2 | 2.8 |
 | Could | Compact tree view: hide last replies (`v`) | 1 | T24 |
 | Could | Compact tree view: folding at 80–99 columns | 2 | 2.5 |
+| v1.1 | Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1 |
 
 ## PRD — Other requirements
 
@@ -129,6 +130,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.12 Errors and empty states: errored row's `space retry` | 2 | 2.15 |
 | §4.12 Errors and empty states: empty role, full copy (`… or ask Duo`) | 3 | 3.9 |
 | §4.12 Errors and empty states: worktree creation error | 2 | 2.12 |
+| §4.13 Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1 |
 | §5 Interaction rules: keys, typing, quit, destructive confirms, calm | 1 | T24 |
 | §5 Interaction rules: typing goes where focus is (agent pane, chat) | 2 | 2.5, 2.7 |
 | §5 Interaction rules: cards answer only with focus | 3 | 3.10 |
