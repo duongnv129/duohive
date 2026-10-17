@@ -279,6 +279,10 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             panes::restore_zoom(m);
             return Vec::new();
         }
+        Action::Esc => {
+            panes::back_to_org(m);
+            return Vec::new();
+        }
         Action::Worktrees => return worktrees::open(m),
         Action::Settings => return settings::open(m),
         Action::Zoom => {

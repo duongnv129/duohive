@@ -75,6 +75,13 @@ pub(super) fn restore_zoom(m: &mut UiModel) {
     m.focus.agent_mode = AgentMode::Selected;
 }
 
+/// `esc` in a main pane goes back one level: to the org pane, the chat keeping its draft
+/// (UI §4.11). In the org pane it does nothing; it never quits.
+pub(super) fn back_to_org(m: &mut UiModel) {
+    m.focus.pane = Pane::Org;
+    m.focus.agent_mode = AgentMode::Selected;
+}
+
 /// `ctrl+↑` / `ctrl+↓`: between UI §3's size and the size that leaves the agent pane 6
 /// rows (P2-D3).
 pub(super) fn resize_chat(m: &mut UiModel, grow: bool) {

@@ -219,6 +219,28 @@ fn esc_never_quits() {
 }
 
 #[test]
+fn esc_goes_back_to_the_org_pane() {
+    for pane in [Pane::NeedsYou, Pane::Agent, Pane::Chat] {
+        let mut m = spec_model();
+        m.focus.pane = pane;
+        assert_eq!(press(&mut m, code(KeyCode::Esc)), []);
+        assert_eq!(m.focus.pane, Pane::Org, "from {pane:?}");
+    }
+    let mut m = spec_model();
+    assert_eq!(press(&mut m, code(KeyCode::Esc)), []);
+    assert_eq!(m.focus.pane, Pane::Org);
+}
+
+#[test]
+fn esc_from_the_chat_keeps_the_draft() {
+    let mut m = chat_focused();
+    type_text(&mut m, "hi");
+    press(&mut m, code(KeyCode::Esc));
+    assert_eq!(m.focus.pane, Pane::Org);
+    assert_eq!(m.chat_input.text(), "hi");
+}
+
+#[test]
 fn chat_enter_gives_work_to_duo() {
     let mut m = chat_focused();
     type_text(&mut m, "what's blocking Payments?");
