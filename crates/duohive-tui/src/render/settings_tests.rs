@@ -98,3 +98,27 @@ fn settings_footer_lists_its_keys() {
     }));
     assert_eq!(footer(&m, 80, 24), " enter save · esc cancel");
 }
+
+#[test]
+fn org_note_sits_under_an_org_heading() {
+    for (w, h) in [(80, 24), (100, 30), (160, 48)] {
+        let lines: Vec<String> = render_lines(&shown(), &ctx(), w, h);
+        let col = |line: &str, word: &str| {
+            line.find(word)
+                .map(|at| line[..at].chars().count())
+                .unwrap()
+        };
+        let you = lines.iter().find(|l| l.contains("│  You ")).unwrap();
+        let org = lines
+            .iter()
+            .position(|l| l.contains("│  Org "))
+            .unwrap_or_else(|| panic!("no Org heading at {w}x{h}"));
+        // A heading like You, Attention and Look, with the note under it.
+        assert_eq!(col(&lines[org], "Org"), col(you, "You"), "{w}x{h}");
+        assert!(
+            lines[org + 1].contains("org defaults and Duo: e on Duo (Edit org)"),
+            "{w}x{h}: {}",
+            lines[org + 1]
+        );
+    }
+}

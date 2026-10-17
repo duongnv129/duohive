@@ -1,4 +1,5 @@
-//! Settings (UI §4.10, P2-D13): You, Attention and Look, saved as they change.
+//! Settings (UI §4.10, P2-D13): You, Attention and Look, saved as they change, and where
+//! the org's own settings live.
 
 use duohive_core::settings::Theme;
 use ratatui::buffer::Buffer;
@@ -30,8 +31,8 @@ const TITLE: &str = "Settings · saved to settings.toml";
 const FOOTER: &str = "changes save immediately · esc back";
 const ORG_NOTE: &str = "org defaults and Duo: e on Duo (Edit org)";
 const BROKEN: &str = "settings.toml has an error · changes last until DuoHive quits";
-/// Border, blank, 3 headings and 5 control lines, a blank, the org text, a note line, a blank,
-/// the footer, border.
+/// Border, blank, 3 headings and 5 control lines, the Org heading and its text, a note line,
+/// a blank, the footer, border.
 const HEIGHT: u16 = 15;
 
 /// One control or piece of text on a line.
@@ -207,6 +208,7 @@ pub(super) fn draw(
         p,
     );
 
+    group(buf, 10, "Org");
     put(buf, label_x, at(11), ORG_NOTE, room, muted);
     if m.settings_error.is_some() {
         put(buf, label_x, at(12), BROKEN, room, fg(p.attention));
