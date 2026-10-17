@@ -110,6 +110,18 @@ fn zoomed_stopped_agent_shows_its_stopped_line() {
 }
 
 #[test]
+fn zoomed_stopped_agent_footer_has_no_type_or_scroll() {
+    let mut m = zoomed();
+    m.selected = NodeKey::Agent(n("pay-qa"));
+    m.needs_you.clear();
+    let lines = render_lines(&m, &ctx(), 100, 30);
+    assert_eq!(
+        lines.last().unwrap().trim_end(),
+        " z restore · space give work"
+    );
+}
+
+#[test]
 fn zoom_footer_need_you_segment_is_attention_coloured() {
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;

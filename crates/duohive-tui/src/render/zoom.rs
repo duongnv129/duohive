@@ -14,6 +14,8 @@ use crate::theme::Palette;
 /// The right end of the header; the trailing space is the screen's margin.
 const RESTORE: &str = "z restore ";
 const KEYS: &str = " enter type · z restore · PgUp/PgDn scroll";
+/// A stopped agent has no terminal to type in or scroll.
+const KEYS_STOPPED: &str = " z restore · space give work";
 
 /// ` DuoHive › <agent> (zoomed)`, with `z restore` at the right.
 pub(super) fn draw_header(buf: &mut Buffer, r: Rect, agent: &AgentName, p: &Palette) {
@@ -51,7 +53,11 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette) {
             let room = w.saturating_sub(width(&need) + 1).max(w / 2);
             format!(" {}", truncate_end(note, room))
         }
-        None => KEYS.to_owned(),
+        None => match m.zoomed_agent() {
+            Some(a) if !m.view(a).status.state.is_running() => KEYS_STOPPED,
+            _ => KEYS,
+        }
+        .to_owned(),
     };
     let text = truncate_end(&format!("{lead}{need}"), w);
     // The Needs you count starts at its `◆`, after the separator.

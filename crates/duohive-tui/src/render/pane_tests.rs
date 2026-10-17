@@ -273,6 +273,29 @@ fn reconnecting_state_in_agent_pane() {
 }
 
 #[test]
+fn agent_pane_footer_fits_what_is_selected() {
+    let footer = |selected| {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        m.selected = selected;
+        render_lines(&m, &ctx(), 120, 36)
+            .last()
+            .unwrap()
+            .trim_end()
+            .to_owned()
+    };
+    assert_eq!(
+        footer(NodeKey::Agent(n("pay-qa"))),
+        " z zoom · space give work"
+    );
+    let role = NodeKey::Role(RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("QA"),
+    });
+    assert_eq!(footer(role), " tab pane · esc back");
+}
+
+#[test]
 fn role_summary_has_phase_2_footer() {
     let mut m = spec_model();
     m.selected = NodeKey::Role(RoleKey {

@@ -27,6 +27,10 @@ const ORG_KEYS: &str =
 const ORG_KEYS_COMPACT: &str = " tab pane · ↑↓ move · space give work";
 const NEEDS_YOU_KEYS: &str = " ↑↓ move · enter go to agent";
 const AGENT_KEYS: &str = " enter type · z zoom · PgUp/PgDn scroll · space give work";
+/// A stopped agent has no terminal to type in or scroll.
+const AGENT_KEYS_STOPPED: &str = " z zoom · space give work";
+/// A team or role's summary: no agent keys apply there.
+const SUMMARY_KEYS: &str = " tab pane · esc back";
 const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
 const SETTINGS_KEYS: &str = " ↑↓ move · space change · esc back";
 const SETTINGS_STEP_KEYS: &str = " ↑↓ move · space change · ←→ step · esc back";
@@ -147,12 +151,22 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             Pane::Org => ORG_KEYS,
             Pane::NeedsYou => NEEDS_YOU_KEYS,
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
-            Pane::Agent => AGENT_KEYS,
+            Pane::Agent => agent_keys(m),
             Pane::Chat => CHAT_KEYS,
         }
         .to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
+}
+
+/// The agent pane's keys for what it shows: a running agent's terminal, a stopped
+/// agent's line or a team or role's summary.
+fn agent_keys(m: &UiModel) -> &'static str {
+    match m.selected_agent() {
+        Some(a) if m.view(a).status.state.is_running() => AGENT_KEYS,
+        Some(_) => AGENT_KEYS_STOPPED,
+        None => SUMMARY_KEYS,
+    }
 }
 
 /// A confirmation's keys: `y` says yes, `n` or `esc` cancels, `tab` moves between the
