@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::adapter::DialogCheck;
 use crate::alert::Alert;
 use crate::hook::HookMessage;
 use crate::launch::{Key, LaunchCommand, Token, WindowId};
@@ -37,7 +38,17 @@ pub trait Runtime: Send {
     /// Kills that window only, never a newer one for the same agent.
     fn kill(&mut self, agent: &AgentName, window: &WindowId);
     /// Sends `before` (if any) and waits a key pause, pastes `text`, then sends `submit`.
-    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>);
+    /// With `dialog`, the screen is read before the paste (a dialog: `before`
+    /// again, a bounded number of times) and after it (a dialog: `before` to
+    /// close it, no `submit`, `PasteFailed`), so `submit` never lands on one.
+    fn paste(
+        &mut self,
+        agent: &AgentName,
+        before: Vec<Key>,
+        dialog: Option<DialogCheck>,
+        text: String,
+        submit: Vec<Key>,
+    );
     /// Asks for the agent's screen.
     fn capture(&mut self, agent: &AgentName);
     /// Asks for the list of live windows.

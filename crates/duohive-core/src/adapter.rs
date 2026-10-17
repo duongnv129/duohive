@@ -8,6 +8,10 @@ use crate::cli_kind::CliKind;
 use crate::launch::{Key, LaunchCommand, LaunchSpec};
 use crate::status::WaitingOn;
 
+/// Whether a screen shows a dialog that would swallow a paste or take its
+/// `Enter` (TD §5.5).
+pub type DialogCheck = fn(&str) -> bool;
+
 /// What a hook tells the engine.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HookSignal {
@@ -135,6 +139,12 @@ pub trait CliAdapter: Send + Sync {
     /// (e.g. `Escape` to close a dialog that would swallow the paste).
     fn before_paste_keys(&self) -> Vec<Key> {
         Vec::new()
+    }
+    /// Reads the screen around a next-turn paste: while it shows a dialog, the
+    /// runtime sends `before_paste_keys` again instead of pasting, and never
+    /// sends `submit_keys` (TD §5.5). `None` reads nothing.
+    fn dialog_check(&self) -> Option<DialogCheck> {
+        None
     }
     /// Sn.8 lists a start-up prompt (trust, login, update notice): D2, Task 13.
     fn startup_prompts(&self) -> bool;

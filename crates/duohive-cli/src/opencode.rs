@@ -12,7 +12,8 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use duohive_core::adapter::{
-    CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
+    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ScreenSignal,
+    ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
@@ -198,6 +199,12 @@ impl CliAdapter for OpencodeAdapter {
         vec![Key::Escape]
     }
 
+    /// The update dialog can open in the key pause after `Escape` (friction
+    /// 6), so the screen is read again before the paste and before `Enter`.
+    fn dialog_check(&self) -> Option<DialogCheck> {
+        Some(dialog_open)
+    }
+
     /// No trust or login prompt was seen (S2.8, S2.14).
     fn startup_prompts(&self) -> bool {
         false
@@ -306,6 +313,21 @@ fn screen_state(screen: &str) -> Option<ScreenState> {
             ScreenState::AtRest
         },
     )
+}
+
+/// A dialog is drawn over the session: OpenCode's dialogs put their title and
+/// `esc` on their top line (1.18.34's `/status`), so a line ending in `esc`
+/// after a gap, with text before it, is one. "Update Available" anywhere also
+/// counts: that dialog (1.18.35) was seen but not recorded. A false reading
+/// only refuses the delivery, which the TUI offers again (P2-D11).
+fn dialog_open(screen: &str) -> bool {
+    screen.lines().any(|line| {
+        let line = line.trim();
+        line.contains("Update Available")
+            || line
+                .strip_suffix("esc")
+                .is_some_and(|head| head.ends_with("  ") && !head.trim().is_empty())
+    })
 }
 
 fn is_border(line: &str) -> bool {

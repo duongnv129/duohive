@@ -646,3 +646,73 @@ fn keys_versions_and_kind_match_spike_report() {
 fn before_paste_keys_close_a_dialog() {
     assert_eq!(OpencodeAdapter.before_paste_keys(), vec![Key::Escape]);
 }
+
+/// Every recorded screen of a version, by file name.
+fn recorded_screens(version: &str) -> Vec<(String, String)> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/opencode")
+        .join(version)
+        .join("screens");
+    let mut screens: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| {
+            let path = e.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (name, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect();
+    screens.sort();
+    screens
+}
+
+fn dialog_open(screen: &str) -> bool {
+    let check = OpencodeAdapter.dialog_check().unwrap();
+    check(screen)
+}
+
+/// 1.18.34's `/status` dialog: a title and `esc` on the dialog's top line,
+/// drawn over the session (friction 6, TD §5.5).
+#[test]
+fn dialog_check_sees_a_recorded_dialog() {
+    let screens = recorded_screens("1.18.34");
+    let (_, screen) = screens
+        .iter()
+        .find(|(name, _)| name == "status-dialog.txt")
+        .unwrap();
+    assert!(dialog_open(screen));
+}
+
+/// 1.18.35's "Update Available" dialog was not recorded; this is its title in
+/// the `/status` dialog's layout, and its title alone.
+#[test]
+fn dialog_check_sees_the_update_dialog() {
+    let header = "     ▣  Build · Model 1        Update Available                              esc";
+    assert!(dialog_open(&format!(
+        "  ┃\n{header}\n  ┃  Cancel   Confirm\n"
+    )));
+    assert!(dialog_open("            Update Available\n"));
+}
+
+/// No other recorded screen reads as a dialog, so a delivery to an agent at
+/// rest, working or asking goes ahead.
+#[test]
+fn dialog_check_passes_every_other_recorded_screen() {
+    for version in ["1.18.34", "2.0.29"] {
+        for (name, screen) in recorded_screens(version) {
+            if name != "status-dialog.txt" {
+                assert!(!dialog_open(&screen), "{version}/{name}");
+            }
+        }
+    }
+}
+
+/// `esc` must end the line after a gap, as on a dialog's top line.
+#[test]
+fn dialog_check_needs_esc_alone_at_the_end() {
+    assert!(dialog_open("   Status      esc"));
+    assert!(dialog_open("   Status      esc   \n"));
+    assert!(!dialog_open("   esc"));
+    assert!(!dialog_open("   Press esc"));
+    assert!(!dialog_open("   Status      esc interrupt"));
+    assert!(!dialog_open("   Status      esc again to interrupt"));
+}

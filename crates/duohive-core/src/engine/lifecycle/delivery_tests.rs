@@ -259,3 +259,39 @@ fn next_turn_sends_the_adapters_before_paste_keys() {
     assert_eq!(h.state("squad-1"), AgentState::Working);
     assert!(!pending(&h, "squad-1"));
 }
+
+/// A dialog can open between the before-paste keys and the paste (friction 6):
+/// the adapter's dialog check goes with the paste, for the runtime to read the
+/// screen before the paste and before `Enter` (TD §5.5).
+#[test]
+fn next_turn_sends_the_adapters_dialog_check() {
+    fn shows_dialog(screen: &str) -> bool {
+        screen.contains("Update Available")
+    }
+    let mut h = Setup {
+        claude: StubAdapter {
+            before_paste: vec![Key::Escape],
+            dialog: Some(shows_dialog),
+            ..StubAdapter::new(CliKind::Claude)
+        },
+        ..Setup::default()
+    }
+    .build();
+    idle(&mut h, "squad-1");
+    h.give("squad-1", "Add a test");
+    assert_eq!(pastes(&h), 1);
+    let checks = h.dialog_log.lock().unwrap().clone();
+    let [Some(check)] = checks.as_slice() else {
+        panic!("{} checks", checks.len())
+    };
+    assert!(check("  Update Available  esc"));
+    assert!(!check("at rest"));
+}
+
+#[test]
+fn next_turn_without_a_dialog_check_sends_none() {
+    let mut h = Harness::new();
+    idle(&mut h, "squad-1");
+    h.give("squad-1", "Add a test");
+    assert!(matches!(h.dialog_log.lock().unwrap().as_slice(), [None]));
+}

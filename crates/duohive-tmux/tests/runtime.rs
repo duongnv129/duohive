@@ -341,6 +341,7 @@ async fn paste_types_multiline_text() {
     rt.paste(
         &a,
         Vec::new(),
+        None,
         "line one\nline two".into(),
         vec![Key::Enter],
     );
@@ -367,6 +368,7 @@ async fn paste_sends_before_keys_first() {
     rt.paste(
         &a,
         vec![Key::Text("first ".into())],
+        None,
         "then".into(),
         vec![Key::Enter],
     );
@@ -382,11 +384,144 @@ async fn paste_sends_before_keys_first() {
     }
 }
 
+/// The stand-in dialog of the tests below.
+fn shows_dialog(screen: &str) -> bool {
+    screen.contains("DIALOG")
+}
+
+/// Starts `script` (a raw-mode pane that draws `DIALOG` and then writes
+/// `ready`) and waits until it is up.
+async fn start_dialog_pane(
+    srv: &support::TestServer,
+    rt: &mut TmuxRuntime,
+    ev: &mut support::Events,
+    script: &str,
+) -> duohive_core::names::AgentName {
+    let a = agent("a");
+    rt.start(&a, srv.sh(script));
+    ev.started(&a).await;
+    read_when_ready(&srv.path("ready"), SECS(5)).await;
+    a
+}
+
+/// A dialog still up after the before keys gets them again, then the paste
+/// and `Enter` go ahead (friction 6, TD §5.5).
+#[tokio::test]
+async fn paste_closes_a_dialog_before_pasting() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    // The dialog takes two keys to close, then clears the screen.
+    let a = start_dialog_pane(
+        &srv,
+        &mut rt,
+        &mut ev,
+        "stty raw -echo; printf DIALOG; echo up > ready; \
+         dd bs=1 count=2 >/dev/null 2>&1; printf '\\033[2J\\033[H'; stty -raw echo; exec cat > out",
+    )
+    .await;
+    rt.paste(
+        &a,
+        vec![Key::Escape],
+        Some(shows_dialog),
+        "then".into(),
+        vec![Key::Enter],
+    );
+    let out = srv.path("out");
+    let deadline = Instant::now() + SECS(5);
+    loop {
+        let got = std::fs::read_to_string(&out).unwrap_or_default();
+        if got == "then\n" {
+            break;
+        }
+        assert!(Instant::now() < deadline, "{got:?}; events {:?}", ev.seen);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(
+        !ev.seen
+            .iter()
+            .any(|e| matches!(e, RuntimeEvent::PasteFailed { .. })),
+        "{:?}",
+        ev.seen
+    );
+}
+
+/// A dialog the before keys never close: no paste, no `Enter`, `PasteFailed`.
+#[tokio::test]
+async fn paste_gives_up_on_a_dialog_that_stays() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    let a = start_dialog_pane(
+        &srv,
+        &mut rt,
+        &mut ev,
+        "stty raw -echo; printf DIALOG; echo up > ready; exec cat > out",
+    )
+    .await;
+    rt.paste(
+        &a,
+        vec![Key::Escape],
+        Some(shows_dialog),
+        "then".into(),
+        vec![Key::Enter],
+    );
+    let got = ev
+        .wait_for(SECS(5), |e| matches!(e, RuntimeEvent::PasteFailed { .. }))
+        .await;
+    let Some(RuntimeEvent::PasteFailed { agent: who, reason }) = got else {
+        panic!("{:?}", ev.seen)
+    };
+    assert_eq!(who, a);
+    assert!(reason.contains("dialog"), "{reason}");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let got = std::fs::read_to_string(srv.path("out")).unwrap_or_default();
+    assert!(got.chars().all(|c| c == '\u{1b}'), "{got:?}");
+}
+
+/// A dialog that opens during the paste: `Enter` is never sent; the before
+/// keys close the dialog, and the paste is reported failed.
+#[tokio::test]
+async fn paste_holds_enter_when_a_dialog_opens_during_it() {
+    let srv = TestServer::new();
+    let (mut rt, mut ev) = srv.connect().await;
+    // No dialog until the paste's first byte (after the `Escape`).
+    let a = start_dialog_pane(
+        &srv,
+        &mut rt,
+        &mut ev,
+        "stty raw -echo; echo up > ready; dd bs=1 count=2 >/dev/null 2>&1; \
+         printf DIALOG; exec cat > out",
+    )
+    .await;
+    rt.paste(
+        &a,
+        vec![Key::Escape],
+        Some(shows_dialog),
+        "then".into(),
+        vec![Key::Enter],
+    );
+    let got = ev
+        .wait_for(SECS(5), |e| matches!(e, RuntimeEvent::PasteFailed { .. }))
+        .await;
+    let Some(RuntimeEvent::PasteFailed { reason, .. }) = got else {
+        panic!("{:?}", ev.seen)
+    };
+    assert!(reason.contains("dialog"), "{reason}");
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let got = std::fs::read_to_string(srv.path("out")).unwrap_or_default();
+    assert_eq!(got, "hen\u{1b}");
+}
+
 #[tokio::test]
 async fn paste_without_a_window_fails() {
     let srv = TestServer::new();
     let (mut rt, mut ev) = srv.connect().await;
-    rt.paste(&agent("nobody"), Vec::new(), "x".into(), vec![Key::Enter]);
+    rt.paste(
+        &agent("nobody"),
+        Vec::new(),
+        None,
+        "x".into(),
+        vec![Key::Enter],
+    );
     let got = ev.next(SECS(3)).await;
     assert!(
         matches!(got, Some(RuntimeEvent::PasteFailed { .. })),

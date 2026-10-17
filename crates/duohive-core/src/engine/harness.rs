@@ -144,6 +144,7 @@ impl Setup {
         let mut h = Harness {
             engine,
             call_log: runtime.calls,
+            dialog_log: runtime.dialog_checks,
             store,
             clock,
             claude: self.claude,
@@ -164,6 +165,8 @@ impl Setup {
 pub(crate) struct Harness {
     pub engine: Engine,
     pub call_log: Arc<Mutex<Vec<RuntimeCall>>>,
+    /// The dialog check of each paste, oldest first.
+    pub dialog_log: Arc<Mutex<Vec<Option<crate::adapter::DialogCheck>>>>,
     pub store: FakeStore,
     pub clock: FakeClock,
     pub claude: StubAdapter,

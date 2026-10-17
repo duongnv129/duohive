@@ -6,6 +6,7 @@ use std::path::{Component, Path};
 use std::sync::Arc;
 use std::time::Duration;
 
+use duohive_core::adapter::DialogCheck;
 use duohive_core::engine::Input;
 use duohive_core::launch::{Key, LaunchCommand, WindowId, sh_quote};
 use duohive_core::names::AgentName;
@@ -25,12 +26,15 @@ const POLL_EVERY: Duration = Duration::from_secs(1);
 /// The wait between two keys sent in a row (see `key_steps`).
 const KEY_PAUSE: Duration = Duration::from_millis(150);
 
+/// How many times the keys before a paste are sent while a dialog shows.
+const DIALOG_TRIES: u32 = 3;
+
 /// One request from the engine, served in order.
 enum Req {
     Start(AgentName, LaunchCommand),
     Stop(AgentName, Vec<Key>, Duration),
     Kill(WindowId),
-    Paste(AgentName, Vec<Key>, String, Vec<Key>),
+    Paste(AgentName, Vec<Key>, Option<DialogCheck>, String, Vec<Key>),
     Capture(AgentName),
     Inventory,
 }
@@ -136,8 +140,15 @@ impl Runtime for TmuxRuntime {
         self.send(Req::Kill(window.clone()));
     }
 
-    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>) {
-        self.send(Req::Paste(agent.clone(), before, text, submit));
+    fn paste(
+        &mut self,
+        agent: &AgentName,
+        before: Vec<Key>,
+        dialog: Option<DialogCheck>,
+        text: String,
+        submit: Vec<Key>,
+    ) {
+        self.send(Req::Paste(agent.clone(), before, dialog, text, submit));
     }
 
     fn capture(&mut self, agent: &AgentName) {
@@ -233,8 +244,8 @@ async fn request_loop(shared: Arc<Shared>, mut requests: mpsc::UnboundedReceiver
             Req::Start(agent, cmd) => start(&shared, agent, cmd).await,
             Req::Stop(agent, quit, grace) => stop(&shared, &agent, &quit, grace).await,
             Req::Kill(window) => kill(&shared, &window).await,
-            Req::Paste(agent, before, text, submit) => {
-                paste(&shared, agent, &before, &text, &submit).await;
+            Req::Paste(agent, before, dialog, text, submit) => {
+                paste(&shared, agent, &before, dialog, &text, &submit).await;
             }
             Req::Capture(agent) => capture(&shared, agent).await,
             Req::Inventory => inventory(&shared).await,
@@ -391,8 +402,15 @@ async fn kill(shared: &Shared, window: &WindowId) {
     }
 }
 
-async fn paste(shared: &Shared, agent: AgentName, before: &[Key], text: &str, submit: &[Key]) {
-    if let Err(reason) = try_paste(shared, &agent, before, text, submit).await {
+async fn paste(
+    shared: &Shared,
+    agent: AgentName,
+    before: &[Key],
+    dialog: Option<DialogCheck>,
+    text: &str,
+    submit: &[Key],
+) {
+    if let Err(reason) = try_paste(shared, &agent, before, dialog, text, submit).await {
         shared
             .emit(RuntimeEvent::PasteFailed { agent, reason })
             .await;
@@ -401,10 +419,19 @@ async fn paste(shared: &Shared, agent: AgentName, before: &[Key], text: &str, su
 
 /// `before` keys first, then a key pause so the paste's opening ESC is not read
 /// with them as one burst (see [`key_steps`]).
+///
+/// With `dialog` (OpenCode's update dialog, TD §5.5) the screen is read after
+/// that pause: while it shows a dialog, `before` goes again, up to
+/// [`DIALOG_TRIES`] sends in all, else nothing is pasted. A dialog can still
+/// open during the paste (friction 6), so after the paste and a key pause for
+/// it to draw, the screen is read again right before `submit`: a dialog there
+/// gets `before` to close it and no `submit`, since `Enter` would answer it.
+/// What is left is the read-to-`submit` gap of one tmux round trip.
 async fn try_paste(
     shared: &Shared,
     agent: &AgentName,
     before: &[Key],
+    dialog: Option<DialogCheck>,
     text: &str,
     submit: &[Key],
 ) -> Result<(), String> {
@@ -415,6 +442,9 @@ async fn try_paste(
         send_keys(shared, &window, before).await?;
         tokio::time::sleep(KEY_PAUSE).await;
     }
+    if let Some(open) = dialog {
+        close_dialog(shared, &window, before, open).await?;
+    }
     server::load_buffer(&shared.cfg, text).await?;
     let line = format!(
         "paste-buffer -d -p -b {} -t {}",
@@ -422,7 +452,45 @@ async fn try_paste(
         q(&window.0)?
     );
     shared.conn.cmd(line).await.map_err(|e| e.to_string())?;
+    if let Some(open) = dialog {
+        tokio::time::sleep(KEY_PAUSE).await;
+        if open(&screen_text(shared, &window).await?) {
+            send_keys(shared, &window, before).await?;
+            return Err("a dialog opened during the paste".to_owned());
+        }
+    }
     send_keys(shared, &window, submit).await
+}
+
+/// Sends `before` again while the screen shows a dialog, up to
+/// [`DIALOG_TRIES`] sends counting the first.
+async fn close_dialog(
+    shared: &Shared,
+    window: &WindowId,
+    before: &[Key],
+    open: DialogCheck,
+) -> Result<(), String> {
+    for sent in 1..=DIALOG_TRIES {
+        if !open(&screen_text(shared, window).await?) {
+            return Ok(());
+        }
+        if sent == DIALOG_TRIES || before.is_empty() {
+            break;
+        }
+        send_keys(shared, window, before).await?;
+        tokio::time::sleep(KEY_PAUSE).await;
+    }
+    Err("a dialog stayed open".to_owned())
+}
+
+/// The window's screen, as `capture` reports it.
+async fn screen_text(shared: &Shared, window: &WindowId) -> Result<String, String> {
+    let lines = shared
+        .conn
+        .cmd(format!("capture-pane -p -J -t {}", q(&window.0)?))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(lines.join("\n"))
 }
 
 async fn capture(shared: &Shared, agent: AgentName) {
@@ -430,17 +498,9 @@ async fn capture(shared: &Shared, agent: AgentName) {
         tracing::info!(agent = agent.as_str(), "capture: no window");
         return;
     };
-    let Ok(target) = q(&window.0) else { return };
-    match shared
-        .conn
-        .cmd(format!("capture-pane -p -J -t {target}"))
-        .await
-    {
-        Ok(lines) => {
-            let text = lines.join("\n");
-            shared.emit(RuntimeEvent::Screen { agent, text }).await;
-        }
-        Err(e) => tracing::warn!(agent = agent.as_str(), %e, "capture failed"),
+    match screen_text(shared, &window).await {
+        Ok(text) => shared.emit(RuntimeEvent::Screen { agent, text }).await,
+        Err(e) => tracing::warn!(agent = agent.as_str(), e, "capture failed"),
     }
 }
 

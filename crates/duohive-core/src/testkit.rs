@@ -1,7 +1,8 @@
 //! Test-only fixtures and fakes shared across crates.
 
 use crate::adapter::{
-    CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
+    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ScreenSignal,
+    ScreenState,
 };
 use crate::alert::Alert;
 use crate::cli_kind::CliKind;
@@ -163,6 +164,8 @@ pub enum RuntimeCall {
 pub struct FakeRuntime {
     /// Calls so far, oldest first.
     pub calls: Arc<Mutex<Vec<RuntimeCall>>>,
+    /// The dialog check of each `paste`, oldest first.
+    pub dialog_checks: Arc<Mutex<Vec<Option<DialogCheck>>>>,
 }
 
 impl FakeRuntime {
@@ -181,7 +184,15 @@ impl Runtime for FakeRuntime {
     fn kill(&mut self, agent: &AgentName, window: &WindowId) {
         self.record(RuntimeCall::Kill(agent.clone(), window.clone()));
     }
-    fn paste(&mut self, agent: &AgentName, before: Vec<Key>, text: String, submit: Vec<Key>) {
+    fn paste(
+        &mut self,
+        agent: &AgentName,
+        before: Vec<Key>,
+        dialog: Option<DialogCheck>,
+        text: String,
+        submit: Vec<Key>,
+    ) {
+        self.dialog_checks.lock().unwrap().push(dialog);
         self.record(RuntimeCall::Paste(agent.clone(), before, text, submit));
     }
     fn capture(&mut self, agent: &AgentName) {
@@ -354,6 +365,8 @@ pub struct StubAdapter {
     pub launch_error: Option<String>,
     /// What `before_paste_keys()` returns.
     pub before_paste: Vec<Key>,
+    /// What `dialog_check()` returns.
+    pub dialog: Option<DialogCheck>,
 }
 
 impl StubAdapter {
@@ -377,6 +390,7 @@ impl StubAdapter {
             enrich: None,
             launch_error: None,
             before_paste: Vec::new(),
+            dialog: None,
         }
     }
 
@@ -481,6 +495,9 @@ impl CliAdapter for StubAdapter {
     }
     fn before_paste_keys(&self) -> Vec<Key> {
         self.before_paste.clone()
+    }
+    fn dialog_check(&self) -> Option<DialogCheck> {
+        self.dialog
     }
     fn startup_prompts(&self) -> bool {
         self.startup_prompts

@@ -828,6 +828,7 @@ mod tests {
     #[test]
     fn no_keys_before_a_paste() {
         assert!(ClaudeAdapter.before_paste_keys().is_empty());
+        assert!(ClaudeAdapter.dialog_check().is_none());
     }
 
     /// Vim-safe (TD §5.5): after the stop's `Escape`, `C-c` interrupts a turn or
