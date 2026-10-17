@@ -1,6 +1,6 @@
 # Phase 2 Friction Log
 
-**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-16: every severity-1 entry is fixed; severity 2 has one open (22); no day without `tmux attach` yet. Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
+**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-17: every entry of severity 1 to 3 is fixed except 5 (OpenCode's own drawing), 13 (the P2-D8 chat pane, replaced in 3.9) and 22 (watched during the three-day run); the live checks are done; no day without `tmux attach` yet. Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
 
 ## How to log
 
@@ -29,20 +29,20 @@
 | 3 | 2026-10-15 | Agent pane (Claude, new worktree) | The trust dialog's default is `No, exit`, so a reflex `enter` kills the agent | 2 | `feat: hint how to answer Claude's trust dialog` (P2-D23) |
 | 4 | 2026-10-15 | Status (OpenCode) | An invalid API key or a model outside the plan ends the turn as finished with no reply, not errored | 2 | `fix: error an OpenCode agent whose turn fails` (P2-D24) |
 | 5 | 2026-10-15 | Agent pane (OpenCode) | OpenCode doesn't draw CJK characters; the text reaches the model intact | 3 | OpenCode's own drawing; not fixed |
-| 6 | 2026-10-15 | Give work (OpenCode) | The update dialog can still open in the 150 ms between `Escape` and the paste, for a Give work sent right after launch | 3 | open |
+| 6 | 2026-10-15 | Give work (OpenCode) | The update dialog can still open in the 150 ms between `Escape` and the paste, for a Give work sent right after launch | 3 | `fix: check for an OpenCode dialog again before the paste and before Enter` (TD §5.5; one tmux round trip between the last read and `Enter` remains) |
 | 7 | 2026-10-15 | Agent pane | UX F1: the title dropped `· TYPING` and `· scrolled` when cut | 2 | `fix: keep the agent pane's mode word when its title is cut` |
 | 8 | 2026-10-15 | Footers | UX F2: a note replaced the Typing and zoom footers, and said "space" while typing | 3 | `fix: keep the Typing and zoom footers when a note shows` |
 | 9 | 2026-10-15 | Worktrees | UX F3: a long `couldn't check` reason squeezed Branch at every size; no padding cell | 2 | `fix: keep worktree branches whole beside a long check failure` |
-| 10 | 2026-10-15 | Worktrees | UX F4: agent names cut at the end, not the middle; the empty list is cut with no `…` and keeps headers and hints | 3 | open |
+| 10 | 2026-10-15 | Worktrees | UX F4: agent names cut at the end, not the middle; the empty list is cut with no `…` and keeps headers and hints | 3 | `fix: middle-cut worktree agent names and tidy the empty list` |
 | 11 | 2026-10-15 | Settings, confirmations | UX F5: they showed the org pane's footer | 2 | `fix: give Settings and confirmations their own footer keys` |
 | 12 | 2026-10-15 | Needs you | UX F6: names were cut harder in the wide layout than the compact one | 2 | `fix: stop cutting Needs you names harder in the wide layout` |
 | 13 | 2026-10-15 | Chat (80×24) | UX F7: the one history row shows the tail of the last message | 3 | open (P2-D8 pane, replaced in 3.9) |
-| 14 | 2026-10-15 | Role summary | UX F8: the Defaults line wraps without its indent at 80×24 and 100×30 | 3 | open |
-| 15 | 2026-10-15 | Give work (80×24) | UX F9: the task box wraps mid-word | 3 | open |
-| 16 | 2026-10-15 | Footers | UX F10: `enter type` shown for a stopped agent zoomed, and agent-pane keys on a team or role | 3 | open |
+| 14 | 2026-10-15 | Role summary | UX F8: the Defaults line wraps without its indent at 80×24 and 100×30 | 3 | `fix: indent the role summary's wrapped Defaults line` |
+| 15 | 2026-10-15 | Give work (80×24) | UX F9: the task box wraps mid-word | 3 | `fix: wrap the Give work task at word boundaries` |
+| 16 | 2026-10-15 | Footers | UX F10: `enter type` shown for a stopped agent zoomed, and agent-pane keys on a team or role | 3 | `fix: footer keys fit a stopped agent and a team or role` |
 | 17 | 2026-10-15 | Agent pane (light theme) | UX F11: live cells use the terminal's own colours inside themed padding | 3 | resolved under `auto` by P2-D26 (Task 2.22); `dark` and `light` keep it |
-| 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | open |
-| 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | open |
+| 18 | 2026-10-15 | Main panes | UX F12: `esc` does nothing in the main panes; UI §4.11 says it goes back one level (a guess at intent) | 3 | `fix: esc in a main pane goes back to the org pane` (P2-D28) |
+| 19 | 2026-10-15 | Settings | UX F13: a detached `org defaults and Duo` hint line with no heading | 3 | `fix: give Settings' org defaults line a heading` |
 | 20 | 2026-10-16 | Status (OpenCode) | OpenCode 2.0 broke the plugin: it no longer loaded, so OpenCode agents reported no status | 1 | `fix: port the OpenCode adapter to OpenCode 2.0` (P2-D24) |
 | 21 | 2026-10-16 | Agent pane (Typing) | Can't scroll an agent's output while typing: `PgUp` goes to the CLI, reading back needs `esc`, `PgUp`, `enter`, and the touchpad wheel scrolls the terminal's own buffer instead | 2 | `feat: scroll agent panes and the chat with the touchpad, typing too` (P2-D25; `faeeea2`, `ba0bbd5`) |
 | 22 | 2026-10-16 | Agent pane | `auth-backend`'s window was 240×50 in a 146×40 pane; its rows ran past the box, wrapped, scrolled the screen and left stacked frames in the terminal's scrollback. Not reproduced in a 3-minute watch (windows resized within 1 s) | 2 | open: watched on `auth-backend` and `duohive-dev` during the three-day run (decided 2026-10-17); if it shows, note the agent and leave the screen as it is; if not, it closes at sign-off as not seen again. A fix clips the terminal widget to its pane, which would also keep P2-D25's wheel cell right |
@@ -63,8 +63,8 @@ These are carried from phase 1 and spike S3. Record the result and the CLI versi
 | S3.7: the trust dialog in a new worktree path | Claude Code 2.1.300; OpenCode 1.18.35 | decided | Claude shows it, default `No, exit`; the author chose `~◆ waiting` plus a hint (P2-D23, entry 3). OpenCode shows none |
 | The OpenCode 2.0 adapter: launch, hooks, reply, approvals, failed turn | OpenCode 2.0.29 | pass (plugin) | 2026-10-16, real TUI in a throwaway tmux socket with the shipped plugin and a logging hook: session-start, busy, turn-end with the reply, per-launch instructions, `edit` asked then busy on Allow once, `/exit` → session-end; a 400 from a local stub → turn-end `session.execution.failed` with its error. A full DuoHive session on 2.0.29 is part of the three-day run |
 | Mouse reporting in agent panes (P2-D25) | Claude Code 2.1.301; OpenCode 2.0.29; tmux 3.7c | pass | 2026-10-16, throwaway socket: both turn on any-motion reporting with SGR (`mouse_all_flag=1`, `mouse_sgr_flag=1`, `mouse_utf8_flag=0`, so mode 1005 never applies) on the alternate screen. Forwarded wheel ticks scroll each CLI's own view and come back at the bottom (Claude: one line a tick over `!seq 1 300`; OpenCode: over 14 `!echo` blocks); `PgUp`/`PgDn` scroll both. 2026-10-16, the author: touchpad scrolling and click to select work well in daily use (iTerm2) |
-| `send-keys -H` wheel bytes with Claude's extended keys on (P2-D25) | tmux 3.7c | pass | The SGR bytes reach Claude intact with its modifyOtherKeys and kitty keys on (the wheel scrolls it). tmux 3.2a is not installed here; not checked on it. 2026-10-17: upgraded to tmux 3.8; `make check`, with its tmux integration tests on throwaway sockets, passes, and the live `duohive` server started under 3.7c still answers the 3.8 client. tmux 3.2a, the oldest supported, isn't checked: only 3.7c and 3.8 were available |
-| Text selection with mouse reporting on (P2-D25) | iTerm2 | open | `⌥`-drag expected; needs a person at the terminal |
+| `send-keys -H` wheel bytes with Claude's extended keys on (P2-D25) | tmux 3.2a, 3.7c, 3.8 | pass | The SGR bytes reach Claude intact with its modifyOtherKeys and kitty keys on (the wheel scrolls it). 2026-10-17: upgraded to tmux 3.8; `make check`, with its tmux integration tests on throwaway sockets, passes, and the live `duohive` server started under 3.7c still answers the 3.8 client. 2026-10-17, tmux 3.2a built from source into a scratch prefix: the full workspace test suite passes; with `extended-keys on`, `send-keys -H` SGR and X10 wheel bytes arrive byte for byte, and the pane's mouse flags read `any=1 sgr=1 utf8=0`. Claude Code itself wasn't run on 3.2a (its trust dialog would write the user's global config); its handling was checked on 3.7c and 3.8. The author keeps the floor at tmux 3.2 (Linux LTS distributions ship 3.2a to 3.4) |
+| Text selection with mouse reporting on (P2-D25) | iTerm2 | pass | 2026-10-17, the author: `⌥`-drag selects text with DuoHive running |
 
 ## UI/UX pass
 
@@ -79,12 +79,12 @@ Done 2026-10-15 at 80×24, 100×30 and 160×48, in the dark, light and mono pale
 
 | Screen | 1 Glance | 2 Not colour only | 3 80×24 | 4 Same key | 5 One key away | 6 Calm |
 |---|---|---|---|---|---|---|
-| Main: org, Needs you, agent and chat panes | fixed (#12) | pass | open (#13, #14) | open (#18) | pass | pass |
-| Agent pane: Selected, Typing, scrolled | pass | fixed (#7, #8) | fixed (#7) | pass | open (#16) | pass |
-| Zoomed agent | fixed (#8) | pass | pass | pass | open (#16) | pass |
-| Give work dialog | pass | pass | open (#15) | pass | pass | pass |
-| Worktrees (`w`) | fixed (#9) | pass | fixed (#9), open (#10) | pass | pass | pass |
-| Settings (`,`) and confirmations | pass | pass | open (#19) | pass | fixed (#11) | pass |
+| Main: org, Needs you, agent and chat panes | fixed (#12) | pass | fixed (#14), open (#13, replaced in 3.9) | fixed (#18) | pass | pass |
+| Agent pane: Selected, Typing, scrolled | pass | fixed (#7, #8) | fixed (#7) | pass | fixed (#16) | pass |
+| Zoomed agent | fixed (#8) | pass | pass | pass | fixed (#16) | pass |
+| Give work dialog | pass | pass | fixed (#15) | pass | pass | pass |
+| Worktrees (`w`) | fixed (#9) | pass | fixed (#9, #10) | pass | pass | pass |
+| Settings (`,`) and confirmations | pass | pass | fixed (#19) | pass | fixed (#11) | pass |
 | Too-small screen | pass | pass | pass | — | — | pass |
 | Desktop alert, alerts-unavailable note | pass | pass | pass | — | fixed (#8) | pass |
 

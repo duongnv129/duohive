@@ -212,7 +212,7 @@ The agent pane has two modes.
 
 | Mode | Enter / leave | Keys |
 |---|---|---|
-| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` or the wheel scroll the agent's scrollback, `enter` starts typing |
+| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` or the wheel scroll the agent's scrollback, `enter` starts typing, `esc` goes back to the org pane |
 | **Typing** | `enter` starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent), except while scrolled back (below). The wheel still scrolls. The title shows `TYPING` and the border is heavy |
 
 To zoom while typing, press `ctrl+q`, then `z`.
@@ -235,6 +235,12 @@ To zoom while typing, press `ctrl+q`, then `z`.
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
  TYPING · every key goes to auth-service, ctrl+c too · ctrl+q stop typing
 ```
+
+**Footer in Selected mode** fits what the pane shows:
+
+- a running agent: `enter type · z zoom · PgUp/PgDn scroll · space give work`;
+- a stopped agent: `z zoom · space give work`;
+- a team or role: `tab pane · esc back`.
 
 **What the pane shows** depends on the selection:
 
@@ -275,6 +281,8 @@ To zoom while typing, press `ctrl+q`, then `z`.
 │ space give work to this role · e edit                    │
 └──────────────────────────────────────────────────────────┘
 ```
+
+When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI`, with the same indent as `worktrees`. A value that still doesn't fit is cut with `…`.
 
 - **A stopped agent:**
 
@@ -325,7 +333,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 ### 4.2 Zoomed agent
 
-`z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` restores. `z` zooms an agent whatever its state; a stopped agent's zoomed pane shows its stopped line. On a team or role, `z` does nothing and the footer says "z zooms an agent".
+`z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` or `esc` restores. `z` zooms an agent whatever its state; a stopped agent's zoomed pane shows its stopped line, and the footer reads `z restore · space give work`. On a team or role, `z` does nothing and the footer says "z zooms an agent".
 
 ```
  DuoHive › auth-service (zoomed)                                                         z restore 
@@ -586,7 +594,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 
 ### 4.5 Give work
 
-`space` on an agent or a role. The task box takes multiple lines (`alt+enter`). `enter` is disabled while the task is empty. `space` on a team or on Duo does nothing, and the footer says "space gives work to an agent or a role".
+`space` on an agent or a role. The task box takes multiple lines (`alt+enter`) and wraps at word boundaries; a word wider than the box breaks at its edge. `enter` is disabled while the task is empty. `space` on a team or on Duo does nothing, and the footer says "space gives work to an agent or a role".
 
 What happens depends on the agent's state:
 
@@ -774,6 +782,8 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 - **Checked:** when its agent finishes, after start-up, when this list opens, and every 10 minutes, against `origin`'s default branch (or the local default branch when there is no remote).
 - **By hand:** `d` removes a worktree; removing anything not merged and clean asks first. A worktree in use can't be removed: `d` says "<agent> is running in it · stop it first".
 - **In use:** its agent is running and its current session was launched there. Once the agent stops, the next check decides.
+- **Names:** agent names and branches are cut in the middle with `…` (§2.4).
+- **Empty:** `No worktrees yet. An agent gets one when you give it work in a new worktree.`, cut with `…` when narrow, and `esc back`; no columns, check line or row keys.
 - **States:** `not checked yet` until the first check; `in use`; `not merged · N files changed`; `merged · uncommitted changes, kept`; `merged · removing`; `couldn't check · <reason>` when git can't tell (never treated as merged).
 
 ```
@@ -877,7 +887,7 @@ Below 100 columns it becomes one scrolling column:
 | | `,` | Settings |
 | | `w` | Worktrees |
 | | `f` | Filter the tree by state |
-| | `esc` | Back one level; clears a filter; never quits (step 1 of first run asks) |
+| | `esc` | Back one level: from Needs you, the agent pane or the chat to the org pane (the chat keeps its draft); zoomed, restores; in the org pane, clears a filter, else nothing. Never quits (step 1 of first run asks). In Typing mode it goes to the agent; `ctrl+q` leaves Typing |
 | | `q` | Quit; agents keep running. Not while typing in the chat, a form or the agent pane |
 | | `ctrl+c` | Quit, when not typing |
 | | `ctrl+↑` / `ctrl+↓` | Resize the chat pane |
