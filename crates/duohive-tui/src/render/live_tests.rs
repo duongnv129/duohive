@@ -384,3 +384,36 @@ fn role_summary_snapshots() {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
 }
+
+#[test]
+fn role_summary_defaults_wrap_under_their_value() {
+    let mut m = spec_model();
+    m.selected = NodeKey::Role(RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("Backend"),
+    });
+    for (w, h) in [(80, 24), (100, 30), (160, 48)] {
+        let lines: Vec<Vec<char>> = render_lines(&m, &ctx(), w, h)
+            .iter()
+            .map(|l| l.chars().collect())
+            .collect();
+        let first = lines
+            .iter()
+            .position(|l| String::from_iter(l).contains("Defaults"))
+            .unwrap();
+        let label = String::from_iter(&lines[first]).find("Defaults").unwrap();
+        // `find` gives bytes; the pane's text is after box-drawing chars, so count chars.
+        let label = String::from_iter(&lines[first])[..label].chars().count();
+        let value = label + 10;
+        let rest = lines[first + 1..]
+            .iter()
+            .take_while(|l| !String::from_iter(*l).contains("Prompt"));
+        for line in rest {
+            let text = String::from_iter(line);
+            assert!(
+                line[label..value].iter().all(|c| *c == ' ') && line[value] != ' ',
+                "{w}x{h}: {text}"
+            );
+        }
+    }
+}

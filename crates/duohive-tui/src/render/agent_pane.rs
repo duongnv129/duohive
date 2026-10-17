@@ -37,7 +37,7 @@ const MIN_PLACE: usize = 4;
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
-/// The rows a full team or role summary takes.
+/// The rows a full team or role summary takes with its defaults on one line.
 const SUMMARY_ROWS: usize = 6;
 /// How to answer Claude's folder-trust dialog, whose highlighted choice is `No, exit`
 /// (P2-D23): the longest that fits the bottom edge.
@@ -337,27 +337,67 @@ fn summary(
         .map(one_line)
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| NONE.to_owned());
-    let pad = format!("{PAD}{}", " ".repeat(LABEL_CELLS));
-    let mut defaults = vec![label("Defaults", p), Span::styled("CLI ", fg(p.fg))];
-    defaults.push(cli.styled(p));
-    defaults.push(Span::styled(" · model ", fg(p.fg)));
-    defaults.push(model.styled(p));
-    let mut wt = vec![Span::raw(pad), Span::styled("worktrees ", fg(p.fg))];
-    wt.push(worktrees.styled(p));
     // Room after the padding cell and the label, leaving the right padding cell.
-    let prompt = truncate_end(&prompt, cells.saturating_sub(LABEL_CELLS + 2));
+    let room = cells.saturating_sub(LABEL_CELLS + 2);
+    let mut defaults = defaults_lines(p, cli, model, room);
+    defaults.push(value_line(
+        Span::raw(hanging()),
+        "worktrees ",
+        worktrees,
+        room,
+        p,
+    ));
+    let prompt = truncate_end(&prompt, room);
     let keys = Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted)));
-    if rows < SUMMARY_ROWS {
+    if rows < SUMMARY_ROWS + defaults.len() - 2 {
         return vec![Line::from(counts), Line::default(), keys];
     }
-    vec![
-        Line::from(counts),
-        Line::from(defaults),
-        Line::from(wt),
+    let mut lines = vec![Line::from(counts)];
+    lines.extend(defaults);
+    lines.extend([
         Line::from(vec![label("Prompt", p), Span::styled(prompt, fg(p.fg))]),
         Line::default(),
         keys,
+    ]);
+    lines
+}
+
+/// `Defaults  CLI … · model …` on one line when it fits in `room`; otherwise model goes
+/// on its own line under CLI, with the same hanging indent as worktrees.
+fn defaults_lines(p: &Palette, cli: Setting, model: Setting, room: usize) -> Vec<Line<'static>> {
+    let one = width("CLI ") + cli.width() + width(SEP) + width("model ") + model.width();
+    if one <= room {
+        let mut spans = vec![label("Defaults", p), Span::styled("CLI ", fg(p.fg))];
+        spans.push(cli.styled(p, room));
+        spans.push(Span::styled(format!("{SEP}model "), fg(p.fg)));
+        spans.push(model.styled(p, room));
+        return vec![Line::from(spans)];
+    }
+    vec![
+        value_line(label("Defaults", p), "CLI ", cli, room, p),
+        value_line(Span::raw(hanging()), "model ", model, room, p),
     ]
+}
+
+/// `lead`, then `key` and its setting cut to fit `room`.
+fn value_line(
+    lead: Span<'static>,
+    key: &str,
+    value: Setting,
+    room: usize,
+    p: &Palette,
+) -> Line<'static> {
+    let left = room.saturating_sub(width(key));
+    Line::from(vec![
+        lead,
+        Span::styled(key.to_owned(), fg(p.fg)),
+        value.styled(p, left),
+    ])
+}
+
+/// The indent that puts a continuation line under the summary's values.
+fn hanging() -> String {
+    format!("{PAD}{}", " ".repeat(LABEL_CELLS))
 }
 
 fn label(text: &str, p: &Palette) -> Span<'static> {
@@ -386,11 +426,24 @@ fn setting(own: Option<&str>, inherited: Option<&str>) -> Setting {
 }
 
 impl Setting {
-    fn styled(self, p: &Palette) -> Span<'static> {
+    fn text(&self) -> String {
         match self {
-            Setting::Own(v) => Span::styled(v, fg(p.fg)),
-            Setting::Inherited(v) => Span::styled(format!("inherit: {v}"), fg(p.fg_muted)),
-            Setting::Unset => Span::styled(NONE, fg(p.fg_muted)),
+            Setting::Own(v) => v.clone(),
+            Setting::Inherited(v) => format!("inherit: {v}"),
+            Setting::Unset => NONE.to_owned(),
         }
+    }
+
+    fn width(&self) -> usize {
+        width(&self.text())
+    }
+
+    /// The setting, cut with `…` to fit `cells`; inherited and unset values are muted.
+    fn styled(self, p: &Palette, cells: usize) -> Span<'static> {
+        let colour = match self {
+            Setting::Own(_) => p.fg,
+            Setting::Inherited(_) | Setting::Unset => p.fg_muted,
+        };
+        Span::styled(truncate_end(&self.text(), cells), fg(colour))
     }
 }

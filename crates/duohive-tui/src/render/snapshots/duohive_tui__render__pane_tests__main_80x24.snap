@@ -5,8 +5,8 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
  DuoHive  ● 2 · ◆ 2                                                             
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ────────────────────┐
 ┃ ⬢ Duo                ◦   1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting         │
-┃ ▾ Payments           ● 1 ◆ 1 ┃│ Defaults  CLI inherit: Claude Code · model   │
-┃▌  ▾ Backend          ● 1 ◆ 1 ┃│(none)                                        │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ Defaults  CLI inherit: Claude Code           │
+┃▌  ▾ Backend          ● 1 ◆ 1 ┃│           model (none)                       │
 ┃     auth-service     ●   2m  ┃│           worktrees inherit: off             │
 ┃     billing-api      ◆   4m  ┃│ Prompt    (none)                             │
 ┃   ▾ QA                       ┃│                                              │
