@@ -43,13 +43,14 @@ make check   # format, lint, test, dependency and spelling checks
 ## Usage
 
 ```sh
-duohive          # open the org: ↑↓ move, s start/stop, n new, e edit, o open org.toml, q quit
+duohive          # open the org: ↑↓ move, tab pane, space give work, s start/stop, z zoom,
+                 # n new, e edit, w worktrees, , settings, o open org.toml, q quit
 duohive bench    # measure CPU, memory and hook latency with fake agents
 duohive --help
 ```
 
 - Each agent runs in its own window on DuoHive's tmux server. `q` quits DuoHive and leaves your agents running; the next `duohive` reconnects to them. On quit, DuoHive says how many are still running and how to list them (`tmux -L duohive ls`).
-- To watch or type into an agent directly, attach to its window: the side pane shows the command, `tmux -L duohive attach -t duohive:<agent>`.
+- To watch an agent, select it: the agent pane shows its terminal live. `enter` in the agent pane types into it (`ctrl+q` stops), `z` zooms and `space` gives it work. You don't need `tmux attach`.
 - One DuoHive runs per data directory (`~/.local/share/duohive`, or `$XDG_DATA_HOME/duohive`): a second one there is refused. Two DuoHives with different data directories still share the `tmux -L duohive` server, so don't run them side by side.
 
 ## Documentation
