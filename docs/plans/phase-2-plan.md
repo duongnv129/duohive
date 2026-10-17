@@ -1065,6 +1065,7 @@ This is acceptance, with no code under test.
 - [x] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
 - [ ] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
   - Status 2026-10-16: day 1 needed `tmux attach` (reason not recorded); the count starts again.
+  - Status 2026-10-17: day 1 of the new count, without `tmux attach`.
 - [x] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
   - a newline and non-ASCII text in OpenCode's `--prompt=`;
   - `--effort=` on a real turn;

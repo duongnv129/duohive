@@ -1,6 +1,6 @@
 # Phase 2 Friction Log
 
-**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-17: every entry of severity 1 to 3 is fixed except 5 (OpenCode's own drawing), 13 (the P2-D8 chat pane, replaced in 3.9) and 22 (watched during the three-day run); the live checks are done; no day without `tmux attach` yet. Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
+**Status:** Open · started 2026-10-15, the day after Tasks 2.1–2.18 were merged (`b497418`, 2026-10-14). As of 2026-10-17: every entry of severity 1 to 3 is fixed except 5 (OpenCode's own drawing), 13 (the P2-D8 chat pane, replaced in 3.9) and 22 (watched during the three-day run); the live checks are done; one day without `tmux attach` of the three (2026-10-17). Phase 2 [Task 2.19](phase-2-plan.md#task-219-phase-2-acceptance--a-day-without-tmux-attach-and-the-friction-log) fills it in, and [Task 2.20](phase-2-plan.md#task-220-uiux-improvement-pass-then-mark-the-phase-done) works from it.
 
 ## How to log
 
@@ -17,6 +17,7 @@
 | Day | Date | Needed `tmux attach`? | Notes |
 |---|---|---|---|
 | 1 | 2026-10-16 | yes | Reason not recorded. Scrolling an agent while typing (21) and clicking to jump (23) fixed the same day (P2-D25); the oversized window that broke the screen (22) is open. The three days start again |
+| 1 | 2026-10-17 | no | First day of the new count. DuoHive ran all day (restarts 11:34, 11:53, 20:24 local; the last on the friction fixes). A `tmux -L duohive` at 13:23 was typed by accident: it made an empty session `1` and was not needed for any agent |
 | 2 | | | |
 | 3 | | | |
 
