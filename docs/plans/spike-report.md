@@ -698,7 +698,7 @@ At each checkpoint it saved the stream so far, `capture-pane -e -p`, `capture-pa
   - `env.txt`;
   - one directory per checkpoint: `stream.bin` up to it, `capture-e.txt`, `capture-eN.txt`, `capture.txt`, and `meta.txt` (`width height cursor_x cursor_y cursor_flag alternate_on`).
 
-  `export.py` copied them byte for byte, except the user's OpenCode model and provider names: `Model 1` became `Model 1`, and `Provider (Ex.)` became `Provider (Ex.)`, each the same length, so every cursor move still holds. The Claude screens show the user's own plugins' start-up text, as S1's do.
+  `export.py` copied them byte for byte, except the user's OpenCode model and provider names, which became `Model 1` and `Provider (Ex.)`, each the same length as the name it replaced, so every cursor move still holds. The Claude screens show the user's own plugins' start-up text, as S1's do.
 
 ### S3.5 `resize-window`
 

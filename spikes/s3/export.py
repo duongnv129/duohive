@@ -3,7 +3,9 @@
 
 Byte-for-byte, except the user's OpenCode model and provider names, replaced by strings of
 the same length so every cursor move in the stream stays right. Nothing else is changed.
-usage: export.py [src] [dst]
+The names to replace come from DUOHIVE_EXPORT_SWAPS ("old=new;old=new"), never from this
+file, so the real ones stay out of the repository.
+usage: DUOHIVE_EXPORT_SWAPS='...' export.py [src] [dst]
 """
 import os
 import shutil
@@ -12,7 +14,11 @@ import sys
 here = os.path.dirname(os.path.abspath(__file__))
 src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "out", "rec2")
 dst = sys.argv[2] if len(sys.argv) > 2 else os.path.join(here, "fixtures")
-SWAPS = [(b"Model 1", b"Model 1"), (b"Provider (Ex.)", b"Provider (Ex.)")]
+SWAPS = [
+    tuple(pair.split("=", 1)[i].encode() for i in (0, 1))
+    for pair in os.environ.get("DUOHIVE_EXPORT_SWAPS", "").split(";")
+    if "=" in pair
+]
 for a, b in SWAPS:
     assert len(a) == len(b)
 for root, _dirs, files in os.walk(src):
