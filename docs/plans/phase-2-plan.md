@@ -1157,7 +1157,7 @@ Built before Task 2.20's Step 1, from P2-D25 (friction entries 21 and 23). P2-D2
   - Capture goes on with `EnableMouseCapture` beside `EnableBracketedPaste`, and off with `DisableMouseCapture` beside each `DisableBracketedPaste`.
   - `term_view.rs` reads the mode from the vt100 parser's mouse protocol mode and encoding, and carries it into the parser that `resize` rebuilds. The comment that says modes are not carried over goes.
   - `live.rs` drops the guard that refuses `on_scrollback` in Typing mode.
-- [ ] **Step 4: Live checks.** Status 2026-10-16, automated on a throwaway socket (tmux 3.7c): Claude's and OpenCode's own wheel and `PgUp` scrolling, the `send-keys -H` bytes, their mouse flags and mode 1005 pass (friction-log live checks). The author confirmed scrolling and click to select work well in daily use (iTerm2). Open: `⌥`-drag (needs a person) and tmux 3.2a (not installed). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
+- [ ] **Step 4: Live checks.** Status 2026-10-16, automated on a throwaway socket (tmux 3.7c): Claude's and OpenCode's own wheel and `PgUp` scrolling, the `send-keys -H` bytes, their mouse flags and mode 1005 pass (friction-log live checks). The author confirmed scrolling and click to select work well in daily use (iTerm2). Open: `⌥`-drag (needs a person). tmux 3.2a isn't checked: only 3.7c and 3.8 were available (`make check` passes on both). On the author's org (iTerm2, tmux 3.2a and latest, Claude Code 2.1.301 full-screen, OpenCode 2.0.29), check that:
   - Claude scrolls its own view on the wheel and on `PgUp`, while typing too;
   - the `send-keys -H` bytes arrive unchanged with Claude's extended keys on;
   - OpenCode's mouse flags are recorded, and its wheel works;
@@ -1249,7 +1249,7 @@ This is validated by snapshot diffs and the checklist below.
   - `docs/plans/v1-traceability.md`.
 
 - [ ] **Step 1: Fix the top friction-log items.**
-  - Status 2026-10-16: severity 1 all fixed (1, 2, 20). Severity 2 fixed: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21); open: 22. The carried long-name item passes. Severity 3: 8 fixed, the rest open.
+  - Status 2026-10-17: severity 1 all fixed (1, 2, 20). Severity 2 fixed: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21), 24 (Task 2.22), 25 (Task 2.23); open: 22, watched during the three-day run on `auth-backend` and `duohive-dev`, and closed at sign-off if not seen again. The carried long-name item passes. Severity 3: 8 fixed, the rest open.
   - P2-D25 (friction entries 21 and 23) is built in [Task 2.21](#task-221-tui--touchpad-scrolling-and-click-to-select-p2-d25), before this step.
   - Every severity-1 item, then severity-2 items by count.
   - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.
