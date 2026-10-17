@@ -4,7 +4,7 @@ Run your AI coding agents as a team, not a pile of terminals.
 
 [![CI](https://github.com/duongnv129/duohive/actions/workflows/ci.yml/badge.svg)](https://github.com/duongnv129/duohive/actions/workflows/ci.yml)
 
-> **Status: pre-alpha · phase 1 done (2026-10-04); phase 2 (one screen) next.** Build from source; there are no releases yet.
+> **Status: pre-alpha · phase 1 done (2026-10-04); phase 2 (one screen) built, its three-day acceptance run open.** Build from source; there are no releases yet.
 
 DuoHive is an open-source terminal app that runs your agents as an org chart, steered from one screen.
 
