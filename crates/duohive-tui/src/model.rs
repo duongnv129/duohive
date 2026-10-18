@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
+use duohive_core::inbox::{MessageId, Sender};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::ports::OrgFileError;
@@ -21,6 +22,7 @@ use ratatui::layout::Rect;
 use crate::chat::{self, ChatLines};
 use crate::focus::Focus;
 use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
+use crate::suggest::Suggest;
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -136,12 +138,16 @@ pub struct UiModel {
     pub folded: BTreeSet<NodeKey>,
     /// Rows `ctrl+↑` added to the chat, within P2-D3's bounds.
     pub chat_rows_extra: i16,
-    /// The chat history (P2-D8).
+    /// The chat history.
     pub chat: ChatLines,
     /// The chat input.
     pub chat_input: LineEdit,
-    /// The last text the chat sent, put back if Duo doesn't take it.
+    /// The last line the chat sent, put back if the engine refuses it.
     pub chat_sent: Option<String>,
+    /// Your messages not yet delivered (a `you` line shows `queued` while its id is here).
+    pub queued: BTreeSet<MessageId>,
+    /// The chat's open suggestion list.
+    pub suggest: Option<Suggest>,
     /// The terminal's size, which bounds the chat's resizing.
     pub screen: Rect,
     /// The agent pane shows a frozen scrollback snapshot (P2-D12), not the live terminal.
@@ -185,6 +191,8 @@ impl UiModel {
             chat: ChatLines::default(),
             chat_input: LineEdit::default(),
             chat_sent: None,
+            queued: BTreeSet::new(),
+            suggest: None,
             screen: Rect::default(),
             scrolled: false,
             live_agent: None,
@@ -208,11 +216,7 @@ impl UiModel {
                 }
             }
             Event::AgentStatusChanged { agent, status } => {
-                let before = self.view(&agent).status.state;
                 let changed = self.update_view(&agent, |v| v.status = status);
-                if changed && self.org.is_duo(&agent) {
-                    chat::duo_status_changed(self, before);
-                }
                 self.sync_give_work(&agent);
                 return changed;
             }
@@ -235,12 +239,6 @@ impl UiModel {
                     None => self.footer_note = Some(reason),
                 },
             },
-            // Phase 2 gives Duo work only from the chat (P2-D8, P2-D10).
-            Event::GiveWorkRefused {
-                agent,
-                state,
-                pending,
-            } if self.org.is_duo(&agent) => chat::refused(self, state, pending),
             Event::GiveWorkRefused {
                 agent,
                 state,
@@ -252,9 +250,6 @@ impl UiModel {
                     format!("{agent} is {}", state.word())
                 };
                 self.refused_give_work(&agent, reason);
-            }
-            Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
-                chat::not_taken(self);
             }
             Event::GiveWorkNotTaken { agent, task, .. } => {
                 let reason = format!("{agent} didn't take the task");
@@ -284,20 +279,54 @@ impl UiModel {
             Event::Worktrees(rows) => self.set_worktrees(rows),
             // The engine hands alerts to the notifier itself; the row's state already shows here.
             Event::Alert(_) => {}
+            Event::ChatLine(entry) => chat::push(&mut self.chat, entry),
+            e @ (Event::MessageQueued { .. }
+            | Event::MessageDelivered { .. }
+            | Event::MessageDropped { .. }) => self.apply_message(e),
+            Event::InboxChanged { agent, waiting } => {
+                return self.update_view(&agent, |v| v.inbox = waiting);
+            }
+            Event::MessageRefused { reason, .. } => chat::refused(self, reason),
             // Phase 3 events reach the TUI as their tasks build them.
             Event::ToolResult { .. }
-            | Event::MessageQueued { .. }
-            | Event::MessageDelivered { .. }
-            | Event::MessageDropped { .. }
-            | Event::InboxChanged { .. }
             | Event::CardRaised(_)
             | Event::CardAnswered { .. }
-            | Event::ChatLine(_)
-            | Event::MessageRefused { .. }
             | Event::RoleAssigned { .. }
             | Event::AssignRefused { .. } => {}
         }
         true
+    }
+
+    /// A message event. Messages between agents show only as `✉` (UI §4.7): only yours
+    /// are tracked, and a dropped one of yours comes back into the input (P3-D26).
+    fn apply_message(&mut self, e: Event) {
+        match e {
+            Event::MessageQueued {
+                id,
+                from: Sender::You,
+                ..
+            } => {
+                self.queued.insert(id);
+                // Accepted: a later refusal is not about the line the chat sent.
+                self.chat_sent = None;
+            }
+            Event::MessageDelivered { id } => {
+                self.queued.remove(&id);
+            }
+            Event::MessageDropped {
+                id,
+                from,
+                to,
+                text,
+                reason,
+            } => {
+                self.queued.remove(&id);
+                if from == Sender::You {
+                    chat::dropped(self, &to, &text, &reason);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// The open Give work dialog follows its agent's state.
@@ -453,6 +482,9 @@ impl UiModel {
         self.settings_error = s.settings_error;
         self.reconnecting = s.reconnecting;
         self.set_worktrees(s.worktrees);
+        self.chat.entries = s.chat;
+        self.chat.scroll = None;
+        self.queued = s.your_queued.into_iter().collect();
         self.keep_selection_valid();
     }
 

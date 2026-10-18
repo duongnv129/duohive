@@ -7,15 +7,14 @@ use duohive_core::names::NodeName;
 use duohive_core::org::{NodeKey, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
-use duohive_core::worktree::RunIn;
 use ratatui::layout::Rect;
 
 use super::{Action, UiEffect, map_key, update};
-use crate::chat::{ChatLine, Who};
-use crate::fixtures::{NOW, mins, spec_model, status};
+use crate::fixtures::{NOW, chat_entry, mins, spec_model, status};
 use crate::focus::{Pane, layout};
 use crate::model::UiModel;
 use crate::tree::tree_rows;
+use duohive_core::chat::ChatKind;
 
 fn key(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)
@@ -241,93 +240,6 @@ fn esc_from_the_chat_keeps_the_draft() {
 }
 
 #[test]
-fn chat_enter_gives_work_to_duo() {
-    let mut m = chat_focused();
-    type_text(&mut m, "what's blocking Payments?");
-    assert_eq!(
-        press(&mut m, code(KeyCode::Enter)),
-        [UiEffect::Send(Command::GiveWork {
-            agent: n("Duo"),
-            task: "what's blocking Payments?".to_owned(),
-            run: RunIn::Directory,
-        })]
-    );
-    assert_eq!(m.chat_input.text(), "");
-    assert_eq!(
-        m.chat.lines,
-        [ChatLine {
-            at: m.now,
-            who: Who::You,
-            text: "what's blocking Payments?".to_owned(),
-        }]
-    );
-    // An empty input sends nothing.
-    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
-    // alt+enter is a new line, sent as part of the task.
-    type_text(&mut m, "a");
-    press(&mut m, KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT));
-    type_text(&mut m, "b");
-    assert_eq!(m.chat_input.text(), "a\nb");
-}
-
-#[test]
-fn chat_refused_keeps_text_and_notes() {
-    let mut m = chat_focused();
-    set_duo(&mut m, AgentState::Waiting);
-    type_text(&mut m, "hi");
-    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
-    assert_eq!(m.chat_input.text(), "hi");
-    assert_eq!(
-        m.footer_note.as_deref(),
-        Some("Duo is waiting · send again when it is at rest")
-    );
-    assert!(m.chat.lines.is_empty());
-    // The engine refuses too (Duo got busy meanwhile): the text comes back.
-    let mut m = chat_focused();
-    type_text(&mut m, "hi");
-    press(&mut m, code(KeyCode::Enter));
-    assert!(m.apply(Event::GiveWorkRefused {
-        agent: n("Duo"),
-        state: AgentState::Working,
-        pending: false,
-    }));
-    assert_eq!(m.chat_input.text(), "hi");
-    assert_eq!(
-        m.footer_note.as_deref(),
-        Some("Duo is working · send again when it is at rest")
-    );
-    assert!(m.chat.lines.is_empty());
-    // A delivery still pending (P2-D11).
-    m.apply(Event::GiveWorkRefused {
-        agent: n("Duo"),
-        state: AgentState::Idle,
-        pending: true,
-    });
-    assert_eq!(
-        m.footer_note.as_deref(),
-        Some("Duo is still taking the last task")
-    );
-}
-
-#[test]
-fn chat_not_taken_returns_text() {
-    let mut m = chat_focused();
-    type_text(&mut m, "run the tests");
-    press(&mut m, code(KeyCode::Enter));
-    assert_eq!(m.chat_input.text(), "");
-    assert!(m.apply(Event::GiveWorkNotTaken {
-        agent: n("Duo"),
-        task: "run the tests".to_owned(),
-        reason: "no sign it started".to_owned(),
-    }));
-    assert_eq!(m.chat_input.text(), "run the tests");
-    assert_eq!(
-        m.footer_note.as_deref(),
-        Some("Duo didn't take the task · enter to send again")
-    );
-}
-
-#[test]
 fn letter_keys_type_in_chat() {
     let mut m = chat_focused();
     for c in ['q', 'w', ',', 'z', 's'] {
@@ -347,39 +259,6 @@ fn letter_keys_type_in_chat() {
 }
 
 #[test]
-fn duo_turn_end_adds_its_reply_to_chat() {
-    let mut m = chat_focused();
-    set_duo(&mut m, AgentState::Working);
-    m.apply(Event::LastReplyChanged {
-        agent: n("Duo"),
-        reply: Some("billing-api is waiting on approval.".to_owned()),
-    });
-    let idle = status(AgentState::Idle, mins(0));
-    m.apply(Event::AgentStatusChanged {
-        agent: n("Duo"),
-        status: idle.clone(),
-    });
-    assert_eq!(
-        m.chat.lines,
-        [ChatLine {
-            at: idle.since,
-            who: Who::Duo,
-            text: "billing-api is waiting on approval.".to_owned(),
-        }]
-    );
-    // Idle again (a repeat) adds nothing; another agent's turn end adds nothing.
-    m.apply(Event::AgentStatusChanged {
-        agent: n("Duo"),
-        status: idle,
-    });
-    m.apply(Event::AgentStatusChanged {
-        agent: n("squad-1"),
-        status: status(AgentState::Idle, mins(0)),
-    });
-    assert_eq!(m.chat.lines.len(), 1);
-}
-
-#[test]
 fn paste_goes_into_the_focused_chat() {
     let mut m = chat_focused();
     type_text(&mut m, "a");
@@ -389,50 +268,6 @@ fn paste_goes_into_the_focused_chat() {
     let mut m = spec_model();
     super::paste(&mut m, "x");
     assert_eq!(m.chat_input.text(), "");
-}
-
-#[test]
-fn returned_task_goes_back_before_newly_typed_text() {
-    let mut m = chat_focused();
-    type_text(&mut m, "run the tests");
-    press(&mut m, code(KeyCode::Enter));
-    type_text(&mut m, "and lint");
-    m.apply(Event::GiveWorkNotTaken {
-        agent: n("Duo"),
-        task: "run the tests".to_owned(),
-        reason: "no sign it started".to_owned(),
-    });
-    assert_eq!(m.chat_input.text(), "run the tests\nand lint");
-    assert!(m.chat.lines.is_empty());
-}
-
-#[test]
-fn same_reply_on_a_later_turn_is_kept() {
-    let mut m = chat_focused();
-    let reply = "done.";
-    m.apply(Event::LastReplyChanged {
-        agent: n("Duo"),
-        reply: Some(reply.to_owned()),
-    });
-    // Duo launching (starting → idle) is not a turn: nothing joins the history.
-    set_duo(&mut m, AgentState::Starting);
-    m.apply(Event::AgentStatusChanged {
-        agent: n("Duo"),
-        status: status(AgentState::Idle, mins(0)),
-    });
-    assert!(m.chat.lines.is_empty());
-    for _ in 0..2 {
-        m.apply(Event::AgentStatusChanged {
-            agent: n("Duo"),
-            status: status(AgentState::Working, mins(0)),
-        });
-        m.apply(Event::AgentStatusChanged {
-            agent: n("Duo"),
-            status: status(AgentState::Idle, mins(0)),
-        });
-    }
-    let texts: Vec<&str> = m.chat.lines.iter().map(|l| l.text.as_str()).collect();
-    assert_eq!(texts, [reply, reply]);
 }
 
 #[test]
@@ -451,29 +286,43 @@ fn chat_resizing_leaves_room_for_banners() {
 }
 
 #[test]
-fn engine_order_reply_then_idle_shows_the_new_reply() {
-    // The engine sends a turn's reply before its status change (P2-D8).
+fn duo_reply_comes_from_chat_lines() {
+    // Phase 3: the core writes Duo's reply (Task 3.8); a turn end alone adds nothing.
     let mut m = chat_focused();
-    m.agents.get_mut(&n("Duo")).unwrap().last_reply = Some("last turn's reply".to_owned());
     set_duo(&mut m, AgentState::Working);
-    let events = [
-        Event::LastReplyChanged {
-            agent: n("Duo"),
-            reply: Some("this turn's reply".to_owned()),
-        },
-        Event::AgentStatusChanged {
-            agent: n("Duo"),
-            status: status(AgentState::Idle, mins(0)),
-        },
-    ];
-    for e in events {
-        m.apply(e);
-    }
-    let texts: Vec<&str> = m.chat.lines.iter().map(|l| l.text.as_str()).collect();
-    assert_eq!(texts, ["this turn's reply"]);
+    m.apply(Event::LastReplyChanged {
+        agent: n("Duo"),
+        reply: Some("old".to_owned()),
+    });
+    m.apply(Event::AgentStatusChanged {
+        agent: n("Duo"),
+        status: status(AgentState::Idle, mins(0)),
+    });
+    assert!(m.chat.entries.is_empty());
+    m.apply(Event::ChatLine(chat_entry(
+        1,
+        NOW,
+        ChatKind::Duo,
+        "this turn's reply",
+    )));
     let screen = crate::fixtures::render_lines(&m, &crate::fixtures::ctx(), 120, 36).join("\n");
     assert!(screen.contains("Duo   this turn's reply"), "{screen}");
-    assert!(!screen.contains("last turn's reply"), "{screen}");
+}
+
+#[test]
+fn dropped_text_goes_back_before_newly_typed_text() {
+    let mut m = chat_focused();
+    type_text(&mut m, "run the tests");
+    press(&mut m, code(KeyCode::Enter));
+    type_text(&mut m, "and lint");
+    m.apply(Event::MessageDropped {
+        id: duohive_core::inbox::MessageId(1),
+        from: duohive_core::inbox::Sender::You,
+        to: n("Duo"),
+        text: "run the tests".to_owned(),
+        reason: "Duo stopped before taking it".to_owned(),
+    });
+    assert_eq!(m.chat_input.text(), "run the tests\nand lint");
 }
 
 fn needs_item(name: &str, mins_ago: u64) -> duohive_core::event::NeedsYouItem {

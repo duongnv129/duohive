@@ -376,7 +376,9 @@ pub(crate) async fn run_loop<B: Backend>(
     host: Arc<dyn TerminalHost>,
     signals: &mut QuitSignals,
 ) -> Result<(), TuiError> {
-    let mut m = UiModel::new(Org::blank(CliKind::Claude));
+    // Boxed: the model (and the copy each input compares against) would make the loop's
+    // future too large to keep on the stack (`clippy::large_futures`).
+    let mut m = Box::new(UiModel::new(Org::blank(CliKind::Claude)));
     m.settings = cfg.settings.clone();
     m.org_toml = cfg.org_toml.clone();
     m.dirs = SharedDirs(Arc::clone(&cfg.dirs));
@@ -393,7 +395,7 @@ pub(crate) async fn run_loop<B: Backend>(
     };
     let mut live = Live::new(Arc::clone(&cfg.pane_view), cfg.no_color);
     loop {
-        clock.dirty |= live.sync(&mut m, Instant::now());
+        clock.dirty |= sync_live(&mut live, &mut m, &commands).await?;
         let wake = clock.next_wake(&m);
         let open_at = live.open_at();
         let (streaming, scrolling) = (live.streaming(), live.scrolling_back());
@@ -495,6 +497,20 @@ pub(crate) async fn run_loop<B: Backend>(
             }
         }
     }
+}
+
+/// Follows the pane's stream (`Live::sync`), then tells the engine when Typing mode
+/// starts or ends (P3-D19); `true` when the screen needs a redraw.
+async fn sync_live(
+    live: &mut Live,
+    m: &mut UiModel,
+    commands: &mpsc::Sender<Command>,
+) -> Result<bool, TuiError> {
+    let dirty = live.sync(m, Instant::now());
+    if let Some(c) = live.typing_change(m) {
+        send(commands, c).await?;
+    }
+    Ok(dirty)
 }
 
 /// Records the terminal's size, which bounds the chat's resizing (P2-D3).

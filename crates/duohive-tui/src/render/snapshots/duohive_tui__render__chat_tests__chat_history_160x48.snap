@@ -1,0 +1,10 @@
+---
+source: crates/duohive-tui/src/render/chat_tests.rs
+expression: "chat_rows(&lines).join(\"\\n\")"
+---
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 10:05 you   what's blocking the Payments team?                                                                                                               │
+│ 10:05 Duo   billing-api is waiting on a file-edit approval; auth-service is mid-test.                                                                        │
+│             → @auth-service "run the tests again"   queued (auth-service is working)                                                                         │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

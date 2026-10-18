@@ -92,7 +92,7 @@ fn empty_org_and_empty_role() {
     let lines = render_lines(&model_for(org), &ctx(), 100, 30);
     let tree: Vec<String> = lines.iter().map(|l| cols(l, 50)).collect();
     assert!(tree.contains(&"┃ │  └─ ◇ Frontend                               ┃".to_owned()));
-    assert!(tree.contains(&"┃ │      no agents yet · n to add one            ┃".to_owned()));
+    assert!(tree.contains(&"┃ │      no agents yet · n to add one or ask Duo ┃".to_owned()));
 }
 
 /// The agent pane's part of each line (columns 50 onwards).

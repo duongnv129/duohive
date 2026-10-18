@@ -230,3 +230,36 @@ pub fn spec_worktrees() -> Vec<duohive_core::worktree::WorktreeRow> {
         worktree_row("squad-1", "readme", S::MergedDirty),
     ]
 }
+
+/// `h:mm` UTC on day 0, for chat times (`ctx()` has no offset).
+pub fn clock(h: u64, min: u64) -> Millis {
+    Millis((h * 60 + min) * 60_000)
+}
+
+/// A chat entry as the engine publishes it.
+pub fn chat_entry(
+    id: u64,
+    at: Millis,
+    kind: duohive_core::chat::ChatKind,
+    text: &str,
+) -> duohive_core::chat::ChatEntry {
+    duohive_core::chat::ChatEntry {
+        id: duohive_core::chat::ChatId(id),
+        at,
+        kind,
+        text: text.to_owned(),
+    }
+}
+
+/// An action line (`→ text   result`).
+pub fn action_entry(
+    id: u64,
+    at: Millis,
+    text: &str,
+    result: &str,
+) -> duohive_core::chat::ChatEntry {
+    let kind = duohive_core::chat::ChatKind::Action {
+        result: result.to_owned(),
+    };
+    chat_entry(id, at, kind, text)
+}

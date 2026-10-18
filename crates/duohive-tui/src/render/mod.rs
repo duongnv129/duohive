@@ -1,7 +1,7 @@
 //! Drawing the main screen (UI §3, §4.1) and the full-screen messages (UI §4.12).
 
 mod agent_pane;
-mod chat_pane;
+pub(crate) mod chat_pane;
 mod dialog;
 mod form;
 mod give_work;
@@ -211,6 +211,11 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
 
 /// The chat history's rows and the rows it can show, as drawn now.
 pub(crate) fn chat_history_fit(m: &UiModel) -> Option<(usize, usize)> {
+    chat_history(m).map(|f| (f.len, f.room))
+}
+
+/// How the chat history fits, as drawn now, with the row shown while following the newest.
+pub(crate) fn chat_history(m: &UiModel) -> Option<chat_pane::HistoryFit> {
     let a = pane_areas(m)?;
     chat_pane::history_fit(a.chat, m, a.compact)
 }
@@ -390,6 +395,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
 
 #[cfg(test)]
 mod auto_tests;
+#[cfg(test)]
+mod chat_tests;
 #[cfg(test)]
 mod colour_tests;
 #[cfg(test)]

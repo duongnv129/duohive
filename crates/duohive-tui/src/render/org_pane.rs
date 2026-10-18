@@ -169,14 +169,11 @@ fn draw_row(
             put(buf, x, s.y, &truncate_middle(name, room), room, fg(p.fg));
         }
         TreeRowKind::Agent => {
-            put(
-                buf,
-                x,
-                s.y,
-                &truncate_middle(&row.label, label_room),
-                label_room,
-                fg(p.fg),
-            );
+            let inbox = envelope(row.inbox, compact);
+            let name_room = label_room.saturating_sub(width(&inbox));
+            let name = truncate_middle(&row.label, name_room);
+            let x = put(buf, x, s.y, &name, name_room, fg(p.fg));
+            put(buf, x, s.y, &inbox, label_room - width(&name), fg(p.fg));
         }
         TreeRowKind::Reply => {
             let text = match row
@@ -219,6 +216,15 @@ fn draw_row(
         (TreeRowKind::Duo, _) => draw_state(buf, at, &m.org.duo.name, m, ctx, compact),
         (TreeRowKind::Agent, Some(NodeKey::Agent(a))) => draw_state(buf, at, a, m, ctx, compact),
         _ => draw_roll_up(buf, at, &row.right, &ctx.palette),
+    }
+}
+
+/// ` ✉ 1` after an agent's name, ` ✉1` in the compact tree (UI §4.1); empty with none.
+fn envelope(waiting: u32, compact: bool) -> String {
+    match (waiting, compact) {
+        (0, _) => String::new(),
+        (n, true) => format!(" ✉{n}"),
+        (n, false) => format!(" ✉ {n}"),
     }
 }
 

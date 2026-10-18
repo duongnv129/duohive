@@ -274,6 +274,10 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         // The zoomed pane is the only pane.
         return Vec::new();
     }
+    // `esc` layers (UI §4.7): the suggestion list closes first; `tab` takes from it.
+    if m.focus.pane == Pane::Chat && m.suggest.is_some() && matches!(a, Action::Esc | Action::Tab) {
+        return chat_action(m, a);
+    }
     match a {
         Action::Esc if m.zoomed_agent().is_some() => {
             panes::restore_zoom(m);
@@ -368,7 +372,10 @@ pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
             f.probe_dir(&m.org, m.dirs.probe(), &m.home);
         }
         Some(Dialog::GiveWork(g)) => g.paste(text),
-        None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
+        None if m.focus.pane == Pane::Chat => {
+            m.chat_input.insert_str(text);
+            crate::chat::refresh_suggest(m);
+        }
         _ => {}
     }
     Vec::new()
@@ -654,6 +661,8 @@ mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
+#[cfg(test)]
+mod chat_tests;
 #[cfg(test)]
 mod mouse_tests;
 #[cfg(test)]

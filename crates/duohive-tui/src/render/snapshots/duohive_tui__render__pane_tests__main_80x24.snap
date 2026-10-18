@@ -22,7 +22,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ ◆ billing-api        4m      ┃│                                              │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
-│            mid-test.                                                         │
+│ 10:05 Duo  billing-api is waiting on a file-edit approval; auth-service is   │
 │ ❯                                                                            │
 └──────────────────────────────────────────────────────────────────────────────┘
  tab pane · ↑↓ move · space give work

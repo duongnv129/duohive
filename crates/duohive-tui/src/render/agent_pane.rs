@@ -20,7 +20,9 @@ use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
 
-const EMPTY_ORG: &str = "Your org is empty · n to add a team, role or agent";
+/// UI §4.1.2: the full copy, held back by D7 and P2-D3 until Duo could act on it.
+const EMPTY_ORG: &str =
+    "Your org is empty · n to add a team, role or agent, or ask Duo to set one up";
 const STOPPED: &str = "○ stopped · space to give work";
 const ERRORED: &str = "✕ errored · s to stop";
 /// The padding cell inside the border (UI §3).
@@ -144,7 +146,7 @@ fn content(
         return (String::new(), message(&text, p.fg));
     }
     if m.org.teams.is_empty() && m.org.roles.is_empty() {
-        return (String::new(), message(EMPTY_ORG, p.fg));
+        return (String::new(), wrapped_message(EMPTY_ORG, p.fg, cells));
     }
     match &m.selected {
         NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
@@ -203,6 +205,30 @@ fn role(
         title,
         summary(m, p, &names, &role.defaults, &parent, cells, rows),
     )
+}
+
+/// A blank line, then `text` indented, wrapped between words to `cells` under itself.
+fn wrapped_message(text: &str, color: ratatui::style::Color, cells: usize) -> Vec<Line<'static>> {
+    let room = cells
+        .saturating_sub(width(PAD) + width(MESSAGE_INDENT))
+        .max(1);
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split(' ') {
+        match lines.last_mut() {
+            Some(line) if width(line) + 1 + width(word) <= room => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    std::iter::once(Line::default())
+        .chain(
+            lines
+                .into_iter()
+                .map(|l| Line::from(Span::styled(format!("{PAD}{MESSAGE_INDENT}{l}"), fg(color)))),
+        )
+        .collect()
 }
 
 /// A blank line, then `text` indented.

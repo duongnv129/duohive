@@ -7,11 +7,11 @@ use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
-use crate::chat::{ChatLine, Who};
-use crate::fixtures::{NOW, cols, ctx, mins, model_for, render_lines, spec_model, status};
+use crate::fixtures::{chat_entry, cols, ctx, mins, model_for, render_lines, spec_model, status};
 use crate::focus::{Pane, layout};
 use crate::forms::LineEdit;
 use crate::model::UiModel;
+use duohive_core::chat::ChatKind;
 
 fn nn(s: &str) -> NodeName {
     NodeName::parse(s).unwrap()
@@ -33,18 +33,19 @@ fn spec_with_chat() -> UiModel {
         role: nn("Backend"),
     });
     let at = duohive_core::time::Millis(10 * 3_600_000 + 5 * 60_000);
-    m.chat.lines = vec![
-        ChatLine {
+    m.chat.entries = vec![
+        chat_entry(
+            1,
             at,
-            who: Who::You,
-            text: "what's blocking the Payments team?".to_owned(),
-        },
-        ChatLine {
+            ChatKind::You { message: None },
+            "what's blocking the Payments team?",
+        ),
+        chat_entry(
+            2,
             at,
-            who: Who::Duo,
-            text: "billing-api is waiting on a file-edit approval; auth-service is mid-test."
-                .to_owned(),
-        },
+            ChatKind::Duo,
+            "billing-api is waiting on a file-edit approval; auth-service is mid-test.",
+        ),
     ];
     m
 }
@@ -223,21 +224,6 @@ fn chat_pane_shows_history_and_input() {
 }
 
 #[test]
-fn chat_lines_wrap_with_a_hanging_indent() {
-    let mut m = spec_model();
-    m.chat.lines = vec![ChatLine {
-        at: NOW,
-        who: Who::Duo,
-        text: "word ".repeat(30),
-    }];
-    let lines = render_lines(&m, &ctx(), 80, 24);
-    // 80×24: chat is 4 rows, two inside: the end of the reply, then the input.
-    let chat: Vec<&String> = lines[19..23].iter().collect();
-    assert!(chat[1].starts_with("│            word"), "{chat:#?}");
-    assert!(chat[2].starts_with("│ ❯ "), "{chat:#?}");
-}
-
-#[test]
 fn reconnecting_state_in_agent_pane() {
     let spec = spec_model();
     let snapshot = |reconnecting| {
@@ -326,14 +312,42 @@ fn role_summary_has_phase_2_footer() {
 }
 
 #[test]
-fn empty_org_keeps_d7_text() {
+fn empty_org_and_role_ask_duo() {
     let m = model_for(Org::blank(CliKind::Claude));
     let text = render_lines(&m, &ctx(), 160, 48).join("\n");
     assert!(
-        text.contains("│   Your org is empty · n to add a team, role or agent "),
+        text.contains(
+            "│   Your org is empty · n to add a team, role or agent, or ask Duo to set one up"
+        ),
         "{text}"
     );
-    assert!(!text.contains("ask Duo"));
+    // A narrow pane wraps it under itself.
+    let narrow = render_lines(&m, &ctx(), 80, 24);
+    let side: Vec<String> = narrow
+        .iter()
+        .map(|l| l.chars().skip(32).collect())
+        .collect();
+    let at = side
+        .iter()
+        .position(|l| l.starts_with("│   Your org is empty"))
+        .unwrap_or_else(|| panic!("{side:#?}"));
+    assert!(side[at + 1].starts_with("│   "), "{side:#?}");
+    assert!(
+        side[at..=at + 2].join(" ").contains("set one up"),
+        "{side:#?}"
+    );
+    let mut org = duohive_core::testkit::example_org();
+    org.teams[0].roles.push(duohive_core::org::Role {
+        name: nn("Frontend"),
+        defaults: duohive_core::org::Fields::default(),
+        agents: Vec::new(),
+    });
+    let lines = render_lines(&model_for(org), &ctx(), 100, 30);
+    let tree: Vec<String> = lines.iter().map(|l| cols(l, 50)).collect();
+    assert!(
+        tree.contains(&"┃ │      no agents yet · n to add one or ask Duo ┃".to_owned()),
+        "{tree:#?}"
+    );
 }
 
 #[test]
@@ -350,17 +364,10 @@ fn running_agent_pane_shows_its_state_and_no_attach_hint() {
 fn chat_times_are_local() {
     let mut m = spec_model();
     let at = |h: u64, min: u64| duohive_core::time::Millis((h * 60 + min) * 60_000);
-    m.chat.lines = vec![
-        ChatLine {
-            at: at(3, 5),
-            who: Who::You,
-            text: "east".to_owned(),
-        },
-        ChatLine {
-            at: at(1, 0),
-            who: Who::You,
-            text: "west".to_owned(),
-        },
+    let you = ChatKind::You { message: None };
+    m.chat.entries = vec![
+        chat_entry(1, at(3, 5), you.clone(), "east"),
+        chat_entry(2, at(1, 0), you, "west"),
     ];
     let text = |offset: i32| {
         let mut c = ctx();
