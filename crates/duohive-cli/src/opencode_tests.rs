@@ -263,7 +263,7 @@ fn no_auto_approve_flags() {
 fn launch_allows_only_duohive_tools() {
     let s = spec(Some("t"));
     let cmd = launch(&s);
-    // Provisional: S2.5's 1.18 shape until Task 3.2 Step 5 checks 2.0.
+    // S2.5's 1.18 shape, loaded by 2.0.29 under `--standalone` (checked live, Task 3.2).
     assert_eq!(
         config_json(&cmd)["mcp"],
         serde_json::json!({"duohive": {

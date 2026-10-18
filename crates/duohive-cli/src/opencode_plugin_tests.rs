@@ -368,7 +368,8 @@ fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
 }
 
 /// P3-D1: a request on a `duohive` tool is allowed unless the user denied it;
-/// every other request keeps its effect (provisional match until Step 5).
+/// every other request keeps its effect. On 2.0.29 the hook sees a `duohive` tool as
+/// `action: "duohive_<tool>"`, `resources: ["*"]` (checked live, Task 3.2).
 fn evaluate_allows_only_duohive_tools(results: &Value) {
     assert_eq!(
         results["evaluateDuohive"],
