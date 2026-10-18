@@ -8,6 +8,7 @@ mod harness;
 mod lifecycle;
 mod org_edit;
 mod reconnect;
+mod rights;
 mod signals;
 mod timers;
 mod tools;
@@ -367,7 +368,11 @@ impl Engine {
             Command::UpdateSettings(s) => self.update_settings(s),
             // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
-            Command::Tool { call_id, call, .. } => tools::answer(call_id, &call),
+            Command::Tool {
+                call_id,
+                token,
+                call,
+            } => self.on_tool(call_id, &token, &call),
             Command::SendMessage { .. }
             | Command::ChatToDuo { .. }
             | Command::AssignToRole { .. }

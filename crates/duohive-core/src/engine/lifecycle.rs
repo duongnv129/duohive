@@ -14,6 +14,7 @@ use crate::inherit::{expand_home, resolve};
 use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
+use crate::tool::Given;
 use crate::validate::{DirStatus, agent_problem};
 use crate::worktree::{RunIn, TaskId};
 
@@ -35,40 +36,84 @@ impl Engine {
     /// `GiveWork` by state (TD §5.1). `run` applies to a fresh launch only: a
     /// finished or idle agent takes the task where its session already runs.
     pub(super) fn give_work(&mut self, agent: AgentName, task: String, run: RunIn) -> Vec<Event> {
-        if !self.knows(&agent) {
-            return reject(format!("no agent named {agent}"));
+        let mut out = Vec::new();
+        match self.give(&agent, task, run, &mut out) {
+            Ok(_) | Err(GiveRefusal::Launch(_)) => out,
+            Err(GiveRefusal::Unknown) => reject(format!("no agent named {agent}")),
+            Err(GiveRefusal::EmptyTask) => reject("the task is empty"),
+            Err(GiveRefusal::GettingReady) => reject(getting_ready(&agent)),
+            Err(GiveRefusal::Pending) => vec![Event::GiveWorkRefused {
+                state: self.state_of(&agent),
+                agent,
+                pending: true,
+            }],
+            Err(GiveRefusal::Busy(state)) => vec![Event::GiveWorkRefused {
+                agent,
+                state,
+                pending: false,
+            }],
+        }
+    }
+
+    /// Gives work by state (TD §5.1): the one path for Give work, `start_agent`,
+    /// `assign_to_role` and your messages. A launch's events go to `out`; a new
+    /// worktree gives `CreatingWorktree`, and the launch follows its `Created`.
+    pub(super) fn give(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        run: RunIn,
+        out: &mut Vec<Event>,
+    ) -> Result<Given, GiveRefusal> {
+        if !self.knows(agent) {
+            return Err(GiveRefusal::Unknown);
         }
         if task.trim().is_empty() {
-            return reject("the task is empty");
+            return Err(GiveRefusal::EmptyTask);
         }
-        if self.creating_worktree(&agent) {
-            return reject(getting_ready(&agent));
+        if self.creating_worktree(agent) {
+            return Err(GiveRefusal::GettingReady);
         }
-        match self.state_of(&agent) {
+        match self.state_of(agent) {
             AgentState::Stopped | AgentState::Errored => {
-                self.launch_or_queue(agent, Some(task), run)
+                let launched = self.launch_or_queue(agent.clone(), Some(task), run);
+                let rejected = launched.iter().find_map(|e| match e {
+                    Event::CommandRejected { reason } => Some(reason.clone()),
+                    _ => None,
+                });
+                out.extend(launched);
+                if self.creating_worktree(agent) {
+                    return Ok(Given::CreatingWorktree);
+                }
+                match self.state_of(agent) {
+                    AgentState::Errored | AgentState::Stopped => {
+                        let reason = self
+                            .agents
+                            .get(agent)
+                            .and_then(|rt| rt.status.error.clone())
+                            .or(rejected)
+                            .unwrap_or_else(|| "couldn't start".to_owned());
+                        Err(GiveRefusal::Launch(reason))
+                    }
+                    _ => Ok(Given::Started { worktree: false }),
+                }
             }
             // P2-D11: one delivery at a time.
-            state @ (AgentState::Finished | AgentState::Idle)
+            AgentState::Finished | AgentState::Idle
                 if self
                     .agents
-                    .get(&agent)
+                    .get(agent)
                     .is_some_and(|rt| rt.delivery.is_some()) =>
             {
-                vec![Event::GiveWorkRefused {
-                    agent,
-                    state,
-                    pending: true,
-                }]
+                Err(GiveRefusal::Pending)
             }
-            AgentState::Finished | AgentState::Idle => self.type_next_turn(&agent, task),
+            AgentState::Finished | AgentState::Idle => {
+                out.extend(self.type_next_turn(agent, task));
+                Ok(Given::TypedIn)
+            }
             // Starting has no input box yet; working and waiting are busy.
             state @ (AgentState::Starting | AgentState::Working | AgentState::Waiting) => {
-                vec![Event::GiveWorkRefused {
-                    agent,
-                    state,
-                    pending: false,
-                }]
+                Err(GiveRefusal::Busy(state))
             }
         }
     }
@@ -397,3 +442,20 @@ mod stop_tests;
 mod tests;
 #[cfg(test)]
 mod worktree_tests;
+
+/// Why work could not be given.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum GiveRefusal {
+    /// No agent has that name.
+    Unknown,
+    /// Busy in this state.
+    Busy(AgentState),
+    /// A delivery is still waiting to be taken (P2-D11).
+    Pending,
+    /// Its worktree is being created (P2-D20).
+    GettingReady,
+    /// The task is empty.
+    EmptyTask,
+    /// The launch failed; its events say why.
+    Launch(String),
+}

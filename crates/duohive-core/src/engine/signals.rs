@@ -450,7 +450,7 @@ fn unexpected(status: Option<i32>) -> String {
 }
 
 /// Compares tokens in time independent of where they differ (TD §6.1).
-fn same_token(expected: &str, given: &str) -> bool {
+pub(crate) fn same_token(expected: &str, given: &str) -> bool {
     let (a, b) = (expected.as_bytes(), given.as_bytes());
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
