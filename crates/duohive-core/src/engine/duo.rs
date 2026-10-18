@@ -7,7 +7,7 @@
 use std::time::Duration;
 
 use super::Engine;
-use super::lifecycle::{GiveRefusal, getting_ready};
+use super::lifecycle::{GiveRefusal, getting_ready, typing_into};
 use crate::card::{CardChange, CardSource};
 use crate::event::Event;
 use crate::inherit::resolve;
@@ -200,6 +200,7 @@ impl Engine {
             }
             Err(GiveRefusal::Pending) => format!("{agent} is still taking the last task"),
             Err(GiveRefusal::GettingReady) => getting_ready(agent),
+            Err(GiveRefusal::Typing) => typing_into(agent),
             Err(GiveRefusal::Launch(reason)) => reason,
         };
         Err(ToolError::new(ErrorCode::Refused, refusal))

@@ -242,6 +242,31 @@ fn created(agent: &str, task: TaskId, result: Result<(BaseRef, String), GitError
 }
 
 #[test]
+fn assign_skips_agent_you_type_into() {
+    let mut h = Harness::new();
+    rest(&mut h, "squad-1", AgentState::Idle, 50);
+    rest(&mut h, "squad-2", AgentState::Finished, 100);
+    h.force("squad-3", AgentState::Working);
+    h.send(Command::Typing {
+        agent: Some(n("squad-1")),
+    });
+    assert!(!h.engine.is_free(&n("squad-1")));
+    assert_eq!(h.engine.free_agents(&generalist()), [n("squad-2")]);
+    let events = assign(&mut h, generalist(), None);
+    assert_eq!(
+        assigned(&events),
+        [RoleOutcome::Given {
+            agent: n("squad-2"),
+            given: Given::TypedIn
+        }]
+    );
+    assert!(pastes_to(&h, "squad-1").is_empty());
+    // Picked by name: refused with the reason.
+    let events = assign(&mut h, generalist(), Some("squad-1"));
+    assert_eq!(refused(&events), ["you are typing into squad-1"]);
+}
+
+#[test]
 fn longest_at_rest_wins() {
     let mut h = Harness::new();
     rest(&mut h, "squad-2", AgentState::Finished, 100);

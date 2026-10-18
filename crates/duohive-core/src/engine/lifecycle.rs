@@ -38,11 +38,12 @@ impl Engine {
     /// finished or idle agent takes the task where its session already runs.
     pub(super) fn give_work(&mut self, agent: AgentName, task: String, run: RunIn) -> Vec<Event> {
         let mut out = Vec::new();
-        match self.give(&agent, task, run, &mut out) {
+        match self.give_by(&agent, task, run, Giver::You, &mut out) {
             Ok(_) | Err(GiveRefusal::Launch(_)) => out,
             Err(GiveRefusal::Unknown) => reject(format!("no agent named {agent}")),
             Err(GiveRefusal::EmptyTask) => reject("the task is empty"),
             Err(GiveRefusal::GettingReady) => reject(getting_ready(&agent)),
+            Err(GiveRefusal::Typing) => reject(typing_into(&agent)),
             Err(GiveRefusal::Pending) => vec![Event::GiveWorkRefused {
                 state: self.state_of(&agent),
                 agent,
@@ -56,14 +57,28 @@ impl Engine {
         }
     }
 
-    /// Gives work by state (TD §5.1): the one path for Give work, `start_agent`,
-    /// `assign_to_role` and your messages. A launch's events go to `out`; a new
-    /// worktree gives `CreatingWorktree`, and the launch follows its `Created`.
+    /// Gives work by state (TD §5.1) for anything but your Give work:
+    /// `start_agent`, `assign_to_role`, cards and your messages. Nothing is
+    /// typed into the agent you are typing into (P3-D19).
     pub(super) fn give(
         &mut self,
         agent: &AgentName,
         task: String,
         run: RunIn,
+        out: &mut Vec<Event>,
+    ) -> Result<Given, GiveRefusal> {
+        self.give_by(agent, task, run, Giver::Other, out)
+    }
+
+    /// Gives work by state (TD §5.1): the one path for Give work, `start_agent`,
+    /// `assign_to_role` and your messages. A launch's events go to `out`; a new
+    /// worktree gives `CreatingWorktree`, and the launch follows its `Created`.
+    fn give_by(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        run: RunIn,
+        giver: Giver,
         out: &mut Vec<Event>,
     ) -> Result<Given, GiveRefusal> {
         if !self.knows(agent) {
@@ -107,6 +122,13 @@ impl Engine {
                     .is_some_and(|rt| rt.delivery.is_some()) =>
             {
                 Err(GiveRefusal::Pending)
+            }
+            // P3-D19: a paste would join your half-typed line; only your own
+            // Give work goes in.
+            AgentState::Finished | AgentState::Idle
+                if giver == Giver::Other && self.typing.as_ref() == Some(agent) =>
+            {
+                Err(GiveRefusal::Typing)
             }
             AgentState::Finished | AgentState::Idle => {
                 match self.type_next_turn(agent, task, None) {
@@ -451,6 +473,11 @@ impl Engine {
     }
 }
 
+/// P3-D19's refusal while you type into `agent`.
+pub(super) fn typing_into(agent: &AgentName) -> String {
+    format!("you are typing into {agent}")
+}
+
 /// P2-D20's refusal while `agent`'s worktree is being created.
 pub(super) fn getting_ready(agent: &AgentName) -> String {
     format!("{agent} is getting a worktree ready")
@@ -462,6 +489,16 @@ pub(super) fn not_found(cli: CliKind) -> String {
         "{} not found · install it or change its CLI (e)",
         cli.binary()
     )
+}
+
+/// Who gives the work: your Give work types in even while you type into
+/// the agent (it is your own act); anything else is held back (P3-D19).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Giver {
+    /// Your Give work.
+    You,
+    /// A tool, a card, an assignment or a message.
+    Other,
 }
 
 #[cfg(test)]
@@ -482,6 +519,8 @@ pub(super) enum GiveRefusal {
     Busy(AgentState),
     /// A delivery is still waiting to be taken (P2-D11).
     Pending,
+    /// You are typing into the agent (P3-D19).
+    Typing,
     /// Its worktree is being created (P2-D20).
     GettingReady,
     /// The task is empty.

@@ -3,7 +3,7 @@
 //! new agent cloned from the role, whatever Duo's state.
 
 use super::Engine;
-use super::lifecycle::GiveRefusal;
+use super::lifecycle::{GiveRefusal, typing_into};
 use super::org_edit::find_role;
 use crate::card::{CardChange, CardId, CardSource};
 use crate::command::AgentDraft;
@@ -64,6 +64,9 @@ impl Engine {
                     format!("{pick} isn't in {path}"),
                 ));
             }
+            Some(pick) if self.typing.as_ref() == Some(&pick) => {
+                return Err(give_error(&pick, GiveRefusal::Typing));
+            }
             Some(pick) if !free.contains(&pick) => return Err(not_free(&pick)),
             Some(pick) => pick,
             None => match free.into_iter().next() {
@@ -107,8 +110,12 @@ impl Engine {
     }
 
     /// Free (TD §5.4): stopped, finished or idle, with no delivery pending
-    /// (P2-D11), no worktree being created (P2-D20), and not being stopped.
+    /// (P2-D11), no worktree being created (P2-D20), not being stopped, and
+    /// not being typed into (P3-D19).
     pub(super) fn is_free(&self, agent: &AgentName) -> bool {
+        if self.typing.as_ref() == Some(agent) {
+            return false;
+        }
         let Some(rt) = self.agents.get(agent) else {
             // No runtime state yet: never launched, so stopped.
             return true;
@@ -194,6 +201,7 @@ fn give_error(agent: &AgentName, refusal: GiveRefusal) -> ToolError {
         }
         GiveRefusal::EmptyTask => ToolError::new(ErrorCode::InvalidArguments, "the task is empty"),
         GiveRefusal::Busy(_) | GiveRefusal::Pending | GiveRefusal::GettingReady => not_free(agent),
+        GiveRefusal::Typing => ToolError::new(ErrorCode::Refused, typing_into(agent)),
         GiveRefusal::Launch(reason) => ToolError::new(ErrorCode::Refused, reason),
     }
 }

@@ -407,6 +407,29 @@ fn start_busy_agent_refused() {
 }
 
 #[test]
+fn start_agent_refused_while_you_type() {
+    let mut h = with_duo();
+    idle(&mut h, "squad-1");
+    h.send(Command::Typing {
+        agent: Some(n("squad-1")),
+    });
+    assert_eq!(
+        answer(&mut h, start("squad-1", None)),
+        refused("you are typing into squad-1")
+    );
+    assert!(
+        !h.calls()
+            .iter()
+            .any(|c| matches!(c, RuntimeCall::Paste(a, ..) if *a == n("squad-1")))
+    );
+    // Your own Give work still types in (P3-D19 holds back deliveries only).
+    h.give("squad-1", "yours");
+    assert!(h.calls().iter().any(
+        |c| matches!(c, RuntimeCall::Paste(a, _, text, _) if *a == n("squad-1") && text == "yours")
+    ));
+}
+
+#[test]
 fn start_idle_agent_types_in() {
     let mut h = with_duo();
     idle(&mut h, "squad-1");
