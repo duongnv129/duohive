@@ -483,6 +483,7 @@ fn needs_item(name: &str, mins_ago: u64) -> duohive_core::event::NeedsYouItem {
         quiet: false,
         since: crate::fixtures::ago(mins(mins_ago)),
         excerpt: None,
+        card: None,
     }
 }
 
@@ -572,6 +573,9 @@ fn cursor_follows_agent_across_a_snapshot() {
         settings_error: None,
         reconnecting: 0,
         worktrees: Vec::new(),
+        cards: Vec::new(),
+        chat: Vec::new(),
+        your_queued: Vec::new(),
     };
     m.apply(Event::Snapshot(Box::new(s)));
     assert_eq!(m.focus.needs_you_cursor, 0);

@@ -211,3 +211,16 @@ exit 0
 Targets at 10 agents: idle CPU under 1 %, memory under 20 MB, hook to screen under 1 s. All three are met with the live view open.
 
 Memory is the target to watch. The live view adds about 4.6 MB: the view's own tmux client (about 4 MB) and the terminal emulator behind the pane. That leaves about 2 MB of headroom under 20 MB, against 7 MB in Phase 1. The streamed pane is small here (a fake agent's output, under 1 KB). To keep a stalled UI from using up that headroom, a view stream that falls more than 1 MiB behind is closed (`MAX_BACKLOG`, Task 2.18 fix round; it was 8 MiB). The bench does not measure a real agent's long output.
+
+## Phase 3
+
+### P3-D8: the MCP library and the binary size (Task 3.1, 2026-10-18)
+
+The release binary on macOS (`cargo build --release -p duohive`), at the Task 3.1 tree:
+
+| Build | Size (bytes) | Under 10 MB? |
+|---|---|---|
+| Without `rmcp` | 8,797,760 | yes |
+| With `rmcp =3.5.1` (`server`, `transport-io`), a do-nothing stdio server reachable from `main` | 11,085,488 | no |
+
+`rmcp` adds about 2.3 MB and takes the binary over the PRD's 10 MB target, so P3-D8's fallback applies: no `rmcp`. Task 3.2 writes the helper's MCP server as a hand-written JSON-RPC over stdio. The probe was removed after measuring.

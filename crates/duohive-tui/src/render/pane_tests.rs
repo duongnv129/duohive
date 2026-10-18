@@ -249,6 +249,9 @@ fn reconnecting_state_in_agent_pane() {
             settings_error: None,
             reconnecting,
             worktrees: Vec::new(),
+            cards: Vec::new(),
+            chat: Vec::new(),
+            your_queued: Vec::new(),
         }))
     };
     let mut m = UiModel::new(spec.org.clone());

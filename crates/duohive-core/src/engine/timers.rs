@@ -189,6 +189,7 @@ impl Engine {
                     quiet: s.quiet,
                     since,
                     excerpt,
+                    card: None,
                 })
             })
             .collect();

@@ -505,7 +505,9 @@ fn node_path(org: &Org, edit: &OrgEdit) -> Option<String> {
             let team = loc.team.map(|t| &t.name);
             format!("{}.agent[{}]", role_path(team, &loc.role.name), draft.name)
         }
-        OrgEdit::EditOrgDefaults { .. } | OrgEdit::Delete(_) => return None,
+        OrgEdit::EditOrgDefaults { .. } | OrgEdit::Delete(_) | OrgEdit::Move { .. } => {
+            return None;
+        }
     })
 }
 

@@ -306,12 +306,20 @@ pub async fn start_system(
         inputs_tx.clone(),
     );
     let (listener_stop, stop) = oneshot::channel::<()>();
-    let serve = listener.serve_until(agents, adapters, inputs_tx, opts.tap, async {
-        // Sent or dropped: either way, stop.
-        let _ = stop.await;
-    });
+    let calls = duohive_mcp::calls::Calls::new();
+    let serve = listener.serve_until(
+        agents,
+        adapters,
+        inputs_tx,
+        opts.tap,
+        calls.clone(),
+        async {
+            // Sent or dropped: either way, stop.
+            let _ = stop.await;
+        },
+    );
     let (_, listener) = supervise("hook listener", boxed(serve), commands.clone());
-    let forward = forward_events(core_rx, events_tx, tracker);
+    let forward = forward_events(core_rx, events_tx, tracker, calls);
     let mut tasks = Vec::new();
     let mut supervisors = Vec::new();
     for (name, task) in [
@@ -479,8 +487,14 @@ async fn forward_events(
     mut from_core: mpsc::UnboundedReceiver<Event>,
     to_app: mpsc::UnboundedSender<Event>,
     tracker: Tracker,
+    calls: duohive_mcp::calls::Calls,
 ) {
     while let Some(event) = from_core.recv().await {
+        // A tool result goes to its call, never to the app.
+        if let Event::ToolResult { call_id, result } = event {
+            calls.resolve(call_id, result);
+            continue;
+        }
         tracker.track(&event);
         if to_app.send(event).is_err() {
             return;

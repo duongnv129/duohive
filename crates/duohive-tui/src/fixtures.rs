@@ -58,6 +58,7 @@ pub fn view(status: Status) -> AgentView {
         problem: None,
         worktree: None,
         delivery_pending: false,
+        inbox: 0,
     }
 }
 
@@ -122,6 +123,7 @@ pub fn spec_model() -> UiModel {
             quiet: true,
             since: ago(mins(6)),
             excerpt: None,
+            card: None,
         },
         NeedsYouItem {
             agent: n("billing-api"),
@@ -129,6 +131,7 @@ pub fn spec_model() -> UiModel {
             quiet: false,
             since: ago(mins(4)),
             excerpt: Some("Allow edit to api.go?".to_owned()),
+            card: None,
         },
     ];
     m.selected = NodeKey::Agent(n("auth-service"));

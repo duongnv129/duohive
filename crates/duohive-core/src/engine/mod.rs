@@ -10,6 +10,7 @@ mod org_edit;
 mod reconnect;
 mod signals;
 mod timers;
+mod tools;
 mod worktrees;
 
 pub use driver::run_core;
@@ -363,6 +364,13 @@ impl Engine {
             Command::UpdateSettings(s) => self.update_settings(s),
             // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
+            Command::Tool { call_id, call, .. } => tools::answer(call_id, &call),
+            Command::SendMessage { .. }
+            | Command::ChatToDuo { .. }
+            | Command::AssignToRole { .. }
+            | Command::ApproveCard { .. }
+            | Command::RejectCard { .. }
+            | Command::Typing { .. } => reject("not built yet"),
         }
     }
 
@@ -382,6 +390,7 @@ impl Engine {
                     problem: problems.remove(&name),
                     worktree: rt.and_then(|r| r.worktree.clone()),
                     delivery_pending: rt.is_some_and(|r| r.delivery.is_some()),
+                    inbox: 0,
                 };
                 (name, view)
             })
@@ -394,6 +403,9 @@ impl Engine {
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
             worktrees: self.worktrees_shown.clone(),
+            cards: Vec::new(),
+            chat: Vec::new(),
+            your_queued: Vec::new(),
         }
     }
 

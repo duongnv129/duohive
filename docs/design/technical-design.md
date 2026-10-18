@@ -67,9 +67,9 @@ Dependencies point inward only:
 
 ### 3.2 Command/event boundary
 
-- **Interfaces send commands to the core:** `GiveWork`, `StartAgent`, `StopAgent`, `ViewAgent`, `SendMessage`, `ChatToDuo`, `AssignToRole`, `ProposeOrgChange`, `ApproveCard`, `EditOrg`, `NewOrgFromTemplate`, …
-- **The core publishes events:** `AgentStatusChanged`, `LastReplyChanged`, `MessageQueued`, `MessageDelivered`, `CardRaised`, `CardAnswered`, `ChatLine`, `OrgChanged`, `NeedsYouChanged`, `Alert`, …
-- **No interface calls another:** the TUI renders events; the MCP endpoint turns tool calls into commands and awaits their results.
+- **Interfaces send commands to the core:** `GiveWork`, `StartAgent`, `StopAgent`, `ViewAgent`, `SendMessage`, `ChatToDuo`, `AssignToRole`, `ProposeOrgChange`, `ApproveCard`, `RejectCard`, `Typing`, `Tool`, `EditOrg`, `NewOrgFromTemplate`, …. Duo's `ProposeOrgChange` arrives as a `Tool` call.
+- **The core publishes events:** `AgentStatusChanged`, `LastReplyChanged`, `MessageQueued`, `MessageDelivered`, `MessageDropped`, `MessageRefused`, `InboxChanged`, `CardRaised`, `CardAnswered`, `ChatLine`, `RoleAssigned`, `AssignRefused`, `ToolResult`, `OrgChanged`, `NeedsYouChanged`, `Alert`, …
+- **No interface calls another:** the TUI renders events; the MCP endpoint turns tool calls into `Tool` commands and awaits the `ToolResult` with the same call id. No channel travels inside a command.
 
 Commands and events are plain serialisable enums. When the core moves into a background service, this boundary becomes a local socket, and nothing else changes.
 

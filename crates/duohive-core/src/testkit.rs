@@ -690,3 +690,127 @@ impl Git for FakeGit {
         self.calls.lock().unwrap().push(GitCall::Remove(req));
     }
 }
+
+/// P3-D27's example `change` objects and what each parses to.
+#[expect(clippy::too_many_lines, reason = "one example per change shape")]
+pub fn change_examples() -> Vec<(serde_json::Value, crate::command::OrgEdit)> {
+    use crate::command::{AgentDraft, MoveTarget, OrgEdit, RoleDraft, TeamDraft};
+    use crate::org::{NodeKey, RoleKey};
+    use serde_json::json;
+    let node = |s: &str| NodeName::parse(s).unwrap();
+    let agent = |s: &str| AgentName::parse(s).unwrap();
+    let role_key = |team: Option<&str>, role: &str| RoleKey {
+        team: team.map(node),
+        role: node(role),
+    };
+    let web_fields = Fields {
+        directory: Some("~/code/web".to_owned()),
+        ..Fields::default()
+    };
+    let claude = Fields {
+        cli: Some(crate::cli_kind::CliKind::Claude),
+        ..Fields::default()
+    };
+    vec![
+        (
+            json!({"op": "add_team", "name": "Growth", "fields": {}}),
+            OrgEdit::AddTeam(TeamDraft {
+                name: node("Growth"),
+                defaults: Fields::default(),
+            }),
+        ),
+        (
+            json!({"op": "add_role", "team": "Payments", "name": "Frontend",
+                   "fields": {"directory": "~/code/web"}, "agents": 1}),
+            OrgEdit::AddRole {
+                team: Some(node("Payments")),
+                role: RoleDraft {
+                    name: node("Frontend"),
+                    defaults: web_fields,
+                },
+                agents: 1,
+            },
+        ),
+        (
+            json!({"op": "add_agent", "role": {"team": "Payments", "role": "Frontend"},
+                   "name": "pay-web", "fields": {"cli": "claude"}}),
+            OrgEdit::AddAgent {
+                role: role_key(Some("Payments"), "Frontend"),
+                agent: AgentDraft {
+                    name: agent("pay-web"),
+                    fields: claude.clone(),
+                },
+            },
+        ),
+        (
+            json!({"op": "edit_team", "team": "Growth", "name": "Growth", "fields": {}}),
+            OrgEdit::EditTeam {
+                key: node("Growth"),
+                draft: TeamDraft {
+                    name: node("Growth"),
+                    defaults: Fields::default(),
+                },
+            },
+        ),
+        (
+            json!({"op": "edit_role", "role": {"team": null, "role": "Generalist"},
+                   "name": "Generalist", "fields": {"worktree": true}}),
+            OrgEdit::EditRole {
+                key: role_key(None, "Generalist"),
+                draft: RoleDraft {
+                    name: node("Generalist"),
+                    defaults: Fields {
+                        worktree: Some(true),
+                        ..Fields::default()
+                    },
+                },
+            },
+        ),
+        (
+            json!({"op": "edit_agent", "agent": "pay-web", "name": "pay-web",
+                   "fields": {"cli": "claude"}}),
+            OrgEdit::EditAgent {
+                key: agent("pay-web"),
+                draft: AgentDraft {
+                    name: agent("pay-web"),
+                    fields: claude,
+                },
+            },
+        ),
+        (
+            json!({"op": "move", "node": {"agent": "pay-qa"},
+                   "to": {"role": "QA", "team": "Payments"}}),
+            OrgEdit::Move {
+                node: NodeKey::Agent(agent("pay-qa")),
+                to: MoveTarget::Into(NodeKey::Role(role_key(Some("Payments"), "QA"))),
+            },
+        ),
+        (
+            json!({"op": "move", "node": {"role": "QA", "team": "Payments"},
+                   "to": {"duo": true}}),
+            OrgEdit::Move {
+                node: NodeKey::Role(role_key(Some("Payments"), "QA")),
+                to: MoveTarget::Into(NodeKey::Duo),
+            },
+        ),
+        (
+            json!({"op": "move", "node": {"team": "Growth"},
+                   "to": {"before_team": "Payments"}}),
+            OrgEdit::Move {
+                node: NodeKey::Team(node("Growth")),
+                to: MoveTarget::Before(node("Payments")),
+            },
+        ),
+        (
+            json!({"op": "move", "node": {"team": "Growth"}, "to": "end"}),
+            OrgEdit::Move {
+                node: NodeKey::Team(node("Growth")),
+                to: MoveTarget::End,
+            },
+        ),
+        (
+            json!({"op": "remove", "node": {"role": "QA", "team": "Payments"}}),
+            OrgEdit::Delete(NodeKey::Role(role_key(Some("Payments"), "QA"))),
+        ),
+    ]
+}

@@ -327,6 +327,7 @@ fn needs_you_holds_waiting_quiet_errored_oldest_first() {
             quiet: true,
             since: h.t0,
             excerpt: None,
+            card: None,
         }
     );
     assert_eq!(items[1].since, h.t0 + secs(120));

@@ -149,6 +149,9 @@ pub(super) fn snapshot(m: &UiModel) -> Event {
         settings_error: None,
         reconnecting: 0,
         worktrees: Vec::new(),
+        cards: Vec::new(),
+        chat: Vec::new(),
+        your_queued: Vec::new(),
     }))
 }
 

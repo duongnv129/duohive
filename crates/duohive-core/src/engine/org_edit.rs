@@ -367,6 +367,7 @@ pub fn preview_edit(org: &Org, edit: &OrgEdit) -> Result<Org, Vec<FieldError>> {
 /// Applies `edit` to `org`; fails only when its target doesn't exist.
 fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
     match edit {
+        OrgEdit::Move { .. } => return Err("moving isn't built yet".to_owned()),
         OrgEdit::AddTeam(d) => org.teams.push(Team {
             name: d.name.clone(),
             defaults: d.defaults.clone(),

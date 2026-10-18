@@ -5,11 +5,16 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::alert::Alert;
+use crate::card::{Card, CardId, CardOutcome};
+use crate::chat::ChatEntry;
+use crate::inbox::{MessageId, Sender};
 use crate::names::AgentName;
 use crate::org::Org;
+use crate::org::RoleKey;
 use crate::ports::OrgFileError;
 use crate::status::{AgentState, Status};
 use crate::time::Millis;
+use crate::tool::{CallId, Given, ToolResult};
 use crate::worktree::{TaskId, WorktreeRow};
 
 /// What the UI shows for one agent.
@@ -27,6 +32,8 @@ pub struct AgentView {
     pub worktree: Option<TaskId>,
     /// A delivery is waiting on the agent.
     pub delivery_pending: bool,
+    /// Messages waiting for it (`✉ N`, UI §2.2).
+    pub inbox: u32,
 }
 
 /// One entry in the Needs you list.
@@ -42,6 +49,8 @@ pub struct NeedsYouItem {
     pub since: Millis,
     /// A short excerpt of what it needs.
     pub excerpt: Option<String>,
+    /// The card, for a Duo approval row (P3-D25).
+    pub card: Option<CardId>,
 }
 
 /// Everything the UI needs to draw a first frame.
@@ -61,6 +70,12 @@ pub struct Snapshot {
     pub reconnecting: u32,
     /// The worktrees; empty until they are listed.
     pub worktrees: Vec<WorktreeRow>,
+    /// Pending cards, oldest first.
+    pub cards: Vec<Card>,
+    /// The last chat lines, oldest first (P3-Q5: 500).
+    pub chat: Vec<ChatEntry>,
+    /// Your messages not yet delivered.
+    pub your_queued: Vec<MessageId>,
 }
 
 /// A change the engine reports.
@@ -145,6 +160,99 @@ pub enum Event {
         /// A delivery is waiting on it.
         delivery_pending: bool,
     },
+    /// The answer to a tool call (`Command::Tool`).
+    ToolResult {
+        /// The call it answers.
+        call_id: CallId,
+        /// The result.
+        result: ToolResult,
+    },
+    /// A message was queued.
+    MessageQueued {
+        /// Its id.
+        id: MessageId,
+        /// Who sent it.
+        from: Sender,
+        /// Who it is for.
+        to: AgentName,
+    },
+    /// A message was delivered.
+    MessageDelivered {
+        /// Its id.
+        id: MessageId,
+    },
+    /// A message was dropped and will never be delivered.
+    MessageDropped {
+        /// Its id.
+        id: MessageId,
+        /// Who sent it.
+        from: Sender,
+        /// Who it was for.
+        to: AgentName,
+        /// Its text.
+        text: String,
+        /// Why.
+        reason: String,
+    },
+    /// The number of messages waiting for an agent changed.
+    InboxChanged {
+        /// Which agent.
+        agent: AgentName,
+        /// How many wait.
+        waiting: u32,
+    },
+    /// A card was raised.
+    CardRaised(Box<Card>),
+    /// A card was answered.
+    CardAnswered {
+        /// Which card.
+        card: CardId,
+        /// How.
+        outcome: CardOutcome,
+    },
+    /// A chat line.
+    ChatLine(ChatEntry),
+    /// Your `SendMessage` was refused.
+    MessageRefused {
+        /// The recipient you named.
+        to: AgentName,
+        /// Your text, so it can be kept.
+        text: String,
+        /// Why.
+        reason: String,
+    },
+    /// Your `AssignToRole` was carried out.
+    RoleAssigned {
+        /// The role.
+        role: RoleKey,
+        /// The task.
+        task: String,
+        /// What happened.
+        outcome: RoleOutcome,
+    },
+    /// Your `AssignToRole` was refused.
+    AssignRefused {
+        /// The role.
+        role: RoleKey,
+        /// The task, so it can be kept.
+        task: String,
+        /// Why.
+        reason: String,
+    },
+}
+
+/// What happened to a task given to a role.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RoleOutcome {
+    /// An agent took it.
+    Given {
+        /// Which agent.
+        agent: AgentName,
+        /// How.
+        given: Given,
+    },
+    /// No agent was free; a card proposes a new one.
+    Card(CardId),
 }
 
 #[cfg(test)]
@@ -242,6 +350,7 @@ mod tests {
             quiet: true,
             since: Millis(9),
             excerpt: Some("ok?".into()),
+            card: None,
         }
     }
 
@@ -260,6 +369,7 @@ mod tests {
                 problem: Some("p".into()),
                 worktree: None,
                 delivery_pending: false,
+                inbox: 0,
             },
         );
         let snap = Snapshot {
@@ -270,6 +380,9 @@ mod tests {
             settings_error: None,
             reconnecting: 2,
             worktrees: Vec::new(),
+            cards: Vec::new(),
+            chat: Vec::new(),
+            your_queued: Vec::new(),
         };
         let a: AgentName = n("a");
         vec![

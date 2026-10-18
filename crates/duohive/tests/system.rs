@@ -322,6 +322,7 @@ fn tap_listener(
         Arc::new(Adapters::new(vec![])),
         to_core,
         Some(tap_tx),
+        duohive_mcp::calls::Calls::new(),
     ));
     (tap, core)
 }

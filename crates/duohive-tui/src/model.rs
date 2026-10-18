@@ -284,6 +284,18 @@ impl UiModel {
             Event::Worktrees(rows) => self.set_worktrees(rows),
             // The engine hands alerts to the notifier itself; the row's state already shows here.
             Event::Alert(_) => {}
+            // Phase 3 events reach the TUI as their tasks build them.
+            Event::ToolResult { .. }
+            | Event::MessageQueued { .. }
+            | Event::MessageDelivered { .. }
+            | Event::MessageDropped { .. }
+            | Event::InboxChanged { .. }
+            | Event::CardRaised(_)
+            | Event::CardAnswered { .. }
+            | Event::ChatLine(_)
+            | Event::MessageRefused { .. }
+            | Event::RoleAssigned { .. }
+            | Event::AssignRefused { .. } => {}
         }
         true
     }
@@ -519,6 +531,7 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     problem: None,
     worktree: None,
     delivery_pending: false,
+    inbox: 0,
 };
 
 /// The footer note when the system has no desktop notifier (UI §4.1.4).
@@ -597,6 +610,7 @@ mod tests {
             quiet: false,
             since: NOW,
             excerpt: None,
+            card: None,
         };
         assert!(m.apply(Event::NeedsYouChanged(vec![item.clone()])));
         assert_eq!(m.needs_you, [item]);
@@ -678,6 +692,9 @@ mod tests {
             }),
             reconnecting: 3,
             worktrees: Vec::new(),
+            cards: Vec::new(),
+            chat: Vec::new(),
+            your_queued: Vec::new(),
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);
