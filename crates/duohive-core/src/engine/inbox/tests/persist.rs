@@ -108,6 +108,36 @@ fn persisted_and_replayed_after_restart() {
 }
 
 #[test]
+fn pending_paste_at_shutdown_not_pasted_again() {
+    let mut first = Harness::new();
+    idle(&mut first, "pay-qa");
+    let one = you_id(&mut first, "pay-qa", "one");
+    assert_eq!(pastes_to(&first, "pay-qa"), ["one"]);
+    // DuoHive closes before the agent is seen to take it.
+    {
+        let mut st = first.store.state.lock().unwrap();
+        st.sessions
+            .insert(n("pay-qa"), idle_row("pay-qa", "tok-pay", "@1"));
+    }
+    let mut h = Setup {
+        store: first.store.clone(),
+        ..Setup::default()
+    }
+    .build();
+    let snap = h.engine.start_up();
+    let Some(Event::Snapshot(snap)) = snap.first() else {
+        panic!("no snapshot: {snap:?}");
+    };
+    assert_eq!(snap.agents[&n("pay-qa")].inbox, 0);
+    assert!(snap.your_queued.is_empty(), "{:?}", snap.your_queued);
+    let events = h.input(live("pay-qa", "@1"));
+    assert!(events.contains(&Event::Reconnected), "{events:?}");
+    assert!(pastes_to(&h, "pay-qa").is_empty());
+    let reason = "DuoHive closed during delivery".to_owned();
+    assert_eq!(stored(&h, one).status, MessageStatus::Dropped { reason });
+}
+
+#[test]
 fn closed_changes_queue_and_run_on_open() {
     let mut h = closed_call("tok-squad", "send_message", send_hi());
     h.engine.start_up();

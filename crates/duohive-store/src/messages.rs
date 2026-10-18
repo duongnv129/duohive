@@ -1,4 +1,5 @@
-//! The `messages` table (TD §7): the inbox's queued, delivered and recent messages.
+//! The `messages` table (TD §7): the inbox's queued, pasting, delivered and recent
+//! messages. `status` is free text, so `pasting` needed no migration.
 
 use duohive_core::card::CardId;
 use duohive_core::inbox::{Message, MessageId, MessageKind, MessageStatus, Sender};
@@ -38,6 +39,7 @@ fn read(r: &Row<'_>) -> rusqlite::Result<Result<Message, i64>> {
     };
     let status = match status.as_str() {
         "queued" => Some(MessageStatus::Queued),
+        "pasting" => Some(MessageStatus::Pasting),
         "delivered" => Some(MessageStatus::Delivered),
         "answered" => Some(MessageStatus::Answered),
         "dropped" => Some(MessageStatus::Dropped {
@@ -89,11 +91,11 @@ fn select(
     Ok(messages)
 }
 
-/// Queued and delivered messages, those queued at `since` or later, and the newest.
+/// Queued, pasting and delivered messages, those queued at `since` or later, and the newest.
 pub(crate) fn load(conn: &Connection, since: Millis) -> Result<Vec<Message>, StoreError> {
     select(
         conn,
-        "status IN ('queued', 'delivered') OR queued_at >= ?1 \
+        "status IN ('queued', 'pasting', 'delivered') OR queued_at >= ?1 \
          OR id = (SELECT MAX(id) FROM messages)",
         [to_i64(since.0)],
     )
@@ -116,6 +118,7 @@ pub(crate) fn save(conn: &Connection, m: &Message) -> Result<(), StoreError> {
     };
     let (status, reason) = match &m.status {
         MessageStatus::Queued => ("queued", None),
+        MessageStatus::Pasting => ("pasting", None),
         MessageStatus::Delivered => ("delivered", None),
         MessageStatus::Answered => ("answered", None),
         MessageStatus::Dropped { reason } => ("dropped", Some(reason.as_str())),

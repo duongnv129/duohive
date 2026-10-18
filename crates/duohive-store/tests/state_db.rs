@@ -629,6 +629,7 @@ fn messages_round_trip() {
     };
     let recent_dropped = message(5, squad(), text, dropped("no sign it started"), 5_000);
     let old_dropped = message(6, squad(), text, dropped("gone"), 150);
+    let pasting = message(7, squad(), text, MessageStatus::Pasting, 160);
     for m in [
         &old_answered,
         &queued,
@@ -636,13 +637,14 @@ fn messages_round_trip() {
         &card,
         &recent_dropped,
         &old_dropped,
+        &pasting,
     ] {
         store.save_message(m).unwrap();
     }
-    // Queued and delivered whatever their age, recent ones, and the newest id.
+    // Queued, pasting and delivered whatever their age, recent ones, and the newest id.
     assert_eq!(
         store.load_messages(Millis(1_000)).unwrap(),
-        vec![queued.clone(), delivered, card, recent_dropped, old_dropped]
+        vec![queued.clone(), delivered, card, recent_dropped, pasting]
     );
     assert_eq!(
         store.find_message(MessageId(1)).unwrap(),

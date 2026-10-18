@@ -195,7 +195,7 @@ fn entry(a: &AgentEntry) -> Value {
 
 fn status_word(s: &MessageStatus) -> &'static str {
     match s {
-        MessageStatus::Queued => "queued",
+        MessageStatus::Queued | MessageStatus::Pasting => "queued",
         MessageStatus::Delivered => "delivered",
         MessageStatus::Answered => "answered",
         MessageStatus::Dropped { .. } => "dropped",

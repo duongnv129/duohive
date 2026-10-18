@@ -20,6 +20,10 @@ use crate::worktree::RunIn;
 /// Your `SendMessage` with no text.
 const EMPTY: &str = "the message is empty";
 
+/// A message found being typed in at start-up: DuoHive closed before the
+/// agent was seen to take it, so it is never pasted again.
+const CLOSED_DURING_DELIVERY: &str = "DuoHive closed during delivery";
+
 impl Engine {
     /// Accepts a message (TD §6.3): checks an agent's limits, saves it queued,
     /// then starts a stopped recipient with your text, pastes it into one at
@@ -182,6 +186,11 @@ impl Engine {
             Sender::Agent(sender) => frame(sender, &self.fresh_boundary(&body), &body),
             Sender::You => body,
         };
+        // Saved before the paste, so a restart never pastes it again.
+        if let Some(m) = self.inbox.iter_mut().find(|m| m.id == id) {
+            m.status = MessageStatus::Pasting;
+        }
+        self.save_message(id, out);
         match self.type_next_turn(agent, text, Some(id)) {
             Ok(events) => out.extend(events),
             Err(reason) => self.drop_message(id, reason, out),
@@ -297,7 +306,7 @@ impl Engine {
         let n = self
             .inbox
             .iter()
-            .filter(|m| &m.to == agent && m.status == MessageStatus::Queued)
+            .filter(|m| &m.to == agent && m.status.is_waiting())
             .count();
         u32::try_from(n).unwrap_or(u32::MAX)
     }
@@ -306,7 +315,7 @@ impl Engine {
     pub(super) fn your_queued(&self) -> Vec<MessageId> {
         self.inbox
             .iter()
-            .filter(|m| m.from == Sender::You && m.status == MessageStatus::Queued)
+            .filter(|m| m.from == Sender::You && m.status.is_waiting())
             .map(|m| m.id)
             .collect()
     }
@@ -330,15 +339,22 @@ impl Engine {
                 format!("you sent no message {}", id.0),
             ));
         };
-        let reason = match &m.status {
-            MessageStatus::Queued => Some(format!("{} is {}", m.to, self.state_of(&m.to).word())),
+        // Being typed in is still queued to the caller (P3-D16).
+        let status = match m.status {
+            MessageStatus::Pasting => MessageStatus::Queued,
+            status => status,
+        };
+        let reason = match &status {
+            MessageStatus::Queued | MessageStatus::Pasting => {
+                Some(format!("{} is {}", m.to, self.state_of(&m.to).word()))
+            }
             MessageStatus::Dropped { reason } => Some(reason.clone()),
             MessageStatus::Delivered | MessageStatus::Answered => None,
         };
         Ok(ToolOk::Status {
             message: m.id,
             to: m.to,
-            status: m.status,
+            status,
             reason,
         })
     }
@@ -353,6 +369,15 @@ impl Engine {
                 messages.sort_by_key(|m| m.id);
                 self.next_message = messages.last().map_or(1, |m| m.id.0 + 1);
                 self.inbox = messages;
+                let cut: Vec<MessageId> = self
+                    .inbox
+                    .iter()
+                    .filter(|m| m.status == MessageStatus::Pasting)
+                    .map(|m| m.id)
+                    .collect();
+                for id in cut {
+                    self.drop_message(id, CLOSED_DURING_DELIVERY.to_owned(), out);
+                }
             }
             Err(e) => out.push(Event::CommandRejected {
                 reason: format!("couldn't load messages: {e}"),
@@ -364,8 +389,10 @@ impl Engine {
     /// `message_status` still finds them in the store.
     fn prune_inbox(&mut self, now: Millis) {
         self.inbox.retain(|m| {
-            matches!(m.status, MessageStatus::Queued | MessageStatus::Delivered)
-                || now - m.queued_at < DUPLICATE_WINDOW
+            matches!(
+                m.status,
+                MessageStatus::Queued | MessageStatus::Pasting | MessageStatus::Delivered
+            ) || now - m.queued_at < DUPLICATE_WINDOW
         });
     }
 

@@ -139,7 +139,7 @@ fn role_path(role: &RoleKey) -> String {
 
 fn status_word(status: &MessageStatus) -> &'static str {
     match status {
-        MessageStatus::Queued => "queued",
+        MessageStatus::Queued | MessageStatus::Pasting => "queued",
         MessageStatus::Delivered => "delivered",
         MessageStatus::Answered => "answered",
         MessageStatus::Dropped { .. } => "dropped",

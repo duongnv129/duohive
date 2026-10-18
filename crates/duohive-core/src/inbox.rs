@@ -36,6 +36,9 @@ pub enum MessageKind {
 pub enum MessageStatus {
     /// Waiting for the recipient to be at rest.
     Queued,
+    /// Being typed in, not yet seen taken (P2-D11). Saved before the paste,
+    /// so a restart drops it rather than pasting it again.
+    Pasting,
     /// Typed in and taken.
     Delivered,
     /// The recipient replied to the sender (agent-to-agent only, P3-D18).
@@ -45,6 +48,14 @@ pub enum MessageStatus {
         /// Why.
         reason: String,
     },
+}
+
+impl MessageStatus {
+    /// Not yet delivered: queued, or being typed in.
+    #[must_use]
+    pub fn is_waiting(&self) -> bool {
+        matches!(self, Self::Queued | Self::Pasting)
+    }
 }
 
 /// One message.
@@ -100,7 +111,7 @@ pub fn check_limits(
     }
     let waiting = recent
         .iter()
-        .filter(|m| &m.to == to && m.status == MessageStatus::Queued)
+        .filter(|m| &m.to == to && m.status.is_waiting())
         .count();
     if waiting >= INBOX_LIMIT {
         return Err(LimitKind::InboxFull);

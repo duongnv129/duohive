@@ -378,8 +378,10 @@ impl Store for FakeStore {
             .messages
             .values()
             .filter(|m| {
-                matches!(m.status, MessageStatus::Queued | MessageStatus::Delivered)
-                    || m.queued_at >= since
+                matches!(
+                    m.status,
+                    MessageStatus::Queued | MessageStatus::Pasting | MessageStatus::Delivered
+                ) || m.queued_at >= since
                     || Some(m.id) == newest
             })
             .cloned()
