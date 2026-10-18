@@ -10,7 +10,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃     auth-service     ●   2m  ┃│           worktrees inherit: off             │
 ┃     billing-api      ◆   4m  ┃│ Prompt    (none)                             │
 ┃   ▾ QA                       ┃│                                              │
-┃     pay-qa           ○   1d  ┃│ e edit                                       │
+┃     pay-qa           ○   1d  ┃│ space give work to this role · e edit        │
 ┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
 ┃     squad-1         ~●   1m  ┃│                                              │
 ┃     squad-2          ✓   3m  ┃│                                              │
@@ -22,7 +22,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ ◆ billing-api        4m      ┃│                                              │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
-│            mid-test.                                                         │
+│ 10:05 Duo  billing-api is waiting on a file-edit approval; auth-service is   │
 │ ❯                                                                            │
 └──────────────────────────────────────────────────────────────────────────────┘
  tab pane · ↑↓ move · space give work

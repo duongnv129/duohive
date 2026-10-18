@@ -2,20 +2,30 @@
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
 mod alerts;
+mod assign;
+mod cards;
+mod chat;
 mod driver;
+mod duo;
 #[cfg(test)]
 mod harness;
+mod inbox;
 mod lifecycle;
 mod org_edit;
 mod reconnect;
+mod rights;
 mod signals;
 mod timers;
+mod tools;
 mod worktrees;
 
 pub use driver::run_core;
+use duo::{Read, Wait};
 pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
+use rights::Caller;
 use signals::Exit;
+use tools::Parked;
 use worktrees::Creating;
 
 use std::collections::{BTreeMap, HashMap};
@@ -24,10 +34,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::adapter::{Adapters, CliPresence};
+use crate::card::Card;
+use crate::chat::ChatEntry;
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::{AgentView, Event, NeedsYouItem, Snapshot};
 use crate::hook::HookMessage;
+use crate::inbox::{Message, MessageId};
 use crate::inherit::{expand_home, resolve};
 use crate::launch::{Token, WindowId};
 use crate::names::AgentName;
@@ -38,6 +51,7 @@ use crate::ports::{
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
+use crate::tool::ToolCall;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
 use crate::worktree::{TaskId, WorktreeRow};
 
@@ -115,6 +129,8 @@ struct ExitPending {
 struct Delivery {
     task: String,
     due: Millis,
+    /// The message this paste carries; `None` for a task you gave.
+    message: Option<MessageId>,
 }
 
 /// One agent's runtime state.
@@ -154,10 +170,14 @@ struct AgentRt {
     cli: Option<CliKind>,
     /// The worktree the current session runs in (saved on its session row).
     worktree: Option<TaskId>,
+    /// The current session was launched as Duo (P3-D30).
+    launched_as_duo: bool,
     /// A next-turn paste not yet taken (P2-D11).
     delivery: Option<Delivery>,
     /// The worktree being created for the next launch (P2-D20).
     creating: Option<Creating>,
+    /// Your message the next launch carries as its task (P3-D18).
+    launch_message: Option<MessageId>,
 }
 
 impl AgentRt {
@@ -192,8 +212,10 @@ impl AgentRt {
             killed_window: None,
             cli: None,
             worktree: None,
+            launched_as_duo: false,
             delivery: None,
             creating: None,
+            launch_message: None,
         }
     }
 }
@@ -231,6 +253,29 @@ pub struct Engine {
     worktree_generations: HashMap<(AgentName, TaskId), u64>,
     /// The next incarnation number.
     next_generation: u64,
+    /// Messages queued or delivered, and the last 10 minutes' others, by id (TD §6.3).
+    inbox: Vec<Message>,
+    /// The next message id.
+    next_message: u64,
+    /// The agent you are typing into, which nothing is pasted into (P3-D19).
+    typing: Option<AgentName>,
+    /// Calls queued while DuoHive was closed, with the callers start-up
+    /// found for their tokens; run after `Reconnected` (P3-D24).
+    closed_calls: Vec<(Caller, ToolCall)>,
+    /// The chat's last [`crate::chat::CHAT_LOAD`] entries, oldest first (TD §6.5).
+    chat: Vec<ChatEntry>,
+    /// The next chat entry id.
+    next_chat: u64,
+    /// Pending cards, oldest first (TD §6.2).
+    cards: Vec<Card>,
+    /// The next card id.
+    next_card: u64,
+    /// Tool calls waiting for an agent's worktree creation, oldest first (P3-D23).
+    parked: Vec<Parked>,
+    /// Duo's `wait_for_agent` calls not yet answered, oldest first (P3-D23).
+    waits: Vec<Wait>,
+    /// Duo's `read_agent` calls waiting for a screen, oldest first (P3-D23).
+    reads: Vec<Read>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -266,6 +311,17 @@ impl Engine {
             worktree_check_due: now + timers::WORKTREE_CHECK_EVERY,
             worktree_generations: HashMap::new(),
             next_generation: 0,
+            inbox: Vec::new(),
+            next_message: 1,
+            typing: None,
+            closed_calls: Vec::new(),
+            chat: Vec::new(),
+            next_chat: 1,
+            cards: Vec::new(),
+            next_card: 1,
+            parked: Vec::new(),
+            waits: Vec::new(),
+            reads: Vec::new(),
             cfg,
             ports,
             adapters,
@@ -297,7 +353,11 @@ impl Engine {
             Input::Runtime(RuntimeEvent::Started { agent, window }) => {
                 self.on_started(&agent, window)
             }
-            Input::Runtime(RuntimeEvent::Screen { agent, text }) => self.on_screen(&agent, &text),
+            Input::Runtime(RuntimeEvent::Screen { agent, text }) => {
+                let mut out = self.on_screen(&agent, &text);
+                self.answer_reads(&agent, &text, &mut out);
+                out
+            }
             Input::Runtime(RuntimeEvent::PaneDied {
                 agent,
                 window,
@@ -363,6 +423,22 @@ impl Engine {
             Command::UpdateSettings(s) => self.update_settings(s),
             // Shutdown ends the driver loop before it gets here.
             Command::Shutdown => Vec::new(),
+            Command::Tool {
+                call_id,
+                token,
+                call,
+            } => self.on_tool(call_id, &token, &call),
+            Command::SendMessage { to, text } => self.send_yours(to, text),
+            Command::Typing { agent } => self.typing(agent),
+            Command::ChatToDuo { text } => self.chat_to_duo(text),
+            Command::ApproveCard { card, edited } => self.approve_card(card, edited.map(|c| *c)),
+            Command::RejectCard { card } => self.reject_card(card),
+            Command::AssignToRole {
+                role,
+                task,
+                pick,
+                run,
+            } => self.assign_yours(role, task, pick, run),
         }
     }
 
@@ -382,6 +458,7 @@ impl Engine {
                     problem: problems.remove(&name),
                     worktree: rt.and_then(|r| r.worktree.clone()),
                     delivery_pending: rt.is_some_and(|r| r.delivery.is_some()),
+                    inbox: self.waiting(&name),
                 };
                 (name, view)
             })
@@ -394,6 +471,9 @@ impl Engine {
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
             worktrees: self.worktrees_shown.clone(),
+            cards: self.cards.clone(),
+            chat: self.chat.clone(),
+            your_queued: self.your_queued(),
         }
     }
 
@@ -493,14 +573,20 @@ impl Engine {
         });
         self.alert_after(agent, &before, out);
         // P2-D11: leaving rest ends a delivery's wait; a stopped agent runs in no worktree.
+        let mut ended = None;
         self.update_run(agent, out, |rt| {
             if !to.is_at_rest() {
-                rt.delivery = None;
+                ended = rt.delivery.take().and_then(|d| d.message);
             }
             if to == AgentState::Stopped {
                 rt.worktree = None;
             }
         });
+        if let Some(id) = ended {
+            self.delivery_left_rest(agent, id, to, out);
+        }
+        // P3-D23: a turn end, stop or error answers the waits on it.
+        self.end_waits(agent, before.state, to, out);
         if to == AgentState::Stopped {
             self.delete_row(agent, out);
         } else {
@@ -509,6 +595,10 @@ impl Engine {
         // TD §5.3: an agent's worktrees are checked when it finishes.
         if to == AgentState::Finished {
             self.check_worktrees(Some(agent), out);
+        }
+        // TD §6.3: at rest, a waiting message may go in.
+        if to.is_at_rest() {
+            self.deliver_next(agent, out);
         }
         true
     }
@@ -569,6 +659,7 @@ impl Engine {
             saw_end_hook: rt.saw_end_hook,
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
+            launched_as_duo: rt.launched_as_duo,
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

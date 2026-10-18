@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapter::DialogCheck;
 use crate::alert::Alert;
+use crate::card::Card;
+use crate::chat::ChatEntry;
 use crate::hook::HookMessage;
+use crate::inbox::{Message, MessageId};
 use crate::launch::{Key, LaunchCommand, Token, WindowId};
 use crate::names::AgentName;
 use crate::org::Org;
@@ -27,6 +30,8 @@ pub trait Clock: Send {
 pub trait Ids: Send {
     /// A fresh token.
     fn new_token(&mut self) -> Token;
+    /// A fresh message boundary: 12 lowercase hex characters (P3-D18).
+    fn boundary(&mut self) -> String;
 }
 
 /// The terminal multiplexer. Fire-and-forget; results return as [`RuntimeEvent`] inputs.
@@ -186,6 +191,23 @@ pub struct SessionRow {
     pub last_task: Option<String>,
     /// The task whose worktree the agent runs in.
     pub worktree: Option<TaskId>,
+    /// This session was launched as Duo, so its token has Duo's rights (P3-D30).
+    pub launched_as_duo: bool,
+}
+
+/// A tool call made while DuoHive was closed, waiting to run (P3-D10, P3-D24).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueuedToolCall {
+    /// Its row id.
+    pub id: u64,
+    /// The caller's launch token.
+    pub token: Token,
+    /// The tool's name.
+    pub tool: String,
+    /// The arguments, as the helper received them.
+    pub arguments: serde_json::Value,
+    /// When it was queued.
+    pub queued_at: Millis,
 }
 
 /// A store failure.
@@ -222,6 +244,23 @@ pub trait Store: Send {
     /// Queues a hook DuoHive took but did not apply before shutting down, after
     /// any already queued, for the next start to replay (Review Focus 3).
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError>;
+    /// Takes the tool calls queued while DuoHive was closed, oldest first, and deletes them.
+    fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError>;
+    /// The messages still queued or delivered, those queued at `since` or later,
+    /// and the newest one whatever its status (so ids continue), by id.
+    fn load_messages(&mut self, since: Millis) -> Result<Vec<Message>, StoreError>;
+    /// One message, whatever its age.
+    fn find_message(&mut self, id: MessageId) -> Result<Option<Message>, StoreError>;
+    /// Inserts or replaces a message, keyed by id.
+    fn save_message(&mut self, m: &Message) -> Result<(), StoreError>;
+    /// The last `last` chat entries, oldest first; the last one has the highest id.
+    fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError>;
+    /// Appends a chat entry (a `Note` is never stored).
+    fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError>;
+    /// The pending cards, and the newest card answered or not, so ids continue.
+    fn load_cards(&mut self) -> Result<Vec<Card>, StoreError>;
+    /// Inserts or replaces a card, keyed by id.
+    fn save_card(&mut self, card: &Card) -> Result<(), StoreError>;
 }
 
 /// A live view of one agent's pane. Opening a stream closes any other.
@@ -482,6 +521,7 @@ mod tests {
             saw_end_hook: false,
             last_task: None,
             worktree: None,
+            launched_as_duo: false,
         }
     }
 

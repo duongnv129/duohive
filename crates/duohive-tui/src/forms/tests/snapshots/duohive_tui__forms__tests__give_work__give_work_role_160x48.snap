@@ -2,19 +2,19 @@
 source: crates/duohive-tui/src/forms/tests/give_work.rs
 expression: "lines.join(\"\\n\")"
 ---
- DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                                                                                
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────────────────────────────────────────────────────────────────┐
-┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
-┃ ├─ ▣ Payments                 ● 1              ┃│    ● working                                                                                               │
-┃ │  ├─ ◇ Backend               ● 1              ┃│                                                                                                            │
-┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                                                                            │
-┃▌│  │  └─ billing-api          ● working    3m  ┃│                                                                                                            │
-┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+ DuoHive   6 agents · ● 3 working · ◆ 0 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Generalist ─────────────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ 3 agents · ● 2 working                                                                                     │
+┃ ├─ ▣ Payments                 ● 1              ┃│ Defaults  CLI inherit: Claude Code · model inherit: sonnet                                                 │
+┃ │  ├─ ◇ Backend               ● 1              ┃│           worktrees inherit: off                                                                           │
+┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│ Prompt    (none)                                                                                           │
+┃ │  │  └─ billing-api          ● working    2m  ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│ space give work to this role · e edit                                                                      │
 ┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
-┃ └─ ◇ Generalist                                ┃│                                                                                                            │
-┃    ├─ squad-1                 ○ stopped    1d  ┃│                                                                                                            │
-┃    ├─ squad-2                 ○ stopped    1d  ┃│                                                                                                            │
-┃    └─ squad-3                 ○ stopped    1d  ┃│                                                                                                            │
+┃▌└─ ◇ Generalist               ● 2              ┃│                                                                                                            │
+┃    ├─ squad-1                 ● working    1m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ● working    5m  ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
@@ -23,12 +23,12 @@ expression: "lines.join(\"\\n\")"
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
-┃                                  ┌─ Give work · billing-api · ● working ──────────────────────────────────────────────────┐                                  │
-┃                                  │ Task ▌[ Also cover the timeout path.________________________________________________ ] │                                  │
-┃                                  │ billing-api is working. Give work when it is at rest.                                  │                                  │
-┃                                  │                                                                         esc close      │                                  │
+┃                                  ┌─ Give work · role Generalist (1 of 3 free) ────────────────────────────────────────────┐                                  │
+┃                                  │ Task     [ Fix the flaky date test in billing/time_test.go__________________________ ] │                                  │
+┃                                  │ Goes to  ▌squad-2 (finished 3m)                        ↑↓ pick another                 │                                  │
+┃                                  │ Run      in ~/code/my-app, as the next turn of squad-2's session                       │                                  │
+┃                                  │                                             enter give · alt+enter new line · esc      │                                  │
 ┃                                  └────────────────────────────────────────────────────────────────────────────────────────┘                                  │
-┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
@@ -49,4 +49,4 @@ expression: "lines.join(\"\\n\")"
 │                                                                                                                                                              │
 │ ❯                                                                                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- esc close
+ enter give · alt+enter new line · esc

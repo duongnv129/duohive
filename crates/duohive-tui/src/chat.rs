@@ -1,47 +1,86 @@
-//! The phase-2 chat with Duo (P2-D8): an input whose text goes to Duo as Give work, and an
-//! in-memory history of what you sent and Duo's replies.
+//! The Duo chat (UI §4.7; P3-D14, P3-D26): an input whose lines go to Duo, to an agent
+//! (`@agent text`) or to a local command (`/help`, `/agents`), and the transcript the
+//! engine publishes.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use duohive_core::card::CardId;
+use duohive_core::chat::{ChatEntry, ChatId, ChatKind};
 use duohive_core::command::Command;
 use duohive_core::names::AgentName;
-use duohive_core::status::AgentState;
-use duohive_core::time::Millis;
-use duohive_core::worktree::RunIn;
 
+use crate::focus::{AgentMode, Pane};
+use crate::format::{pad_right, state_cell, width};
 use crate::forms::LineEdit;
 use crate::input::{Action, UiEffect};
 use crate::model::UiModel;
+use crate::suggest::{SuggestKind, suggestions};
 
-/// The history keeps at most this many lines; older ones are dropped.
-const MAX_LINES: usize = 1_000;
+/// The history keeps at most this many entries in memory; older ones are dropped.
+const MAX_ENTRIES: usize = 1_000;
+/// What `/help` prints (P3-D26): the chat's keys.
+const HELP: [&str; 3] = [
+    "enter send · alt+enter new line · PgUp/PgDn scroll history",
+    "plain text goes to Duo · @agent text goes to that agent · @ or / lists them",
+    "/agents every agent and its state · esc back to the org pane",
+];
+/// Ends a dropped message's note: `enter` sends it again (P3-D26, P2-D11).
+const SEND_AGAIN: &str = " · enter to send again";
+/// Local notes are never stored, so they carry no engine id.
+const NOTE_ID: ChatId = ChatId(0);
 
-/// Who said a chat line.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Who {
-    /// You.
-    You,
-    /// Duo.
-    Duo,
-}
-
-/// One line of chat history.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ChatLine {
-    /// When it was said.
-    pub at: Millis,
-    /// Who said it.
-    pub who: Who,
-    /// What was said.
-    pub text: String,
-}
-
-/// The chat history, oldest first (P2-D8).
+/// The chat history, oldest first.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ChatLines {
-    /// The lines.
-    pub lines: Vec<ChatLine>,
+    /// The entries: the engine's, and local notes.
+    pub entries: Vec<ChatEntry>,
     /// Scrolled back (P2-D25): the first history row shown. `None` follows the newest.
     pub scroll: Option<usize>,
+}
+
+/// Where an input line goes (UI §4.7, P3-D26).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Route {
+    /// Plain text, or `@Duo text`: to Duo.
+    Duo(String),
+    /// `@agent text`.
+    Agent {
+        /// The agent.
+        to: AgentName,
+        /// The text.
+        text: String,
+    },
+    /// `/help`.
+    Help,
+    /// `/agents`.
+    Agents,
+    /// `/word` for any other word.
+    Unknown(String),
+    /// `@name` for a name the org doesn't have.
+    NoAgent(String),
+}
+
+/// Where `line` goes: `/word` is a command, `@name text` a message to that agent (Duo's
+/// name goes to Duo), anything else is for Duo.
+pub fn route(line: &str, m: &UiModel) -> Route {
+    let line = line.trim();
+    if let Some(command) = line.strip_prefix('/') {
+        let word = command.split_whitespace().next().unwrap_or_default();
+        return match word {
+            "help" => Route::Help,
+            "agents" => Route::Agents,
+            _ => Route::Unknown(word.to_owned()),
+        };
+    }
+    let Some(rest) = line.strip_prefix('@') else {
+        return Route::Duo(line.to_owned());
+    };
+    let (name, text) = rest.split_once(char::is_whitespace).unwrap_or((rest, ""));
+    let text = text.trim().to_owned();
+    match AgentName::parse(name) {
+        Ok(to) if m.org.is_duo(&to) => Route::Duo(text),
+        Ok(to) if m.org.find_agent(&to).is_some() => Route::Agent { to, text },
+        _ => Route::NoAgent(name.to_owned()),
+    }
 }
 
 /// Keys while the chat input has focus: every character types, so no letter quits or opens
@@ -58,6 +97,8 @@ pub(crate) fn chat_key(k: KeyEvent) -> Option<Action> {
         KeyCode::Tab => Action::Tab,
         KeyCode::BackTab => Action::BackTab,
         KeyCode::Esc => Action::Esc,
+        KeyCode::Up => Action::Up,
+        KeyCode::Down => Action::Down,
         KeyCode::Left => Action::Left,
         KeyCode::Right => Action::Right,
         KeyCode::Home => Action::Home,
@@ -71,8 +112,34 @@ pub(crate) fn chat_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
-/// An action in the focused chat: editing, or `enter` to send.
+/// An action in the focused chat: editing, the suggestion list's keys, or `enter` to send.
 pub(crate) fn chat_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    if let Some(s) = &mut m.suggest {
+        match a {
+            Action::Up => {
+                s.cursor = s.cursor.saturating_sub(1);
+                return Vec::new();
+            }
+            Action::Down => {
+                s.cursor = (s.cursor + 1).min(s.items.len().saturating_sub(1));
+                return Vec::new();
+            }
+            Action::Esc => {
+                m.suggest = None;
+                return Vec::new();
+            }
+            Action::Enter | Action::Tab => return take(m, a == Action::Enter),
+            _ => {}
+        }
+    }
+    // `↑` from an empty input focuses the newest card (UI §4.6).
+    if a == Action::Up && m.chat_input.text().is_empty() {
+        if let Some(newest) = m.cards.values().max_by_key(|c| (c.raised_at, c.id)) {
+            let id = newest.id;
+            focus_card(m, id);
+        }
+        return Vec::new();
+    }
     let input = &mut m.chat_input;
     match a {
         Action::Char(c) => input.insert(c),
@@ -89,141 +156,180 @@ pub(crate) fn chat_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
                 let page = room.saturating_sub(1).max(1);
                 scroll(m, a == Action::PageUp, page);
             }
+            return Vec::new();
         }
-        _ => {}
+        _ => return Vec::new(),
     }
+    refresh_suggest(m);
     Vec::new()
 }
 
-/// `enter`: the text goes to Duo as Give work in its own directory (P2-D8), unless Duo is
-/// busy, in which case the text stays and the footer says why.
-fn send(m: &mut UiModel) -> Vec<UiEffect> {
-    let text = m.chat_input.text().trim().to_owned();
-    if text.is_empty() {
+/// `tab` or `enter` on the list: the item goes into the input. `enter` on a command
+/// already typed in full sends it.
+fn take(m: &mut UiModel, enter: bool) -> Vec<UiEffect> {
+    let Some(s) = m.suggest.take() else {
         return Vec::new();
+    };
+    let typed = m.chat_input.text().trim();
+    let whole = s.items.get(s.cursor).is_some_and(|(item, _)| item == typed);
+    if enter && whole && s.kind == SuggestKind::Command {
+        return send(m);
     }
-    let duo = m.org.duo.name.clone();
-    let view = m.view(&duo);
-    let state = view.status.state;
-    if view.delivery_pending {
-        m.footer_note = Some(still_taking(&duo));
-        return Vec::new();
-    }
-    if matches!(
-        state,
-        AgentState::Starting | AgentState::Working | AgentState::Waiting
-    ) {
-        m.footer_note = Some(busy(&duo, state));
-        return Vec::new();
-    }
-    m.chat_input = LineEdit::default();
-    m.chat_sent = Some(text.clone());
-    m.chat.scroll = None;
-    push(
-        &mut m.chat,
-        ChatLine {
-            at: m.now,
-            who: Who::You,
-            text: text.clone(),
-        },
-    );
-    vec![UiEffect::Send(Command::GiveWork {
-        agent: duo,
-        task: text,
-        run: RunIn::Directory,
-    })]
+    s.take(&mut m.chat_input);
+    Vec::new()
 }
 
-/// Scrolls the history `rows` up or down (P2-D25). Down to the bottom follows the newest
-/// line again.
+/// The suggestion list follows the input; the highlighted item stays when it still shows.
+pub(crate) fn refresh_suggest(m: &mut UiModel) {
+    let was = m
+        .suggest
+        .as_ref()
+        .and_then(|s| s.items.get(s.cursor))
+        .map(|(item, _)| item.clone());
+    let mut next = suggestions(m.chat_input.text(), m.chat_input.cursor(), m);
+    if let (Some(s), Some(was)) = (&mut next, was) {
+        s.cursor = s.items.iter().position(|(i, _)| *i == was).unwrap_or(0);
+    }
+    m.suggest = next;
+}
+
+/// `enter`: the line goes where [`route`] says; a line that can't go stays, with the
+/// footer saying why (P3-D26).
+fn send(m: &mut UiModel) -> Vec<UiEffect> {
+    let line = m.chat_input.text().trim().to_owned();
+    if line.is_empty() {
+        return Vec::new();
+    }
+    let command = match route(&line, m) {
+        Route::Duo(text) => Command::ChatToDuo { text },
+        Route::Agent { to, text } => Command::SendMessage { to, text },
+        Route::Help => {
+            let lines = HELP.iter().map(|&l| l.to_owned()).collect();
+            notes(m, lines);
+            return Vec::new();
+        }
+        Route::Agents => {
+            let lines = agent_lines(m);
+            notes(m, lines);
+            return Vec::new();
+        }
+        Route::Unknown(word) => {
+            m.footer_note = Some(format!("unknown command /{word} · /help lists them"));
+            return Vec::new();
+        }
+        Route::NoAgent(name) => {
+            m.footer_note = Some(format!("no agent named {name}"));
+            return Vec::new();
+        }
+    };
+    m.chat_input = LineEdit::default();
+    m.chat_sent = Some(line);
+    m.chat.scroll = None;
+    vec![UiEffect::Send(command)]
+}
+
+/// Local lines that aren't stored (`/help`, `/agents`); the input is cleared.
+fn notes(m: &mut UiModel, lines: Vec<String>) {
+    m.chat_input = LineEdit::default();
+    m.chat.scroll = None;
+    for text in lines {
+        let entry = ChatEntry {
+            id: NOTE_ID,
+            at: m.now,
+            kind: ChatKind::Note,
+            text,
+        };
+        push(&mut m.chat, entry);
+    }
+}
+
+/// `/agents`: Duo, then every agent in tree order, each with its state cell.
+fn agent_lines(m: &UiModel) -> Vec<String> {
+    let names = m.agent_names();
+    let cells = names.iter().map(|a| width(a.as_str())).max().unwrap_or(0) + 2;
+    names
+        .into_iter()
+        .map(|a| {
+            let cell = state_cell(&m.view(a).status, m.now, None);
+            format!("{}{}", pad_right(a.as_str(), cells), cell.trim_end())
+        })
+        .collect()
+}
+
+/// Scrolls the history `rows` up or down (P2-D25). Following the newest, the history
+/// shows the newest entry's start (friction entry 13); down past it shows the very
+/// bottom, and down from the bottom follows the newest again.
 pub(crate) fn scroll(m: &mut UiModel, up: bool, rows: usize) {
-    let Some((len, room)) = crate::render::chat_history_fit(m) else {
+    let Some(fit) = crate::render::chat_history(m) else {
         return;
     };
-    let bottom = len.saturating_sub(room);
-    let top = m.chat.scroll.unwrap_or(bottom).min(bottom);
+    let bottom = fit.len.saturating_sub(fit.room);
+    let follow = fit.follow.min(bottom);
+    let top = m.chat.scroll.map_or(follow, |t| t.min(bottom));
     m.chat.scroll = if up {
         Some(top.saturating_sub(rows))
-    } else if top + rows >= bottom {
+    } else if (top < follow && top + rows >= follow) || top >= bottom {
         None
     } else {
-        Some(top + rows)
+        Some((top + rows).min(bottom))
     };
 }
 
-/// The engine refused what the chat sent: the text goes back into the input.
-pub(crate) fn refused(m: &mut UiModel, state: AgentState, pending: bool) {
-    let duo = m.org.duo.name.clone();
-    m.footer_note = Some(if pending {
-        still_taking(&duo)
+/// Focuses card `id` in the chat, so it takes `y`, `e` and `n` (UI §4.6), and scrolls
+/// the history to it when it doesn't show whole.
+pub(crate) fn focus_card(m: &mut UiModel, id: CardId) {
+    if !m.cards.contains_key(&id) {
+        return;
+    }
+    m.focus.pane = Pane::Chat;
+    m.focus.agent_mode = AgentMode::Selected;
+    m.focus.card = Some(id);
+    m.suggest = None;
+    let (Some(fit), Some((start, len))) = (
+        crate::render::chat_history(m),
+        crate::render::chat_card_span(m, id),
+    ) else {
+        return;
+    };
+    let bottom = fit.len.saturating_sub(fit.room);
+    let top = m.chat.scroll.map_or(fit.follow, |t| t.min(bottom));
+    if start >= top && start + len <= top + fit.room {
+        return;
+    }
+    let target = start.min(bottom);
+    m.chat.scroll = (target != fit.follow.min(bottom)).then_some(target);
+}
+
+/// Your message was refused (`MessageRefused`): the line comes back into the input with
+/// the footer saying why.
+pub(crate) fn refused(m: &mut UiModel, reason: String) {
+    m.footer_note = Some(reason);
+    if let Some(line) = m.chat_sent.take() {
+        put_back(m, &line);
+    }
+}
+
+/// Your message was dropped (P3-D26): its text comes back, addressed as it was, and
+/// `enter` sends it again.
+pub(crate) fn dropped(m: &mut UiModel, to: &AgentName, text: &str, reason: &str) {
+    let line = if m.org.is_duo(to) {
+        text.to_owned()
     } else {
-        busy(&duo, state)
-    });
-    take_back(m);
-}
-
-/// Duo showed no sign of starting the task (P2-D11): the text goes back into the input,
-/// where `enter` sends it again (in the chat, `space` types a space).
-pub(crate) fn not_taken(m: &mut UiModel) {
-    m.footer_note = Some(format!(
-        "{} didn't take the task · enter to send again",
-        m.org.duo.name
-    ));
-    take_back(m);
-}
-
-/// Duo's turn ended (it went idle): its reply joins the history (P2-D8).
-pub(crate) fn duo_status_changed(m: &mut UiModel, before: AgentState) {
-    let duo = m.org.duo.name.clone();
-    let status = m.view(&duo).status.clone();
-    if !status.state.is_at_rest() {
-        // Duo took the task: nothing to put back any more.
-        m.chat_sent = None;
-    }
-    // One reply per turn: a turn ends when a working or waiting Duo goes idle. Launching
-    // (starting → idle) is not a turn, so an old reply isn't repeated then.
-    let turn_ended = matches!(before, AgentState::Working | AgentState::Waiting)
-        && status.state == AgentState::Idle;
-    if !turn_ended {
-        return;
-    }
-    let Some(reply) = m.view(&duo).last_reply.clone() else {
-        return;
+        format!("@{to} {text}")
     };
-    push(
-        &mut m.chat,
-        ChatLine {
-            at: status.since,
-            who: Who::Duo,
-            text: reply,
-        },
-    );
+    m.footer_note = Some(format!("{reason}{SEND_AGAIN}"));
+    put_back(m, &line);
 }
 
-/// Puts the last sent text back into the input, before anything typed since (on a line of
-/// its own), and drops its history line.
-fn take_back(m: &mut UiModel) {
-    let Some(text) = m.chat_sent.take() else {
-        return;
-    };
-    if let Some(i) = m
-        .chat
-        .lines
-        .iter()
-        .rposition(|l| l.who == Who::You && l.text == text)
-    {
-        m.chat.lines.remove(i);
-    }
+/// Puts `line` into the input, before anything typed since (on a line of its own).
+fn put_back(m: &mut UiModel, line: &str) {
     let typed = m.chat_input.text();
     m.chat_input = if typed.is_empty() {
-        LineEdit::new(&text)
+        LineEdit::new(line)
     } else {
-        LineEdit::new(&format!("{text}\n{typed}"))
+        LineEdit::new(&format!("{line}\n{typed}"))
     };
-}
-
-fn busy(duo: &AgentName, state: AgentState) -> String {
-    format!("{duo} is {} · send again when it is at rest", state.word())
+    m.suggest = None;
 }
 
 /// P2-D11's refusal while a delivery is pending.
@@ -231,9 +337,9 @@ pub(crate) fn still_taking(agent: &AgentName) -> String {
     format!("{agent} is still taking the last task")
 }
 
-/// Appends a line, dropping the oldest past the cap.
-fn push(chat: &mut ChatLines, line: ChatLine) {
-    chat.lines.push(line);
-    let over = chat.lines.len().saturating_sub(MAX_LINES);
-    chat.lines.drain(..over);
+/// Appends an entry, dropping the oldest past the cap.
+pub(crate) fn push(chat: &mut ChatLines, entry: ChatEntry) {
+    chat.entries.push(entry);
+    let over = chat.entries.len().saturating_sub(MAX_ENTRIES);
+    chat.entries.drain(..over);
 }

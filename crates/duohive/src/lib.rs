@@ -9,6 +9,7 @@ pub mod hook_cmd;
 pub mod hook_listener;
 pub mod local_time;
 pub mod logging;
+pub mod mcp_cmd;
 pub mod notifier;
 pub mod real_ports;
 pub mod startup;

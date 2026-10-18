@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 3 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Generalist ───────────────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│ 3 agents · ● 2 working                       │
+┃ ▾ Payments           ● 1     ┃│ Defaults  CLI inherit: Claude Code           │
+┃   ▾ Backend          ● 1     ┃│           model inherit: sonnet              │
+┃     auth-service     ○   1d  ┃│           worktrees inherit: off             │
+┃     billing-api      ●   2m  ┃│ Prompt    (none)                             │
+┃   ▾ QA                       ┃│                                              │
+┃     pay-qa           ○   1d  ┃│ space give work to this role · e edit        │
+┃▌┌─ Give work · role Generalist (1 of 3 free) ──────────────────────────────┐ │
+┃ │ Task     [ Fix the flaky date test in billing/time_test.go____________ ] │ │
+┃ │ Goes to  ▌squad-2 (finished 3m)          ↑↓ pick another                 │ │
+┃ │ Run      in ~/code/my-app, as the next turn of squad-2's session         │ │
+┃ │                               enter give · alt+enter new line · esc      │ │
+┃ └──────────────────────────────────────────────────────────────────────────┘ │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter give · alt+enter new line · esc

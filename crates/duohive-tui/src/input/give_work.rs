@@ -1,24 +1,29 @@
-//! `space`: opening Give work, and its keys (UI §4.5, P2-D10).
+//! `space`: opening Give work, and its keys (UI §4.5, P3-D28).
 
 use duohive_core::command::Command;
-use duohive_core::org::NodeKey;
+use duohive_core::event::AgentView;
+use duohive_core::names::AgentName;
+use duohive_core::org::{NodeKey, RoleKey};
 
 use super::{Action, UiEffect};
 use crate::forms::{GiveOutcome, GiveWork};
 use crate::model::{Dialog, UiModel};
 
-/// Said on a team, on Duo, or on a role in a pane that can't pick an agent.
+/// Said on a team or on Duo.
 const AGENT_OR_ROLE: &str = "space gives work to an agent or a role";
-/// Said on a role: phase 2 gives work to agents only (P2-D10).
-const SELECT_AGENT: &str = "select an agent to give work";
 
-/// `space` on the selection: an agent opens the dialog; Duo, a team or a role say why not.
+/// `space` on the selection: an agent or a role opens the dialog; Duo or a team say why not.
 pub(super) fn open(m: &mut UiModel) -> Vec<UiEffect> {
     let note = match &m.selected {
         NodeKey::Duo => AGENT_OR_ROLE,
         NodeKey::Agent(a) if m.org.is_duo(a) => AGENT_OR_ROLE,
         NodeKey::Team(_) => AGENT_OR_ROLE,
-        NodeKey::Role(_) => SELECT_AGENT,
+        NodeKey::Role(r) => {
+            if let Some(g) = role_dialog(m, r, "") {
+                m.dialog = Some(Dialog::GiveWork(Box::new(g)));
+            }
+            return Vec::new();
+        }
         NodeKey::Agent(a) => {
             let later = match m.give_later.take() {
                 Some((who, task, run)) if who == *a => Some((task, run)),
@@ -50,7 +55,32 @@ pub(super) fn action(m: &mut UiModel, mut g: Box<GiveWork>, a: Action) -> Vec<Ui
             if let Command::GiveWork { agent, task, run } = cmd.as_ref() {
                 m.give_sent = Some((agent.clone(), task.clone(), *run));
             }
+            if let Command::SendMessage { to, .. } = cmd.as_ref() {
+                m.footer_note = Some(format!("→ queued for {to}"));
+            }
+            vec![UiEffect::Send(*cmd)]
+        }
+        GiveOutcome::Wait(cmd) => {
+            m.dialog = Some(Dialog::GiveWork(g));
             vec![UiEffect::Send(*cmd)]
         }
     }
+}
+
+/// The role's dialog from its agents' states now, with `task` in the box.
+pub(crate) fn role_dialog(m: &UiModel, role: &RoleKey, task: &str) -> Option<GiveWork> {
+    let found = super::find_role(&m.org, role)?;
+    let members: Vec<(AgentName, AgentView)> = found
+        .agents
+        .iter()
+        .map(|a| (a.name.clone(), m.view(&a.name).clone()))
+        .collect();
+    Some(GiveWork::for_role(
+        &m.org,
+        role,
+        &members,
+        task,
+        m.dirs.probe(),
+        &m.home,
+    ))
 }

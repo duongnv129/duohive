@@ -1,0 +1,8 @@
+---
+source: crates/duohive-tui/src/render/chat_tests.rs
+expression: "chat_rows(&lines).join(\"\\n\")"
+---
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│            → @auth-service "run the tests again"                             │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘

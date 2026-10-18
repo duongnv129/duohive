@@ -20,6 +20,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use duohive_core::command::Command;
 use duohive_core::names::AgentName;
 use duohive_core::ports::PaneView;
 use duohive_core::status::Status;
@@ -84,6 +85,8 @@ pub(crate) struct Live {
     recheck: Option<Instant>,
     /// The size changed while typing: open the stream again once typing ends.
     reopen_deferred: bool,
+    /// The agent the engine was last told you type into (P3-D19).
+    typing_sent: Option<AgentName>,
     no_color: bool,
 }
 
@@ -110,8 +113,21 @@ impl Live {
             blocked: None,
             recheck: None,
             reopen_deferred: false,
+            typing_sent: None,
             no_color,
         }
+    }
+
+    /// P3-D19: `Typing { agent: Some(..) }` when Typing mode starts on an agent, and
+    /// `{ agent: None }` when it ends (`ctrl+q`, a click away, or the stream closing);
+    /// `None` while nothing changed since the last one.
+    pub(crate) fn typing_change(&mut self, m: &UiModel) -> Option<Command> {
+        let now = m.typing().then(|| m.selected_agent().cloned()).flatten();
+        if now == self.typing_sent {
+            return None;
+        }
+        self.typing_sent.clone_from(&now);
+        Some(Command::Typing { agent: now })
     }
 
     /// The agent and size the pane wants streamed now, if any; `None` also while the

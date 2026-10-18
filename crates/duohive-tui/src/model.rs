@@ -5,8 +5,10 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use duohive_core::card::{Card, CardId};
 use duohive_core::command::Command;
-use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
+use duohive_core::event::{AgentView, Event, NeedsYouItem, RoleOutcome, Snapshot};
+use duohive_core::inbox::{MessageId, Sender};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::ports::OrgFileError;
@@ -21,6 +23,7 @@ use ratatui::layout::Rect;
 use crate::chat::{self, ChatLines};
 use crate::focus::Focus;
 use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
+use crate::suggest::Suggest;
 
 /// A dialog over the main screen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -136,12 +139,16 @@ pub struct UiModel {
     pub folded: BTreeSet<NodeKey>,
     /// Rows `ctrl+↑` added to the chat, within P2-D3's bounds.
     pub chat_rows_extra: i16,
-    /// The chat history (P2-D8).
+    /// The chat history.
     pub chat: ChatLines,
     /// The chat input.
     pub chat_input: LineEdit,
-    /// The last text the chat sent, put back if Duo doesn't take it.
+    /// The last line the chat sent, put back if the engine refuses it.
     pub chat_sent: Option<String>,
+    /// Your messages not yet delivered (a `you` line shows `queued` while its id is here).
+    pub queued: BTreeSet<MessageId>,
+    /// The chat's open suggestion list.
+    pub suggest: Option<Suggest>,
     /// The terminal's size, which bounds the chat's resizing.
     pub screen: Rect,
     /// The agent pane shows a frozen scrollback snapshot (P2-D12), not the live terminal.
@@ -159,6 +166,8 @@ pub struct UiModel {
     pub give_later: Option<(AgentName, String, Option<RunIn>)>,
     /// The worktrees the engine lists, as it last published them.
     pub worktrees: Vec<WorktreeRow>,
+    /// Pending approval cards (UI §4.6).
+    pub cards: BTreeMap<CardId, Card>,
 }
 
 impl UiModel {
@@ -185,6 +194,8 @@ impl UiModel {
             chat: ChatLines::default(),
             chat_input: LineEdit::default(),
             chat_sent: None,
+            queued: BTreeSet::new(),
+            suggest: None,
             screen: Rect::default(),
             scrolled: false,
             live_agent: None,
@@ -193,6 +204,7 @@ impl UiModel {
             give_sent: None,
             give_later: None,
             worktrees: Vec::new(),
+            cards: BTreeMap::new(),
         }
     }
 
@@ -208,11 +220,7 @@ impl UiModel {
                 }
             }
             Event::AgentStatusChanged { agent, status } => {
-                let before = self.view(&agent).status.state;
                 let changed = self.update_view(&agent, |v| v.status = status);
-                if changed && self.org.is_duo(&agent) {
-                    chat::duo_status_changed(self, before);
-                }
                 self.sync_give_work(&agent);
                 return changed;
             }
@@ -235,12 +243,6 @@ impl UiModel {
                     None => self.footer_note = Some(reason),
                 },
             },
-            // Phase 2 gives Duo work only from the chat (P2-D8, P2-D10).
-            Event::GiveWorkRefused {
-                agent,
-                state,
-                pending,
-            } if self.org.is_duo(&agent) => chat::refused(self, state, pending),
             Event::GiveWorkRefused {
                 agent,
                 state,
@@ -252,9 +254,6 @@ impl UiModel {
                     format!("{agent} is {}", state.word())
                 };
                 self.refused_give_work(&agent, reason);
-            }
-            Event::GiveWorkNotTaken { agent, .. } if self.org.is_duo(&agent) => {
-                chat::not_taken(self);
             }
             Event::GiveWorkNotTaken { agent, task, .. } => {
                 let reason = format!("{agent} didn't take the task");
@@ -284,17 +283,119 @@ impl UiModel {
             Event::Worktrees(rows) => self.set_worktrees(rows),
             // The engine hands alerts to the notifier itself; the row's state already shows here.
             Event::Alert(_) => {}
+            Event::ChatLine(entry) => chat::push(&mut self.chat, entry),
+            e @ (Event::MessageQueued { .. }
+            | Event::MessageDelivered { .. }
+            | Event::MessageDropped { .. }) => self.apply_message(e),
+            Event::InboxChanged { agent, waiting } => {
+                return self.update_view(&agent, |v| v.inbox = waiting);
+            }
+            Event::MessageRefused { reason, .. } => chat::refused(self, reason),
+            // The chat draws a pending card at its place (UI §4.6).
+            Event::CardRaised(card) => {
+                self.cards.insert(card.id, *card);
+            }
+            // Its `CardResult` chat line follows and takes its place.
+            Event::CardAnswered { card, .. } => {
+                self.cards.remove(&card);
+                if self.focus.card == Some(card) {
+                    self.focus.card = None;
+                }
+            }
+            e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
+            // Duo's tool results show as its action lines (UI §4.6).
+            Event::ToolResult { .. } => {}
         }
         true
     }
 
-    /// The open Give work dialog follows its agent's state.
+    /// The answer to your task for a role: taken or carded closes its dialog with a note;
+    /// refused keeps it open with the task and the reason under it (P3-D28).
+    fn apply_role(&mut self, e: Event) {
+        match e {
+            Event::RoleAssigned { role, outcome, .. } => {
+                if self.role_dialog_for(&role).is_some() {
+                    self.dialog = None;
+                }
+                self.footer_note = Some(match outcome {
+                    RoleOutcome::Given { agent, .. } => format!("{agent} took the task"),
+                    RoleOutcome::Card(_) => NO_FREE_CARD.to_owned(),
+                });
+            }
+            Event::AssignRefused { role, reason, .. } => match self.role_dialog_for(&role) {
+                Some(g) => {
+                    g.sent = false;
+                    g.note = Some(reason);
+                }
+                None => self.footer_note = Some(reason),
+            },
+            _ => {}
+        }
+    }
+
+    /// A message event. Messages between agents show only as `✉` (UI §4.7): only yours
+    /// are tracked, and a dropped one of yours comes back into the input (P3-D26).
+    fn apply_message(&mut self, e: Event) {
+        match e {
+            Event::MessageQueued {
+                id,
+                from: Sender::You,
+                ..
+            } => {
+                self.queued.insert(id);
+                // Accepted: a later refusal is not about the line the chat sent.
+                self.chat_sent = None;
+            }
+            Event::MessageDelivered { id } => {
+                self.queued.remove(&id);
+            }
+            Event::MessageDropped {
+                id,
+                from,
+                to,
+                text,
+                reason,
+            } => {
+                self.queued.remove(&id);
+                if from == Sender::You {
+                    chat::dropped(self, &to, &text, &reason);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The open Give work dialog follows its agent's state, or a role's its agents'.
     fn sync_give_work(&mut self, agent: &AgentName) {
-        let view = self.view(agent).clone();
-        if let Some(Dialog::GiveWork(g)) = &mut self.dialog
-            && &g.agent == agent
-        {
-            g.sync(&view);
+        let Some(Dialog::GiveWork(g)) = &self.dialog else {
+            return;
+        };
+        match g.role().cloned() {
+            Some(role) => {
+                let member = crate::input::find_role(&self.org, &role)
+                    .is_some_and(|r| r.agents.iter().any(|a| &a.name == agent));
+                let fresh = member
+                    .then(|| crate::input::give_work::role_dialog(self, &role, ""))
+                    .flatten();
+                if let (Some(fresh), Some(Dialog::GiveWork(g))) = (fresh, &mut self.dialog) {
+                    g.follow_role(fresh);
+                }
+            }
+            None if &g.agent == agent => {
+                let view = self.view(agent).clone();
+                if let Some(Dialog::GiveWork(g)) = &mut self.dialog {
+                    g.sync(&view);
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// The open Give work dialog, when it is `role`'s.
+    fn role_dialog_for(&mut self, role: &RoleKey) -> Option<&mut GiveWork> {
+        match &mut self.dialog {
+            Some(Dialog::GiveWork(g)) if g.role() == Some(role) => Some(g),
+            _ => None,
         }
     }
 
@@ -410,12 +511,13 @@ impl UiModel {
         }
     }
 
-    /// Replaces the Needs you list. The cursor stays on the same agent; when that agent
-    /// has left, it keeps its row number, clamped to the new last row (UI §4.1.3).
+    /// Replaces the Needs you list. The cursor stays on the same agent or card; when it
+    /// has left, the cursor keeps its row number, clamped to the new last row (UI §4.1.3).
     fn set_needs_you(&mut self, items: Vec<NeedsYouItem>) {
         let at = self.focus.needs_you_cursor;
-        let under_cursor = self.needs_you.get(at).map(|i| i.agent.clone());
-        let same = under_cursor.and_then(|a| items.iter().position(|i| i.agent == a));
+        let key = |i: &NeedsYouItem| (i.agent.clone(), i.card);
+        let under_cursor = self.needs_you.get(at).map(key);
+        let same = under_cursor.and_then(|k| items.iter().position(|i| key(i) == k));
         let last = items.len().saturating_sub(1);
         self.focus.needs_you_cursor = same.unwrap_or(at).min(last);
         self.needs_you = items;
@@ -441,6 +543,17 @@ impl UiModel {
         self.settings_error = s.settings_error;
         self.reconnecting = s.reconnecting;
         self.set_worktrees(s.worktrees);
+        self.chat.entries = s.chat;
+        self.chat.scroll = None;
+        self.queued = s.your_queued.into_iter().collect();
+        self.cards = s.cards.into_iter().map(|c| (c.id, c)).collect();
+        if self
+            .focus
+            .card
+            .is_some_and(|c| !self.cards.contains_key(&c))
+        {
+            self.focus.card = None;
+        }
         self.keep_selection_valid();
     }
 
@@ -519,15 +632,18 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     problem: None,
     worktree: None,
     delivery_pending: false,
+    inbox: 0,
 };
 
-/// The footer note when the system has no desktop notifier (UI §4.1.4).
 /// What the reopened dialog adds when the task wasn't taken.
 const NOT_TAKEN_RETRY: &str = " · enter to try again";
 /// Ends a note about work that waits for `space`; not shown while typing, where `space`
 /// goes to the agent.
 pub(crate) const SPACE_RETRY: &str = " · space to try again";
+/// The footer note when a role's task raised a clone card (UI §4.5, P3-D3).
+const NO_FREE_CARD: &str = "No free agent · a card in the chat proposes one";
 
+/// The footer note when the system has no desktop notifier (UI §4.1.4).
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
 
 #[cfg(test)]
@@ -597,6 +713,7 @@ mod tests {
             quiet: false,
             since: NOW,
             excerpt: None,
+            card: None,
         };
         assert!(m.apply(Event::NeedsYouChanged(vec![item.clone()])));
         assert_eq!(m.needs_you, [item]);
@@ -678,6 +795,9 @@ mod tests {
             }),
             reconnecting: 3,
             worktrees: Vec::new(),
+            cards: Vec::new(),
+            chat: Vec::new(),
+            your_queued: Vec::new(),
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);

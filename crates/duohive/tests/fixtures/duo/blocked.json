@@ -1,0 +1,24 @@
+[
+  {
+    "on": "what's blocked?",
+    "steps": [
+      { "call": "list_agents", "args": {} },
+      { "call": "read_agent", "args": { "agent": "billing-api" } },
+      { "reply": "billing-api is waiting on an approval; squad-1 is busy" }
+    ]
+  },
+  {
+    "on": "fix it:",
+    "steps": [
+      { "call": "stop_agent", "args": { "agent": "squad-1" } },
+      { "call": "send_message", "args": { "to": "pay-qa", "text": "rerun the tests" } },
+      { "reply": "asked you to stop squad-1; told pay-qa to rerun the tests" }
+    ]
+  },
+  {
+    "on": "approved: stop squad-1",
+    "steps": [
+      { "reply": "squad-1 stopped" }
+    ]
+  }
+]

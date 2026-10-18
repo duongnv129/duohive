@@ -254,6 +254,27 @@ fn no_auto_approve_flags() {
     }
     // The plugin never answers a permission itself (TD §2).
     assert!(!PLUGIN_SOURCE.contains("permission.reply"));
+    // The only MCP server a launch adds is DuoHive's (P3-D1).
+    let servers: Vec<&String> = config["mcp"].as_object().unwrap().keys().collect();
+    assert_eq!(servers, ["duohive"]);
+}
+
+#[test]
+fn launch_allows_only_duohive_tools() {
+    let s = spec(Some("t"));
+    let cmd = launch(&s);
+    // S2.5's 1.18 shape, loaded by 2.0.29 under `--standalone` (checked live, Task 3.2).
+    assert_eq!(
+        config_json(&cmd)["mcp"],
+        serde_json::json!({"duohive": {
+            "type": "local",
+            "command": [s.hook_exe.to_str().unwrap(), "mcp"],
+            "enabled": true
+        }})
+    );
+    for f in &cmd.files {
+        assert!(f.path.starts_with(&s.run_dir), "{}", f.path.display());
+    }
 }
 
 #[test]

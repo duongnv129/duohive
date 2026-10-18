@@ -99,6 +99,34 @@ fn reload_with_duplicate_names_reports_path() {
 }
 
 #[test]
+fn org_toml_with_dangerous_flags_keeps_last_good() {
+    // P3-D31: a hand-edited org.toml with the flag is a file error (D10).
+    for (flags, message) in [
+        (
+            "--verbose --dangerously-skip-permissions",
+            "role[Generalist].agent[squad-1].flags: --dangerously-skip-permissions is never allowed",
+        ),
+        (
+            "--allow-dangerously-skip-permissions=true",
+            "role[Generalist].agent[squad-1].flags: --allow-dangerously-skip-permissions is never allowed",
+        ),
+    ] {
+        let mut h = Harness::new();
+        let mut org = example_org();
+        org.roles[0].agents[0].fields.flags = Some(flags.into());
+        h.store.state.lock().unwrap().org_result = Ok(Some(org));
+        let ev = h.send(Command::ReloadOrg);
+        let err = OrgFileError {
+            line: None,
+            message: message.into(),
+        };
+        assert_eq!(ev, vec![Event::OrgFileError(Some(err.clone()))]);
+        assert_eq!(h.engine.org, test_org());
+        assert_eq!(h.engine.snapshot().org_error, Some(err));
+    }
+}
+
+#[test]
 fn change_duo_cli_restarts_running_duo() {
     let mut h = Harness::new();
     h.start("Duo");

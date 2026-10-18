@@ -1,0 +1,17 @@
+---
+source: crates/duohive-tui/src/render/card_tests.rs
+expression: text
+---
+┏━ ⬢ Duo · ◦ idle ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            ┃
+┃             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           ┃
+┃             ┏━ ◆ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                                                                               ┃
+┃             ┃ + Add agent pay-web in Payments › QA                           ┃                                                                               ┃
+┃             ┃   + cli: Claude Code                                           ┃                                                                               ┃
+┃             ┃   + directory: ~/code/web                                      ┃                                                                               ┃
+┃             ┃   + worktree: on                                               ┃                                                                               ┃
+┃             ┃ [y] Approve   [e] Edit   [n] Reject                            ┃                                                                               ┃
+┃             ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                                                               ┃
+┃ ❯                                                                                                                                                            ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ y approve · e edit · n reject · esc input

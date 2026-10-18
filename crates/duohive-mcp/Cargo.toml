@@ -11,3 +11,13 @@ workspace = true
 
 [dependencies]
 duohive-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util", "sync", "time", "macros", "rt"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+duohive-core = { workspace = true, features = ["testkit"] }
+tokio = { workspace = true, features = ["net", "io-util", "sync", "time", "macros", "rt", "test-util"] }

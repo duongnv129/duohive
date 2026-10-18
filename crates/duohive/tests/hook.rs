@@ -108,7 +108,13 @@ fn serve(sock: &Path, agents: AgentClis, adapters: Adapters) -> Served {
     let listener = HookListener::bind(sock).unwrap();
     let (to_core, core) = mpsc::channel(16);
     let (tap_tx, tap) = mpsc::unbounded_channel();
-    tokio::spawn(listener.serve(agents, Arc::new(adapters), to_core, Some(tap_tx)));
+    tokio::spawn(listener.serve(
+        agents,
+        Arc::new(adapters),
+        to_core,
+        Some(tap_tx),
+        duohive_mcp::calls::Calls::new(),
+    ));
     Served { core, tap }
 }
 
@@ -412,7 +418,13 @@ fn stale_socket_answering_without_the_lock_is_replaced() {
     drop(leaked);
     let rt = multi_thread_rt();
     let (to_core, mut core) = mpsc::channel(4);
-    rt.spawn(listener.serve(no_agents(), Arc::new(Adapters::new(vec![])), to_core, None));
+    rt.spawn(listener.serve(
+        no_agents(),
+        Arc::new(Adapters::new(vec![])),
+        to_core,
+        None,
+        duohive_mcp::calls::Calls::new(),
+    ));
     let mut c = UnixStream::connect(&sock).unwrap();
     c.write_all(&line(&hook("t", "a", "busy", json!(null))))
         .unwrap();

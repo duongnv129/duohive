@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 use crate::cli_kind::CliKind;
+use crate::duo::DUO_PROMPT;
 use crate::names::{AgentName, NodeName};
 use crate::org::{Fields, NodeKey, Org, RoleKey};
 use crate::validate::FieldError;
@@ -47,6 +48,8 @@ pub enum PromptLevel {
     Role(NodeName),
     /// An agent.
     Agent(AgentName),
+    /// Duo's fixed prompt (TD §6.4), under the org's.
+    Duo,
 }
 
 impl PromptLevel {
@@ -56,6 +59,7 @@ impl PromptLevel {
             PromptLevel::Team(n) => format!("# Team: {n}"),
             PromptLevel::Role(n) => format!("# Role: {n}"),
             PromptLevel::Agent(n) => format!("# Agent: {n}"),
+            PromptLevel::Duo => "# Duo (DuoHive)".to_string(),
         }
     }
 
@@ -64,6 +68,7 @@ impl PromptLevel {
             PromptLevel::Org => ORG_LABEL.to_string(),
             PromptLevel::Team(n) | PromptLevel::Role(n) => n.to_string(),
             PromptLevel::Agent(n) => n.to_string(),
+            PromptLevel::Duo => "Duo".to_string(),
         }
     }
 }
@@ -209,7 +214,10 @@ pub fn resolve(org: &Org, agent: &AgentName) -> Result<ResolvedAgent, FieldError
             model: d.model.clone(),
             effort: d.effort.clone(),
             worktree: d.worktree,
-            prompt: stack_prompt(&[(PromptLevel::Org, d.prompt.as_deref())]),
+            prompt: stack_prompt(&[
+                (PromptLevel::Org, d.prompt.as_deref()),
+                (PromptLevel::Duo, Some(DUO_PROMPT)),
+            ]),
         });
     }
     let Some(loc) = org.find_agent(agent) else {
@@ -361,7 +369,11 @@ mod tests {
         assert!(r.is_duo);
         assert_eq!(r.cli, org.duo.cli);
         assert_eq!(r.directory.as_deref(), Some("~"));
-        assert_eq!(r.prompt, "# Org\nO");
+        assert!(
+            r.prompt.starts_with("# Org\nO\n\n# Duo (DuoHive)\n"),
+            "{}",
+            r.prompt
+        );
     }
 
     #[test]

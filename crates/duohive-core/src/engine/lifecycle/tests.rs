@@ -645,3 +645,22 @@ fn store_failure_is_reported_not_fatal() {
     assert_eq!(h.state("pay-qa"), AgentState::Starting);
     assert_eq!(h.calls().len(), 1);
 }
+
+#[test]
+fn launched_as_duo_saved_and_restored() {
+    let mut h = Harness::new();
+    h.start("Duo");
+    h.start("pay-qa");
+    let (duo, agent) = {
+        let st = h.store.state.lock().unwrap();
+        (
+            st.sessions[&n("Duo")].clone(),
+            st.sessions[&n("pay-qa")].clone(),
+        )
+    };
+    assert!(duo.launched_as_duo);
+    assert!(!agent.launched_as_duo);
+    h.rt_mut("Duo").launched_as_duo = false;
+    h.engine.restore(duo);
+    assert!(h.rt("Duo").launched_as_duo);
+}

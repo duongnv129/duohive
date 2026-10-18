@@ -2,11 +2,15 @@
 
 pub mod adapter;
 pub mod alert;
+pub mod card;
+pub mod chat;
 pub mod cli_kind;
 pub mod command;
+pub mod duo;
 pub mod engine;
 pub mod event;
 pub mod hook;
+pub mod inbox;
 pub mod inherit;
 pub mod launch;
 pub mod names;
@@ -15,6 +19,7 @@ pub mod ports;
 pub mod settings;
 pub mod status;
 pub mod time;
+pub mod tool;
 pub mod validate;
 pub mod view;
 pub mod worktree;

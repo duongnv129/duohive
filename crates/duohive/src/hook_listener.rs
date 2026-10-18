@@ -19,6 +19,8 @@ use duohive_core::adapter::Adapters;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::engine::Input;
 use duohive_core::hook::HookMessage;
+use duohive_mcp::calls::Calls;
+use duohive_mcp::protocol::{SockLine, parse_line};
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::mpsc;
@@ -111,9 +113,17 @@ impl HookListener {
         adapters: Arc<Adapters>,
         to_core: mpsc::Sender<Input>,
         tap: Option<mpsc::UnboundedSender<HookMessage>>,
+        calls: Calls,
     ) {
-        self.serve_until(agents, adapters, to_core, tap, std::future::pending())
-            .await;
+        self.serve_until(
+            agents,
+            adapters,
+            to_core,
+            tap,
+            calls,
+            std::future::pending(),
+        )
+        .await;
     }
 
     /// [`HookListener::serve`] until `stop` completes, then stops without
@@ -127,6 +137,7 @@ impl HookListener {
         adapters: Arc<Adapters>,
         to_core: mpsc::Sender<Input>,
         tap: Option<mpsc::UnboundedSender<HookMessage>>,
+        calls: Calls,
         stop: impl Future<Output = ()>,
     ) {
         let _lock = self.lock.take(); // held while serving, unless taken out
@@ -142,6 +153,7 @@ impl HookListener {
             adapters,
             to_core,
             tap,
+            calls,
         };
         let mut connections = JoinSet::new();
         tokio::pin!(stop);
@@ -244,6 +256,34 @@ struct Route {
     adapters: Arc<Adapters>,
     to_core: mpsc::Sender<Input>,
     tap: Option<mpsc::UnboundedSender<HookMessage>>,
+    calls: Calls,
+}
+
+/// What a line is: a hook, a tool request, or nothing to forward.
+fn route(bytes: &[u8]) -> Routed {
+    if bytes.iter().all(u8::is_ascii_whitespace) {
+        return Routed::Skip;
+    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        tracing::warn!("run.sock line is not UTF-8");
+        return Routed::Skip;
+    };
+    match parse_line(text) {
+        Ok(SockLine::Hook(msg)) => Routed::Hook(msg),
+        Ok(line) => Routed::Tool(line),
+        // The line may hold a token: log only the parse error.
+        Err(e) => {
+            tracing::warn!(error = %e, "run.sock line dropped");
+            Routed::Skip
+        }
+    }
+}
+
+/// Where a line goes.
+enum Routed {
+    Hook(HookMessage),
+    Tool(SockLine),
+    Skip,
 }
 
 /// One line, or a line that was too long and was skipped.
@@ -257,11 +297,26 @@ impl Route {
         let mut reader = BufReader::new(stream);
         loop {
             match read_line(&mut reader).await {
-                Ok(Some(Line::Text(bytes))) => {
-                    if !self.handle(&bytes).await {
+                Ok(Some(Line::Text(bytes))) => match route(&bytes) {
+                    Routed::Hook(msg) => {
+                        if !self.forward(msg).await {
+                            return;
+                        }
+                    }
+                    // A tool request owns its connection: one line in, one out (P3-D17).
+                    Routed::Tool(line) => {
+                        let stream = reader.into_inner();
+                        duohive_mcp::endpoint::serve_request(
+                            line,
+                            stream,
+                            self.to_core.clone(),
+                            self.calls.clone(),
+                        )
+                        .await;
                         return;
                     }
-                }
+                    Routed::Skip => {}
+                },
                 Ok(Some(Line::TooLong)) => {
                     tracing::warn!(max = MAX_LINE, "hook line over the limit dropped");
                 }
@@ -274,19 +329,8 @@ impl Route {
         }
     }
 
-    /// Forwards one line; `false` once the core has gone.
-    async fn handle(&self, bytes: &[u8]) -> bool {
-        if bytes.iter().all(u8::is_ascii_whitespace) {
-            return true;
-        }
-        let msg: HookMessage = match serde_json::from_slice(bytes) {
-            Ok(m) => m,
-            Err(e) => {
-                // The line may hold a token: log only the parse error.
-                tracing::warn!(error = %e, "hook line is not a hook message");
-                return true;
-            }
-        };
+    /// Forwards one hook; `false` once the core has gone.
+    async fn forward(&self, msg: HookMessage) -> bool {
         let msg = self.enrich(msg).await;
         if let Some(tap) = &self.tap {
             let _ = tap.send(msg.clone());
@@ -400,6 +444,52 @@ mod tests {
             // An unterminated last line was never fully delivered: dropped.
             vec![Some(b"first line".to_vec()), Some(b"second".to_vec())]
         );
+    }
+
+    #[tokio::test]
+    async fn listener_routes_by_kind() {
+        use duohive_core::command::Command;
+        use duohive_core::tool::ToolCall;
+        use tokio::io::AsyncWriteExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let sock = dir.path().join("run").join("run.sock");
+        let listener = HookListener::bind(&sock).unwrap();
+        let (to_core, mut from_listener) = mpsc::channel(8);
+        let agents: AgentClis = Arc::default();
+        tokio::spawn(listener.serve(
+            agents,
+            Arc::new(Adapters::new(vec![])),
+            to_core,
+            None,
+            duohive_mcp::calls::Calls::new(),
+        ));
+
+        let mut hook = UnixStream::connect(&sock).await.unwrap();
+        hook.write_all(
+            b"{\"token\":\"t\",\"agent\":\"pay-qa\",\"event\":\"Stop\",\"payload\":{}}\n",
+        )
+        .await
+        .unwrap();
+        drop(hook);
+        assert!(matches!(
+            from_listener.recv().await,
+            Some(Input::Hook(m)) if m.agent == "pay-qa"
+        ));
+
+        let mut call = UnixStream::connect(&sock).await.unwrap();
+        call.write_all(
+            b"{\"kind\":\"call\",\"token\":\"t\",\"tool\":\"list_agents\",\"arguments\":{}}\n",
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            from_listener.recv().await,
+            Some(Input::Command(Command::Tool {
+                call: ToolCall::ListAgents,
+                ..
+            }))
+        ));
     }
 
     #[tokio::test]

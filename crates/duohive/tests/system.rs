@@ -226,6 +226,7 @@ fn counting(calls: &Arc<AtomicUsize>) -> Arc<Adapters> {
                 kind,
                 exe: PathBuf::from(BIN),
                 hooks,
+                duo_script: None,
             },
             calls: Arc::clone(calls),
         })
@@ -322,6 +323,7 @@ fn tap_listener(
         Arc::new(Adapters::new(vec![])),
         to_core,
         Some(tap_tx),
+        duohive_mcp::calls::Calls::new(),
     ));
     (tap, core)
 }

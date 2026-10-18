@@ -6,6 +6,8 @@ use duohive_core::adapter::{
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
 use duohive_core::status::WaitingOn;
+use duohive_core::tool::WAIT_MAX_MINUTES;
+use duohive_core::validate::forbidden_flag;
 use serde_json::Value;
 
 use crate::detect::probe_version;
@@ -28,6 +30,17 @@ const HOOKS: [(&str, &str); 8] = [
 
 /// The per-launch hooks file, passed with `--settings` (S1.3).
 const SETTINGS_FILE: &str = "settings.json";
+
+/// The per-launch MCP config, passed with `--mcp-config` (TD §5.2).
+const MCP_FILE: &str = "mcp.json";
+
+/// How long Claude Code lets a DuoHive tool run silent, in ms: past the helper's own
+/// wait for `wait_for_agent` (60 min + 30 s). Its default, 1800 s, would cut a long
+/// wait short (checked live, Task 3.2).
+const MCP_TOOL_TIMEOUT_MS: u64 = (WAIT_MAX_MINUTES as u64 * 60 + 90) * 1000;
+
+/// The one tool pattern each launch pre-approves: DuoHive's own (P3-D1).
+const DUOHIVE_TOOLS: &str = "mcp__duohive__*";
 
 /// The payload field `enrich_hook` fills from the transcript.
 const ENRICHED_REPLY: &str = "duohive_last_reply";
@@ -62,11 +75,32 @@ impl CliAdapter for ClaudeAdapter {
     }
 
     /// `claude [--append-system-prompt <prompt>] --settings <run>/settings.json
+    /// --mcp-config <run>/mcp.json
     /// [--model=m] [--effort=e] [flags…] [-- <task>]` (S1.2, S1.3, S1.6, S1.8, S1.11).
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
+        // Defence in depth: validation already refuses these (P3-D31).
+        if let Some(flag) = spec.agent.flags.iter().find_map(|f| forbidden_flag(f)) {
+            return Err(LaunchError::Invalid(format!("{flag} is never allowed")));
+        }
         let settings_path = spec.run_dir.join(SETTINGS_FILE);
-        let settings = serde_json::to_string_pretty(&command_hooks(spec, &HOOKS)?)
+        let mut settings = command_hooks(spec, &HOOKS)?;
+        if let Some(obj) = settings.as_object_mut() {
+            obj.insert(
+                "permissions".to_owned(),
+                serde_json::json!({ "allow": [DUOHIVE_TOOLS] }),
+            );
+        }
+        let settings = serde_json::to_string_pretty(&settings)
             .map_err(|e| LaunchError::Invalid(format!("couldn't build hook settings: {e}")))?;
+        let mcp_path = spec.run_dir.join(MCP_FILE);
+        let mcp = serde_json::json!({ "mcpServers": { "duohive": {
+            "type": "stdio",
+            "command": utf8(&spec.hook_exe, "DuoHive's path")?,
+            "args": ["mcp"],
+            "timeout": MCP_TOOL_TIMEOUT_MS,
+        }}});
+        let mcp = serde_json::to_string_pretty(&mcp)
+            .map_err(|e| LaunchError::Invalid(format!("couldn't build the MCP config: {e}")))?;
         let agent = &spec.agent;
         let mut args = Vec::new();
         if !agent.prompt.trim().is_empty() {
@@ -75,6 +109,9 @@ impl CliAdapter for ClaudeAdapter {
         args.extend([
             "--settings".to_owned(),
             utf8(&settings_path, "run directory")?.to_owned(),
+            // No `--strict-mcp-config`: the user's own servers stay.
+            "--mcp-config".to_owned(),
+            utf8(&mcp_path, "run directory")?.to_owned(),
         ]);
         // One `--flag=value` argument each: free text starting with `-` stays a value.
         if let Some(model) = &agent.model {
@@ -93,10 +130,16 @@ impl CliAdapter for ClaudeAdapter {
             args,
             env: Vec::new(),
             cwd: launch_cwd(spec),
-            files: vec![LaunchFile {
-                path: settings_path,
-                contents: settings,
-            }],
+            files: vec![
+                LaunchFile {
+                    path: settings_path,
+                    contents: settings,
+                },
+                LaunchFile {
+                    path: mcp_path,
+                    contents: mcp,
+                },
+            ],
         })
     }
 
@@ -474,6 +517,34 @@ mod tests {
     }
 
     #[test]
+    fn launch_refuses_dangerous_flags() {
+        // P3-D31: never started without prompts, whatever the org says.
+        for (flags, flag) in [
+            (
+                vec!["--dangerously-skip-permissions"],
+                "--dangerously-skip-permissions",
+            ),
+            (
+                vec!["--verbose", "--allow-dangerously-skip-permissions=true"],
+                "--allow-dangerously-skip-permissions",
+            ),
+            (
+                vec!["--dangerously-skip-permissions=1", "--debug"],
+                "--dangerously-skip-permissions",
+            ),
+        ] {
+            let mut s = spec(Some("t"));
+            s.agent.flags = flags.into_iter().map(str::to_owned).collect();
+            assert_eq!(
+                ClaudeAdapter.launch(&s),
+                Err(duohive_core::adapter::LaunchError::Invalid(format!(
+                    "{flag} is never allowed"
+                )))
+            );
+        }
+    }
+
+    #[test]
     fn launch_without_directory_runs_in_home() {
         let mut s = spec(None);
         s.agent.directory = None;
@@ -510,12 +581,49 @@ mod tests {
         ] {
             assert!(!cmd.args.iter().any(|a| a.starts_with(banned)), "{banned}");
         }
-        assert!(
-            !settings_json(&cmd)
-                .as_object()
-                .unwrap()
-                .contains_key("permissions")
+        // The one narrow exception (P3-D1): DuoHive's own tools, nothing else.
+        assert_eq!(
+            settings_json(&cmd)["permissions"],
+            serde_json::json!({"allow": ["mcp__duohive__*"]})
         );
+    }
+
+    fn mcp_json(cmd: &LaunchCommand) -> serde_json::Value {
+        let file = cmd
+            .files
+            .iter()
+            .find(|f| f.path.ends_with("mcp.json"))
+            .unwrap();
+        serde_json::from_str(&file.contents).unwrap()
+    }
+
+    #[test]
+    fn launch_carries_mcp_config() {
+        let s = spec(None);
+        let cmd = launch(&s);
+        let at = cmd.args.iter().position(|a| a == "--mcp-config").unwrap();
+        assert_eq!(PathBuf::from(&cmd.args[at + 1]), s.run_dir.join("mcp.json"));
+        assert!(!cmd.args.iter().any(|a| a == "--strict-mcp-config"));
+        assert_eq!(
+            mcp_json(&cmd),
+            serde_json::json!({"mcpServers": {"duohive": {
+                "type": "stdio", "command": "/usr/local/bin/duohive", "args": ["mcp"],
+                "timeout": 3_690_000
+            }}})
+        );
+    }
+
+    #[test]
+    fn launch_allows_only_duohive_tools() {
+        let s = spec(Some("t"));
+        let cmd = launch(&s);
+        let settings = settings_json(&cmd);
+        let permissions = settings["permissions"].as_object().unwrap();
+        assert_eq!(permissions.len(), 1);
+        assert_eq!(permissions["allow"], serde_json::json!(["mcp__duohive__*"]));
+        for f in &cmd.files {
+            assert!(f.path.starts_with(&s.run_dir), "{}", f.path.display());
+        }
     }
 
     #[test]

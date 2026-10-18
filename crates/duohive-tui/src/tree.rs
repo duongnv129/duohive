@@ -15,7 +15,7 @@ const PIPE: &str = "│  ";
 const GAP: &str = "   ";
 const OPEN: &str = "▾ ";
 const FOLDED: &str = "▸ ";
-const EMPTY_ROLE: &str = "no agents yet · n to add one";
+const EMPTY_ROLE: &str = "no agents yet · n to add one or ask Duo";
 /// Hint after an error on Duo's row (D17): Duo's CLI is set in Edit org.
 const DUO_ERROR_HINT: &str = " · e Edit org";
 /// Hint after an error on an agent's row (D16, UI §4.12): `space` gives work, which
@@ -61,6 +61,8 @@ pub struct TreeRow {
     pub label: String,
     /// The state cell or roll-up, aligned in the right column.
     pub right: String,
+    /// Messages waiting for the row's agent (`✉ N`, UI §2.2); 0 on other rows.
+    pub inbox: u32,
 }
 
 impl TreeRow {
@@ -71,6 +73,7 @@ impl TreeRow {
             prefix,
             label,
             right,
+            inbox: 0,
         }
     }
 
@@ -81,6 +84,7 @@ impl TreeRow {
             prefix,
             label,
             right: String::new(),
+            inbox: 0,
         }
     }
 }
@@ -229,13 +233,16 @@ impl Ctx<'_> {
             let m = self.m;
             let view = m.view(&agent.name);
             let right = agent_right(&view.status, self.now, self.compact, None);
-            self.rows.push(TreeRow::node(
-                TreeRowKind::Agent,
-                NodeKey::Agent(agent.name.clone()),
-                prefix,
-                agent.name.to_string(),
-                right,
-            ));
+            self.rows.push(TreeRow {
+                inbox: view.inbox,
+                ..TreeRow::node(
+                    TreeRowKind::Agent,
+                    NodeKey::Agent(agent.name.clone()),
+                    prefix,
+                    agent.name.to_string(),
+                    right,
+                )
+            });
             let detail = self.detail_prefix(&cont, last, "      ");
             self.detail(view, false, detail);
         }

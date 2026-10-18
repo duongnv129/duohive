@@ -563,3 +563,44 @@ async fn status_before_closed_still_says_the_session_ended() {
     assert_eq!(lines.last().unwrap().trim_end(), " Duo's session ended");
     assert!(!lines.join("\n").contains("TYPING"));
 }
+
+/// The `Typing` commands sent so far (P3-D19).
+fn typing_sent(h: &mut Harness) -> Vec<duohive_core::command::Command> {
+    let mut out = Vec::new();
+    while let Ok(c) = h.commands.try_recv() {
+        if matches!(c, duohive_core::command::Command::Typing { .. }) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+#[tokio::test(start_paused = true)]
+async fn typing_mode_sends_typing_command() {
+    use duohive_core::command::Command;
+    let view = FakePaneView::default();
+    let typing = |agent: Option<&str>| Command::Typing {
+        agent: agent.map(n),
+    };
+    run_with(resting_model(), &view, async |h: &mut Harness| {
+        let id = open_duo(&view, "$ ").await;
+        focus_agent_pane(h).await;
+        sleep(10).await;
+        assert_eq!(typing_sent(h), []);
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        sleep(10).await;
+        assert_eq!(typing_sent(h), [typing(Some("Duo"))]);
+        h.input.send(ctrl('q')).await.unwrap();
+        sleep(10).await;
+        assert_eq!(typing_sent(h), [typing(None)]);
+        // Typing again, then the window dies: typing ends with the stream.
+        h.input.send(code(KeyCode::Enter)).await.unwrap();
+        sleep(10).await;
+        assert_eq!(typing_sent(h), [typing(Some("Duo"))]);
+        view.close(id, "the window closed");
+        sleep(10).await;
+        assert_eq!(typing_sent(h), [typing(None)]);
+        h.input.send(key('q')).await.unwrap();
+    })
+    .await;
+}

@@ -51,11 +51,43 @@ fn err(path: String, message: String) -> FieldError {
     FieldError { path, message }
 }
 
+/// CLI flags DuoHive never passes: both start an agent without permission
+/// prompts (P3-D31).
+pub const FORBIDDEN_FLAGS: [&str; 2] = [
+    "--dangerously-skip-permissions",
+    "--allow-dangerously-skip-permissions",
+];
+
+/// Part of a flag's name: a match must not touch one of these on either side.
+fn in_word(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '-' || c == '_'
+}
+
+/// The first of [`FORBIDDEN_FLAGS`] found as a whole word anywhere in `flags`,
+/// also as `--flag=value` and inside quotes; case-sensitive, as the CLI is.
+pub fn forbidden_flag(flags: &str) -> Option<&'static str> {
+    FORBIDDEN_FLAGS.into_iter().find(|flag| {
+        flags.match_indices(flag).any(|(at, _)| {
+            let before = flags[..at].chars().next_back();
+            let after = flags[at + flag.len()..].chars().next();
+            !before.is_some_and(in_word) && !after.is_some_and(in_word)
+        })
+    })
+}
+
+/// Why `fields` can't be used: they hold a forbidden flag (P3-D31).
+pub fn forbidden_flags_error(fields: &Fields) -> Option<String> {
+    let flag = forbidden_flag(fields.flags.as_deref()?)?;
+    Some(format!("{flag} is never allowed"))
+}
+
 fn check_flags(path: &str, fields: &Fields, out: &mut Vec<FieldError>) {
     let Some(flags) = fields.flags.as_deref() else {
         return;
     };
-    if let Err(e) = shell_words::split(flags) {
+    if let Some(message) = forbidden_flags_error(fields) {
+        out.push(err(format!("{path}.flags"), message));
+    } else if let Err(e) = shell_words::split(flags) {
         out.push(err(format!("{path}.flags"), format!("flags: {e}")));
     }
 }
@@ -351,6 +383,47 @@ mod tests {
                 "role[Generalist].flags",
             ]
         );
+    }
+
+    const SKIP: &str = "--dangerously-skip-permissions is never allowed";
+    const ALLOW_SKIP: &str = "--allow-dangerously-skip-permissions is never allowed";
+
+    #[test]
+    fn validate_refuses_dangerous_flags() {
+        // P3-D31. There are no org-default or Duo flags (`OrgDefaults` and
+        // `DuoConfig` have no flags field), so every level that has one is here.
+        let mut org = example_org();
+        org.teams[0].defaults.flags = Some("--dangerously-skip-permissions".into());
+        org.teams[0].roles[0].defaults.flags =
+            Some("--verbose --allow-dangerously-skip-permissions=true".into());
+        org.teams[0].roles[0].agents[1].fields.flags =
+            Some("--verbose '--dangerously-skip-permissions' --debug".into());
+        org.roles[0].defaults.flags = Some("--x=1 --allow-dangerously-skip-permissions".into());
+        org.roles[0].agents[0].fields.flags =
+            Some("--verbose \"--dangerously-skip-permissions=yes".into());
+        assert_eq!(
+            validate(&org),
+            [
+                fe("team[Payments].flags", SKIP),
+                fe("team[Payments].role[Backend].flags", ALLOW_SKIP),
+                fe(
+                    "team[Payments].role[Backend].agent[billing-api].flags",
+                    SKIP
+                ),
+                fe("role[Generalist].flags", ALLOW_SKIP),
+                fe("role[Generalist].agent[squad-1].flags", SKIP),
+            ]
+        );
+    }
+
+    #[test]
+    fn similar_flags_are_not_the_dangerous_ones() {
+        // Whole words only, and case-sensitive, as the CLI reads them.
+        let mut org = example_org();
+        org.teams[0].defaults.flags = Some("--dangerously-skip-permissions-not".into());
+        org.roles[0].defaults.flags = Some("--Dangerously-Skip-Permissions".into());
+        org.roles[0].agents[0].fields.flags = Some("--foo=x--dangerously-skip-permissions".into());
+        assert!(validate(&org).is_empty());
     }
 
     #[test]

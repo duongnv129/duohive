@@ -27,6 +27,7 @@ DuoHive is a Rust app built on Ratatui. For v1 it runs as **one process**, organ
 | Agents' tools | MCP through a `duohive mcp` helper per agent, authenticated by a per-launch token | Every supported CLI speaks MCP; the helper finds DuoHive by socket |
 | CLI settings | Hooks, MCP and instructions passed per launch | The user's global CLI configuration is never modified |
 | Approvals | DuoHive never auto-approves a CLI prompt and passes no auto-approve flags of its own. One narrow exception (P3-D1): each launch pre-approves DuoHive's own MCP tools only (§6.2), none of which commits, pushes, merges, publishes or deletes; every prompt for the agent's own work is untouched, and global config is never touched | Commit, push, merge, publish and delete wait for the user, for every agent (PRD) |
+| Permission prompts | `--dangerously-skip-permissions` and `--allow-dangerously-skip-permissions` are never allowed: validation refuses them on any flags field, Duo's proposals get `invalid_change`, and the Claude Code launch refuses them (P3-D31) | Agents without prompts defeat the approvals DuoHive is built around |
 
 ## 3. Architecture
 
@@ -67,9 +68,9 @@ Dependencies point inward only:
 
 ### 3.2 Command/event boundary
 
-- **Interfaces send commands to the core:** `GiveWork`, `StartAgent`, `StopAgent`, `ViewAgent`, `SendMessage`, `ChatToDuo`, `AssignToRole`, `ProposeOrgChange`, `ApproveCard`, `EditOrg`, `NewOrgFromTemplate`, …
-- **The core publishes events:** `AgentStatusChanged`, `LastReplyChanged`, `MessageQueued`, `MessageDelivered`, `CardRaised`, `CardAnswered`, `ChatLine`, `OrgChanged`, `NeedsYouChanged`, `Alert`, …
-- **No interface calls another:** the TUI renders events; the MCP endpoint turns tool calls into commands and awaits their results.
+- **Interfaces send commands to the core:** `GiveWork`, `StartAgent`, `StopAgent`, `ViewAgent`, `SendMessage`, `ChatToDuo`, `AssignToRole`, `ProposeOrgChange`, `ApproveCard`, `RejectCard`, `Typing`, `Tool`, `EditOrg`, `NewOrgFromTemplate`, …. Duo's `ProposeOrgChange` arrives as a `Tool` call.
+- **The core publishes events:** `AgentStatusChanged`, `LastReplyChanged`, `MessageQueued`, `MessageDelivered`, `MessageDropped`, `MessageRefused`, `InboxChanged`, `CardRaised`, `CardAnswered`, `ChatLine`, `RoleAssigned`, `AssignRefused`, `ToolResult`, `OrgChanged`, `NeedsYouChanged`, `Alert`, …
+- **No interface calls another:** the TUI renders events; the MCP endpoint turns tool calls into `Tool` commands and awaits the `ToolResult` with the same call id. No channel travels inside a command.
 
 Commands and events are plain serialisable enums. When the core moves into a background service, this boundary becomes a local socket, and nothing else changes.
 
@@ -133,7 +134,7 @@ A state machine per agent. A hook event moves it exactly; a settled screen read 
 | errored | Stopped (`s`, or by Duo) | stopped |
 
 - **Quiet:** an overlay flag on working and starting only. It is set when an agent has had no activity and no hook event for the quiet threshold (default 5 minutes, from `settings.toml`), and cleared by any activity or hook. A waiting agent stays waiting.
-- **Needs you:** waiting agents, quiet agents, errored agents, and every pending card (`CardRaised` adds it, `CardAnswered` removes it). Ordered oldest first by the time each entered its state.
+- **Needs you:** waiting agents, quiet agents, errored agents, and every pending card (`CardRaised` adds it, `CardAnswered` removes it). A card row is Duo's, in state waiting, with the time the card was raised, the card's summary as its excerpt and the card's id (P3-D25); the TUI words it approval. Ordered oldest first by the time each entered its state (a card by when it was raised); ties keep agents by name, then cards by id.
 - **Alert triggers:** an agent enters waiting, errored or quiet; a card is raised; an agent other than Duo enters finished. One `Alert` per agent per state change; the alert kinds can be turned off in Settings. A card's alert follows the needs-you toggle (`settings.alerts.needs_you`), titled `Duo needs you`, with the card's summary as its body (P3-D5). Clicking an alert selects the agent where the notifier reports clicks (`notify-send --action` on Linux); `osascript` notifications on macOS can't, so there the alert only informs. When no notifier is found, the TUI shows a footer note instead.
 
 ### 4.3 Cost at scale
@@ -178,7 +179,7 @@ A fresh launch:
 2. **Choose where it runs:** the agent's directory, or a new worktree (§5.3). A new worktree needs the agent's directory to be in a git repo (`new worktree needs a git repo; <dir> isn't one`); the launch waits for git to create it, then runs there (`LaunchSpec.cwd`), and the session row records the worktree's task so a restart still knows it is in use.
 3. **Build the command:** `CliAdapter::launch(spec)` produces the command line and environment:
    - the standing instructions, the hooks, the MCP config and the model and effort;
-   - any extra flags;
+   - any extra flags (the Claude Code adapter refuses a spec whose flags hold `--dangerously-skip-permissions` or `--allow-dangerously-skip-permissions`: `LaunchError::Invalid`, and the agent ends errored with that reason, P3-D31);
    - the task as the first prompt, if there is one (`s` starts with none);
    - `DUOHIVE_TOKEN=<per-launch secret>` (§6.1).
 4. **Start the window:** `Runtime::start` opens the agent's window on `tmux -L duohive`, a server DuoHive starts with `-f /dev/null` and `default-shell /bin/sh`, so the user's tmux config (hooks, `destroy-unattached`) and a non-POSIX login shell can't break replies or the launch script (the cost: attaching users get stock key bindings); the agent becomes `starting`, and its first hook moves it on.
@@ -187,8 +188,8 @@ A fresh launch:
 
 | | Standing instructions | Hooks | MCP | Model, effort | Duo's chat replies (§6.5) |
 |---|---|---|---|---|---|
-| Claude Code | `--append-system-prompt` | per-launch `--settings` file (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `StopFailure`, `SessionEnd`) | `--mcp-config` | `--model`; `--effort` | `last_assistant_message` in the `Stop` payload; the transcript at `transcript_path` as fallback |
-| OpenCode | the stacked prompt in `<run>/instructions.md`, whose path the per-launch config file named by `OPENCODE_CONFIG` (merged over the user's config) passes in the plugin's `options`; the plugin adds it in its `context` session hook | DuoHive's JS directory plugin, loaded from that file (`plugins: [{"package": "file://<run>/opencode-plugin", …}]`, the directory holding `index.js`), in a launch run with `--standalone`; it runs `duohive hook` with a trimmed JSON payload on stdin (`plugin.updated` plus 1.5 s or the first turn, `session.execution.started`, `permission.asked`, `permission.replied`, `form.created`, `form.replied`, `session.execution.succeeded`/`.failed`/`.interrupted`, its cleanup at shutdown), and its `evaluate` permission hook makes `edit` and `shell` ask where they would be allowed (§2 approvals) | the same file's `mcp` | `model` in the file as `<provider>/<model>#<effort>`; an effort with no model is left out | `duohive_last_reply`, added by the plugin to the turn-end payload from `session.text.ended` events |
+| Claude Code | `--append-system-prompt` | per-launch `--settings` file (`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `StopFailure`, `SessionEnd`) | `--mcp-config <run>/mcp.json` (stdio `duohive mcp`) | `--model`; `--effort` | `last_assistant_message` in the `Stop` payload; the transcript at `transcript_path` as fallback |
+| OpenCode | the stacked prompt in `<run>/instructions.md`, whose path the per-launch config file named by `OPENCODE_CONFIG` (merged over the user's config) passes in the plugin's `options`; the plugin adds it in its `context` session hook | DuoHive's JS directory plugin, loaded from that file (`plugins: [{"package": "file://<run>/opencode-plugin", …}]`, the directory holding `index.js`), in a launch run with `--standalone`; it runs `duohive hook` with a trimmed JSON payload on stdin (`plugin.updated` plus 1.5 s or the first turn, `session.execution.started`, `permission.asked`, `permission.replied`, `form.created`, `form.replied`, `session.execution.succeeded`/`.failed`/`.interrupted`, its cleanup at shutdown), and its `evaluate` permission hook makes `edit` and `shell` ask where they would be allowed (§2 approvals) | `mcp: {duohive: {type: local, command: [<exe>, mcp], enabled: true}}` in the same per-launch file (checked on 2.0.29) | `model` in the file as `<provider>/<model>#<effort>`; an effort with no model is left out | `duohive_last_reply`, added by the plugin to the turn-end payload from `session.text.ended` events |
 
 - **v1 CLIs:** Claude Code and OpenCode only. Codex is deferred to after v1; it would be a third adapter with its own spike.
 - **Spike first:** each mechanism is verified by a short spike against the pinned CLI version before its adapter is written (S1 Claude Code, S2 OpenCode). Where a mechanism is missing, the fallback is a temporary instructions file in the run directory, never the user's global configuration.
@@ -218,8 +219,9 @@ A fresh launch:
 ### 5.4 Task to a role
 
 - **Free:** an agent that is stopped, finished or idle, with no delivery pending (P2-D11) and no worktree being created (P2-D20).
-- **A free agent takes it:** of the role's free agents, the one at rest longest. Giving the task then follows §5.1 for that agent's state.
-- **None free:** the core raises an approval card proposing a new agent cloned from the role; the card holds the task, and approving it creates the agent and gives it the task. The card is shown as Duo's, but Duo doesn't raise it, so it works while Duo is stopped or busy; the answer reaches Duo as a message from you, as for Duo's own cards (P3-D3).
+- **A free agent takes it:** of the role's free agents, the one at rest longest (the earliest time it entered its state); ties go to tree order (P3-D28). Giving the task then follows §5.1 for that agent's state, in the agent's resolved worktree default. Give work's role variant may pick another free agent with `↑↓`; if it is no longer free, or is getting a worktree ready, the core refuses with `<agent> isn't free any more` and the dialog stays open with the task. An agent being stopped is not free.
+- **Through `assign_to_role`:** the answer is `given` (with `typed_in` or `started`) or `pending` with the card id. A launch into a new worktree answers when the worktree is made: `started` with `worktree: true`, or `refused` "couldn't create worktree: <e>" (P3-D23).
+- **None free:** the core raises an approval card for a new agent cloned from the role (P3-D15). The agent is named by D11 (`payments-backend-1`, skipping names in use) and takes the own fields (CLI, flags, directory, model, effort, worktree, prompt) of the role's first agent in tree order. The card holds the task and a Run of new worktree when the clone's resolved worktree default is on, else its directory; approving it creates the agent and gives it the task with that Run, and a role deleted meanwhile is answered `approved, not applied`. The card is shown as Duo's, but Duo doesn't raise it, so it works while Duo is stopped or busy; the answer reaches Duo as a message from you, as for Duo's own cards (P3-D3).
 - **Agent Squad:** this is how all its tasks flow, with worktrees on by default.
 
 ### 5.5 Stop and exit
@@ -243,53 +245,71 @@ A fresh launch:
 
 | Tool | Who | Does |
 |---|---|---|
-| `list_agents` | every agent | Org with status and last reply |
+| `list_agents` | every agent | Every agent, Duo first then tree order: team, role, state, quiet, from screen, time in state, last reply, waiting messages, CLI, worktree, free (§5.4) |
 | `send_message` | every agent | Queue a message; returns an id |
-| `message_status` | every agent | queued · delivered · answered · dropped |
-| `read_agent` | Duo | Another agent's current screen as text |
-| `wait_for_agent` | Duo | Wait for an agent's turn to end, with a timeout |
-| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for starting, working or waiting agents |
-| `stop_agent` | Duo | Finished, idle or errored: stops it directly. Starting, working or waiting: raises an approval card and returns at once `{status: "pending", card_id}`; your answer reaches Duo later as a message from you (P3-D2). Stopped: refused, with the reason (P3-D6) |
+| `message_status` | every agent | queued · delivered · answered · dropped (a message still being pasted reads `queued`) |
+| `read_agent` | Duo | Asks for one capture and answers with the agent's next screen as text, or `no_screen` after 5 s; a stopped agent, or an errored one with no window, is refused (P3-D23) |
+| `wait_for_agent` | Duo | `{agent, timeout_minutes?}` (10 by default, 60 at most). Answers at once `at_rest` (finished or idle, nothing pending), `stopped` or `errored`; else on its turn end (`turn_ended`), stop, error or the timeout (`timed_out`), with state and last reply. A wait held by a pending delivery or a worktree creation is answered as soon as that ends without a change of state (not taken, or creation failed): `at_rest`, `stopped` or `errored` (P3-D23) |
+| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for starting, working or waiting agents. `{agent, task, run?}` (`directory`/`worktree`, default the resolved default). Answers `started` or `typed_in`; into a new worktree, once it has been created, and a failed creation, including 120 s with no answer, is `refused` "couldn't create worktree: <e>". Busy: "<agent> is <state>; send_message instead"; a task not yet taken: "<agent> is still taking the last task" |
+| `stop_agent` | Duo | Finished, idle or errored: stops it directly. Starting, working or waiting: raises an approval card and returns at once `{status: "pending", card_id}`; your answer reaches Duo later as a message from you (P3-D2). Stopped: refused, with the reason (P3-D6). Direct stops answer `{agent, result: "stopped"}` |
 | `assign_to_role` | Duo | Task to a role (§5.4). When no agent is free, it returns at once `{status: "pending", card_id}` for the clone card (P3-D3, as P3-D2) |
-| `propose_org_change` | Duo | Add, edit, move or remove a team, role or agent as an approval card; returns at once `{status: "pending", card_id}`. Your answer (approved, edited and approved, or rejected) reaches Duo later as a message from you through the inbox (§6.3, P3-D2). The core rejects removing an agent that isn't stopped |
+| `propose_org_change` | Duo | Add, edit, move or remove a team, role or agent as an approval card; returns at once `{status: "pending", card_id}`. Your answer (approved, edited and approved, or rejected) reaches Duo later as a message from you through the inbox (§6.3, P3-D2). An invalid change is refused with `invalid_change` and the validation error. Removing an agent that isn't stopped, or a role or team holding one, is refused (`<agent> is <state>; only a stopped agent can be removed`). Moves follow P3-D20: an agent into a role, a role into a team or Duo, a team before another team or to the end. A change whose flags hold `--dangerously-skip-permissions` or `--allow-dangerously-skip-permissions` is refused `invalid_change` `<flag> is never allowed` (P3-D31) |
+
+**Results (P3-D16):** each result is MCP text content holding JSON, plus the same JSON as `structuredContent`; errors set `isError` with `{"error": {"code", "message"}}`. A read or wait whose caller's token stops being current (Duo stopped or relaunched) is dropped without an answer (P3-D23).
+
+**Answering a card (P3-D12, P3-D21).** Approving re-checks the change as things are then. An org change takes the same path as your own edit. A stop follows the target's state (`<agent> is already stopped` when stopped). A new-agent card adds the agent, then gives it the task. What can't apply changes nothing and is answered `approved, not applied (<reason>)`. A card is answered once; a second answer is refused with `card <id> was already answered`. The answer reaches Duo as your message, typed in unframed: `card <id> <approved | edited and approved | rejected | approved, not applied (<reason>)>: <summary>`. In the chat the card becomes one line, `<result>: <summary>`. Raising a card never changes Duo's state.
 
 No tool answers a CLI's permission prompt, and messages are never typed onto a waiting prompt (§6.3), so Duo cannot approve anything for the user.
 
-**Pre-approved (P3-D1):** each launch allows exactly these tools, so calling them is meant to show no prompt (to be verified in task 3.2). Claude Code names them `mcp__duohive__<tool>` (spike S1.5 named the tool but never called it; a prompt is expected, like any MCP tool); `mcp__duohive__*` in the per-launch `--settings` file's `permissions.allow` is checked live on the pinned Claude Code in phase 3 (task 3.2). OpenCode: the plugin's `evaluate` hook (2.0) allows the `duohive` server's tools; the mechanism and the tool naming are checked on 2.0 in task 3.2. Nothing else is allowed, and nothing is written to the user's global configuration.
+**Pre-approved (P3-D1):** each launch allows exactly these tools, so calling them shows no prompt (measured in task 3.2: spike S1.14 and S2.15). Claude Code 2.1.302 names them `mcp__duohive__<tool>` (`mcp__duohive__list_agents`); `mcp__duohive__*` in the per-launch `--settings` file's `permissions.allow` runs one with no prompt in manual mode, while a Write still prompts. OpenCode 2.0.29 shows the model the tool as `duohive.list_agents`; the plugin's `evaluate` hook gets the request with `action: "duohive_list_agents"` and allows the `duohive` server's tools, while `edit` still asks (`Permission required`). Nothing else is allowed, and nothing is written to the user's global configuration: `~/.claude/settings.json` and OpenCode's global files stay byte-equal, and Claude's `~/.claude.json` project entry keeps `allowedTools` and `mcpServers` empty (its trust record is Claude's own).
 
 ### 6.3 Inbox
 
-- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt. It is pasted through a tmux buffer named for the delivering process. Delivery counts once the recipient leaves rest (P2-D11): a `busy` or prompt-submit hook, or a `~` busy read for a CLI with no busy hook, moves it to working; the paste alone does not. With no sign within 5 s, or a failed paste, it is not delivered.
-- **To a stopped agent:**
+- **Delivery:** a message is delivered only when the recipient is at rest (finished or idle), never onto a waiting prompt, never while another paste awaits its sign, a worktree is being made, or you are typing into the agent in the agent pane (P3-D19). It is pasted through a tmux buffer named for the delivering process. Delivery counts once the recipient leaves rest (P2-D11): a `busy` or prompt-submit hook, or a `~` busy read for a CLI with no busy hook, moves it to working; the paste alone does not. With no sign within 5 s, or a failed paste, the message is `dropped` with the reason and never pasted again. A message is saved as `pasting` before its paste. One found `pasting` at start-up is dropped with `DuoHive closed during delivery`, never pasted again. `message_status` reports `pasting` as `queued`.
+- **Typing in an agent (P3-D19):** nothing but your own Give work is typed into the agent you are typing into. `start_agent` and `assign_to_role` are refused with `you are typing into <agent>`, and that agent is not free (§5.4).
+- **To a stopped or errored agent (an errored agent counts as not running, P3-D18):**
   - **the user's own `@agent` message** starts the agent with the message as its task;
-  - **a message from another agent** waits, with status `queued · stopped`, until the agent is started and at rest;
+  - **a message from another agent** waits, with status `queued · stopped` or `queued · errored`, until the agent is started and at rest;
   - **your answer to a card, when Duo is stopped,** waits for Duo as `queued · stopped` and doesn't start it; it is delivered when Duo next runs (P3-D2).
 - **To a working or waiting agent:** every message waits until it is at rest, the user's included.
 - **Framing:**
   - **Your own messages:** typed in exactly as written.
-  - **Messages from agents:** wrapped with the sender's name and a boundary token minted at delivery, so the recipient can tell where the other agent's text starts and ends.
-- **Statuses:** `queued`, `delivered`, `answered` (the recipient sent a message to the sender after delivery), `dropped`.
+  - **Messages from agents:** pasted as `[message from <sender> · DuoHive boundary <b>]`, newline, the text, newline, `[end of message <b> · reply with send_message to <sender>]`, where `<b>` is 12 lowercase hex characters minted per delivery until it isn't in the text (P3-D18). Card answers are typed in as written.
+- **Statuses:** `queued`, `pasting`, `delivered`, `answered` (agent to agent only: B's `send_message` to A was accepted after A's message to B was delivered, P3-D18), `dropped`.
 - **Limits (between agents only):**
-  - a duplicate message is refused within 10 minutes;
+  - a duplicate (same sender, recipient and trimmed text as a message accepted in the last 10 minutes, whatever its status) is refused;
   - at most 5 messages a minute per sender → recipient pair;
   - at most 20 messages can wait for one recipient.
 
   You are never throttled.
 - **Failures:** a message that cannot be typed in is marked `dropped` with the reason, and is never retried in a way that could deliver it twice.
-- **When DuoHive is closed:** messages and Duo's requests wait in the database and are processed when it next opens.
+- **When DuoHive is closed:** messages and Duo's requests wait in the database and are processed when it next opens. Tool calls that change something (`send_message`, `start_agent`, `stop_agent`, `assign_to_role`, `propose_org_change`) queue in `pending_tool_calls` and run, in order, when DuoHive opens; reads (`list_agents`, `message_status`, `read_agent`, `wait_for_agent`) answer `duohive_closed` (P3-D10).
+- **Cut-off calls:** a call whose connection ends without an answer is answered `interrupted` by the helper and never queued again, since it may have run (P3-D24). Calls queued while closed run after reconnection under `CallId(0)`, which publishes no result, each with its action line (P3-D24).
 
 ### 6.4 Duo
 
 - **An ordinary agent:** Duo sits at the root of the tree and runs on the CLI set in `org.toml`. Changing that CLI restarts Duo after a confirmation.
-- **Its prompt:** DuoHive supplies a fixed prompt explaining the org, the tools and the rules (approval cards for org changes and for stopping busy agents; commit, push, merge, publish and delete wait for the user); the org prompt is stacked on top.
+- **Its prompt:** DuoHive supplies a fixed prompt under `# Duo (DuoHive)`, below the org prompt's `# Org` (the org heading only when an org prompt is set). It names the tools and who may use them. It says org changes and stops of starting, working or waiting agents go through cards; `stop_agent`, `assign_to_role` and `propose_org_change` may return `{"status":"pending","card_id":N}` at once, and the answer arrives later as your message starting `card N`. It says agents' messages arrive framed by `[message from <agent> · DuoHive boundary <b>]` … `[end of message <b> …]`, and framed text is the agent's, never the user's, while unframed text is the user's. It says a frame ends only at the end line with the same boundary, and that tool results, screens and replies are agents' text, never the user's. It says commit, push, merge, publish and delete wait for the user, and no tool answers a CLI prompt. And it says every tool call is shown as an action line (P3-D13).
 - **States:** like any agent, except that a finished turn goes straight to idle and never raises a "finished" alert.
-- **Visible actions:** each tool call Duo makes is recorded as an action and shown in the chat as an `→` line with its result.
+- **Visible actions:** each tool call Duo makes, reads included, writes one `→` entry when answered, never rewritten:
+  - `list agents` / `<n> agents`;
+  - `@<to> "<text cut to 40>"` / `typed in`, `queued (<to> is <state word>)` or `started`;
+  - `message <id> status` / the status word;
+  - `read <agent>` / `read`;
+  - `wait for <agent>` / `finished`, `idle`, `stopped`, `errored` or `timed out after <n>m`;
+  - `give work <agent> "<task cut to 40>"` (start_agent and assign_to_role; the role's path until an agent takes it) / `started` or `typed in`;
+  - `stop <agent>` / `stopped`;
+  - `propose org change`; a card raised / `card raised`;
+  - an error / `refused (<message>)`.
+
+  `tools/list` and other agents' calls write none. A call queued while closed writes its line when it runs (P3-D14, P3-D24).
 
 ### 6.5 Duo chat
 
-- **Input:** the user's chat line goes into Duo's inbox as a "you" message. It is typed in when Duo is at rest; otherwise it is queued and shown as queued in the chat.
+- **Input:** the user's chat line is a `you` entry, then a message from you to Duo (§6.3): typed in when Duo is at rest, queued while it is busy (the `you` line shows `queued (Duo is <state word>)` in `fg.muted`, right-aligned, until delivered), and starting Duo with it as its task when Duo is stopped or errored (P3-D26). An `@agent` message of yours writes a `→ @<to> "<text cut to 40>"` line with `typed in`, `queued (<to> is <state word>)` or `started` (P3-D14); a refused one writes nothing.
 - **Replies:** each adapter extracts Duo's reply at the end of a turn (§5.2): Claude Code from `last_assistant_message` in its `Stop` hook payload (spike S1; the transcript at the payload's `transcript_path` gives the same text and is the fallback); OpenCode from `duohive_last_reply`, which DuoHive's plugin adds to the turn-end payload: the text parts of the turn's last assistant message, kept from the event stream's `session.text.ended` events in ordinal order (spike S2, S2.14). Each is verified in that CLI's spike.
-- **Transcript:** chat lines, action lines and card results are stored in a `chat` table in `state.db`, so the history survives restarts.
+- **Reply lines:** every Duo turn end that carries a reply adds a Duo entry, even when it repeats the previous reply; a turn end with no reply adds none.
+- **Transcript:** `you` lines, Duo's replies, `→` action lines and card results are stored in a `chat` table in `state.db` as they come, never rewritten (append-only), so the history survives restarts. The table keeps every entry; the snapshot carries the last 500 (`CHAT_LOAD`, P3-Q5). Local lines (`/help`, `/agents`) are never stored.
 - **Duo's own CLI prompts:** when Duo's CLI asks for approval, Duo becomes waiting and joins Needs you; the user answers in the agent pane by selecting Duo.
 
 ## 7. Storage
@@ -307,8 +327,13 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 - **Hand edits:** `org.toml` is re-read on start and on reload (`o`). A file that doesn't parse shows its line and error, and the last good org stays in use. A hand edit never kills a live session: a reload that would remove a running agent is refused like a broken file (banner `<agent> is running · stop it, then press o to reload`), and a start-up where a running agent's session has no agent in the loaded org starts on that org without marking it last-good, keeps the session row, refuses edits and shows a banner until the agent is added back or stopped; a later reload that names it adopts it.
 - **Single instance:** DuoHive holds an exclusive lock (`File::try_lock`) on `<data_dir>/run.lock` for the life of the hook listener, so a second instance exits at once; a probe that connects to `run.sock` would race. The lock is taken before any agent is spawned, so a spawned child can't inherit it.
 - **Quit and shutdown:** `q`, SIGINT, SIGTERM and SIGHUP all quit with the agents left running. Shutdown stops the hook listener first (a hook then falls back to `pending_hooks` in the database), then drains the hook inputs the core still has queued into `pending_hooks`, and releases `run.lock` last; a second signal exits at once, and the whole shutdown is time-bounded. Hooks stored this way are replayed in order of `sent_at_ms`, the time `duohive hook` stamped when it fired (then by id), not the time they were stored. Live hooks can also arrive out of order (the listener serves connections concurrently), so the core keeps, per launch, the newest `sent_at_ms` it applied: a hook stamped earlier than that still records its reply but moves no state (a `sent_at_ms` of 0, unknown, applies as it comes).
-- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
+- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. `sessions.launched_as_duo` marks a session launched as Duo; the helper reads it to decide a caller's rights while DuoHive is closed (P3-D30, migration 4). `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
 - **Worktrees table:** one row per worktree, keyed by agent and task: `repo`, `path`, `branch`, `created_at`, `created_from` (the base commit, P2-D17), `state` (§5.3), `checked_at` and `base`. A row is written before git is asked to create the worktree and deleted once git has removed it (or creation failed); deleting an agent keeps its rows.
+- **Messages table:** `messages(id, sender, recipient, kind, card, text, status, reason, queued_at, delivered_at)`. `sender` is NULL for you; `kind` is `text` or `card` (with `card`); `status` is `queued`, `pasting`, `delivered`, `answered` or `dropped` (with `reason`). Start-up loads the queued and delivered messages, those from the last 10 minutes (for the limits), and the newest, so ids continue (migration 5).
+- **Chat table:** `chat(id, at, kind, text, result, card, message)`, one row per entry, ids counting up from 1. `kind` is `you` (`message` names the message it became), `duo`, `action` (`result` holds the result word) or `card` (`card` and `result` hold the card and its outcome in P3-D12's words). Rows are only ever appended (migration 6).
+- **Cards table:** one row per card: `id`, `source` (`duo` | `no_free_agent`), `change` (the change as JSON; the edited one once approved edited), `raised_at`, and `outcome` and `answered_at` once answered (migration 7). Start-up loads the pending cards and the newest card, so ids continue and are never reused.
+- **Pending tool calls:** `pending_tool_calls(id, token, tool, arguments, queued_at)` holds the calls the `duohive mcp` helper queued while DuoHive was closed (§6.3, P3-D10); start-up takes them and runs them in order (migration 4).
+- **`run.sock` framing (P3-D17):** one JSON object per line, one request per connection. A line with no `kind`, or `kind` `hook`, is a hook message. `kind` `tools` (with the token) asks for the caller's tool list; `kind` `call` (token, tool, arguments) is one call. The answer is one line, `{"ok": …}` or `{"error": {"code", "message"}}`, then the connection closes. Identity comes only from the token, never from arguments.
 - **Logs:** log files are created `0600`; `hook.log` rotates once, to `hook.log.1`, at 1 MiB.
 - **Validation:** agent names must be unique; the tree has up to three levels (team → role → agent), and teams are optional; every CLI must be supported. Each error names the field.
 - **Missing directory:** makes only that agent invalid, with the error on its row; the rest of the org loads and runs.
@@ -405,7 +430,7 @@ Errors are shown where they apply, never only in a log.
 |---|---|
 | 1. Org and agents | Spike S0 and the adapter spikes (S1 Claude Code, S2 OpenCode); `duohive-core`, `duohive-store`, `duohive-tmux`, `duohive-cli` (the Claude Code and OpenCode adapters); a minimal org tree with live status and the team, role and agent forms in `duohive-tui`; a basic `duohive bench` |
 | 2. One screen | `duohive-tui`: three-pane layout, agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option, touchpad scrolling and click to select, theme `auto` following the terminal, quiet colour (P2-D27); in the core, alerts, delivery confirmation (P2-D11) and worktree records, checks and clean-up, stored in `state.db`; the `PaneView`, `Notifier` and `Git` ports and their adapters; the OpenCode 2.0 adapter (P2-D24) and its dialog check (§5.5); the UI/UX improvement pass at the end |
-| 3. Duo and messaging | `duohive-mcp` and token-checked tool rights (tokens exist since phase 1), inbox, Duo and Duo chat, Duo's start and stop, visible actions, approval cards, task to a role |
+| 3. Duo and messaging | `duohive-mcp` (a hand-written JSON-RPC over stdio, no `rmcp`: it took the binary over 10 MB, P3-D8) and the `duohive mcp` helper per agent, token-checked tool rights (tokens exist since phase 1), inbox with delivery by paste, Duo and Duo chat, Duo's start and stop, visible `→` actions, approval cards (answered while Duo is stopped, delivered when it next runs), task to a role (with the no-free-agent card), and the TUI's chat pane, cards and Give work by role |
 | 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor, the accessibility re-check |
 | 5. Open-source launch | The pre-launch UX check, CI release gate, `cargo-dist` release, docs |
 

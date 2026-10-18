@@ -7,10 +7,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::form::frame_box;
 use super::{fg, put};
-use crate::format::{width, wrap_words};
+use crate::format::{format_age, width, wrap_words};
 use crate::forms::{GiveFocus, GiveWork, Variant};
 use crate::theme::Palette;
-use duohive_core::worktree::RunIn;
+use duohive_core::time::Millis;
+use duohive_core::worktree::{RunIn, TaskId};
 
 /// The mock-ups' width; narrower screens get the screen less a margin.
 const WIDTH: u16 = 90;
@@ -18,6 +19,17 @@ const WIDTH: u16 = 90;
 const PAD: u16 = 1;
 /// `Task  `, `Run   `: the label column.
 const LABEL: u16 = 6;
+/// A role's label column: `Goes to  ` (UI §4.5).
+const ROLE_LABEL: u16 = 9;
+const GOES_TO: &str = "Goes to";
+const PICK_HINT: &str = "↑↓ pick another";
+/// Cells after `↑↓ pick another`, as in the role mock-up.
+const PICK_RIGHT: u16 = 17;
+const NO_FREE: &str = "No free agent · enter proposes one";
+const CARD_HOLDS: &str = "(the approval card holds the task)";
+const GIVE_DISABLED: &str = "[ Give work ] (disabled)";
+const SEND_AS_MESSAGE: &str = "[ Send as message instead ]";
+const GAP: &str = "   ";
 /// The task box shows this many rows and scrolls past them.
 const MAX_TASK_ROWS: usize = 4;
 const FOCUS: &str = "▌";
@@ -110,18 +122,27 @@ fn wrap_line(gs: &[&str], start: usize, end: usize, cells: usize) -> Vec<(usize,
 }
 
 /// Draws the dialog centred over `area`; returns where the terminal cursor goes.
-pub(super) fn draw(buf: &mut Buffer, area: Rect, g: &GiveWork, p: &Palette) -> Option<Position> {
+pub(super) fn draw(
+    buf: &mut Buffer,
+    area: Rect,
+    g: &GiveWork,
+    now: Millis,
+    p: &Palette,
+) -> Option<Position> {
+    let label = label_cells(g);
     let w = WIDTH.min(area.width.saturating_sub(4));
-    let text_w = usize::from(w.saturating_sub(2 * (1 + PAD) + LABEL + 4));
+    let text_w = usize::from(w.saturating_sub(2 * (1 + PAD) + label + 4));
     if text_w == 0 {
         return None;
     }
     let (rows, (crow, ccol)) = wrap_task(g.task.text(), g.task.cursor(), text_w);
     let first = (crow + 1).saturating_sub(MAX_TASK_ROWS);
     let shown: Vec<&String> = rows.iter().skip(first).take(MAX_TASK_ROWS).collect();
-    let body = body_rows(g, usize::from(w.saturating_sub(2 * (1 + PAD) + LABEL)));
+    let body = body_rows(g, usize::from(w.saturating_sub(2 * (1 + PAD) + label)), now);
     let note = usize::from(g.note.is_some());
-    let inner = shown.len() + note + body.len() + 1;
+    // The busy variant ends on its buttons, as UI §4.5's mock; the footer has its keys.
+    let hint_row = usize::from(g.variant != Variant::Busy);
+    let inner = shown.len() + note + body.len() + hint_row;
     let r = frame_box(buf, area, w, inner, &g.title(), p);
     let x0 = r.x + 1 + PAD;
     let right = r.right().saturating_sub(1);
@@ -129,10 +150,15 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, g: &GiveWork, p: &Palette) -> O
         put(buf, x, y, s, usize::from(right.saturating_sub(x)), st)
     };
     let task_focus = g.focus == GiveFocus::Task;
+    let task_label = format!("{:<1$}", "Task", usize::from(label - 1));
     let mut y = r.y + 1;
     for (i, row) in shown.iter().enumerate() {
-        let label = if i == 0 { "Task " } else { "     " };
-        let mut x = at(x0, y, label, fg(p.fg), buf);
+        let lead = if i == 0 {
+            task_label.clone()
+        } else {
+            " ".repeat(task_label.len())
+        };
+        let mut x = at(x0, y, &lead, fg(p.fg), buf);
         let mark = if task_focus && i == 0 { FOCUS } else { " " };
         x = at(x, y, mark, fg(p.border_focus), buf);
         x = at(x, y, "[ ", fg(p.fg), buf);
@@ -150,20 +176,35 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, g: &GiveWork, p: &Palette) -> O
         draw_body(buf, row, (x0, y, right), g, p);
         y += 1;
     }
-    let hint = g.hint();
-    let hx = right.saturating_sub(HINT_RIGHT + u16::try_from(width(hint)).unwrap_or(0));
-    at(
-        hx.max(x0),
-        r.bottom().saturating_sub(2),
-        hint,
-        fg(p.fg_muted),
-        buf,
-    );
+    if hint_row == 1 {
+        let hint = g.hint();
+        let hx = right.saturating_sub(HINT_RIGHT + cells(hint));
+        at(
+            hx.max(x0),
+            r.bottom().saturating_sub(2),
+            hint,
+            fg(p.fg_muted),
+            buf,
+        );
+    }
     let row = crow.checked_sub(first)?;
     task_focus.then(|| Position {
-        x: x0 + LABEL + 2 + u16::try_from(ccol).unwrap_or(0),
+        x: x0 + label + 2 + u16::try_from(ccol).unwrap_or(0),
         y: r.y + 1 + u16::try_from(row).unwrap_or(0),
     })
+}
+
+/// The label column: `Task  `, or a role's wider `Goes to  ` (UI §4.5's mocks).
+fn label_cells(g: &GiveWork) -> u16 {
+    if g.role().is_some() {
+        ROLE_LABEL
+    } else {
+        LABEL
+    }
+}
+
+fn cells(s: &str) -> u16 {
+    u16::try_from(width(s)).unwrap_or(u16::MAX)
 }
 
 /// A line under the task box.
@@ -172,49 +213,80 @@ enum Body {
     Run,
     /// Muted text at the label column.
     Muted(String),
-    /// Text at the label column, after `Run`.
-    RunText(String, bool),
+    /// Text at the label column, after its label when it has one.
+    Labelled(Option<&'static str>, String),
+    /// A role's `Goes to`: the picked agent and how long it has been at rest.
+    GoesTo(String),
     /// Text from the left edge.
     Plain(String),
+    /// The busy variant's buttons.
+    Buttons,
 }
 
 /// The lines under the task box for the dialog's variant; `cells` is the room after the label.
-fn body_rows(g: &GiveWork, cells: usize) -> Vec<Body> {
+fn body_rows(g: &GiveWork, cells: usize, now: Millis) -> Vec<Body> {
     match &g.variant {
-        Variant::Fresh => {
-            let mut out = vec![Body::Run];
-            if let Some(why) = &g.worktree_blocked {
-                out.push(Body::Muted(why.clone()));
-            }
-            out.push(Body::Plain("Starts a fresh session.".to_owned()));
-            out
-        }
-        Variant::NextTurn { worktree } => {
-            let place = match (worktree, &g.dir) {
-                (Some(id), _) => format!("worktree {}", id.0),
-                (None, Some(d)) => d.clone(),
-                (None, None) => "its directory".to_owned(),
-            };
-            let line = format!("in {place}, as the next turn of {}'s session", g.agent);
-            wrap_words(&line, cells)
-                .into_iter()
-                .enumerate()
-                .map(|(i, l)| Body::RunText(l, i == 0))
-                .collect()
-        }
+        Variant::Fresh => run_choice(g),
+        Variant::NextTurn { worktree } => next_turn(g, worktree.as_ref(), cells),
         Variant::Busy => {
             let line = format!(
-                "{} is {}. Give work when it is at rest.",
-                g.agent,
-                g.state.word()
+                "{agent} is {}. Give work when it is at rest, or send this as a message: \
+                 it is typed in when {agent} is at rest.",
+                g.state.word(),
+                agent = g.agent,
             );
-            plain_lines(&line, cells + usize::from(LABEL))
+            let mut out = plain_lines(&line, cells + usize::from(label_cells(g)));
+            out.push(Body::Buttons);
+            out
         }
         Variant::Pending => vec![Body::Plain(format!(
             "{} is still taking the last task",
             g.agent
         ))],
+        Variant::Role { .. } => {
+            let at_rest = format_age(now - g.since);
+            let mut out = vec![Body::GoesTo(format!(
+                "{} ({} {at_rest})",
+                g.agent,
+                g.state.word()
+            ))];
+            if g.has_run_choice() {
+                out.extend(run_choice(g));
+            } else {
+                out.extend(next_turn(g, g.pick_worktree(), cells));
+            }
+            out
+        }
+        Variant::RoleNoneFree { .. } => vec![
+            Body::Labelled(Some(GOES_TO), NO_FREE.to_owned()),
+            Body::Labelled(None, CARD_HOLDS.to_owned()),
+        ],
     }
+}
+
+/// The Run radios, why `new worktree` can't be chosen, and what a fresh session does.
+fn run_choice(g: &GiveWork) -> Vec<Body> {
+    let mut out = vec![Body::Run];
+    if let Some(why) = &g.worktree_blocked {
+        out.push(Body::Muted(why.clone()));
+    }
+    out.push(Body::Plain("Starts a fresh session.".to_owned()));
+    out
+}
+
+/// `Run   in <where>, as the next turn of <agent>'s session`.
+fn next_turn(g: &GiveWork, worktree: Option<&TaskId>, cells: usize) -> Vec<Body> {
+    let place = match (worktree, &g.dir) {
+        (Some(id), _) => format!("worktree {}", id.0),
+        (None, Some(d)) => d.clone(),
+        (None, None) => "its directory".to_owned(),
+    };
+    let line = format!("in {place}, as the next turn of {}'s session", g.agent);
+    wrap_words(&line, cells)
+        .into_iter()
+        .enumerate()
+        .map(|(i, l)| Body::Labelled((i == 0).then_some("Run"), l))
+        .collect()
 }
 
 fn plain_lines(text: &str, cells: usize) -> Vec<Body> {
@@ -226,6 +298,7 @@ fn plain_lines(text: &str, cells: usize) -> Vec<Body> {
 
 fn draw_body(buf: &mut Buffer, row: &Body, pos: (u16, u16, u16), g: &GiveWork, p: &Palette) {
     let (x0, y, right) = pos;
+    let label = label_cells(g);
     let at = |x: u16, s: &str, st: Style, buf: &mut Buffer| {
         put(buf, x, y, s, usize::from(right.saturating_sub(x)), st)
     };
@@ -234,16 +307,50 @@ fn draw_body(buf: &mut Buffer, row: &Body, pos: (u16, u16, u16), g: &GiveWork, p
             at(x0, t, fg(p.fg), buf);
         }
         Body::Muted(t) => {
-            at(x0 + LABEL, t, fg(p.fg_muted), buf);
+            at(x0 + label, t, fg(p.fg_muted), buf);
         }
-        Body::RunText(t, first) => {
-            if *first {
-                at(x0, "Run", fg(p.fg), buf);
+        Body::Labelled(name, t) => {
+            if let Some(name) = name {
+                at(x0, name, fg(p.fg), buf);
             }
-            at(x0 + LABEL, t, fg(p.fg), buf);
+            at(x0 + label, t, fg(p.fg), buf);
+        }
+        Body::GoesTo(t) => {
+            at(x0, GOES_TO, fg(p.fg), buf);
+            let mark = if g.focus == GiveFocus::Pick {
+                FOCUS
+            } else {
+                " "
+            };
+            let x = at(x0 + label, mark, fg(p.border_focus), buf);
+            let x = at(x, t, fg(p.fg), buf);
+            let hx = right.saturating_sub(PICK_RIGHT + cells(PICK_HINT));
+            at(hx.max(x + 3), PICK_HINT, fg(p.fg_muted), buf);
         }
         Body::Run => draw_run(buf, (x0, y, right), g, p),
+        Body::Buttons => draw_buttons(buf, (x0, y, right), g, p),
     }
+}
+
+/// `[ Give work ] (disabled)   ▌[ Send as message instead ]`, centred.
+fn draw_buttons(buf: &mut Buffer, pos: (u16, u16, u16), g: &GiveWork, p: &Palette) {
+    let (x0, y, right) = pos;
+    let at = |x: u16, s: &str, st: Style, buf: &mut Buffer| {
+        put(buf, x, y, s, usize::from(right.saturating_sub(x)), st)
+    };
+    let mark = if g.focus == GiveFocus::SendAsMessage {
+        FOCUS
+    } else {
+        " "
+    };
+    let all = cells(GIVE_DISABLED) + cells(GAP) + cells(mark) + cells(SEND_AS_MESSAGE);
+    let room = right.saturating_sub(x0);
+    let mut x = x0 + room.saturating_sub(all) / 2;
+    x = at(x, GIVE_DISABLED, fg(p.fg_muted), buf);
+    x = at(x, GAP, fg(p.fg), buf);
+    x = at(x, mark, fg(p.border_focus), buf);
+    let send = if g.can_give() { p.fg } else { p.fg_muted };
+    at(x, SEND_AS_MESSAGE, fg(send), buf);
 }
 
 /// `Run   ( ) new worktree   (•) ~/code/pay-qa        agent default: directory`.
@@ -252,7 +359,8 @@ fn draw_run(buf: &mut Buffer, pos: (u16, u16, u16), g: &GiveWork, p: &Palette) {
     let at = |x: u16, s: &str, st: Style, buf: &mut Buffer| {
         put(buf, x, y, s, usize::from(right.saturating_sub(x)), st)
     };
-    let mut x = at(x0, "Run  ", fg(p.fg), buf);
+    let run_label = format!("{:<1$}", "Run", usize::from(label_cells(g) - 1));
+    let mut x = at(x0, &run_label, fg(p.fg), buf);
     let mark = if g.focus == GiveFocus::Run {
         FOCUS
     } else {
@@ -275,6 +383,6 @@ fn draw_run(buf: &mut Buffer, pos: (u16, u16, u16), g: &GiveWork, p: &Palette) {
     } else {
         "agent default: directory"
     };
-    let aligned = right.saturating_sub(HINT_RIGHT - 2 + u16::try_from(width(default)).unwrap_or(0));
+    let aligned = right.saturating_sub(HINT_RIGHT - 2 + cells(default));
     at(aligned.max(x + 3), default, fg(p.fg_muted), buf);
 }

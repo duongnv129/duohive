@@ -6,9 +6,12 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
+use super::card::capitalised;
 use super::{At, HEAVY, LIGHT, RenderCtx, edge, fg, glyph_color, put, put_pieces};
 use crate::focus::Pane;
-use crate::format::{QUIET_GLYPH, format_age, pad_right, quoted, truncate_middle, width};
+use crate::format::{
+    QUIET_GLYPH, format_age, one_line, pad_right, quoted, truncate_end, truncate_middle, width,
+};
 use crate::model::UiModel;
 
 /// Name cells beside the word when wide: the longest name, at least 12 (UI §4.1's mock)
@@ -22,6 +25,8 @@ const WORD_CELLS: usize = 9;
 const AGE_CELLS: usize = 4;
 /// Blank cells between the age and the excerpt.
 const EXCERPT_GAP: &str = "  ";
+/// A card row's word (P3-D25).
+const CARD_WORD: &str = "approval";
 
 /// Heavy below a light org pane: the separator when Needs you alone has focus.
 const HEAVY_BELOW: [&str; 2] = ["┢", "┪"];
@@ -123,7 +128,9 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
             buf.set_style(bar, p.selected());
             put(buf, r.x + 1, y, "▌", 1, fg(p.border_focus));
         }
-        let (glyph, word) = if item.quiet {
+        let (glyph, word) = if item.card.is_some() {
+            (item.state.glyph(), CARD_WORD)
+        } else if item.quiet {
             (QUIET_GLYPH, "quiet")
         } else {
             (item.state.glyph(), item.state.word())
@@ -155,9 +162,14 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
     }
 }
 
-/// The quoted excerpt after the age, cut to `room` (wide layout only).
+/// The quoted excerpt after the age, cut to `room` (wide layout only). A card's is its
+/// summary as a sentence, unquoted (UI §4.1.3).
 fn excerpt(item: &NeedsYouItem, compact: bool, room: usize) -> Option<String> {
     let text = item.excerpt.as_deref().filter(|_| !compact)?;
     let cells = room.checked_sub(EXCERPT_GAP.len())?;
+    if item.card.is_some() {
+        let summary = truncate_end(&capitalised(&one_line(text)), cells);
+        return (cells > 0).then(|| format!("{EXCERPT_GAP}{summary}"));
+    }
     (cells > 2).then(|| format!("{EXCERPT_GAP}{}", quoted(text, cells)))
 }

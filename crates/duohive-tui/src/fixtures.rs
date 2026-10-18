@@ -2,12 +2,17 @@
 
 use std::time::Duration;
 
+use duohive_core::card::{Card, CardChange, CardId, CardSource};
+use duohive_core::cli_kind::CliKind;
+use duohive_core::command::{AgentDraft, OrgEdit};
 use duohive_core::event::{AgentView, NeedsYouItem};
-use duohive_core::org::{NodeKey, Org};
+use duohive_core::names::NodeName;
+use duohive_core::org::{Fields, NodeKey, Org, RoleKey};
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::{example_org, n};
 use duohive_core::time::Millis;
+use duohive_core::worktree::RunIn;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 use ratatui::buffer::Buffer;
@@ -58,6 +63,7 @@ pub fn view(status: Status) -> AgentView {
         problem: None,
         worktree: None,
         delivery_pending: false,
+        inbox: 0,
     }
 }
 
@@ -122,6 +128,7 @@ pub fn spec_model() -> UiModel {
             quiet: true,
             since: ago(mins(6)),
             excerpt: None,
+            card: None,
         },
         NeedsYouItem {
             agent: n("billing-api"),
@@ -129,6 +136,7 @@ pub fn spec_model() -> UiModel {
             quiet: false,
             since: ago(mins(4)),
             excerpt: Some("Allow edit to api.go?".to_owned()),
+            card: None,
         },
     ];
     m.selected = NodeKey::Agent(n("auth-service"));
@@ -226,4 +234,134 @@ pub fn spec_worktrees() -> Vec<duohive_core::worktree::WorktreeRow> {
         worktree_row("squad-2", "flaky-date", S::NotMerged { files_changed: 2 }),
         worktree_row("squad-1", "readme", S::MergedDirty),
     ]
+}
+
+/// `h:mm` UTC on day 0, for chat times (`ctx()` has no offset).
+pub fn clock(h: u64, min: u64) -> Millis {
+    Millis((h * 60 + min) * 60_000)
+}
+
+/// A chat entry as the engine publishes it.
+pub fn chat_entry(
+    id: u64,
+    at: Millis,
+    kind: duohive_core::chat::ChatKind,
+    text: &str,
+) -> duohive_core::chat::ChatEntry {
+    duohive_core::chat::ChatEntry {
+        id: duohive_core::chat::ChatId(id),
+        at,
+        kind,
+        text: text.to_owned(),
+    }
+}
+
+/// An action line (`→ text   result`).
+pub fn action_entry(
+    id: u64,
+    at: Millis,
+    text: &str,
+    result: &str,
+) -> duohive_core::chat::ChatEntry {
+    let kind = duohive_core::chat::ChatKind::Action {
+        result: result.to_owned(),
+    };
+    chat_entry(id, at, kind, text)
+}
+
+/// A pending card raised by Duo at `at`.
+pub fn card(id: u64, at: Millis, change: CardChange) -> Card {
+    Card {
+        id: CardId(id),
+        source: CardSource::Duo,
+        change,
+        raised_at: at,
+        answer: None,
+    }
+}
+
+fn node(s: &str) -> NodeName {
+    NodeName::parse(s).unwrap()
+}
+
+/// Payments › QA.
+pub fn qa_role() -> RoleKey {
+    RoleKey {
+        team: Some(node("Payments")),
+        role: node("QA"),
+    }
+}
+
+/// Generalist, at the root.
+pub fn generalist_role() -> RoleKey {
+    RoleKey {
+        team: None,
+        role: node("Generalist"),
+    }
+}
+
+/// UI §4.6's card: add pay-web in Payments › QA, on Claude Code in `~/code/web` with
+/// worktrees on.
+pub fn add_agent_card(id: u64, at: Millis) -> Card {
+    let agent = AgentDraft {
+        name: n("pay-web"),
+        fields: Fields {
+            cli: Some(CliKind::Claude),
+            directory: Some("~/code/web".to_owned()),
+            worktree: Some(true),
+            ..Fields::default()
+        },
+    };
+    let edit = OrgEdit::AddAgent {
+        role: qa_role(),
+        agent,
+    };
+    card(id, at, CardChange::Org(edit))
+}
+
+/// Stop squad-1.
+pub fn stop_card(id: u64, at: Millis) -> Card {
+    card(
+        id,
+        at,
+        CardChange::Stop {
+            agent: n("squad-1"),
+        },
+    )
+}
+
+/// P3-D15's card: no free agent in Generalist, so squad-4, cloned from squad-1, for a task.
+pub fn new_agent_card(id: u64, at: Millis) -> Card {
+    let change = CardChange::NewAgent {
+        role: generalist_role(),
+        agent: AgentDraft {
+            name: n("squad-4"),
+            fields: Fields {
+                directory: Some("~/code/api".to_owned()),
+                ..Fields::default()
+            },
+        },
+        task: "PAY-88d docs: retry guide\nwith examples".to_owned(),
+        run: RunIn::Directory,
+        clone_of: Some(n("squad-1")),
+    };
+    Card {
+        source: CardSource::NoFreeAgent,
+        ..card(id, at, change)
+    }
+}
+
+/// Puts `c` among the model's pending cards, with its Needs you row (P3-D25) raised
+/// `age` ago.
+pub fn raise(m: &mut UiModel, c: Card, age: Duration) {
+    let item = NeedsYouItem {
+        agent: m.org.duo.name.clone(),
+        state: AgentState::Waiting,
+        quiet: false,
+        since: ago(age),
+        excerpt: Some(c.summary(&m.org)),
+        card: Some(c.id),
+    };
+    m.needs_you.push(item);
+    m.cards.insert(c.id, c);
 }

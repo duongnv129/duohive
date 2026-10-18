@@ -3,20 +3,20 @@ source: crates/duohive-tui/src/forms/tests/give_work.rs
 expression: "lines.join(\"\\n\")"
 ---
  DuoHive  ● 1 · ◆ 0                                                             
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ──────┐
-┃ ⬢ Duo                ◦   1m  ┃│                                              │
-┃ ▾ Payments           ● 1     ┃│    ● working                                 │
-┃   ▾ Backend          ● 1     ┃│                                              │
-┃     auth-service     ○   1d  ┃│                                              │
-┃▌    billing-api      ●   3m  ┃│                                              │
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting         │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│ Defaults  CLI inherit: Claude Code           │
+┃▌  ▾ Backend          ● 1 ◆ 1 ┃│           model inherit: sonnet              │
+┃     auth-service     ●   2m  ┃│           worktrees inherit: off             │
+┃     billing-api      ◆   4m  ┃│ Prompt    API URLs use hyphens. Run make te… │
 ┃   ▾ QA                       ┃│                                              │
-┃     pay-qa           ○   1d  ┃│                                              │
-┃ ┌─ Give work · billing-api · ● working ────────────────────────────────────┐ │
-┃ │ Task ▌[ Also cover the timeout path.__________________________________ ] │ │
-┃ │ billing-api is working. Give work when it is at rest.                    │ │
-┃ │                                                           esc close      │ │
+┃     pay-qa           ○   1d  ┃│ space give work to this role · e edit        │
+┃ ┌─ Give work · role Payments › Backend (0 of 2 free) ──────────────────────┐ │
+┃ │ Task    ▌[ Add an idempotency key to POST /payments.__________________ ] │ │
+┃ │ Goes to  No free agent · enter proposes one                              │ │
+┃ │          (the approval card holds the task)                              │ │
+┃ │                                             enter propose one · esc      │ │
 ┃ └──────────────────────────────────────────────────────────────────────────┘ │
-┃                              ┃│                                              │
 ┃                              ┃│                                              │
 ┃                              ┃│                                              │
 ┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
@@ -25,4 +25,4 @@ expression: "lines.join(\"\\n\")"
 │                                                                              │
 │ ❯                                                                            │
 └──────────────────────────────────────────────────────────────────────────────┘
- esc close
+ enter propose one · esc

@@ -20,7 +20,9 @@ use crate::model::UiModel;
 use crate::theme::Palette;
 use crate::tree::roll_up_counts;
 
-const EMPTY_ORG: &str = "Your org is empty · n to add a team, role or agent";
+/// UI §4.1.2: the full copy, held back by D7 and P2-D3 until Duo could act on it.
+const EMPTY_ORG: &str =
+    "Your org is empty · n to add a team, role or agent, or ask Duo to set one up";
 const STOPPED: &str = "○ stopped · space to give work";
 const ERRORED: &str = "✕ errored · s to stop";
 /// The padding cell inside the border (UI §3).
@@ -37,6 +39,10 @@ const MIN_PLACE: usize = 4;
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
+/// A team summary's last line.
+const TEAM_KEYS: &str = "e edit";
+/// A role summary's last line (UI §4.1.2, P2-D3).
+const ROLE_KEYS: &str = "space give work to this role · e edit";
 /// The rows a full team or role summary takes with its defaults on one line.
 const SUMMARY_ROWS: usize = 6;
 /// How to answer Claude's folder-trust dialog, whose highlighted choice is `No, exit`
@@ -144,7 +150,7 @@ fn content(
         return (String::new(), message(&text, p.fg));
     }
     if m.org.teams.is_empty() && m.org.roles.is_empty() {
-        return (String::new(), message(EMPTY_ORG, p.fg));
+        return (String::new(), wrapped_message(EMPTY_ORG, p.fg, cells));
     }
     match &m.selected {
         NodeKey::Duo => agent(m, ctx, &m.org.duo.name, cells),
@@ -161,7 +167,15 @@ fn content(
             let title = format!("▣ {t}");
             (
                 title,
-                summary(m, p, &names, &team.defaults, &NodeKey::Duo, cells, rows),
+                summary(
+                    m,
+                    p,
+                    &names,
+                    &team.defaults,
+                    &NodeKey::Duo,
+                    (cells, rows),
+                    TEAM_KEYS,
+                ),
             )
         }
         NodeKey::Role(key) => role(m, p, key, cells, rows),
@@ -201,8 +215,40 @@ fn role(
     let names: Vec<&AgentName> = role.agents.iter().map(|a| &a.name).collect();
     (
         title,
-        summary(m, p, &names, &role.defaults, &parent, cells, rows),
+        summary(
+            m,
+            p,
+            &names,
+            &role.defaults,
+            &parent,
+            (cells, rows),
+            ROLE_KEYS,
+        ),
     )
+}
+
+/// A blank line, then `text` indented, wrapped between words to `cells` under itself.
+fn wrapped_message(text: &str, color: ratatui::style::Color, cells: usize) -> Vec<Line<'static>> {
+    let room = cells
+        .saturating_sub(width(PAD) + width(MESSAGE_INDENT))
+        .max(1);
+    let mut lines: Vec<String> = Vec::new();
+    for word in text.split(' ') {
+        match lines.last_mut() {
+            Some(line) if width(line) + 1 + width(word) <= room => {
+                line.push(' ');
+                line.push_str(word);
+            }
+            _ => lines.push(word.to_owned()),
+        }
+    }
+    std::iter::once(Line::default())
+        .chain(
+            lines
+                .into_iter()
+                .map(|l| Line::from(Span::styled(format!("{PAD}{MESSAGE_INDENT}{l}"), fg(color)))),
+        )
+        .collect()
 }
 
 /// A blank line, then `text` indented.
@@ -292,7 +338,7 @@ fn agent(
     (title, body)
 }
 
-/// A team or role summary: counts, defaults and prompt, then the edit key. When the pane
+/// A team or role summary: counts, defaults and prompt, then its keys. When the pane
 /// is too short for all of it, the defaults and prompt go first (UI §3's shrink order).
 fn summary(
     m: &UiModel,
@@ -300,8 +346,8 @@ fn summary(
     names: &[&AgentName],
     own: &Fields,
     parent: &NodeKey,
-    cells: usize,
-    rows: usize,
+    (cells, rows): (usize, usize),
+    keys: &str,
 ) -> Vec<Line<'static>> {
     let views: Vec<_> = names.iter().filter_map(|n| m.agents.get(*n)).collect();
     let noun = if names.len() == 1 { "agent" } else { "agents" };
@@ -348,7 +394,7 @@ fn summary(
         p,
     ));
     let prompt = truncate_end(&prompt, room);
-    let keys = Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted)));
+    let keys = Line::from(Span::styled(format!("{PAD}{keys}"), fg(p.fg_muted)));
     if rows < SUMMARY_ROWS + defaults.len() - 2 {
         return vec![Line::from(counts), Line::default(), keys];
     }

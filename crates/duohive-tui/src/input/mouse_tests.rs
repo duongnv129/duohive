@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 
 use super::mouse::{WHEEL_LINES, on_mouse};
 use super::{Action, UiEffect};
-use crate::chat::{ChatLine, Who, chat_action, chat_key};
+use crate::chat::{chat_action, chat_key};
 use crate::fixtures::{ctx, mins, render_lines, spec_model, status, view};
 use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
@@ -173,11 +173,11 @@ fn chatty(count: usize) -> UiModel {
     let duo = m.org.duo.name.clone();
     m.agents
         .insert(duo, view(status(AgentState::Idle, mins(1))));
-    m.chat.lines = (1..=count)
-        .map(|i| ChatLine {
-            at: Millis(0),
-            who: Who::You,
-            text: format!("m{i:02}x"),
+    let you = duohive_core::chat::ChatKind::You { message: None };
+    m.chat.entries = (1..=count)
+        .map(|i| {
+            let id = u64::try_from(i).unwrap();
+            crate::fixtures::chat_entry(id, Millis(0), you.clone(), &format!("m{i:02}x"))
         })
         .collect();
     m
@@ -220,11 +220,9 @@ fn chat_scrolled_stays_put_on_new_line() {
     let mut m = chatty(40);
     let (x, y) = middle(areas(&m).chat);
     on_mouse(&mut m, wheel(true, x, y));
-    m.chat.lines.push(ChatLine {
-        at: Millis(0),
-        who: Who::Duo,
-        text: "m41x".to_owned(),
-    });
+    m.apply(duohive_core::event::Event::ChatLine(
+        crate::fixtures::chat_entry(41, Millis(0), duohive_core::chat::ChatKind::Duo, "m41x"),
+    ));
     let text = shown(&m);
     assert!(text.contains("m37x") && !text.contains("m38x"), "{text}");
 }
@@ -511,4 +509,34 @@ fn click_with_chat_focused_hits_the_row_drawn() {
     let (x, y) = cell_of(&m, areas(&m).org, "squad-1");
     on_mouse(&mut m, press(x, y));
     assert_eq!(m.selected, NodeKey::Agent(n("squad-1")));
+}
+
+/// P2-D25's scrolling over `ChatEntry` history, with friction entry 13: following the
+/// newest, a reply taller than the history shows its start, and scrolling counts from
+/// what is shown.
+#[test]
+fn chat_scroll_kept_from_p2_d25() {
+    let mut m = chatty(40);
+    let (_, room) = chat_history_fit(&m).unwrap();
+    let tall: Vec<String> = (1..=room + 4).map(|i| format!("r{i:02}y")).collect();
+    m.apply(duohive_core::event::Event::ChatLine(
+        crate::fixtures::chat_entry(
+            41,
+            Millis(0),
+            duohive_core::chat::ChatKind::Duo,
+            &tall.join("\n"),
+        ),
+    ));
+    let (len, _) = chat_history_fit(&m).unwrap();
+    assert_eq!(len, 40 + room + 4);
+    let text = shown(&m);
+    assert!(
+        text.contains("r01y") && !text.contains(&tall[room]),
+        "{text}"
+    );
+    let (x, y) = middle(areas(&m).chat);
+    on_mouse(&mut m, wheel(true, x, y));
+    assert_eq!(m.chat.scroll, Some(40 - usize::from(WHEEL_LINES)));
+    on_mouse(&mut m, wheel(false, x, y));
+    assert_eq!(m.chat.scroll, None);
 }

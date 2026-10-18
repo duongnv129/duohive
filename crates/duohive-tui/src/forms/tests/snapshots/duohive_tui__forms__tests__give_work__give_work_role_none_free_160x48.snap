@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ──────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting                                                                       │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ Defaults  CLI inherit: Claude Code · model inherit: sonnet                                                 │
+┃▌│  ├─ ◇ Backend               ● 1 ◆ 1          ┃│           worktrees inherit: off                                                                           │
+┃ │  │  ├─ auth-service         ● working    2m  ┃│ Prompt    API URLs use hyphens. Run make test before done.                                                 │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│ space give work to this role · e edit                                                                      │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist                                ┃│                                                                                                            │
+┃    ├─ squad-1                 ○ stopped    1d  ┃│                                                                                                            │
+┃    ├─ squad-2                 ○ stopped    1d  ┃│                                                                                                            │
+┃    └─ squad-3                 ○ stopped    1d  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                  ┌─ Give work · role Payments › Backend (0 of 2 free) ────────────────────────────────────┐                                  │
+┃                                  │ Task    ▌[ Add an idempotency key to POST /payments.________________________________ ] │                                  │
+┃                                  │ Goes to  No free agent · enter proposes one                                            │                                  │
+┃                                  │          (the approval card holds the task)                                            │                                  │
+┃                                  │                                                           enter propose one · esc      │                                  │
+┃                                  └────────────────────────────────────────────────────────────────────────────────────────┘                                  │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ enter propose one · esc

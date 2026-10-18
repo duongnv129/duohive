@@ -95,7 +95,8 @@ There are three themes:
   - names are cut in the middle with `…` (`billing-…-worker`);
   - pane titles and breadcrumbs are cut from the left (`… › Backend › billing-api`);
   - last replies are cut at the pane edge with `…`;
-  - chat lines wrap with a hanging indent under the message text.
+  - chat lines wrap with a hanging indent under the message text;
+  - when the newest chat entry is taller than the history, its first lines show (friction entry 13).
 
 ## 3. Layout
 
@@ -467,6 +468,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 - **Inherited values:** shown as `inherit: <value>` in `fg.muted`; typing overrides them, and clearing a field restores inheritance.
 - **Stacked prompts:** the prompts this agent stacks under are shown read-only above its own prompt, one line per level; empty levels show "(none)".
 - **Validation:** checked as you type, with an error line under the field. `Save` stays disabled until the form is valid.
+- **Flags:** error under Flags: `--dangerously-skip-permissions is never allowed` (or the `--allow-…` twin); the form can't be saved (P3-D31).
 - **Renaming:** only while the agent is stopped and has no worktrees; otherwise the name field is read-only with the reason under it.
 - **Running agents:** edits are saved now and apply on the agent's next start.
 
@@ -589,6 +591,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 └──────────────────────────────────────────────────────────┘
 ```
 
+- **On a team,** Move to… lists its positions among the teams (`before <team>` for each other team, and `at the end`); teams don't nest.
 - **Drag and drop:** valid targets are highlighted while dragging. An invalid drop (an agent onto a team, a team onto a role) is refused with the reason in the footer. A drop that changes inherited values opens the same list as "Move to…" for confirmation.
 - **`d`** deletes. It is disabled on any agent that isn't stopped, with the reason in the footer. Deleting a role or team lists every agent it removes, and is disabled while any of them is running (§4.8).
 
@@ -647,10 +650,12 @@ What happens depends on the agent's state:
 ┌─ Give work · role Generalist (1 of 3 free) ────────────────────────────────────────────┐
 │ Task     [ Fix the flaky date test in billing/time_test.go__________________ ]         │
 │ Goes to  ▌squad-2 (finished 3m)                        ↑↓ pick another                 │
-│ Run      (•) new worktree   ( ) ~/code/my-app                                          │
+│ Run      in ~/code/my-app, as the next turn of squad-2's session                       │
 │                                             enter give · alt+enter new line · esc      │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+The Run row follows the picked agent: radios, preset from its default, for a stopped or errored pick; the next-turn line for a finished or idle one (P3-D29).
 
 **A role with no free agent:** `enter` proposes a new agent. DuoHive raises an approval card from Duo that holds the task, even while Duo is stopped or busy; approving it creates the agent and gives it the task.
 
@@ -669,12 +674,13 @@ When Duo proposes an org change, or wants to stop a starting, working or waiting
 
 - **Keys:** `↑` from an empty chat input focuses the newest card (heavy border). `y`, `e` and `n` act only while a card has focus; `esc` returns to the input.
   - **Approve** (`y`) applies the change.
-  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the chat. On a stop card `e` is disabled, and the footer says `nothing to edit · y or n`. On a new-agent card it opens the agent form; the task the card holds is kept unchanged.
+  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the chat. On a stop card `e` is disabled, and the footer says `nothing to edit · y or n`. On a new-agent card it opens the agent form; the task the card holds is kept unchanged. On a new-agent card the form shows the task under the fields (`Task  <first line>`).
   - **Reject** (`n`) tells Duo it was declined.
+- **What a change sets:** under its first line, an org-change card lists every field the change sets or changes, one row each, so nothing is approved unseen. An add shows `+ <field>: <value>` for each field it sets (`every field inherited` when none). An edit shows `~ <field>: <old> → <new>` for each field that differs, including a rename (`~ name: QA → Testing`); `inherit` stands for unset (`unset` for org defaults), unchanged fields are left out, and `no changes` stands alone. Editing the org defaults also lists Duo's name and CLI. A move shows `from <place> → <place>`; a remove shows what goes with it (`with 2 roles, 3 agents`). A prompt shows its first line and, when it has more, `(<n> lines)`. A `flags` row is drawn in `status.attention` and shown in full, wrapping inside the card; other long values are cut with `…`.
 - **Several cards:** only the newest takes keys; reach the others from Needs you.
-- **Answered cards** collapse into one `→` line with the result ("→ approved: stop squad-1").
+- **Answered cards** collapse into one `→` line with the result ("→ approved: stop squad-1"). The line shows the answer's time at its right (`→ approved: stop squad-1   10:16`) and sits where the answer came in.
 - **Duo isn't blocked:** Duo keeps working while a card waits; your answer reaches Duo later as a message from you. Each card is its own Needs you row.
-- **Action lines:** each of Duo's actions shows as a `→` line with its result: `delivered`, `queued (… is working)`, `started`, `typed in`, `stopped`, `refused`.
+- **Action lines:** each of Duo's tool calls shows as one `→` line with its result: `typed in`, `queued (… is working)`, `started`, `stopped`, `refused (…)` or `card raised`. Delivery stays visible through `message_status` and the `✉` count. Each action line is `→ <text>   <result>`, with three spaces before the result, in `fg.muted`. If the line wraps, it hangs under the text.
 
 The mock shows the card focused (heavy outline); unfocused, its outline is the light `border`.
 
@@ -688,7 +694,9 @@ The mock shows the card focused (heavy outline); unfocused, its outline is the l
 │             → give work pay-qa "PAY-88c QA: retry cases"                started                  │
 │             ┏━ ◆ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                   │
 │             ┃ + Add agent pay-web in Payments › Frontend (new role)          ┃                   │
-│             ┃   CLI Claude Code · ~/code/web · worktrees on                  ┃                   │
+│             ┃   + cli: Claude Code                                           ┃                   │
+│             ┃   + directory: ~/code/web                                      ┃                   │
+│             ┃   + worktree: on                                               ┃                   │
 │             ┃ [y] Approve   [e] Edit   [n] Reject                            ┃                   │
 │             ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                   │
 │ ❯ _                                                                                              │
@@ -717,7 +725,7 @@ The card's row in Needs you:
   - to a stopped agent, it starts the agent with the message as its task.
 - **Messages between agents** are not shown in the chat, only as `✉` on the recipient's row.
 
-**Suggestions:** typing `@` or `/` opens a list above the input. It filters as you type; `tab` or `enter` takes an item, and `esc` closes the list. Agents show their state, so you can see who is free.
+**Suggestions:** typing `@` or `/` opens a list above the input. It filters as you type; `tab` or `enter` takes an item, and `esc` closes the list. Agents show their state, so you can see who is free. Items match by prefix, ignoring case (`@a` lists auth-service). `↑`/`↓` move the highlight. Taking an item adds a space after it. `enter` on a command typed in full runs it. `/help` prints the chat's keys and `/agents` lists every agent with its state cell; both are local lines, never stored. `/x` gives `unknown command /x · /help lists them`, and `@nobody` gives `no agent named nobody`; in both cases the text stays in the input.
 
 ```
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
@@ -726,7 +734,7 @@ The card's row in Needs you:
 │   │ @billing-api       ◆ waiting    4m       │                                                   │
 │   │ @pay-qa            ○ stopped    1d       │                                                   │
 │   └──────────────────────────────────────────┘                                                   │
-│ ❯ @a_                                                                                            │
+│ ❯ @_                                                                                             │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

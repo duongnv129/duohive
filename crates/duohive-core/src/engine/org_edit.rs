@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use super::lifecycle::getting_ready;
 use super::{AgentRt, Engine, reject};
-use crate::command::{OrgEdit, RoleDraft};
+use crate::command::{MoveTarget, OrgEdit, RoleDraft};
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
 use crate::names::{AgentName, NodeName};
@@ -27,30 +27,59 @@ const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees"
 impl Engine {
     /// `EditOrg`: check, apply to a copy, validate, save, then replace the org.
     pub(super) fn edit_org(&mut self, edit: &OrgEdit) -> Vec<Event> {
+        let mut out = Vec::new();
+        match self.apply_edit(edit, &mut out) {
+            Ok(()) => out,
+            Err(reason) => reject(reason),
+        }
+    }
+
+    /// The one path for an org edit, yours or an approved card's (P3-D21):
+    /// on success its events go to `out`, `OrgChanged` first; on a refusal
+    /// nothing changes and the reason is returned.
+    pub(super) fn apply_edit(
+        &mut self,
+        edit: &OrgEdit,
+        out: &mut Vec<Event>,
+    ) -> Result<(), String> {
         if self.org_error.is_some() {
-            return reject(ORG_FILE_BROKEN);
+            return Err(ORG_FILE_BROKEN.to_owned());
         }
-        if let Err(reason) = self.check_edit(edit) {
-            return reject(reason);
-        }
-        if let Err(reason) = self.check_rename_worktrees(edit) {
-            return reject(reason);
-        }
-        let org = match preview_edit(&self.org, edit) {
-            Ok(org) => org,
-            Err(errors) => {
-                let reason = errors.into_iter().next().map(|e| e.message);
-                return reject(reason.unwrap_or_default());
-            }
-        };
+        self.check_edit(edit)?;
+        self.check_rename_worktrees(edit)?;
+        let org = preview_edit(&self.org, edit).map_err(|errors| {
+            errors
+                .into_iter()
+                .next()
+                .map(|e| e.message)
+                .unwrap_or_default()
+        })?;
         if let Err(e) = self.ports.store.save_org(&org) {
-            return reject(format!("couldn't save org.toml: {e}"));
+            return Err(format!("couldn't save org.toml: {e}"));
         }
         let old = std::mem::replace(&mut self.org, org);
-        let mut out = Vec::new();
-        self.follow_edit(&old, edit, &mut out);
-        out.insert(0, self.org_changed(&old));
-        out
+        let mut follow = Vec::new();
+        self.follow_edit(&old, edit, &mut follow);
+        out.push(self.org_changed(&old));
+        out.extend(follow);
+        Ok(())
+    }
+
+    /// Why Duo may not propose removing `edit`'s node: an agent under it
+    /// isn't stopped (TD §6.2).
+    pub(super) fn removal_refusal(&self, edit: &OrgEdit) -> Option<String> {
+        let OrgEdit::Delete(key) = edit else {
+            return None;
+        };
+        agents_under(&self.org, key).into_iter().find_map(|a| {
+            let state = self.state_of(&a);
+            (state != AgentState::Stopped).then(|| {
+                format!(
+                    "{a} is {}; only a stopped agent can be removed",
+                    state.word()
+                )
+            })
+        })
     }
 
     /// `ReloadOrg`: re-read `org.toml`; a broken file keeps the current org, and
@@ -367,6 +396,7 @@ pub fn preview_edit(org: &Org, edit: &OrgEdit) -> Result<Org, Vec<FieldError>> {
 /// Applies `edit` to `org`; fails only when its target doesn't exist.
 fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
     match edit {
+        OrgEdit::Move { node, to } => move_node(org, node, to)?,
         OrgEdit::AddTeam(d) => org.teams.push(Team {
             name: d.name.clone(),
             defaults: d.defaults.clone(),
@@ -442,7 +472,57 @@ fn delete(org: &mut Org, key: &NodeKey) -> Result<(), String> {
     Ok(())
 }
 
-fn find_role<'a>(org: &'a Org, key: &RoleKey) -> Option<&'a Role> {
+/// P3-D20: an agent moves into a role, a role into a team or the root, and a
+/// team among the teams; every other pairing is refused. A moved node goes
+/// last among its new siblings.
+fn move_node(org: &mut Org, node: &NodeKey, to: &MoveTarget) -> Result<(), String> {
+    match (node, to) {
+        (NodeKey::Agent(a), MoveTarget::Into(NodeKey::Role(k))) => {
+            role_mut(org, k)?;
+            let from = all_roles_mut(org)
+                .find(|r| r.agents.iter().any(|x| &x.name == a))
+                .ok_or_else(|| no_agent(a))?;
+            let at = from.agents.iter().position(|x| &x.name == a);
+            let agent = from.agents.remove(at.ok_or_else(|| no_agent(a))?);
+            role_mut(org, k)?.agents.push(agent);
+        }
+        (NodeKey::Role(k), MoveTarget::Into(NodeKey::Team(_) | NodeKey::Duo)) => {
+            let team = match to {
+                MoveTarget::Into(NodeKey::Team(t)) => Some(t),
+                _ => None,
+            };
+            roles_mut(org, team)?;
+            let from = roles_mut(org, k.team.as_ref())?;
+            let at = from.iter().position(|r| r.name == k.role);
+            let role = from.remove(at.ok_or_else(|| no_role(k))?);
+            roles_mut(org, team)?.push(role);
+        }
+        (NodeKey::Team(t), MoveTarget::Before(_) | MoveTarget::End) => {
+            let at = org.teams.iter().position(|team| &team.name == t);
+            let team = org.teams.remove(at.ok_or_else(|| no_team(t))?);
+            let to = match to {
+                MoveTarget::Before(b) if b == t => {
+                    return Err(format!("{t} can't move before itself"));
+                }
+                MoveTarget::Before(b) => org
+                    .teams
+                    .iter()
+                    .position(|team| &team.name == b)
+                    .ok_or_else(|| no_team(b))?,
+                _ => org.teams.len(),
+            };
+            org.teams.insert(to, team);
+        }
+        (NodeKey::Team(_), _) => return Err("a team moves only among the teams".to_owned()),
+        (NodeKey::Role(_), _) => return Err("a role moves only into a team or Duo".to_owned()),
+        (NodeKey::Agent(_), _) => return Err("an agent moves only into a role".to_owned()),
+        (NodeKey::Duo, _) => return Err("Duo can't be moved".to_owned()),
+    }
+    Ok(())
+}
+
+/// The role at `key`, if the org has it.
+pub(super) fn find_role<'a>(org: &'a Org, key: &RoleKey) -> Option<&'a Role> {
     let roles = match &key.team {
         Some(t) => &org.teams.iter().find(|team| &team.name == t)?.roles,
         None => &org.roles,

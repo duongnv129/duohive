@@ -16,6 +16,7 @@ mod team;
 
 use std::path::Path;
 
+use duohive_core::card::{Card, CardChange, CardId};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::{Command, OrgEdit};
 use duohive_core::engine::preview_edit;
@@ -34,7 +35,7 @@ pub use settings::{
 };
 
 use crate::input::Action;
-use crate::model::Confirm;
+use crate::model::{Confirm, UiModel};
 
 /// Under a name that can't change now (Task 14's rule).
 pub(crate) const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees";
@@ -42,6 +43,8 @@ const INHERIT: &str = "inherit: ";
 /// Worktree choices where the field inherits.
 const WT_ON: usize = 1;
 const WT_OFF: usize = 2;
+/// Leads the task a new-agent card's form keeps (P3-D7).
+const TASK: &str = "Task  ";
 
 /// What a key did to a form.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,6 +57,95 @@ pub enum FormOutcome {
     Continue,
     /// Ask this first (Duo's CLI changes while it runs).
     Confirm(Confirm),
+}
+
+/// Why a form is open.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FormPurpose {
+    /// To edit the org: Save sends `EditOrg`.
+    #[default]
+    Edit,
+    /// To edit a card's change (UI §4.6): Save approves it, edited.
+    Card(CardId),
+}
+
+/// Whether `e` opens a form on `card`: not on stop, remove and move cards (P3-D7, P3-D22).
+pub fn card_editable(card: &Card) -> bool {
+    !matches!(
+        card.change,
+        CardChange::Stop { .. } | CardChange::Org(OrgEdit::Delete(_) | OrgEdit::Move { .. })
+    )
+}
+
+/// The form `e` opens on `card`, pre-filled with its change; `None` for stop, remove and
+/// move cards (P3-D7, P3-D22). A new-agent card's form edits the agent and shows the
+/// task it keeps under it.
+pub fn form_for_card(card: &Card, m: &UiModel) -> Option<Form> {
+    if !card_editable(card) {
+        return None;
+    }
+    let (org, dirs, home) = (&m.org, m.dirs.probe(), m.home.as_path());
+    let filled = |f: Form, name: &str, own: &Fields| f.filled(org, name, own, dirs, home);
+    let form = match &card.change {
+        CardChange::NewAgent {
+            role, agent, task, ..
+        } => {
+            let f = Form::new_agent(org, role, dirs, home);
+            let mut f = filled(f, agent.name.as_str(), &agent.fields);
+            f.footer = Some(format!("{TASK}{}", task.lines().next().unwrap_or_default()));
+            f
+        }
+        CardChange::Org(edit) => match edit {
+            OrgEdit::AddTeam(d) => filled(
+                Form::new_team(org, dirs, home),
+                d.name.as_str(),
+                &d.defaults,
+            ),
+            OrgEdit::EditTeam { key, draft } => filled(
+                Form::edit_team(org, key, dirs, home),
+                draft.name.as_str(),
+                &draft.defaults,
+            ),
+            OrgEdit::AddRole { team, role, agents } => {
+                let mut f = Form::new_role(org, team.as_ref(), dirs, home);
+                if let Some(count) = f.field_mut(FieldId::Agents) {
+                    count.edit = LineEdit::new(&agents.to_string());
+                }
+                filled(f, role.name.as_str(), &role.defaults)
+            }
+            OrgEdit::EditRole { key, draft } => filled(
+                Form::edit_role(org, key, dirs, home),
+                draft.name.as_str(),
+                &draft.defaults,
+            ),
+            OrgEdit::AddAgent { role, agent } => filled(
+                Form::new_agent(org, role, dirs, home),
+                agent.name.as_str(),
+                &agent.fields,
+            ),
+            OrgEdit::EditAgent { key, draft } => {
+                let has_worktrees = m.worktrees.iter().any(|r| &r.agent == key);
+                let f = Form::edit_agent(org, key, m.view(key), has_worktrees, dirs, home);
+                filled(f, draft.name.as_str(), &draft.fields)
+            }
+            OrgEdit::EditOrgDefaults { defaults, duo } => {
+                let proposed = Org {
+                    defaults: defaults.clone(),
+                    duo: duo.clone(),
+                    ..org.clone()
+                };
+                let mut f = Form::edit_org(&proposed, m.view(&org.duo.name));
+                f.revalidate(org);
+                f
+            }
+            OrgEdit::Delete(_) | OrgEdit::Move { .. } => return None,
+        },
+        CardChange::Stop { .. } => return None,
+    };
+    Some(Form {
+        purpose: FormPurpose::Card(card.id),
+        ..form
+    })
 }
 
 /// What a form creates or changes.
@@ -89,6 +181,8 @@ pub struct Form {
     pub save_label: String,
     /// The box's width, from the mock-ups.
     pub width: u16,
+    /// Why it is open.
+    pub purpose: FormPurpose,
     pub(crate) target: Target,
     /// The directory the form inherits, when it has a Directory field.
     pub(crate) inherited_dir: Option<String>,
@@ -112,12 +206,53 @@ impl Form {
             saving: false,
             save_label: save_label.to_owned(),
             width,
+            purpose: FormPurpose::Edit,
             target,
             inherited_dir: None,
             probed: None,
         };
         f.focus = f.fields.iter().position(Field::focusable).unwrap_or(0);
         f
+    }
+
+    /// The form holding a proposed `name` and `own` fields (UI §4.6). A proposed choice
+    /// counts as the starting one: worktrees `on` in a directory that isn't a repo is
+    /// noted, and the engine decides.
+    fn filled(
+        mut self,
+        org: &Org,
+        name: &str,
+        own: &Fields,
+        dirs: &dyn DirProbe,
+        home: &Path,
+    ) -> Self {
+        let text = |v: &Option<String>| LineEdit::new(v.as_deref().unwrap_or_default());
+        for f in &mut self.fields {
+            match f.id {
+                FieldId::Name => f.edit = LineEdit::new(name),
+                FieldId::Cli => {
+                    f.selected = own
+                        .cli
+                        .and_then(|c| CliKind::ALL.iter().position(|k| *k == c))
+                        .map_or(0, |i| i + 1);
+                }
+                FieldId::Directory => f.edit = text(&own.directory),
+                FieldId::Model => f.edit = text(&own.model),
+                FieldId::Effort => f.edit = text(&own.effort),
+                FieldId::Flags => f.edit = text(&own.flags),
+                FieldId::Prompt => f.edit = text(&own.prompt),
+                FieldId::Worktrees => {
+                    f.selected = match own.worktree {
+                        None => 0,
+                        Some(true) => WT_ON,
+                        Some(false) => WT_OFF,
+                    };
+                    f.initial = f.selected;
+                }
+                FieldId::DuoCli | FieldId::Agents => {}
+            }
+        }
+        self.ready(org, dirs, home)
     }
 
     /// Finishes construction: probes the directory and validates.
@@ -505,7 +640,9 @@ fn node_path(org: &Org, edit: &OrgEdit) -> Option<String> {
             let team = loc.team.map(|t| &t.name);
             format!("{}.agent[{}]", role_path(team, &loc.role.name), draft.name)
         }
-        OrgEdit::EditOrgDefaults { .. } | OrgEdit::Delete(_) => return None,
+        OrgEdit::EditOrgDefaults { .. } | OrgEdit::Delete(_) | OrgEdit::Move { .. } => {
+            return None;
+        }
     })
 }
 

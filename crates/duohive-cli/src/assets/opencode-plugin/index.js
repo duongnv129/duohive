@@ -31,7 +31,8 @@
 //                  also after a kill -9 of the TUI)
 //
 // Its `evaluate` permission hook raises the final effect from "allow" to
-// "ask" for the `edit` and `shell` actions, and never loosens anything, so
+// "ask" for the `edit` and `shell` actions, and loosens nothing but DuoHive's
+// own tools ("ask" to "allow", P3-D1; a "deny" stays), so
 // the PRD's rule that writes and commands wait for the user holds on
 // OpenCode's defaults (everything allowed). A resource the user approved
 // with "Always allow" (the request's `save` patterns) is not raised again.
@@ -66,6 +67,8 @@ const START_FALLBACK_MS = 3000;
 // The actions OpenCode 2.0 asks about for file writes (write, edit, patch)
 // and for the shell tool.
 const GUARDED = new Set(["edit", "shell"]);
+// DuoHive's own MCP tools, `duohive_<tool>`, run without a prompt (P3-D1).
+const DUOHIVE_TOOL = /^duohive_[a-z_]+$/;
 const TURN_ENDS = new Set([
   "session.execution.succeeded",
   "session.execution.failed",
@@ -317,7 +320,13 @@ async function setup(ctx) {
   }
 
   function evaluate(input) {
-    if (!isObject(input) || !GUARDED.has(input.action) || input.effect !== "allow") return;
+    if (!isObject(input)) return;
+    if (typeof input.action === "string" && DUOHIVE_TOOL.test(input.action)) {
+      // Only an "ask" is loosened: a user's "deny" stays.
+      if (input.effect === "ask") input.effect = "allow";
+      return;
+    }
+    if (!GUARDED.has(input.action) || input.effect !== "allow") return;
     if (alwaysAllowed(input.action, strings(input.resources))) return;
     input.effect = "ask";
   }

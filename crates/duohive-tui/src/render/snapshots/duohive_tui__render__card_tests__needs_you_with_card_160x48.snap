@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/render/card_tests.rs
+expression: "org.join(\"\\n\")"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 3 need you  
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃
+┃▌│  │  ├─ auth-service         ● working    2m  ┃
+┃ │  │  │   "Running go test ./..."              ┃
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃
+┃ │  │      "Allow edit to api.go?"              ┃
+┃ │  └─ ◇ QA                                     ┃
+┃ │     └─ pay-qa               ○ stopped    1d  ┃
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃
+┃    ├─ squad-1                ~● working    1m  ┃
+┃    ├─ squad-2                 ✓ finished   3m  ┃
+┃    └─ squad-3                 ◷ quiet      6m  ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┃                                                ┃
+┣━ Needs you (3) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫
+┃ ◷ squad-3      quiet      6m                   ┃
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃
+┃ ◆ Duo          approval   1m  Add pay-web      ┃
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┌─ ⬢ Duo · ◦ idle ────────────────────────────────
+│             ┌─ ◆ Proposed change ───────────────
+│             │ + Add agent pay-web in Payments › 
+│             │   + cli: Claude Code              
+│ ❯                                               
+└─────────────────────────────────────────────────
+ tab pane · ↑↓ move · space give work · s start/st

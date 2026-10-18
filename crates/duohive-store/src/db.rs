@@ -33,6 +33,23 @@ CREATE TABLE worktrees(agent TEXT NOT NULL, task TEXT NOT NULL, repo TEXT NOT NU
   branch TEXT NOT NULL, created_at INTEGER NOT NULL, created_from TEXT NOT NULL, state TEXT NOT NULL,
   checked_at INTEGER, base TEXT, PRIMARY KEY(agent, task));
 ALTER TABLE sessions ADD COLUMN worktree TEXT;
+", "
+CREATE TABLE pending_tool_calls(id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, tool TEXT NOT NULL,
+  arguments TEXT NOT NULL, queued_at INTEGER NOT NULL);
+ALTER TABLE sessions ADD COLUMN launched_as_duo INTEGER NOT NULL DEFAULT 0;
+", "
+-- sender NULL = you; kind 'text' | 'card'; status 'queued' | 'delivered' | 'answered' | 'dropped'.
+CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NULL, kind TEXT NOT NULL,
+  card INTEGER, text TEXT NOT NULL, status TEXT NOT NULL, reason TEXT, queued_at INTEGER NOT NULL,
+  delivered_at INTEGER);
+", "
+-- kind 'you' (message) | 'duo' | 'action' (result) | 'card' (card, result = the outcome); notes are never stored.
+CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
+  result TEXT, card INTEGER, message INTEGER);
+", "
+-- source 'duo' | 'no_free_agent'; change: CardChange as JSON; outcome NULL while pending.
+CREATE TABLE cards(id INTEGER PRIMARY KEY, source TEXT NOT NULL, change TEXT NOT NULL, raised_at INTEGER NOT NULL,
+  outcome TEXT, answered_at INTEGER);
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {

@@ -8,11 +8,11 @@ use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
-use super::{UiEffect, agent, agent_of, panes};
+use super::{UiEffect, agent, agent_of, cards, panes};
 use crate::chat;
 use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
-use crate::render::{PaneAreas, needs_you_item_at, org_key_at, pane_areas};
+use crate::render::{PaneAreas, chat_card_at, needs_you_item_at, org_key_at, pane_areas};
 
 /// Lines one wheel tick scrolls DuoHive's own views (the snapshot, the chat history).
 pub(crate) const WHEEL_LINES: u16 = 3;
@@ -41,6 +41,7 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
 fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     if areas.agent.contains(at) {
         m.focus.pane = Pane::Agent;
+        m.focus.card = None;
         return agent::view_if_finished(m);
     }
     let (pane, key, item) = if areas.org.contains(at) {
@@ -48,12 +49,13 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     } else if areas.needs_you.contains(at) {
         (Pane::NeedsYou, None, needs_you_item_at(m, at.y))
     } else if areas.chat.contains(at) {
-        (Pane::Chat, None, None)
+        return on_chat(m, at);
     } else {
         return Vec::new();
     };
     m.focus.agent_mode = AgentMode::Selected;
     m.focus.pane = pane;
+    m.focus.card = None;
     if let Some(key) = key {
         return select(m, key);
     }
@@ -65,6 +67,24 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
         .into_iter()
         .collect()
+}
+
+/// A press in the chat: on a card it focuses that card, and on `[y]`, `[e]` or `[n]` acts
+/// as the key (UI §4.6); elsewhere it focuses the input. The card is read before focus
+/// moves (the chat grows with focus).
+fn on_chat(m: &mut UiModel, at: Position) -> Vec<UiEffect> {
+    let hit = chat_card_at(m, at);
+    m.focus.agent_mode = AgentMode::Selected;
+    m.focus.pane = Pane::Chat;
+    m.focus.card = None;
+    let Some((card, button)) = hit else {
+        return Vec::new();
+    };
+    chat::focus_card(m, card);
+    match button {
+        Some(key) => cards::press_button(m, key),
+        None => Vec::new(),
+    }
 }
 
 /// Selects `key`, as `↑↓` onto it would (a finished agent is marked seen); a team or

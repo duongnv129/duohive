@@ -2,9 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::card::{CardChange, CardId};
+use crate::launch::Token;
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
 use crate::settings::Settings;
+use crate::tool::{CallId, ToolCall};
 use crate::worktree::{RunIn, TaskId};
 
 /// A request to the engine.
@@ -54,6 +57,67 @@ pub enum Command {
     UpdateSettings(Settings),
     /// Stop everything and exit.
     Shutdown,
+    /// An agent's tool call, from the MCP endpoint (TD §6.1). Answered by
+    /// `Event::ToolResult` with the same `call_id`.
+    Tool {
+        /// The endpoint's id for the call.
+        call_id: CallId,
+        /// The caller's launch token; identity comes only from it.
+        token: Token,
+        /// The parsed call.
+        call: ToolCall,
+    },
+    /// Your `@agent text` message.
+    SendMessage {
+        /// The recipient.
+        to: AgentName,
+        /// The text, typed in verbatim.
+        text: String,
+    },
+    /// A line you typed to Duo.
+    ChatToDuo {
+        /// The text.
+        text: String,
+    },
+    /// Your task for a role (UI §4.5).
+    AssignToRole {
+        /// The role.
+        role: RoleKey,
+        /// The task.
+        task: String,
+        /// The agent you picked, or `None` for the one at rest longest.
+        pick: Option<AgentName>,
+        /// Where it runs, for a stopped or errored pick.
+        run: Option<RunIn>,
+    },
+    /// Approve a card, optionally edited.
+    ApproveCard {
+        /// Which card.
+        card: CardId,
+        /// The edited change, if you edited it.
+        edited: Option<Box<CardChange>>,
+    },
+    /// Reject a card.
+    RejectCard {
+        /// Which card.
+        card: CardId,
+    },
+    /// You are typing into an agent's pane, or stopped (P3-D19).
+    Typing {
+        /// The agent, or `None` when typing ends.
+        agent: Option<AgentName>,
+    },
+}
+
+/// Where a node moves (P3-D20).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MoveTarget {
+    /// Under another node: an agent into a role, a role into a team or the root.
+    Into(NodeKey),
+    /// A team, before another team.
+    Before(NodeName),
+    /// A team, after every other team.
+    End,
 }
 
 /// A team being added or edited.
@@ -134,4 +198,11 @@ pub enum OrgEdit {
     },
     /// Delete a node and everything under it.
     Delete(NodeKey),
+    /// Move a node (P3-D20).
+    Move {
+        /// The node.
+        node: NodeKey,
+        /// Where it goes.
+        to: MoveTarget,
+    },
 }

@@ -12,7 +12,7 @@ use duohive_core::view::PaneInput;
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
-use crate::forms::{Chooser, Form, FormOutcome};
+use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
 use crate::model::{Confirm, Dialog, UiModel};
 use crate::tree::tree_rows;
 
@@ -139,6 +139,14 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if m.typing() {
         return Some(agent::typing_key(k));
     }
+    if matches!(m.dialog, Some(Dialog::GiveWork(_))) && k.modifiers.is_empty() {
+        // `↑↓` pick a role's agent (UI §4.5).
+        match k.code {
+            KeyCode::Up => return Some(Action::Up),
+            KeyCode::Down => return Some(Action::Down),
+            _ => {}
+        }
+    }
     if matches!(m.dialog, Some(Dialog::Form(_) | Dialog::GiveWork(_))) {
         return form_key(k);
     }
@@ -245,8 +253,17 @@ fn form_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
-/// Applies an action to the model; pure. Any key clears the footer note.
+/// Applies an action to the model; pure. Any key clears the footer note. A card keeps
+/// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    let out = apply(m, a);
+    if m.focus.pane != Pane::Chat {
+        m.focus.card = None;
+    }
+    out
+}
+
+fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
     // A refusal arrives before any further input; later ones aren't about the last send.
     m.give_sent = None;
@@ -265,6 +282,11 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         None => {}
     }
+    if m.focus.pane == Pane::Chat
+        && let Some(out) = cards::card_action(m, a)
+    {
+        return out;
+    }
     if m.zoomed_agent().is_some()
         && matches!(
             a,
@@ -273,6 +295,10 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     {
         // The zoomed pane is the only pane.
         return Vec::new();
+    }
+    // `esc` layers (UI §4.7): the suggestion list closes first; `tab` takes from it.
+    if m.focus.pane == Pane::Chat && m.suggest.is_some() && matches!(a, Action::Esc | Action::Tab) {
+        return chat_action(m, a);
     }
     match a {
         Action::Esc if m.zoomed_agent().is_some() => {
@@ -368,7 +394,10 @@ pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
             f.probe_dir(&m.org, m.dirs.probe(), &m.home);
         }
         Some(Dialog::GiveWork(g)) => g.paste(text),
-        None if m.focus.pane == Pane::Chat => m.chat_input.insert_str(text),
+        None if m.focus.pane == Pane::Chat => {
+            m.chat_input.insert_str(text);
+            crate::chat::refresh_suggest(m);
+        }
         _ => {}
     }
     Vec::new()
@@ -414,14 +443,32 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
             m.dialog = Some(Dialog::Form(f));
             Vec::new()
         }
-        FormOutcome::Cancel => Vec::new(),
-        FormOutcome::Edit(edit) => {
-            f.saving = true;
-            m.dialog = Some(Dialog::Form(f));
-            vec![UiEffect::Send(Command::EditOrg(edit))]
+        FormOutcome::Cancel => {
+            // A card's form goes back to the card, unanswered (UI §4.6).
+            if let FormPurpose::Card(id) = f.purpose {
+                crate::chat::focus_card(m, id);
+            }
+            Vec::new()
         }
+        FormOutcome::Edit(edit) => match f.purpose {
+            FormPurpose::Card(id) => cards::approve_edited(m, id, edit),
+            FormPurpose::Edit => {
+                f.saving = true;
+                m.dialog = Some(Dialog::Form(f));
+                vec![UiEffect::Send(Command::EditOrg(edit))]
+            }
+        },
         FormOutcome::Confirm(c) => {
-            m.dialog = Some(Dialog::Confirm(Box::new(Confirm { back: Some(f), ..c })));
+            let on_yes = match f.purpose {
+                FormPurpose::Card(id) => cards::approve_command(m, id, c.on_yes),
+                FormPurpose::Edit => c.on_yes,
+            };
+            let c = Confirm {
+                back: Some(f),
+                on_yes,
+                ..c
+            };
+            m.dialog = Some(Dialog::Confirm(Box::new(c)));
             Vec::new()
         }
     }
@@ -619,7 +666,7 @@ fn names(roles: &[Role]) -> Vec<AgentName> {
         .collect()
 }
 
-fn find_role<'a>(org: &'a Org, k: &RoleKey) -> Option<&'a Role> {
+pub(crate) fn find_role<'a>(org: &'a Org, k: &RoleKey) -> Option<&'a Role> {
     let roles = match &k.team {
         Some(t) => &org.teams.iter().find(|x| &x.name == t)?.roles,
         None => &org.roles,
@@ -646,7 +693,8 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 }
 
 mod agent;
-mod give_work;
+mod cards;
+pub(crate) mod give_work;
 pub(crate) mod mouse;
 mod panes;
 mod settings;
@@ -654,6 +702,10 @@ mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
+#[cfg(test)]
+mod card_tests;
+#[cfg(test)]
+mod chat_tests;
 #[cfg(test)]
 mod mouse_tests;
 #[cfg(test)]

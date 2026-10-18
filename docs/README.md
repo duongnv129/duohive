@@ -1,6 +1,6 @@
 # DuoHive docs
 
-**Where we are:** Phases 0 and 1 are done (2026-10-04): the org, standing agents on Claude Code and OpenCode with live status, the minimal TUI and `duohive bench`. Phase 2 (one screen) is in progress: its code and the UI/UX pass are done (2026-10-17); only the three-day run without `tmux attach` remains, with friction entry 22 watched during it. See the [roadmap](plans/v1-roadmap.md).
+**Where we are:** Phases 0 and 1 are done (2026-10-04): the org, standing agents on Claude Code and OpenCode with live status, the minimal TUI and `duohive bench`. Phase 3 (Duo and messaging) is done (2026-10-18), accepted on Claude Code and OpenCode ([bench results](plans/bench-results.md#phase-3-acceptance)). Phase 2 (one screen) is in progress: its code and the UI/UX pass are done (2026-10-17); only the three-day run without `tmux attach` remains, with friction entry 22 watched during it. Phase 4 (scale and polish) is next. See the [roadmap](plans/v1-roadmap.md).
 
 Three living documents, each updated in place. Read them in this order.
 

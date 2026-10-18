@@ -9,13 +9,16 @@
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
+use duohive_core::card::{Card, CardChange, CardId, CardOutcome, CardSource};
+use duohive_core::chat::{ChatEntry, ChatId, ChatKind};
 use duohive_core::hook::HookMessage;
+use duohive_core::inbox::{Message, MessageId, MessageKind, MessageStatus, Sender};
 use duohive_core::launch::{Token, WindowId};
 use duohive_core::ports::{SessionRow, Store};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::{example_org, n};
 use duohive_core::time::Millis;
-use duohive_core::worktree::{BaseRef, TaskId, WorktreeRow, WorktreeState};
+use duohive_core::worktree::{BaseRef, RunIn, TaskId, WorktreeRow, WorktreeState};
 use duohive_store::db::{insert_pending_hook, open_db, open_db_for_hook};
 use duohive_store::{Paths, SqliteStore};
 
@@ -48,6 +51,7 @@ fn row(state: AgentState) -> SessionRow {
         saw_end_hook: false,
         last_task: Some("fix it".into()),
         worktree: None,
+        launched_as_duo: false,
     }
 }
 
@@ -72,10 +76,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 3);
+    assert_eq!(user_version(&first), 7);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 3);
+    assert_eq!(user_version(&second), 7);
 }
 
 #[test]
@@ -496,5 +500,405 @@ fn migration_3_applies_on_v2_db() {
         .unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 3);
+    assert_eq!(user_version(&conn), 7);
+}
+
+#[test]
+fn migration_4_applies_on_v3_db() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch(
+            "DROP TABLE cards;
+             DROP TABLE chat;
+             DROP TABLE messages;
+             DROP TABLE pending_tool_calls;
+             ALTER TABLE sessions DROP COLUMN launched_as_duo;
+             INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
+               error, last_reply, task_at_launch, saw_end_hook, last_task)
+               VALUES ('Duo', 'tok-d', '@1', 'idle', 0, NULL, 0, 1, NULL, NULL, 0, 0, NULL);
+             PRAGMA user_version = 3;",
+        )
+        .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let rows = store.load_sessions().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(!rows[0].launched_as_duo);
+    assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 7);
+}
+
+#[test]
+fn session_launched_as_duo_round_trips() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let r = SessionRow {
+        launched_as_duo: true,
+        ..row(AgentState::Idle)
+    };
+    store.save_session(&r).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![r]);
+}
+
+#[test]
+fn queued_tool_calls_round_trip() {
+    use duohive_store::closed::queue_tool_call;
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let args = serde_json::json!({"to": "pay-qa", "text": "hi"});
+    let first = queue_tool_call(&paths, "tok-1", "send_message", &args, Millis(10)).unwrap();
+    let second = queue_tool_call(
+        &paths,
+        "tok-2",
+        "stop_agent",
+        &serde_json::json!({"agent": "pay-qa"}),
+        Millis(20),
+    )
+    .unwrap();
+    assert!(second > first);
+    let calls = store.take_queued_tool_calls().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].id, first);
+    assert_eq!(calls[0].token, Token("tok-1".into()));
+    assert_eq!(calls[0].tool, "send_message");
+    assert_eq!(calls[0].arguments, args);
+    assert_eq!(calls[0].queued_at, Millis(10));
+    assert_eq!(calls[1].tool, "stop_agent");
+    assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
+}
+
+#[test]
+fn closed_rights_from_launched_as_duo() {
+    use duohive_core::tool::Rights;
+    use duohive_store::closed::rights_for_token;
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    store
+        .save_session(&SessionRow {
+            agent: n("Duo"),
+            token: Some(Token("tok-duo".into())),
+            launched_as_duo: true,
+            ..row(AgentState::Idle)
+        })
+        .unwrap();
+    store.save_session(&row(AgentState::Idle)).unwrap();
+    assert_eq!(
+        rights_for_token(&paths, "tok-duo").unwrap(),
+        Some(Rights::Duo)
+    );
+    assert_eq!(
+        rights_for_token(&paths, "tok-1").unwrap(),
+        Some(Rights::Agent)
+    );
+    assert_eq!(rights_for_token(&paths, "nope").unwrap(), None);
+    assert_eq!(rights_for_token(&paths, "").unwrap(), None);
+}
+
+fn message(id: u64, from: Sender, kind: MessageKind, status: MessageStatus, at: u64) -> Message {
+    Message {
+        id: MessageId(id),
+        from,
+        to: n("pay-qa"),
+        kind,
+        text: format!("text {id}\nline two"),
+        status,
+        queued_at: Millis(at),
+        delivered_at: None,
+    }
+}
+
+#[test]
+fn messages_round_trip() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let squad = || Sender::Agent(n("squad-1"));
+    let text = MessageKind::Text;
+    let old_answered = message(1, squad(), text, MessageStatus::Answered, 100);
+    let queued = message(2, Sender::You, text, MessageStatus::Queued, 200);
+    let delivered = Message {
+        delivered_at: Some(Millis(350)),
+        ..message(3, squad(), text, MessageStatus::Delivered, 300)
+    };
+    let card_kind = MessageKind::CardAnswer(CardId(9));
+    let card = message(4, Sender::You, card_kind, MessageStatus::Queued, 400);
+    let dropped = |reason: &str| MessageStatus::Dropped {
+        reason: reason.into(),
+    };
+    let recent_dropped = message(5, squad(), text, dropped("no sign it started"), 5_000);
+    let old_dropped = message(6, squad(), text, dropped("gone"), 150);
+    let pasting = message(7, squad(), text, MessageStatus::Pasting, 160);
+    for m in [
+        &old_answered,
+        &queued,
+        &delivered,
+        &card,
+        &recent_dropped,
+        &old_dropped,
+        &pasting,
+    ] {
+        store.save_message(m).unwrap();
+    }
+    // Queued, pasting and delivered whatever their age, recent ones, and the newest id.
+    assert_eq!(
+        store.load_messages(Millis(1_000)).unwrap(),
+        vec![queued.clone(), delivered, card, recent_dropped, pasting]
+    );
+    assert_eq!(
+        store.find_message(MessageId(1)).unwrap(),
+        Some(old_answered)
+    );
+    assert_eq!(store.find_message(MessageId(42)).unwrap(), None);
+    // Saving again replaces.
+    let taken = Message {
+        status: MessageStatus::Delivered,
+        delivered_at: Some(Millis(260)),
+        ..queued
+    };
+    store.save_message(&taken).unwrap();
+    assert_eq!(store.find_message(MessageId(2)).unwrap(), Some(taken));
+}
+
+#[test]
+fn migration_5_applies() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch(
+            "DROP TABLE cards; DROP TABLE chat; DROP TABLE messages; PRAGMA user_version = 4;",
+        )
+        .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(store.load_messages(Millis(0)).unwrap(), vec![]);
+    let first = message(1, Sender::You, MessageKind::Text, MessageStatus::Queued, 1);
+    store.save_message(&first).unwrap();
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 7);
+    let sender: Option<String> = conn
+        .query_row("SELECT sender FROM messages WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(sender, None);
+}
+
+fn chat_entry(id: u64, kind: ChatKind, text: &str) -> ChatEntry {
+    ChatEntry {
+        id: ChatId(id),
+        at: Millis(1_000 + id),
+        kind,
+        text: text.into(),
+    }
+}
+
+#[test]
+fn chat_round_trip() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let card = |id: u64, outcome: CardOutcome| {
+        chat_entry(
+            id,
+            ChatKind::CardResult {
+                card: CardId(id),
+                outcome,
+            },
+            "stop squad-1",
+        )
+    };
+    let entries = vec![
+        chat_entry(
+            1,
+            ChatKind::You { message: None },
+            "what's blocked?\nand why",
+        ),
+        chat_entry(
+            2,
+            ChatKind::You {
+                message: Some(MessageId(7)),
+            },
+            "fix it",
+        ),
+        chat_entry(3, ChatKind::Duo, "billing-api waits on an approval"),
+        chat_entry(
+            4,
+            ChatKind::Action {
+                result: "queued (pay-qa is working)".into(),
+            },
+            "@pay-qa \"rerun\"",
+        ),
+        card(5, CardOutcome::Approved),
+        card(6, CardOutcome::EditedApproved),
+        card(7, CardOutcome::Rejected),
+        card(
+            8,
+            CardOutcome::NotApplied("squad-1 is already stopped".into()),
+        ),
+    ];
+    for e in &entries {
+        store.save_chat(e).unwrap();
+    }
+    // A note is never stored.
+    store
+        .save_chat(&chat_entry(9, ChatKind::Note, "/help"))
+        .unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), entries);
+    // The last `n`, oldest first.
+    assert_eq!(store.load_chat(3).unwrap(), entries[5..].to_vec());
+    assert_eq!(store.load_chat(0).unwrap(), vec![]);
+}
+
+#[test]
+fn migration_6_applies() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch("DROP TABLE cards; DROP TABLE chat; PRAGMA user_version = 5;")
+            .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), vec![]);
+    let first = chat_entry(1, ChatKind::Duo, "hello");
+    store.save_chat(&first).unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), vec![first]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 7);
+    let kind: String = conn
+        .query_row("SELECT kind FROM chat WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(kind, "duo");
+}
+
+fn a_card(id: u64, source: CardSource, change: CardChange, answer: Option<CardOutcome>) -> Card {
+    Card {
+        id: CardId(id),
+        source,
+        change,
+        raised_at: Millis(1_000 + id),
+        answer: answer.map(|o| (o, Millis(2_000 + id))),
+    }
+}
+
+#[test]
+fn cards_round_trip() {
+    use duohive_core::command::{AgentDraft, OrgEdit};
+    use duohive_core::org::{Fields, RoleKey};
+    use duohive_core::testkit::change_examples;
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let role = RoleKey {
+        team: None,
+        role: duohive_core::names::NodeName::parse("Generalist").unwrap(),
+    };
+    let mut changes: Vec<CardChange> = change_examples()
+        .into_iter()
+        .map(|(_, edit)| CardChange::Org(edit))
+        .collect();
+    changes.push(CardChange::Org(OrgEdit::Delete(
+        duohive_core::org::NodeKey::Agent(n("squad-2")),
+    )));
+    changes.push(CardChange::Stop {
+        agent: n("squad-1"),
+    });
+    changes.push(CardChange::NewAgent {
+        role,
+        agent: AgentDraft {
+            name: n("squad-4"),
+            fields: Fields {
+                model: Some("opus".into()),
+                ..Fields::default()
+            },
+        },
+        task: "Fix the \"flaky\" test\nthen rerun".into(),
+        run: RunIn::NewWorktree,
+        clone_of: Some(n("squad-1")),
+    });
+    let pending: Vec<Card> = changes
+        .into_iter()
+        .enumerate()
+        .map(|(i, change)| {
+            let source = if i % 2 == 0 {
+                CardSource::Duo
+            } else {
+                CardSource::NoFreeAgent
+            };
+            a_card(u64::try_from(i).unwrap() + 1, source, change, None)
+        })
+        .collect();
+    for c in &pending {
+        store.save_card(c).unwrap();
+    }
+    assert_eq!(store.load_cards().unwrap(), pending);
+    // Answered cards leave the load, except the newest, so ids continue.
+    let stop = CardChange::Stop {
+        agent: n("squad-1"),
+    };
+    let outcomes = [
+        CardOutcome::Approved,
+        CardOutcome::EditedApproved,
+        CardOutcome::Rejected,
+        CardOutcome::NotApplied("squad-1 is already stopped".into()),
+    ];
+    let next = u64::try_from(pending.len()).unwrap() + 1;
+    let answered: Vec<Card> = outcomes
+        .into_iter()
+        .enumerate()
+        .map(|(i, o)| {
+            a_card(
+                next + u64::try_from(i).unwrap(),
+                CardSource::Duo,
+                stop.clone(),
+                Some(o),
+            )
+        })
+        .collect();
+    for c in &answered {
+        store.save_card(c).unwrap();
+    }
+    let mut want = pending.clone();
+    want.push(answered[3].clone());
+    assert_eq!(store.load_cards().unwrap(), want);
+    // Answering replaces the row.
+    let mut first = pending[0].clone();
+    first.answer = Some((CardOutcome::Rejected, Millis(9_000)));
+    store.save_card(&first).unwrap();
+    assert_eq!(store.load_cards().unwrap(), want[1..].to_vec());
+    // Each answered outcome reads back: make each the newest in turn.
+    for (i, c) in answered.iter().enumerate() {
+        let mut newest = c.clone();
+        newest.id = CardId(100 + u64::try_from(i).unwrap());
+        store.save_card(&newest).unwrap();
+        assert_eq!(store.load_cards().unwrap().last(), Some(&newest));
+    }
+}
+
+#[test]
+fn migration_7_applies() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch("DROP TABLE cards; PRAGMA user_version = 6;")
+            .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(store.load_cards().unwrap(), vec![]);
+    let first = a_card(
+        1,
+        CardSource::Duo,
+        CardChange::Stop {
+            agent: n("squad-1"),
+        },
+        None,
+    );
+    store.save_card(&first).unwrap();
+    assert_eq!(store.load_cards().unwrap(), vec![first]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 7);
+    let source: String = conn
+        .query_row("SELECT source FROM cards WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(source, "duo");
 }

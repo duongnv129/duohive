@@ -10,10 +10,12 @@ use crate::adapter::{CliAdapter, CliPresence, untested_notice};
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
+use crate::inbox::MessageId;
 use crate::inherit::{expand_home, resolve};
 use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
+use crate::tool::Given;
 use crate::validate::{DirStatus, agent_problem};
 use crate::worktree::{RunIn, TaskId};
 
@@ -35,40 +37,109 @@ impl Engine {
     /// `GiveWork` by state (TD §5.1). `run` applies to a fresh launch only: a
     /// finished or idle agent takes the task where its session already runs.
     pub(super) fn give_work(&mut self, agent: AgentName, task: String, run: RunIn) -> Vec<Event> {
-        if !self.knows(&agent) {
-            return reject(format!("no agent named {agent}"));
+        let mut out = Vec::new();
+        match self.give_by(&agent, task, run, Giver::You, &mut out) {
+            Ok(_) | Err(GiveRefusal::Launch(_)) => out,
+            Err(GiveRefusal::Unknown) => reject(format!("no agent named {agent}")),
+            Err(GiveRefusal::EmptyTask) => reject("the task is empty"),
+            Err(GiveRefusal::GettingReady) => reject(getting_ready(&agent)),
+            Err(GiveRefusal::Typing) => reject(typing_into(&agent)),
+            Err(GiveRefusal::Pending) => vec![Event::GiveWorkRefused {
+                state: self.state_of(&agent),
+                agent,
+                pending: true,
+            }],
+            Err(GiveRefusal::Busy(state)) => vec![Event::GiveWorkRefused {
+                agent,
+                state,
+                pending: false,
+            }],
+        }
+    }
+
+    /// Gives work by state (TD §5.1) for anything but your Give work:
+    /// `start_agent`, `assign_to_role`, cards and your messages. Nothing is
+    /// typed into the agent you are typing into (P3-D19).
+    pub(super) fn give(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        run: RunIn,
+        out: &mut Vec<Event>,
+    ) -> Result<Given, GiveRefusal> {
+        self.give_by(agent, task, run, Giver::Other, out)
+    }
+
+    /// Gives work by state (TD §5.1): the one path for Give work, `start_agent`,
+    /// `assign_to_role` and your messages. A launch's events go to `out`; a new
+    /// worktree gives `CreatingWorktree`, and the launch follows its `Created`.
+    fn give_by(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        run: RunIn,
+        giver: Giver,
+        out: &mut Vec<Event>,
+    ) -> Result<Given, GiveRefusal> {
+        if !self.knows(agent) {
+            return Err(GiveRefusal::Unknown);
         }
         if task.trim().is_empty() {
-            return reject("the task is empty");
+            return Err(GiveRefusal::EmptyTask);
         }
-        if self.creating_worktree(&agent) {
-            return reject(getting_ready(&agent));
+        if self.creating_worktree(agent) {
+            return Err(GiveRefusal::GettingReady);
         }
-        match self.state_of(&agent) {
+        match self.state_of(agent) {
             AgentState::Stopped | AgentState::Errored => {
-                self.launch_or_queue(agent, Some(task), run)
+                let launched = self.launch_or_queue(agent.clone(), Some(task), run);
+                let rejected = launched.iter().find_map(|e| match e {
+                    Event::CommandRejected { reason } => Some(reason.clone()),
+                    _ => None,
+                });
+                out.extend(launched);
+                if self.creating_worktree(agent) {
+                    return Ok(Given::CreatingWorktree);
+                }
+                match self.state_of(agent) {
+                    AgentState::Errored | AgentState::Stopped => {
+                        let reason = self
+                            .agents
+                            .get(agent)
+                            .and_then(|rt| rt.status.error.clone())
+                            .or(rejected)
+                            .unwrap_or_else(|| "couldn't start".to_owned());
+                        Err(GiveRefusal::Launch(reason))
+                    }
+                    _ => Ok(Given::Started { worktree: false }),
+                }
             }
             // P2-D11: one delivery at a time.
-            state @ (AgentState::Finished | AgentState::Idle)
+            AgentState::Finished | AgentState::Idle
                 if self
                     .agents
-                    .get(&agent)
+                    .get(agent)
                     .is_some_and(|rt| rt.delivery.is_some()) =>
             {
-                vec![Event::GiveWorkRefused {
-                    agent,
-                    state,
-                    pending: true,
-                }]
+                Err(GiveRefusal::Pending)
             }
-            AgentState::Finished | AgentState::Idle => self.type_next_turn(&agent, task),
+            // P3-D19: a paste would join your half-typed line; only your own
+            // Give work goes in.
+            AgentState::Finished | AgentState::Idle
+                if giver == Giver::Other && self.typing.as_ref() == Some(agent) =>
+            {
+                Err(GiveRefusal::Typing)
+            }
+            AgentState::Finished | AgentState::Idle => {
+                match self.type_next_turn(agent, task, None) {
+                    Ok(events) => out.extend(events),
+                    Err(reason) => out.extend(reject(reason)),
+                }
+                Ok(Given::TypedIn)
+            }
             // Starting has no input box yet; working and waiting are busy.
             state @ (AgentState::Starting | AgentState::Working | AgentState::Waiting) => {
-                vec![Event::GiveWorkRefused {
-                    agent,
-                    state,
-                    pending: false,
-                }]
+                Err(GiveRefusal::Busy(state))
             }
         }
     }
@@ -244,8 +315,10 @@ impl Engine {
         self.ports.runtime.start(agent, cmd);
         let now = self.ports.clock.now();
         let deadline = now + self.cfg.start_timeout;
+        let as_duo = self.org.is_duo(agent);
         let rt = self.rt_mut(agent);
         rt.token = Some(token);
+        rt.launched_as_duo = as_duo;
         rt.last_hook_sent_at = 0;
         rt.cli = Some(cli);
         rt.task_at_launch = task.is_some();
@@ -265,6 +338,13 @@ impl Engine {
             rt.delivery = None;
         });
         self.change(agent, &Trigger::Launch, None, &mut out);
+        // Your message to a stopped agent is taken by the launch it starts (P3-D18).
+        let rt = self.rt_mut(agent);
+        if rt.task_at_launch
+            && let Some(id) = rt.launch_message.take()
+        {
+            self.mark_delivered(id, &mut out);
+        }
         let notice = untested_notice(cli.binary(), &version, adapter.tested_versions());
         let rt = self.rt_mut(agent);
         if rt.notice != notice {
@@ -292,36 +372,50 @@ impl Engine {
         rt.last_task = task;
         self.update_run(agent, &mut out, |rt| rt.worktree = None);
         self.change(agent, &Trigger::Launch, None, &mut out);
-        self.change(agent, &Trigger::LaunchFailed, Some(reason), &mut out);
+        self.change(
+            agent,
+            &Trigger::LaunchFailed,
+            Some(reason.clone()),
+            &mut out,
+        );
+        if let Some(id) = self.rt_mut(agent).launch_message.take() {
+            self.drop_message(id, reason, &mut out);
+        }
         out
     }
 
     /// Give work on finished or idle: the task is typed in as the next turn. The
     /// agent stays at rest until a sign it took the task (P2-D11): a busy or
-    /// prompt-submit hook, or a `~` busy read, moves it to working.
-    fn type_next_turn(&mut self, agent: &AgentName, task: String) -> Vec<Event> {
-        let (before, dialog, submit) = match self.with_running_adapter(agent, |a| {
+    /// prompt-submit hook, or a `~` busy read, moves it to working. A message
+    /// (`message` set) goes in the same way but isn't the agent's last task.
+    pub(super) fn type_next_turn(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        message: Option<MessageId>,
+    ) -> Result<Vec<Event>, String> {
+        let (before, dialog, submit) = self.with_running_adapter(agent, |a| {
             (a.before_paste_keys(), a.dialog_check(), a.submit_keys())
-        }) {
-            Ok(keys) => keys,
-            Err(reason) => return reject(reason),
-        };
+        })?;
         self.ports
             .runtime
             .paste(agent, before, dialog, task.clone(), submit);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
-        rt.last_task = Some(task.clone());
+        if message.is_none() {
+            rt.last_task = Some(task.clone());
+        }
         rt.last_signal_at = now;
         let mut out = Vec::new();
         self.update_run(agent, &mut out, |rt| {
             rt.delivery = Some(Delivery {
                 task,
                 due: now + DELIVERY_WAIT,
+                message,
             });
         });
         self.save_row(agent, &mut out);
-        out
+        Ok(out)
     }
 
     /// `PasteFailed`: a pending delivery is reported not taken, with the reason.
@@ -337,23 +431,30 @@ impl Engine {
         self.not_taken(agent, reason)
     }
 
-    /// Ends `agent`'s pending delivery as not taken (P2-D11).
+    /// Ends `agent`'s pending delivery as not taken (P2-D11): a task is
+    /// reported, a message is dropped and never pasted again. The next waiting
+    /// message may then go in.
     pub(super) fn not_taken(&mut self, agent: &AgentName, reason: String) -> Vec<Event> {
         let mut out = Vec::new();
-        let mut task = None;
-        self.update_run(agent, &mut out, |rt| {
-            task = rt.delivery.take().map(|d| d.task);
-        });
-        if let Some(task) = task {
-            out.insert(
+        let mut ended = None;
+        self.update_run(agent, &mut out, |rt| ended = rt.delivery.take());
+        match ended {
+            Some(Delivery {
+                message: Some(id), ..
+            }) => self.drop_message(id, reason, &mut out),
+            Some(Delivery { task, .. }) => out.insert(
                 0,
                 Event::GiveWorkNotTaken {
                     agent: agent.clone(),
                     task,
                     reason,
                 },
-            );
+            ),
+            None => {}
         }
+        self.deliver_next(agent, &mut out);
+        // Nothing changed state, so waits held by the delivery end here (P3-D23).
+        self.recheck_waits(agent, &mut out);
         out
     }
 
@@ -374,6 +475,11 @@ impl Engine {
     }
 }
 
+/// P3-D19's refusal while you type into `agent`.
+pub(super) fn typing_into(agent: &AgentName) -> String {
+    format!("you are typing into {agent}")
+}
+
 /// P2-D20's refusal while `agent`'s worktree is being created.
 pub(super) fn getting_ready(agent: &AgentName) -> String {
     format!("{agent} is getting a worktree ready")
@@ -387,6 +493,16 @@ pub(super) fn not_found(cli: CliKind) -> String {
     )
 }
 
+/// Who gives the work: your Give work types in even while you type into
+/// the agent (it is your own act); anything else is held back (P3-D19).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Giver {
+    /// Your Give work.
+    You,
+    /// A tool, a card, an assignment or a message.
+    Other,
+}
+
 #[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
@@ -395,3 +511,22 @@ mod stop_tests;
 mod tests;
 #[cfg(test)]
 mod worktree_tests;
+
+/// Why work could not be given.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum GiveRefusal {
+    /// No agent has that name.
+    Unknown,
+    /// Busy in this state.
+    Busy(AgentState),
+    /// A delivery is still waiting to be taken (P2-D11).
+    Pending,
+    /// You are typing into the agent (P3-D19).
+    Typing,
+    /// Its worktree is being created (P2-D20).
+    GettingReady,
+    /// The task is empty.
+    EmptyTask,
+    /// The launch failed; its events say why.
+    Launch(String),
+}

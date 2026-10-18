@@ -383,6 +383,23 @@ TD edits (`docs/design/technical-design.md`):
 
 Plan edits (`docs/plans/phase-1-plan.md`, review fixes): D2 and Task 12's screen-read rules and test descriptions add the waiting exception; D22 and Task 20 take Claude Code's reply from `last_assistant_message` in `parse_hook`, with the transcript read by `enrich_hook` only when the field is missing.
 
+### S1.14 Addendum: DuoHive's own MCP tools on Claude Code 2.1.302 (Task 3.2)
+
+Measured 2026-10-18 on macOS. A throwaway tmux server and a temporary data directory; a stand-in `run.sock` server logged each request with its token; Claude Code was launched with DuoHive's per-launch files (`--settings` with `permissions.allow`, `--mcp-config` naming `duohive mcp`). The author's own default mode is auto, so the check switched the session to manual (`shift+tab`, not saved). The author's configured model ran the turns.
+
+| Check | Result |
+|---|---|
+| Tool name | `mcp__duohive__list_agents` |
+| Pre-approval | `mcp__duohive__*` in the per-launch `--settings` file's `permissions.allow` runs the tool with no prompt in manual mode |
+| Other tools | A Write still prompts |
+| Identity | The helper got `DUOHIVE_TOKEN`: the stand-in server's log shows the launch's token |
+| `~/.claude/settings.json` | Byte-equal before and after |
+| `~/.claude.json` | The launched directory's entry has `allowedTools: []` and `mcpServers: {}`; the trust record in it is Claude's own |
+| Silent calls | Claude Code moved a DuoHive call to a background task after 120 s, and ended a silent one at 1800 s (`sent no response or progress for 1800s; aborting … set a per-server "timeout" (ms)`) |
+| Per-server `timeout` | Honoured in the per-launch `mcp.json`: with `120000` the call ended at 309 s instead of 1800 s |
+
+The adapter writes `"timeout": 3690000` (61.5 min, past the helper's 60 min 30 s wait for `wait_for_agent`; commit `46fd597`). With `"timeout": 3690000` in the per-launch `mcp.json`, Claude Code 2.1.302 ended the 60-minute `wait_for_agent` at its own limit: "timed out after 3690s" (started 11:56:58, ended 12:58). The call had moved to a background task after 120 s. The run also showed that the helper answered requests one at a time, so a long call blocked the agent's other calls; fixed in `c5b4a6c` (each request in its own task).
+
 ## S2 OpenCode
 
 Code: `spikes/s2-opencode/` (`launch.sh`, `plugin.js`, `record-hook.sh`, `mcp-dummy.py`, `cap.sh`, `keys.sh`, `export.py`). `launch.sh <agent> [task]` writes `opencode.json` (the per-launch config), `instructions.md` and `command.txt` to `/tmp/duohive-spike/run/<agent>/` and starts `opencode` in a window of `tmux -L duohive-spike` (tmux 3.7c, 120×40, `remain-on-exit on`, a clean environment), with `OPENCODE_CONFIG=<run>/opencode.json`, `DUOHIVE_TOKEN` and the plugin's own variables set on the window. The provider key `PROVIDER_API_KEY` (from the user's `~/.zshenv`) is passed to the window and never written to a file; DuoHive's own tmux server inherits it the same way. `plugin.js` appends every bus event to `events.jsonl` and runs `record-hook.sh <agent> <name>` with the event's JSON on stdin for the events below; `record-hook.sh` saves stdin to `hooks/<name>-<n>.json` and a line to `hooks/index.log`. `export.py` copies the raw captures into the fixtures with home paths changed to `/HOME` and the user name replaced, drops `message.part.delta` and `plugin.added` from the event log, and writes one reply file per turn.
@@ -588,6 +605,21 @@ Failed turns: a 400 from the provider ends the turn with `session.execution.fail
 Decisions (P2-D24): DuoHive launches `opencode --standalone`; the config sets `plugins` (the plugin directory, with the instructions path in `options`), `model` (`<model>#<effort>` when both are set; an effort with no model is left out) and `default_agent: "build"` unless the user's flags pass `--agent`; the plugin maps the events above and raises `edit` and `shell` from `allow` to `ask`; a failed turn makes the agent errored with the error on its row; an interrupted one is a normal turn end. `before_paste_keys` keeps its single `Escape`: harmless at rest, and a guard should an update dialog return.
 
 Risks, not fixed: an unknown model silently runs on the default; a 5xx retried without end leaves the agent working, then quiet, never errored.
+
+### S2.15 Addendum: DuoHive's MCP server on OpenCode 2.0.29 (Task 3.2)
+
+Measured 2026-10-18 on macOS with `opencode --standalone`. A throwaway tmux server and a temporary data directory; a stand-in `run.sock` server logged each request with its token; OpenCode was launched with DuoHive's per-launch config and plugin. The author's configured model ran the turns.
+
+| Check | Result |
+|---|---|
+| Config shape | S2.5's `mcp` shape loads: `{"duohive": {"type": "local", "command": ["<exe>", "mcp"], "enabled": true}}`; the start-screen footer reads `1 MCP` |
+| Without `--standalone` | `opencode mcp list` shows none: the shared background service never reads the per-launch config |
+| `evaluate` input | `{sessionID, agent, action: "duohive_list_agents", resources: ["*"], metadata, source, effect: "allow"}` |
+| Tool name | The model shows the tool as `duohive.list_agents` |
+| Approvals | An `edit` request arrives with `effect: "ask"` and the TUI shows `Permission required` |
+| Identity | The token reached the helper: the stand-in's log shows the launch's token |
+| Global config | The files under `~/.config/opencode` are byte-equal before and after |
+| Long call | OpenCode waited the full hour for a silent call. The helper's own 60 min 30 s limit ended it, and it answered `interrupted` (the message now reads "DuoHive sent no answer within 3630 s") |
 
 ## S3 Live view of one pane at 100 agents
 

@@ -357,6 +357,7 @@ fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
         results["evaluateAlways"],
         row("allow allow ask ask deny ask ask ask")
     );
+    evaluate_allows_only_duohive_tools(results);
     let base = json!({"type": "text", "text": "base"});
     assert_eq!(
         results["context"]["own"],
@@ -364,6 +365,16 @@ fn check_scenarios(log_dir: &Path, results: &Value, instructions: &str) {
     );
     assert_eq!(results["context"]["child"], json!([base]));
     assert_eq!(results["contextWithout"], json!([0, 0, 0, 0]));
+}
+
+/// P3-D1: a request on a `duohive` tool is allowed unless the user denied it;
+/// every other request keeps its effect. On 2.0.29 the hook sees a `duohive` tool as
+/// `action: "duohive_<tool>"`, `resources: ["*"]` (checked live, Task 3.2).
+fn evaluate_allows_only_duohive_tools(results: &Value) {
+    assert_eq!(
+        results["evaluateDuohive"],
+        json!(["allow", "allow", "deny", "ask", "ask", "ask"])
+    );
 }
 
 /// Payloads carry only what DuoHive reads, cut to 10 resources of 500 characters.

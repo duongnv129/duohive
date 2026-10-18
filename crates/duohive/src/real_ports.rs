@@ -35,19 +35,32 @@ impl Ids for RandomIds {
     /// A fresh 64-character hex token. If the OS has no entropy source this
     /// aborts the process (no terminal restore), rather than return a weak token.
     fn new_token(&mut self) -> Token {
-        let mut bytes = [0u8; TOKEN_BYTES];
-        if let Err(e) = getrandom::fill(&mut bytes) {
-            // A guessable token would break hook authentication: never fall back.
-            tracing::error!("no OS entropy source, aborting: {e}");
-            std::process::abort();
-        }
-        let mut hex = String::with_capacity(TOKEN_BYTES * 2);
-        for b in bytes {
-            hex.push(char::from(HEX[usize::from(b >> 4)]));
-            hex.push(char::from(HEX[usize::from(b & 0x0f)]));
-        }
-        Token(hex)
+        Token(random_hex::<TOKEN_BYTES>())
     }
+
+    /// A fresh 12-character hex boundary (P3-D18); aborts as `new_token` does.
+    fn boundary(&mut self) -> String {
+        random_hex::<BOUNDARY_BYTES>()
+    }
+}
+
+/// Bytes of entropy in a message boundary (P3-D18).
+const BOUNDARY_BYTES: usize = 6;
+
+/// `N` random bytes as lowercase hex. Aborts when the OS has no entropy source.
+fn random_hex<const N: usize>() -> String {
+    let mut bytes = [0u8; N];
+    if let Err(e) = getrandom::fill(&mut bytes) {
+        // A guessable token would break hook authentication: never fall back.
+        tracing::error!("no OS entropy source, aborting: {e}");
+        std::process::abort();
+    }
+    let mut hex = String::with_capacity(N * 2);
+    for b in bytes {
+        hex.push(char::from(HEX[usize::from(b >> 4)]));
+        hex.push(char::from(HEX[usize::from(b & 0x0f)]));
+    }
+    hex
 }
 
 const HEX: &[u8; 16] = b"0123456789abcdef";

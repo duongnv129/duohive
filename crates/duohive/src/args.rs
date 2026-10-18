@@ -15,11 +15,13 @@ pub enum Cli {
         /// DuoHive's event name.
         event: String,
     },
-    /// `duohive bench-agent [--no-hooks] [--ignore-input] [--task <text>]` (hidden):
-    /// the fake CLI.
+    /// `duohive bench-agent [--no-hooks] [--ignore-input] [--mcp-script <path>]
+    /// [--task <text>]` (hidden): the fake CLI.
     BenchAgent(BenchAgentArgs),
     /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--view] [--json]`.
     Bench(BenchArgs),
+    /// `duohive mcp`: serve MCP on stdin/stdout for the agent whose `DUOHIVE_TOKEN` it has.
+    Mcp,
     /// `duohive --help` (or `-h`): print [`USAGE`].
     Help,
 }
@@ -29,6 +31,7 @@ pub const USAGE: &str = "\
 usage: duohive                 run DuoHive (your agents keep running in tmux after you quit)
        duohive hook <agent> <event>
                                forward one CLI hook (agent CLIs call this; prints nothing)
+       duohive mcp             serve DuoHive's tools over MCP on stdin/stdout (agent CLIs run this)
        duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--view] [--json]
                                measure CPU, memory and hook latency with fake agents
                                (--view holds one live pane stream open throughout)
@@ -45,6 +48,8 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
             event: event.clone(),
         }),
         [cmd, ..] if cmd == "hook" => Err("usage: duohive hook <agent> <event>".to_owned()),
+        [cmd] if cmd == "mcp" => Ok(Cli::Mcp),
+        [cmd, ..] if cmd == "mcp" => Err("usage: duohive mcp".to_owned()),
         [cmd, rest @ ..] if cmd == "bench-agent" => parse_bench_agent(rest),
         [cmd, rest @ ..] if cmd == "bench" => parse_bench(rest).map(Cli::Bench),
         [other, ..] => Err(format!("unknown command \"{other}\"")),
@@ -88,11 +93,11 @@ fn count(n: u64) -> Result<u32, String> {
         .ok_or_else(|| BENCH_RUN_USAGE.to_owned())
 }
 
-const BENCH_USAGE: &str =
-    "usage: duohive bench-agent [--no-hooks] [--ignore-input] [--task <text>]";
+const BENCH_USAGE: &str = "usage: duohive bench-agent [--no-hooks] [--ignore-input] \
+                           [--mcp-script <path>] [--task <text>]";
 
-/// `[--no-hooks] [--ignore-input] [--task <text>]` in any order; the task is
-/// taken verbatim, even when it starts with `-`.
+/// `[--no-hooks] [--ignore-input] [--mcp-script <path>] [--task <text>]` in any
+/// order; the task is taken verbatim, even when it starts with `-`.
 fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
     let mut out = BenchAgentArgs {
         hooks: true,
@@ -105,6 +110,9 @@ fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
             "--ignore-input" if !out.ignore_input => out.ignore_input = true,
             "--task" if out.task.is_none() => {
                 out.task = Some(rest.next().ok_or(BENCH_USAGE)?.clone());
+            }
+            "--mcp-script" if out.mcp_script.is_none() => {
+                out.mcp_script = Some(rest.next().ok_or(BENCH_USAGE)?.into());
             }
             _ => return Err(BENCH_USAGE.to_owned()),
         }
@@ -140,6 +148,7 @@ mod tests {
                 hooks,
                 ignore_input,
                 task: task.map(str::to_owned),
+                mcp_script: None,
             }))
         };
         assert_eq!(
@@ -157,6 +166,32 @@ mod tests {
         );
         assert!(parse_args(&s(["bench-agent", "--ignore-input", "--ignore-input"])).is_err());
         assert!(parse_args(&s(["bench-agent", "--task"])).is_err());
+        assert_eq!(
+            parse_args(&s([
+                "bench-agent",
+                "--mcp-script",
+                "/s.json",
+                "--task",
+                "t"
+            ])),
+            Ok(Cli::BenchAgent(BenchAgentArgs {
+                hooks: true,
+                ignore_input: false,
+                task: Some("t".into()),
+                mcp_script: Some("/s.json".into()),
+            }))
+        );
+        assert!(parse_args(&s(["bench-agent", "--mcp-script"])).is_err());
+        assert!(
+            parse_args(&s([
+                "bench-agent",
+                "--mcp-script",
+                "a",
+                "--mcp-script",
+                "b"
+            ]))
+            .is_err()
+        );
         assert!(parse_args(&s(["bench-agent", "--frob"])).is_err());
     }
 

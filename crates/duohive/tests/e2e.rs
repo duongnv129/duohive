@@ -1040,6 +1040,7 @@ async fn e2e_not_taken_reported() {
         kind: CliKind::Claude,
         exe: PathBuf::from(BIN),
         hooks: true,
+        duo_script: None,
     }))]);
     let mut h = env.start_with(Arc::new(ignoring)).await;
     let a = n("e2e-1");
