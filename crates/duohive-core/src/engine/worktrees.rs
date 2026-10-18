@@ -273,6 +273,8 @@ impl Engine {
             format!("couldn't create worktree: {error}"),
         );
         self.answer_parked(agent, &Err(refused), &mut out);
+        // Nothing changed state, so waits held by the creation end here (P3-D23).
+        self.recheck_waits(agent, &mut out);
         out
     }
 

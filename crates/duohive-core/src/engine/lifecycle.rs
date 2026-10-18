@@ -453,6 +453,8 @@ impl Engine {
             None => {}
         }
         self.deliver_next(agent, &mut out);
+        // Nothing changed state, so waits held by the delivery end here (P3-D23).
+        self.recheck_waits(agent, &mut out);
         out
     }
 

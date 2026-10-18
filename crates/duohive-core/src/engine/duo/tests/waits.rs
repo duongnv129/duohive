@@ -175,3 +175,50 @@ fn duo_restart_drops_its_waits() {
     assert!(results.is_empty(), "{results:?}");
     assert!(actions(&events).is_empty(), "{events:?}");
 }
+
+#[test]
+fn wait_ends_when_paste_not_taken() {
+    let mut h = with_duo();
+    idle(&mut h, "squad-1");
+    h.give("squad-1", "yours");
+    let (results, _) = tool(&mut h, 5, wait("squad-1"));
+    assert!(results.is_empty(), "{results:?}");
+    // P2-D11: no sign within 5 s; the agent is at rest with nothing pending.
+    let (results, events) = split(h.tick_at(Duration::from_secs(5)));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, Event::GiveWorkNotTaken { .. })),
+        "{events:?}"
+    );
+    assert_eq!(
+        only(&results, 5).unwrap(),
+        waited("squad-1", WaitOutcome::AtRest, AgentState::Idle, None)
+    );
+}
+
+#[test]
+fn wait_ends_when_worktree_creation_fails() {
+    let mut h = squad_worktrees();
+    let (results, _) = tool(&mut h, 7, start("squad-1", Some(RunIn::NewWorktree)));
+    assert!(results.is_empty(), "{results:?}");
+    let (results, _) = tool(&mut h, 8, wait("squad-1"));
+    assert!(results.is_empty(), "{results:?}");
+    let task = creations(&h, "squad-1")[0].clone();
+    let failed = Err(GitError::Other("disk full".into()));
+    let (results, _) = split(h.input(created("squad-1", task, failed)));
+    let wait_result = results
+        .iter()
+        .find(|(call, _)| *call == CallId(8))
+        .map(|(_, r)| r.clone());
+    assert_eq!(
+        wait_result,
+        Some(Ok(waited(
+            "squad-1",
+            WaitOutcome::Stopped,
+            AgentState::Stopped,
+            None
+        ))),
+        "{results:?}"
+    );
+}

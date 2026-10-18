@@ -136,19 +136,7 @@ impl Engine {
         if !self.knows(agent) {
             return Some(Err(unknown(agent)));
         }
-        let pending = self.creating_worktree(agent)
-            || self
-                .agents
-                .get(agent)
-                .is_some_and(|rt| rt.delivery.is_some());
-        let outcome = match self.state_of(agent) {
-            _ if pending => None,
-            AgentState::Stopped => Some(WaitOutcome::Stopped),
-            AgentState::Errored => Some(WaitOutcome::Errored),
-            state if state.is_at_rest() => Some(WaitOutcome::AtRest),
-            _ => None,
-        };
-        if let Some(outcome) = outcome {
+        if let Some(outcome) = self.settled(agent) {
             return Some(Ok(self.waited(agent, outcome)));
         }
         let due = self.ports.clock.now() + Duration::from_secs(u64::from(minutes) * 60);
@@ -160,6 +148,41 @@ impl Engine {
             minutes,
         });
         None
+    }
+
+    /// What a wait on `agent` answers now: stopped, errored, or at rest,
+    /// with no delivery pending and no worktree being created; `None` while
+    /// it must wait (P3-D23).
+    fn settled(&self, agent: &AgentName) -> Option<WaitOutcome> {
+        let pending = self.creating_worktree(agent)
+            || self
+                .agents
+                .get(agent)
+                .is_some_and(|rt| rt.delivery.is_some());
+        match self.state_of(agent) {
+            _ if pending => None,
+            AgentState::Stopped => Some(WaitOutcome::Stopped),
+            AgentState::Errored => Some(WaitOutcome::Errored),
+            state if state.is_at_rest() => Some(WaitOutcome::AtRest),
+            _ => None,
+        }
+    }
+
+    /// Something that held `agent`'s waits ended with no change of state (a
+    /// paste not taken, a worktree creation that failed): the waits answer
+    /// as a new wait would now (P3-D23).
+    pub(super) fn recheck_waits(&mut self, agent: &AgentName, out: &mut Vec<Event>) {
+        let Some(outcome) = self.settled(agent) else {
+            return;
+        };
+        let (due, keep) = std::mem::take(&mut self.waits)
+            .into_iter()
+            .partition(|w: &Wait| &w.agent == agent);
+        self.waits = keep;
+        for w in due {
+            let result = Ok(self.waited(agent, outcome));
+            self.answer_wait(&w, result, out);
+        }
     }
 
     fn waited(&self, agent: &AgentName, outcome: WaitOutcome) -> ToolOk {
