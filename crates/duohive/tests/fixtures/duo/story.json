@@ -1,0 +1,14 @@
+[
+  {
+    "on": "Story:",
+    "steps": [
+      { "call": "start_agent", "args": { "agent": "auth-service", "task": "PAY-88a backend: retry endpoint" } },
+      { "call": "start_agent", "args": { "agent": "pay-qa", "task": "PAY-88c QA: retry cases" } },
+      { "call": "assign_to_role", "args": { "role": "Generalist", "task": "PAY-88b frontend: retry button" } },
+      { "call": "wait_for_agent", "args": { "agent": "auth-service" } },
+      { "call": "wait_for_agent", "args": { "agent": "pay-qa" } },
+      { "call": "wait_for_agent", "args": { "agent": "$result.3.agent" } },
+      { "reply": "PAY-88: all three subtasks finished" }
+    ]
+  }
+]

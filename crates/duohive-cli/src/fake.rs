@@ -21,7 +21,9 @@ const WORKING: &str = "working…";
 const ASKING: &str = "allow? (y/n)";
 
 /// A CLI kind played by `<exe> bench-agent`; `hooks: false` plays a CLI with
-/// no hooks at all, read from the screen only.
+/// no hooks at all, read from the screen only. With `duo_script`, Duo's
+/// launches run that script of tool calls (`--mcp-script`): a scripted fake Duo
+/// with no model behind it. Duo has no `flags` field to carry the path.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FakeCliAdapter {
     /// The CLI kind it stands in for.
@@ -30,15 +32,23 @@ pub struct FakeCliAdapter {
     pub exe: PathBuf,
     /// Whether the fake agent fires hooks.
     pub hooks: bool,
+    /// The script Duo runs, if any.
+    pub duo_script: Option<PathBuf>,
 }
 
 /// Fake adapters for every kind: Claude Code with hooks, OpenCode without.
 pub fn fake_adapters(exe: &Path) -> Adapters {
+    scripted_fake_adapters(exe, None)
+}
+
+/// [`fake_adapters`], with Duo running `duo_script` on either kind.
+pub fn scripted_fake_adapters(exe: &Path, duo_script: Option<&Path>) -> Adapters {
     let fake = |kind, hooks| -> Box<dyn CliAdapter> {
         Box::new(FakeCliAdapter {
             kind,
             exe: exe.to_path_buf(),
             hooks,
+            duo_script: duo_script.map(Path::to_path_buf),
         })
     };
     Adapters::new(vec![
@@ -75,11 +85,18 @@ impl CliAdapter for FakeCliAdapter {
         }
     }
 
-    /// `<exe> bench-agent [--no-hooks] [--task <task>]`, the task as one argument.
+    /// `<exe> bench-agent [--no-hooks] [--mcp-script <path>] [--task <task>]`,
+    /// the task as one argument; the script only for Duo.
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
         let mut args = vec!["bench-agent".to_owned()];
         if !self.hooks {
             args.push("--no-hooks".to_owned());
+        }
+        if let Some(script) = self.duo_script.as_deref().filter(|_| spec.agent.is_duo) {
+            args.extend([
+                "--mcp-script".to_owned(),
+                utf8(script, "fake Duo script")?.to_owned(),
+            ]);
         }
         if let Some(task) = &spec.task {
             args.extend(["--task".to_owned(), task.clone()]);
@@ -172,6 +189,7 @@ mod tests {
             kind: CliKind::Opencode,
             exe: "duohive".into(),
             hooks: false,
+            duo_script: None,
         };
         // Trailing blank rows, as capture-pane gives.
         assert_eq!(
@@ -196,6 +214,7 @@ mod tests {
             kind: CliKind::Claude,
             exe: "duohive".into(),
             hooks: true,
+            duo_script: None,
         };
         assert_eq!(
             a.detect(),
@@ -219,6 +238,7 @@ mod tests {
             kind: CliKind::Claude,
             exe: "/bin/duohive".into(),
             hooks: true,
+            duo_script: None,
         };
         let cmd = a.launch(&spec(Some("it's -rf $(id)"))).unwrap();
         assert_eq!(cmd.program, "/bin/duohive");
@@ -236,12 +256,33 @@ mod tests {
     }
 
     #[test]
+    fn fake_adapter_passes_the_script_to_duo_only() {
+        let a = FakeCliAdapter {
+            kind: CliKind::Claude,
+            exe: "/bin/duohive".into(),
+            hooks: true,
+            duo_script: Some("/s/duo.json".into()),
+        };
+        let mut duo = spec(Some("hi"));
+        duo.agent = resolve(&example_org(), &n("Duo")).unwrap();
+        assert_eq!(
+            a.launch(&duo).unwrap().args,
+            vec!["bench-agent", "--mcp-script", "/s/duo.json", "--task", "hi"]
+        );
+        assert_eq!(
+            a.launch(&spec(Some("hi"))).unwrap().args,
+            vec!["bench-agent", "--task", "hi"]
+        );
+    }
+
+    #[test]
     fn fake_adapter_maps_the_five_events() {
         use duohive_core::adapter::HookSignal;
         let a = FakeCliAdapter {
             kind: CliKind::Claude,
             exe: "duohive".into(),
             hooks: true,
+            duo_script: None,
         };
         let p = serde_json::json!({"last_reply": "done", "sent_at_ms": 1});
         assert_eq!(a.parse_hook("session-start", &p), Some(HookSignal::Ready));
