@@ -5,6 +5,7 @@ use crate::adapter::{
     ScreenState,
 };
 use crate::alert::Alert;
+use crate::chat::{ChatEntry, ChatKind};
 use crate::cli_kind::CliKind;
 use crate::hook::HookMessage;
 use crate::inbox::{Message, MessageId, MessageStatus};
@@ -236,6 +237,8 @@ pub struct FakeStoreState {
     pub queued_tool_calls: Vec<QueuedToolCall>,
     /// Messages by id.
     pub messages: BTreeMap<MessageId, Message>,
+    /// Chat entries, oldest first.
+    pub chat: Vec<ChatEntry>,
 }
 
 impl Default for FakeStoreState {
@@ -253,6 +256,7 @@ impl Default for FakeStoreState {
             pending: Vec::new(),
             queued_tool_calls: Vec::new(),
             messages: BTreeMap::new(),
+            chat: Vec::new(),
         }
     }
 }
@@ -386,6 +390,20 @@ impl Store for FakeStore {
         let mut st = self.state.lock().unwrap();
         Self::check_save(&mut st)?;
         st.messages.insert(m.id, m.clone());
+        Ok(())
+    }
+
+    fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError> {
+        let st = self.state.lock().unwrap();
+        Ok(st.chat[st.chat.len().saturating_sub(last)..].to_vec())
+    }
+
+    fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        if entry.kind != ChatKind::Note {
+            st.chat.push(entry.clone());
+        }
         Ok(())
     }
 }

@@ -2,6 +2,7 @@
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
 mod alerts;
+mod chat;
 mod driver;
 #[cfg(test)]
 mod harness;
@@ -28,6 +29,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::adapter::{Adapters, CliPresence};
+use crate::chat::ChatEntry;
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::{AgentView, Event, NeedsYouItem, Snapshot};
@@ -254,6 +256,10 @@ pub struct Engine {
     /// Calls queued while DuoHive was closed, with the callers start-up
     /// found for their tokens; run after `Reconnected` (P3-D24).
     closed_calls: Vec<(Caller, ToolCall)>,
+    /// The chat's last [`crate::chat::CHAT_LOAD`] entries, oldest first (TD §6.5).
+    chat: Vec<ChatEntry>,
+    /// The next chat entry id.
+    next_chat: u64,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -293,6 +299,8 @@ impl Engine {
             next_message: 1,
             typing: None,
             closed_calls: Vec::new(),
+            chat: Vec::new(),
+            next_chat: 1,
             cfg,
             ports,
             adapters,
@@ -397,8 +405,8 @@ impl Engine {
             } => self.on_tool(call_id, &token, &call),
             Command::SendMessage { to, text } => self.send_yours(to, text),
             Command::Typing { agent } => self.typing(agent),
-            Command::ChatToDuo { .. }
-            | Command::AssignToRole { .. }
+            Command::ChatToDuo { text } => self.chat_to_duo(text),
+            Command::AssignToRole { .. }
             | Command::ApproveCard { .. }
             | Command::RejectCard { .. } => reject("not built yet"),
         }
@@ -434,7 +442,7 @@ impl Engine {
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
             worktrees: self.worktrees_shown.clone(),
             cards: Vec::new(),
-            chat: Vec::new(),
+            chat: self.chat.clone(),
             your_queued: self.your_queued(),
         }
     }

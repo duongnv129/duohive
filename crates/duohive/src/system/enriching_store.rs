@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use duohive_core::adapter::Adapters;
+use duohive_core::chat::ChatEntry;
 use duohive_core::hook::HookMessage;
 use duohive_core::inbox::{Message, MessageId};
 use duohive_core::names::AgentName;
@@ -106,5 +107,13 @@ impl Store for EnrichingStore {
 
     fn save_message(&mut self, m: &Message) -> Result<(), StoreError> {
         self.inner.save_message(m)
+    }
+
+    fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError> {
+        self.inner.load_chat(last)
+    }
+
+    fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError> {
+        self.inner.save_chat(entry)
     }
 }

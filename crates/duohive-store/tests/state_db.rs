@@ -9,7 +9,8 @@
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
-use duohive_core::card::CardId;
+use duohive_core::card::{CardId, CardOutcome};
+use duohive_core::chat::{ChatEntry, ChatId, ChatKind};
 use duohive_core::hook::HookMessage;
 use duohive_core::inbox::{Message, MessageId, MessageKind, MessageStatus, Sender};
 use duohive_core::launch::{Token, WindowId};
@@ -75,10 +76,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 5);
+    assert_eq!(user_version(&first), 6);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 5);
+    assert_eq!(user_version(&second), 6);
 }
 
 #[test]
@@ -499,7 +500,7 @@ fn migration_3_applies_on_v2_db() {
         .unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 5);
+    assert_eq!(user_version(&conn), 6);
 }
 
 #[test]
@@ -508,7 +509,8 @@ fn migration_4_applies_on_v3_db() {
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
         conn.execute_batch(
-            "DROP TABLE messages;
+            "DROP TABLE chat;
+             DROP TABLE messages;
              DROP TABLE pending_tool_calls;
              ALTER TABLE sessions DROP COLUMN launched_as_duo;
              INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
@@ -525,7 +527,7 @@ fn migration_4_applies_on_v3_db() {
     assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 5);
+    assert_eq!(user_version(&conn), 6);
 }
 
 #[test]
@@ -661,7 +663,7 @@ fn migration_5_applies() {
     let (_t, paths) = temp_paths();
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
-        conn.execute_batch("DROP TABLE messages; PRAGMA user_version = 4;")
+        conn.execute_batch("DROP TABLE chat; DROP TABLE messages; PRAGMA user_version = 4;")
             .unwrap();
     }
     let mut store = SqliteStore::open(&paths).unwrap();
@@ -670,9 +672,96 @@ fn migration_5_applies() {
     store.save_message(&first).unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 5);
+    assert_eq!(user_version(&conn), 6);
     let sender: Option<String> = conn
         .query_row("SELECT sender FROM messages WHERE id = 1", [], |r| r.get(0))
         .unwrap();
     assert_eq!(sender, None);
+}
+
+fn chat_entry(id: u64, kind: ChatKind, text: &str) -> ChatEntry {
+    ChatEntry {
+        id: ChatId(id),
+        at: Millis(1_000 + id),
+        kind,
+        text: text.into(),
+    }
+}
+
+#[test]
+fn chat_round_trip() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let card = |id: u64, outcome: CardOutcome| {
+        chat_entry(
+            id,
+            ChatKind::CardResult {
+                card: CardId(id),
+                outcome,
+            },
+            "stop squad-1",
+        )
+    };
+    let entries = vec![
+        chat_entry(
+            1,
+            ChatKind::You { message: None },
+            "what's blocked?\nand why",
+        ),
+        chat_entry(
+            2,
+            ChatKind::You {
+                message: Some(MessageId(7)),
+            },
+            "fix it",
+        ),
+        chat_entry(3, ChatKind::Duo, "billing-api waits on an approval"),
+        chat_entry(
+            4,
+            ChatKind::Action {
+                result: "queued (pay-qa is working)".into(),
+            },
+            "@pay-qa \"rerun\"",
+        ),
+        card(5, CardOutcome::Approved),
+        card(6, CardOutcome::EditedApproved),
+        card(7, CardOutcome::Rejected),
+        card(
+            8,
+            CardOutcome::NotApplied("squad-1 is already stopped".into()),
+        ),
+    ];
+    for e in &entries {
+        store.save_chat(e).unwrap();
+    }
+    // A note is never stored.
+    store
+        .save_chat(&chat_entry(9, ChatKind::Note, "/help"))
+        .unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), entries);
+    // The last `n`, oldest first.
+    assert_eq!(store.load_chat(3).unwrap(), entries[5..].to_vec());
+    assert_eq!(store.load_chat(0).unwrap(), vec![]);
+}
+
+#[test]
+fn migration_6_applies() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch("DROP TABLE chat; PRAGMA user_version = 5;")
+            .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), vec![]);
+    let first = chat_entry(1, ChatKind::Duo, "hello");
+    store.save_chat(&first).unwrap();
+    assert_eq!(store.load_chat(500).unwrap(), vec![first]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 6);
+    let kind: String = conn
+        .query_row("SELECT kind FROM chat WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(kind, "duo");
 }

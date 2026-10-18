@@ -121,6 +121,11 @@ impl Engine {
         if transition(state, &trigger).is_none() {
             return false;
         }
+        // TD §6.5: each of Duo's turn ends with a reply is a chat line, even a
+        // repeated one (`take_reply`'s dedupe is for `LastReplyChanged` only).
+        if is_duo && let Some(r) = &reply {
+            self.chat_reply(r.clone(), out);
+        }
         // The reply goes out before the state change it came with, so a turn end lands
         // with its reply already current (P2-D8).
         out.extend(self.take_reply(agent, reply));
@@ -134,11 +139,16 @@ impl Engine {
     /// A hook older than one already applied: only its reply is kept.
     fn apply_stale_hook(&mut self, agent: &AgentName, signal: HookSignal, out: &mut Vec<Event>) {
         tracing::debug!(%agent, ?signal, "hook older than the last applied, state kept");
-        if let HookSignal::TurnEnded {
+        let HookSignal::TurnEnded {
             last_reply: Some(reply),
         } = signal
-            && let Some(event) = self.take_reply(agent, Some(reply))
-        {
+        else {
+            return;
+        };
+        if self.org.is_duo(agent) {
+            self.chat_reply(reply.clone(), out);
+        }
+        if let Some(event) = self.take_reply(agent, Some(reply)) {
             self.save_row(agent, out);
             out.push(event);
         }

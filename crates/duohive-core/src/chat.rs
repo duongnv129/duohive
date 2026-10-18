@@ -48,3 +48,31 @@ pub struct ChatEntry {
     /// The text.
     pub text: String,
 }
+
+/// How many entries the snapshot carries: the last 500 (P3-Q5). The `chat`
+/// table keeps every entry.
+pub const CHAT_LOAD: usize = 500;
+
+/// `text` on one line, cut to `max` characters with `…` (P3-D14's quotes):
+/// runs of whitespace, newlines included, become one space.
+pub fn cut(text: &str, max: usize) -> String {
+    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.chars().count() <= max {
+        return one_line;
+    }
+    let kept: String = one_line.chars().take(max.saturating_sub(1)).collect();
+    format!("{}…", kept.trim_end())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cut;
+
+    #[test]
+    fn cut_keeps_short_text_and_joins_lines() {
+        assert_eq!(cut("  rerun\n the  tests ", 40), "rerun the tests");
+        assert_eq!(cut("abcdef", 6), "abcdef");
+        assert_eq!(cut("abcdefg", 6), "abcde…");
+        assert_eq!(cut("abcd efg", 6), "abcd…");
+    }
+}

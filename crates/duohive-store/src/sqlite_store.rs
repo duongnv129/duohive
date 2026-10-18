@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use duohive_core::chat::ChatEntry;
 use duohive_core::hook::HookMessage;
 use duohive_core::inbox::{Message, MessageId};
 use duohive_core::launch::{Token, WindowId};
@@ -16,7 +17,7 @@ use rusqlite::{Connection, Row};
 
 use crate::db::{db_err, insert_pending_hook, open_db, take_pending, to_i64};
 use crate::paths::Paths;
-use crate::{messages, org_file, settings_file};
+use crate::{chat, messages, org_file, settings_file};
 
 /// How long the app waits on a locked database.
 const APP_BUSY_TIMEOUT: Duration = Duration::from_millis(1000);
@@ -317,5 +318,13 @@ impl Store for SqliteStore {
 
     fn save_message(&mut self, m: &Message) -> Result<(), StoreError> {
         messages::save(&self.conn, m)
+    }
+
+    fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError> {
+        chat::load(&self.conn, last)
+    }
+
+    fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError> {
+        chat::save(&self.conn, entry)
     }
 }

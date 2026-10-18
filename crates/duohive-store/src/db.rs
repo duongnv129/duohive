@@ -42,6 +42,10 @@ ALTER TABLE sessions ADD COLUMN launched_as_duo INTEGER NOT NULL DEFAULT 0;
 CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NULL, kind TEXT NOT NULL,
   card INTEGER, text TEXT NOT NULL, status TEXT NOT NULL, reason TEXT, queued_at INTEGER NOT NULL,
   delivered_at INTEGER);
+", "
+-- kind 'you' (message) | 'duo' | 'action' (result) | 'card' (card, result = the outcome); notes are never stored.
+CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
+  result TEXT, card INTEGER, message INTEGER);
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {

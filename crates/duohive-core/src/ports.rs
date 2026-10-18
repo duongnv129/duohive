@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapter::DialogCheck;
 use crate::alert::Alert;
+use crate::chat::ChatEntry;
 use crate::hook::HookMessage;
 use crate::inbox::{Message, MessageId};
 use crate::launch::{Key, LaunchCommand, Token, WindowId};
@@ -251,6 +252,10 @@ pub trait Store: Send {
     fn find_message(&mut self, id: MessageId) -> Result<Option<Message>, StoreError>;
     /// Inserts or replaces a message, keyed by id.
     fn save_message(&mut self, m: &Message) -> Result<(), StoreError>;
+    /// The last `last` chat entries, oldest first; the last one has the highest id.
+    fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError>;
+    /// Appends a chat entry (a `Note` is never stored).
+    fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError>;
 }
 
 /// A live view of one agent's pane. Opening a stream closes any other.

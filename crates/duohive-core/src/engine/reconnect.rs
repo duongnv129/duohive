@@ -52,6 +52,7 @@ impl Engine {
         // the sessions as they were when DuoHive closed (P3-D24).
         self.take_closed_calls(&rows, &mut out);
         self.load_inbox(&mut out);
+        self.load_chat(&mut out);
         // Stopped means no row: a stale one goes.
         let (stopped, rows): (Vec<_>, Vec<_>) = rows
             .into_iter()

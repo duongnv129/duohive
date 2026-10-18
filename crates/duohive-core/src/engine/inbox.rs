@@ -109,12 +109,14 @@ impl Engine {
             return vec![Event::MessageRefused { to, text, reason }];
         }
         let mut out = Vec::new();
-        if let Err(e) = self.send(Sender::You, &to, MessageKind::Text, text.clone(), &mut out) {
-            out.push(Event::MessageRefused {
+        match self.send(Sender::You, &to, MessageKind::Text, text.clone(), &mut out) {
+            // P3-D14: your message writes the same `@<to>` line as Duo's.
+            Ok((_, outcome)) => self.chat_sent(&to, &text, outcome, &mut out),
+            Err(e) => out.push(Event::MessageRefused {
                 to,
                 text,
                 reason: e.message,
-            });
+            }),
         }
         out
     }
