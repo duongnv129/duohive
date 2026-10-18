@@ -10,6 +10,7 @@ use duohive_core::tool::{Rights, ToolName, WAIT_MAX_MINUTES};
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
+use tokio::task::JoinSet;
 
 use crate::rpc::{self, Incoming};
 use crate::tools::specs;
@@ -45,46 +46,69 @@ pub fn answer_timeout(cfg: &HelperConfig, tool: &str) -> Duration {
     }
 }
 
-/// Serves MCP on `stdin`/`stdout` until `stdin` ends.
+/// Serves MCP on `stdin`/`stdout` until `stdin` ends. Each request is answered
+/// in its own task, so a long call (a 60-minute `wait_for_agent`) never holds
+/// up the agent's other calls; answers are written in the order they finish.
+/// When `stdin` ends, calls still running are answered before this returns.
 pub async fn run_helper(
     cfg: HelperConfig,
     stdin: impl AsyncRead + Unpin,
     mut stdout: impl AsyncWrite + Unpin,
     closed: Arc<dyn ClosedFallback>,
 ) -> io::Result<()> {
+    let cfg = Arc::new(cfg);
     let mut lines = BufReader::new(stdin).lines();
-    while let Some(line) = lines.next_line().await? {
-        if line.trim().is_empty() {
-            continue;
+    let mut running: JoinSet<String> = JoinSet::new();
+    let mut reading = true;
+    while reading || !running.is_empty() {
+        tokio::select! {
+            line = lines.next_line(), if reading => match line? {
+                None => reading = false,
+                Some(line) if line.trim().is_empty() => {}
+                Some(line) => {
+                    let cfg = Arc::clone(&cfg);
+                    let closed = Arc::clone(&closed);
+                    running.spawn(async move { answer(&cfg, closed.as_ref(), &line).await });
+                }
+            },
+            Some(done) = running.join_next(), if !running.is_empty() => {
+                let Ok(answer) = done else { continue };
+                if answer.is_empty() {
+                    continue;
+                }
+                stdout.write_all(answer.as_bytes()).await?;
+                stdout.write_all(b"\n").await?;
+                stdout.flush().await?;
+            }
         }
-        let answer = match rpc::parse(&line) {
-            Incoming::Notification => continue,
-            Incoming::Initialize { id, protocol } => {
-                rpc::result(&id, &rpc::initialize_result(protocol.as_deref()))
-            }
-            Incoming::Ping { id } => rpc::result(&id, &json!({})),
-            Incoming::ListTools { id } => rpc::result(
-                &id,
-                &json!({ "tools": list_tools(&cfg, closed.as_ref()).await }),
-            ),
-            Incoming::CallTool {
-                id,
-                name,
-                arguments,
-            } => {
-                let (json, is_error) = call_tool(&cfg, closed.as_ref(), &name, &arguments).await;
-                rpc::result(&id, &rpc::tool_result(&json, is_error))
-            }
-            Incoming::Unknown { id, method } => {
-                rpc::error(&id, rpc::METHOD_NOT_FOUND, &format!("no method {method}"))
-            }
-            Incoming::Invalid { id, code, message } => rpc::error(&id, code, &message),
-        };
-        stdout.write_all(answer.as_bytes()).await?;
-        stdout.write_all(b"\n").await?;
-        stdout.flush().await?;
     }
     Ok(())
+}
+
+/// The response line for one message; empty for a notification.
+async fn answer(cfg: &HelperConfig, closed: &dyn ClosedFallback, line: &str) -> String {
+    match rpc::parse(line) {
+        Incoming::Notification => String::new(),
+        Incoming::Initialize { id, protocol } => {
+            rpc::result(&id, &rpc::initialize_result(protocol.as_deref()))
+        }
+        Incoming::Ping { id } => rpc::result(&id, &json!({})),
+        Incoming::ListTools { id } => {
+            rpc::result(&id, &json!({ "tools": list_tools(cfg, closed).await }))
+        }
+        Incoming::CallTool {
+            id,
+            name,
+            arguments,
+        } => {
+            let (json, is_error) = call_tool(cfg, closed, &name, &arguments).await;
+            rpc::result(&id, &rpc::tool_result(&json, is_error))
+        }
+        Incoming::Unknown { id, method } => {
+            rpc::error(&id, rpc::METHOD_NOT_FOUND, &format!("no method {method}"))
+        }
+        Incoming::Invalid { id, code, message } => rpc::error(&id, code, &message),
+    }
 }
 
 /// A tool error as the P3-D16 JSON.

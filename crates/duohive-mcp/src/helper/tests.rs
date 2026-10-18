@@ -276,6 +276,50 @@ async fn no_answer_in_time_says_so() {
     );
 }
 
+/// Answers one request line with `{"ok": {"tool": <tool>}}`, half a second late
+/// for `wait_for_agent`.
+async fn answer_slow_wait(stream: tokio::net::UnixStream) {
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader.read_line(&mut line).await.unwrap();
+    let v: Value = serde_json::from_str(&line).unwrap();
+    if v["tool"] == "wait_for_agent" {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+    let answer = json!({"ok": {"tool": v["tool"]}});
+    let mut stream = reader.into_inner();
+    stream
+        .write_all(format!("{answer}\n").as_bytes())
+        .await
+        .unwrap();
+}
+
+/// A long call doesn't hold up the agent's other calls: CLIs send requests
+/// in parallel (Claude Code moves a long call to the background and goes on).
+#[tokio::test]
+async fn long_call_doesnt_block_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = config(dir.path(), Some("tok-duo"));
+    let listener = UnixListener::bind(&cfg.sock).unwrap();
+    tokio::spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            tokio::spawn(answer_slow_wait(stream));
+        }
+    });
+    let answers = session(
+        cfg,
+        Arc::new(FakeFallback::default()),
+        &[
+            init(),
+            call(3, "wait_for_agent", &json!({"agent": "pay-qa"})),
+            call(4, "list_agents", &json!({})),
+        ],
+    )
+    .await;
+    let ids: Vec<&Value> = answers.iter().map(|a| &a["id"]).collect();
+    assert_eq!(ids, [&json!(1), &json!(4), &json!(3)], "{answers:?}");
+}
+
 #[tokio::test]
 async fn closed_mid_call_answers_interrupted_not_queued() {
     let dir = tempfile::tempdir().unwrap();
