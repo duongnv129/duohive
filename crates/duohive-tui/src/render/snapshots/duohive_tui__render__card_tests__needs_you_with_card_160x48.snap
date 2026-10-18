@@ -46,7 +46,7 @@ expression: "org.join(\"\\n\")"
 ┌─ ⬢ Duo · ◦ idle ────────────────────────────────
 │             ┌─ ◆ Proposed change ───────────────
 │             │ + Add agent pay-web in Payments › 
-│             │   CLI Claude Code · ~/code/web · w
+│             │   + cli: Claude Code              
 │ ❯                                               
 └─────────────────────────────────────────────────
  tab pane · ↑↓ move · space give work · s start/st

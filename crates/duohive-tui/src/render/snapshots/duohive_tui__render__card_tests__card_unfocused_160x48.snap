@@ -3,13 +3,13 @@ source: crates/duohive-tui/src/render/card_tests.rs
 expression: text
 ---
 ┏━ ⬢ Duo · ◦ idle ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ 10:20 you   split story PAY-88 by role and assign it                                                                                                         ┃
-┃ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                                                                                ┃
 ┃             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            ┃
 ┃             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           ┃
 ┃             ┌─ ◆ Proposed change ────────────────────────────────────────────┐                                                                               ┃
 ┃             │ + Add agent pay-web in Payments › QA                           │                                                                               ┃
-┃             │   CLI Claude Code · ~/code/web · worktrees on                  │                                                                               ┃
+┃             │   + cli: Claude Code                                           │                                                                               ┃
+┃             │   + directory: ~/code/web                                      │                                                                               ┃
+┃             │   + worktree: on                                               │                                                                               ┃
 ┃             │ [y] Approve   [e] Edit   [n] Reject                            │                                                                               ┃
 ┃             └────────────────────────────────────────────────────────────────┘                                                                               ┃
 ┃ ❯                                                                                                                                                            ┃

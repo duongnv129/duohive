@@ -2,6 +2,7 @@
 
 mod agent_pane;
 pub(crate) mod card;
+mod card_fields;
 pub(crate) mod chat_pane;
 mod dialog;
 mod form;

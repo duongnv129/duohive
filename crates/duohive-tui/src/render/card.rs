@@ -1,18 +1,19 @@
 //! An approval card in the chat (UI §4.6; P3-D4, P3-D15): its outline is `border`, heavy
 //! when focused, with an amber `◆` in its title; the body, then `[y] Approve   [e] Edit
-//! [n] Reject` (no `[e]` where it is disabled).
+//! [n] Reject` (no `[e]` where it is disabled). An org change lists every field it sets
+//! or changes ([`card_fields`](super::card_fields)); a `flags` row is amber and never cut.
 
 use duohive_core::card::{Card, CardChange};
 use duohive_core::command::OrgEdit;
-use duohive_core::inherit::inherited_for;
 use duohive_core::names::AgentName;
-use duohive_core::org::{Fields, NodeKey, Org, RoleKey};
+use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::time::Millis;
 use ratatui::style::Color;
 
+use super::card_fields::{BodyLine, detail, find_role};
 use super::{HEAVY, LIGHT, Lines};
 use crate::format::{
-    age_of, format_age, pad_right, status_glyph, status_word, truncate_end, width,
+    age_of, chunk_cells, format_age, pad_right, status_glyph, status_word, truncate_end, width,
 };
 use crate::forms::card_editable;
 use crate::model::UiModel;
@@ -28,6 +29,8 @@ const BUTTON_GAP: &str = "   ";
 const DIAMOND: char = '◆';
 /// A second line hangs under the first's text.
 const HANG: &str = "  ";
+/// A marked row's text past its first screen row hangs this far in.
+const WRAP_HANG: usize = 4;
 
 /// One screen row: styled pieces.
 pub(crate) type Row = Vec<(String, Color)>;
@@ -43,9 +46,10 @@ pub(crate) fn card_title(card: &Card, org: &Org) -> String {
     format!("{DIAMOND} {what}")
 }
 
-/// The card's body lines, then its button row.
+/// The card's body lines, then its button row, as text (tests read cards this way).
+#[cfg(test)]
 pub(crate) fn card_lines(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
-    let mut lines = body(card, m, now);
+    let mut lines: Vec<String> = body(card, m, now).into_iter().map(|l| l.text).collect();
     lines.push(button_row(card));
     lines
 }
@@ -107,12 +111,21 @@ pub(crate) fn card_rows(
         (format!(" {shown} "), p.fg),
         (format!("{fill}{}", lines.top[1]), p.border),
     ]];
-    for line in card_lines(card, m, now) {
-        rows.push(vec![
-            (format!("{} ", lines.v), p.border),
-            (pad_right(&truncate_end(&line, inner), inner), p.fg),
-            (format!(" {}", lines.v), p.border),
-        ]);
+    let mut body = body(card, m, now);
+    body.push(BodyLine::plain(button_row(card)));
+    for line in body {
+        let (pieces, colour) = if line.marked {
+            (wrap_hanging(&line.text, inner), p.attention)
+        } else {
+            (vec![truncate_end(&line.text, inner)], p.fg)
+        };
+        for piece in pieces {
+            rows.push(vec![
+                (format!("{} ", lines.v), p.border),
+                (pad_right(&piece, inner), colour),
+                (format!(" {}", lines.v), p.border),
+            ]);
+        }
     }
     let bottom = lines.h.repeat(w.saturating_sub(2));
     rows.push(vec![(
@@ -120,6 +133,52 @@ pub(crate) fn card_rows(
         p.border,
     )]);
     rows
+}
+
+/// `text` in full over rows of `cells`, breaking between words where it can; rows after
+/// the first hang [`WRAP_HANG`] cells in.
+fn wrap_hanging(text: &str, cells: usize) -> Vec<String> {
+    let body = text.trim_start_matches(' ');
+    let lead = " ".repeat(text.len() - body.len());
+    wrap_words_whole(body, cells.saturating_sub(lead.len()))
+        .into_iter()
+        .map(|r| format!("{lead}{r}"))
+        .collect()
+}
+
+/// [`wrap_hanging`] for text with no leading spaces.
+fn wrap_words_whole(text: &str, cells: usize) -> Vec<String> {
+    let hang = " ".repeat(WRAP_HANG.min(cells / 2));
+    let mut rows: Vec<String> = Vec::new();
+    let mut row = String::new();
+    for word in text.split(' ') {
+        let room = if rows.is_empty() {
+            cells
+        } else {
+            cells - hang.len()
+        };
+        let joined = if row.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{row} {word}")
+        };
+        if width(&joined) <= room {
+            row = joined;
+            continue;
+        }
+        if !row.is_empty() {
+            rows.push(std::mem::take(&mut row));
+        }
+        let room = cells - if rows.is_empty() { 0 } else { hang.len() };
+        let mut pieces = chunk_cells(word, room);
+        row = pieces.pop().unwrap_or_default();
+        rows.extend(pieces);
+    }
+    rows.push(row);
+    rows.into_iter()
+        .enumerate()
+        .map(|(i, r)| if i == 0 { r } else { format!("{hang}{r}") })
+        .collect()
 }
 
 fn button_row(card: &Card) -> String {
@@ -130,12 +189,13 @@ fn button_row(card: &Card) -> String {
         .join(BUTTON_GAP)
 }
 
-/// The change in UI §4.6's style: `+` adds, `~` changes or moves, `-` removes; a second
-/// line hangs under the first with what the new agent runs on, or its task (P3-D15).
-fn body(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
+/// The change in UI §4.6's style: `+` adds, `~` changes or moves, `-` removes; the rows
+/// under it hang with every field the change sets, or the new agent's task (P3-D15).
+fn body(card: &Card, m: &UiModel, now: Millis) -> Vec<BodyLine> {
     let org = &m.org;
+    let plain = |lines: Vec<String>| lines.into_iter().map(BodyLine::plain).collect();
     match &card.change {
-        CardChange::Stop { agent } => vec![stop_line(agent, m, now)],
+        CardChange::Stop { agent } => plain(vec![stop_line(agent, m, now)]),
         CardChange::NewAgent {
             role,
             agent,
@@ -148,16 +208,20 @@ fn body(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
                 .map(|a| format!(" (clone of {a})"))
                 .unwrap_or_default();
             let first = task.lines().next().unwrap_or_default();
-            vec![
+            plain(vec![
                 format!(
                     "+ Add agent {} in {}{clone}",
                     agent.name,
                     role_path(org, role)
                 ),
                 format!("{HANG}Task  {first}"),
-            ]
+            ])
         }
-        CardChange::Org(edit) => edit_lines(edit, card, org),
+        CardChange::Org(edit) => {
+            let mut lines = vec![BodyLine::plain(head_line(edit, card, org))];
+            lines.extend(detail(edit, org));
+            lines
+        }
     }
 }
 
@@ -174,89 +238,35 @@ fn stop_line(agent: &AgentName, m: &UiModel, now: Millis) -> String {
     )
 }
 
-fn edit_lines(edit: &OrgEdit, card: &Card, org: &Org) -> Vec<String> {
+/// An org change's first line: `+ Add agent pay-web in Payments › QA (new role)`,
+/// `~ Edit role Payments › QA`, `- Remove team Growth`.
+fn head_line(edit: &OrgEdit, card: &Card, org: &Org) -> String {
+    let summary = capitalised(&card.summary(org));
     match edit {
         OrgEdit::AddAgent { role, agent } => {
-            let known = org.breadcrumb(&NodeKey::Role(role.clone()));
-            let new_role = if role_exists(org, role) {
+            let new_role = if find_role(org, role).is_some() {
                 ""
             } else {
                 " (new role)"
             };
-            vec![
-                format!("+ Add agent {} in {known}{new_role}", agent.name),
-                format!(
-                    "{HANG}{}",
-                    runs_on(org, &NodeKey::Role(role.clone()), &agent.fields)
-                ),
-            ]
+            format!(
+                "+ Add agent {} in {}{new_role}",
+                agent.name,
+                role_path(org, role)
+            )
         }
-        OrgEdit::EditAgent { key, draft } => {
-            let renamed = if &draft.name == key {
-                String::new()
-            } else {
-                format!(" → {}", draft.name)
-            };
-            let parent = org.find_agent(key).map_or(NodeKey::Duo, |loc| {
-                NodeKey::Role(RoleKey {
-                    team: loc.team.map(|t| t.name.clone()),
-                    role: loc.role.name.clone(),
-                })
-            });
-            vec![
-                format!("~ Edit agent {key}{renamed}"),
-                format!("{HANG}{}", runs_on(org, &parent, &draft.fields)),
-            ]
-        }
-        OrgEdit::AddRole { agents, .. } => {
-            let noun = if *agents == 1 { "agent" } else { "agents" };
-            vec![
-                format!("+ {}", capitalised(&card.summary(org))),
-                format!("{HANG}{agents} {noun}"),
-            ]
-        }
-        OrgEdit::AddTeam(_) => vec![format!("+ {}", capitalised(&card.summary(org)))],
-        OrgEdit::Delete(_) => vec![format!("- {}", capitalised(&card.summary(org)))],
+        OrgEdit::EditAgent { key, .. } => format!("~ Edit agent {key}"),
+        OrgEdit::AddRole { .. } | OrgEdit::AddTeam(_) => format!("+ {summary}"),
+        OrgEdit::Delete(_) => format!("- {summary}"),
         OrgEdit::EditTeam { .. }
         | OrgEdit::EditRole { .. }
         | OrgEdit::EditOrgDefaults { .. }
-        | OrgEdit::Move { .. } => vec![format!("~ {}", capitalised(&card.summary(org)))],
+        | OrgEdit::Move { .. } => format!("~ {summary}"),
     }
-}
-
-/// `CLI Claude Code · ~/code/web · worktrees on`: what an agent under `parent` with `own`
-/// fields runs on.
-fn runs_on(org: &Org, parent: &NodeKey, own: &Fields) -> String {
-    let inherited = inherited_for(org, parent);
-    let cli = own.cli.unwrap_or(inherited.cli.value);
-    let dir = own
-        .directory
-        .clone()
-        .or_else(|| inherited.directory.map(|d| d.value));
-    let worktrees = if own.worktree.unwrap_or(inherited.worktree.value) {
-        "worktrees on"
-    } else {
-        "worktrees off"
-    };
-    let mut parts = vec![format!("CLI {}", cli.display())];
-    parts.extend(dir);
-    parts.push(worktrees.to_owned());
-    parts.join(" · ")
 }
 
 fn role_path(org: &Org, role: &RoleKey) -> String {
     org.breadcrumb(&NodeKey::Role(role.clone()))
-}
-
-fn role_exists(org: &Org, key: &RoleKey) -> bool {
-    let roles = match &key.team {
-        Some(t) => match org.teams.iter().find(|x| &x.name == t) {
-            Some(team) => &team.roles,
-            None => return false,
-        },
-        None => &org.roles,
-    };
-    roles.iter().any(|r| r.name == key.role)
 }
 
 /// `text` with its first letter upper-cased: a summary as a sentence (UI §4.1.3).
