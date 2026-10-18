@@ -1,11 +1,14 @@
 //! The Give work dialog (UI §4.5, P2-D10, P2-D11, P2-D20): opening, the task box, the run
-//! choice and the four variants.
+//! choice, the agent variants, the role variants and Send as message instead (P3-D28, P3-D29).
 
 use super::*;
 use crate::focus::{AgentMode, Pane};
 use crate::forms::GiveWork;
+use crate::forms::{GiveFocus, Variant};
 use crate::tree::tree_rows;
-use duohive_core::event::Event;
+use duohive_core::card::CardId;
+use duohive_core::event::{Event, RoleOutcome};
+use duohive_core::tool::Given;
 use duohive_core::worktree::{RunIn, TaskId};
 
 fn key(m: &mut UiModel, k: KeyEvent) -> Vec<UiEffect> {
@@ -85,15 +88,7 @@ fn space_opens_for_agent_only() {
 }
 
 #[test]
-fn role_team_and_duo_notes() {
-    let mut m = stopped_model();
-    m.selected = NodeKey::Role(backend());
-    assert_eq!(space(&mut m), []);
-    assert_eq!(
-        m.footer_note.as_deref(),
-        Some("select an agent to give work")
-    );
-    assert_eq!(m.dialog, None);
+fn team_and_duo_still_note() {
     for sel in [NodeKey::Team(nn("Payments")), NodeKey::Duo] {
         let mut m = stopped_model();
         m.selected = sel;
@@ -114,6 +109,19 @@ fn role_team_and_duo_notes() {
         Some("space gives work to an agent or a role")
     );
     assert_eq!(m.dialog, None);
+    // A role opens the dialog, from the tree and from its summary.
+    for pane in [Pane::Org, Pane::Agent] {
+        let mut m = stopped_model();
+        m.selected = NodeKey::Role(backend());
+        m.focus.pane = pane;
+        assert_eq!(space(&mut m), []);
+        assert_eq!(m.footer_note, None);
+        assert!(
+            matches!(dialog(&m).variant, Variant::Role { .. }),
+            "{:?}",
+            dialog(&m).variant
+        );
+    }
 }
 
 #[test]
@@ -246,18 +254,11 @@ fn next_turn_variant_shows_where_it_runs() {
 }
 
 #[test]
-fn busy_variant_refuses() {
+fn busy_variant_follows_the_agent() {
     let mut m = model_in(AgentState::Working);
     space(&mut m);
     type_text(&mut m, "x");
-    let text = screen_text(&m);
-    assert!(
-        text.contains("billing-api is working. Give work when it is at rest."),
-        "{text}"
-    );
-    assert_eq!(key(&mut m, plain(KeyCode::Enter)), []);
-    assert!(m.dialog.is_some());
-    // It follows the agent: at rest, the same text can be given.
+    // At rest, the same text can be given.
     m.apply(Event::AgentStatusChanged {
         agent: n("billing-api"),
         status: status(AgentState::Idle, mins(0)),
@@ -339,7 +340,7 @@ fn errored_row_hint_offers_space_retry() {
 
 #[test]
 fn give_work_snapshots() {
-    let variants: [(&str, UiModel); 3] = [
+    let variants: [(&str, UiModel); 2] = [
         ("stopped", {
             let mut m = stopped_model();
             space(&mut m);
@@ -355,12 +356,6 @@ fn give_work_snapshots() {
                 Some(TaskId("flaky-date".into()));
             space(&mut m);
             type_text(&mut m, "Now make the date test run in UTC as well.");
-            m
-        }),
-        ("busy", {
-            let mut m = model_in(AgentState::Working);
-            space(&mut m);
-            type_text(&mut m, "Also cover the timeout path.");
             m
         }),
     ];
@@ -515,4 +510,345 @@ fn not_taken_never_takes_typing_or_a_chat_draft() {
     m.focus.pane = Pane::Org;
     space(&mut m);
     assert_eq!(dialog(&m).task.text(), "again");
+}
+
+fn generalist() -> RoleKey {
+    RoleKey {
+        team: None,
+        role: nn("Generalist"),
+    }
+}
+
+/// The Generalist role selected in the org pane, squad-1..3 in these states and ages.
+fn role_model(states: [(AgentState, u64); 3]) -> UiModel {
+    let mut m = model();
+    for (i, (state, age)) in states.into_iter().enumerate() {
+        m.agents.insert(
+            n(&format!("squad-{}", i + 1)),
+            view(status(state, mins(age))),
+        );
+    }
+    m.selected = NodeKey::Role(generalist());
+    m.focus.pane = Pane::Org;
+    m
+}
+
+fn assigned(role: RoleKey, task: &str, pick: Option<&str>, run: Option<RunIn>) -> Vec<UiEffect> {
+    vec![UiEffect::Send(Command::AssignToRole {
+        role,
+        task: task.to_owned(),
+        pick: pick.map(n),
+        run,
+    })]
+}
+
+fn picked(m: &UiModel) -> AgentName {
+    match &dialog(m).variant {
+        Variant::Role { free, pick, .. } => free[*pick].clone(),
+        other => panic!("not the role variant: {other:?}"),
+    }
+}
+
+/// Backend selected, with both of its agents busy.
+fn none_free_model() -> UiModel {
+    let mut m = model();
+    m.agents.insert(
+        n("auth-service"),
+        view(status(AgentState::Working, mins(2))),
+    );
+    m.agents
+        .insert(n("billing-api"), view(status(AgentState::Waiting, mins(4))));
+    m.selected = NodeKey::Role(backend());
+    m.focus.pane = Pane::Org;
+    m
+}
+
+#[test]
+fn role_pick_cycles_free_agents() {
+    let mut m = role_model([
+        (AgentState::Working, 1),
+        (AgentState::Idle, 5),
+        (AgentState::Finished, 10),
+    ]);
+    space(&mut m);
+    // At rest longest first (P3-D28).
+    match &dialog(&m).variant {
+        Variant::Role {
+            role,
+            free,
+            total,
+            pick,
+        } => {
+            assert_eq!(role, &generalist());
+            assert_eq!(free, &vec![n("squad-3"), n("squad-2")]);
+            assert_eq!((*total, *pick), (3, 0));
+        }
+        other => panic!("not the role variant: {other:?}"),
+    }
+    let text = screen_text(&m);
+    assert!(
+        text.contains("Give work · role Generalist (2 of 3 free)"),
+        "{text}"
+    );
+    assert!(text.contains("Goes to   squad-3 (finished 10m)"), "{text}");
+    assert!(text.contains("↑↓ pick another"), "{text}");
+    key(&mut m, plain(KeyCode::Down));
+    assert_eq!(picked(&m), n("squad-2"));
+    assert!(screen_text(&m).contains("Goes to   squad-2 (idle 5m)"));
+    key(&mut m, plain(KeyCode::Down));
+    assert_eq!(picked(&m), n("squad-3"));
+    key(&mut m, plain(KeyCode::Up));
+    assert_eq!(picked(&m), n("squad-2"));
+    type_text(&mut m, "Fix it");
+    assert_eq!(
+        key(&mut m, plain(KeyCode::Enter)),
+        assigned(generalist(), "Fix it", Some("squad-2"), None)
+    );
+    // The dialog waits for the engine's answer.
+    assert!(m.dialog.is_some());
+    m.apply(Event::RoleAssigned {
+        role: generalist(),
+        task: "Fix it".into(),
+        outcome: RoleOutcome::Given {
+            agent: n("squad-2"),
+            given: Given::TypedIn,
+        },
+    });
+    assert_eq!(m.dialog, None);
+    assert_eq!(m.footer_note.as_deref(), Some("squad-2 took the task"));
+}
+
+#[test]
+fn role_run_row_follows_pick() {
+    let mut m = role_model([
+        (AgentState::Finished, 10),
+        (AgentState::Stopped, 5),
+        (AgentState::Working, 1),
+    ]);
+    let squads = &mut m.org.roles[0].agents;
+    squads[0].fields.directory = Some("~/code/my-app".into());
+    squads[1].fields.directory = Some("~/code/web".into());
+    squads[1].fields.worktree = Some(true);
+    space(&mut m);
+    // A finished pick: the next-turn line, no radios.
+    let text = screen_text(&m);
+    assert!(
+        text.contains("Run      in ~/code/my-app, as the next turn of squad-1's session"),
+        "{text}"
+    );
+    assert!(!text.contains("new worktree"), "{text}");
+    // A stopped pick: the radios, preset from its own default.
+    key(&mut m, plain(KeyCode::Down));
+    assert_eq!(picked(&m), n("squad-2"));
+    assert_eq!(dialog(&m).run, RunIn::NewWorktree);
+    let text = screen_text(&m);
+    assert!(text.contains("(•) new worktree"), "{text}");
+    assert!(text.contains("agent default: worktree"), "{text}");
+    assert!(!text.contains("next turn"), "{text}");
+    // tab reaches Goes to, then Run; space picks the directory.
+    key(&mut m, plain(KeyCode::Tab));
+    assert_eq!(dialog(&m).focus, GiveFocus::Pick);
+    key(&mut m, plain(KeyCode::Tab));
+    assert_eq!(dialog(&m).focus, GiveFocus::Run);
+    space(&mut m);
+    assert_eq!(dialog(&m).run, RunIn::Directory);
+    // Back to the finished pick: Run is no longer a stop.
+    key(&mut m, plain(KeyCode::Up));
+    assert_eq!(picked(&m), n("squad-1"));
+    assert_ne!(dialog(&m).focus, GiveFocus::Run);
+    // And to the stopped one again: preset afresh.
+    key(&mut m, plain(KeyCode::Down));
+    assert_eq!(dialog(&m).run, RunIn::NewWorktree);
+    key(&mut m, plain(KeyCode::BackTab));
+    assert_eq!(dialog(&m).focus, GiveFocus::Task);
+    type_text(&mut m, "go");
+    assert_eq!(
+        key(&mut m, plain(KeyCode::Enter)),
+        assigned(
+            generalist(),
+            "go",
+            Some("squad-2"),
+            Some(RunIn::NewWorktree)
+        )
+    );
+}
+
+#[test]
+fn no_free_proposes_clone_card() {
+    let mut m = none_free_model();
+    space(&mut m);
+    assert!(matches!(
+        dialog(&m).variant,
+        Variant::RoleNoneFree { total: 2, .. }
+    ));
+    let text = screen_text(&m);
+    assert!(
+        text.contains("Give work · role Payments › Backend (0 of 2 free)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Goes to  No free agent · enter proposes one"),
+        "{text}"
+    );
+    assert!(
+        text.contains("         (the approval card holds the task)"),
+        "{text}"
+    );
+    type_text(&mut m, "Add a key");
+    assert_eq!(dialog(&m).hint(), "enter propose one · esc");
+    assert!(screen_text(&m).contains("enter propose one · esc"));
+    assert_eq!(
+        key(&mut m, plain(KeyCode::Enter)),
+        assigned(backend(), "Add a key", None, None)
+    );
+    // Sent once: a second enter waits for the answer.
+    assert!(m.dialog.is_some());
+    assert_eq!(key(&mut m, plain(KeyCode::Enter)), []);
+    m.apply(Event::RoleAssigned {
+        role: backend(),
+        task: "Add a key".into(),
+        outcome: RoleOutcome::Card(CardId(7)),
+    });
+    assert_eq!(m.dialog, None);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("No free agent · a card in the chat proposes one")
+    );
+}
+
+#[test]
+fn send_as_message_queues() {
+    let mut m = model_in(AgentState::Working);
+    space(&mut m);
+    // Nothing to send yet.
+    assert_eq!(key(&mut m, plain(KeyCode::Enter)), []);
+    type_text(&mut m, "Also cover");
+    let text = screen_text(&m);
+    for part in [
+        "billing-api is working. Give work when it is at rest, or send this as a",
+        "typed in when billing-api is at rest.",
+        "[ Give work ] (disabled)",
+        "[ Send as message instead ]",
+    ] {
+        assert!(text.contains(part), "{part}\n{text}");
+    }
+    key(&mut m, plain(KeyCode::Tab));
+    assert_eq!(dialog(&m).focus, GiveFocus::SendAsMessage);
+    assert!(screen_text(&m).contains("▌[ Send as message instead ]"));
+    assert_eq!(
+        key(&mut m, plain(KeyCode::Enter)),
+        vec![UiEffect::Send(Command::SendMessage {
+            to: n("billing-api"),
+            text: "Also cover".into(),
+        })]
+    );
+    assert_eq!(m.dialog, None);
+    assert_eq!(m.footer_note.as_deref(), Some("→ queued for billing-api"));
+}
+
+#[test]
+fn pick_not_free_keeps_dialog() {
+    let mut m = role_model([
+        (AgentState::Working, 1),
+        (AgentState::Idle, 5),
+        (AgentState::Working, 1),
+    ]);
+    space(&mut m);
+    type_text(&mut m, "x");
+    assert_eq!(key(&mut m, plain(KeyCode::Enter)).len(), 1);
+    m.apply(Event::AssignRefused {
+        role: generalist(),
+        task: "x".into(),
+        reason: "squad-2 isn't free any more".into(),
+    });
+    assert_eq!(dialog(&m).task.text(), "x");
+    assert_eq!(
+        dialog(&m).note.as_deref(),
+        Some("squad-2 isn't free any more")
+    );
+    assert!(screen_text(&m).contains("squad-2 isn't free any more"));
+    // It can be sent again.
+    assert_eq!(
+        key(&mut m, plain(KeyCode::Enter)),
+        assigned(generalist(), "x", Some("squad-2"), None)
+    );
+    // Once closed, a refusal is a footer note.
+    key(&mut m, plain(KeyCode::Esc));
+    m.apply(Event::AssignRefused {
+        role: generalist(),
+        task: "x".into(),
+        reason: "squad-2 isn't free any more".into(),
+    });
+    assert_eq!(m.dialog, None);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("squad-2 isn't free any more")
+    );
+}
+
+#[test]
+fn role_dialog_follows_its_agents() {
+    let mut m = role_model([
+        (AgentState::Working, 1),
+        (AgentState::Idle, 5),
+        (AgentState::Working, 1),
+    ]);
+    space(&mut m);
+    type_text(&mut m, "x");
+    m.apply(Event::AgentStatusChanged {
+        agent: n("squad-1"),
+        status: status(AgentState::Finished, mins(9)),
+    });
+    assert!(screen_text(&m).contains("(2 of 3 free)"));
+    // The pick stays on the agent it was on.
+    assert_eq!(picked(&m), n("squad-2"));
+    assert_eq!(dialog(&m).task.text(), "x");
+    m.apply(Event::AgentStatusChanged {
+        agent: n("squad-2"),
+        status: status(AgentState::Working, mins(0)),
+    });
+    assert_eq!(picked(&m), n("squad-1"));
+    m.apply(Event::AgentStatusChanged {
+        agent: n("squad-1"),
+        status: status(AgentState::Working, mins(0)),
+    });
+    assert!(matches!(dialog(&m).variant, Variant::RoleNoneFree { .. }));
+    assert_eq!(dialog(&m).task.text(), "x");
+}
+
+#[test]
+fn role_and_send_as_message_snapshots() {
+    let variants: [(&str, UiModel); 3] = [
+        ("role", {
+            let mut m = role_model([
+                (AgentState::Working, 1),
+                (AgentState::Finished, 3),
+                (AgentState::Working, 5),
+            ]);
+            m.org.roles[0].agents[1].fields.directory = Some("~/code/my-app".into());
+            space(&mut m);
+            type_text(&mut m, "Fix the flaky date test in billing/time_test.go");
+            key(&mut m, plain(KeyCode::Tab));
+            m
+        }),
+        ("role_none_free", {
+            let mut m = none_free_model();
+            space(&mut m);
+            type_text(&mut m, "Add an idempotency key to POST /payments.");
+            m
+        }),
+        ("busy_send_as_message", {
+            let mut m = model_in(AgentState::Working);
+            space(&mut m);
+            type_text(&mut m, "Also cover the timeout path.");
+            key(&mut m, plain(KeyCode::Tab));
+            m
+        }),
+    ];
+    for (name, m) in &variants {
+        for (w, h) in [(80, 24), (160, 48)] {
+            let lines = crate::fixtures::render_lines(m, &ctx(), w, h);
+            insta::assert_snapshot!(format!("give_work_{name}_{w}x{h}"), lines.join("\n"));
+        }
+    }
 }

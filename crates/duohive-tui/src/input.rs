@@ -139,6 +139,14 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if m.typing() {
         return Some(agent::typing_key(k));
     }
+    if matches!(m.dialog, Some(Dialog::GiveWork(_))) && k.modifiers.is_empty() {
+        // `↑↓` pick a role's agent (UI §4.5).
+        match k.code {
+            KeyCode::Up => return Some(Action::Up),
+            KeyCode::Down => return Some(Action::Down),
+            _ => {}
+        }
+    }
     if matches!(m.dialog, Some(Dialog::Form(_) | Dialog::GiveWork(_))) {
         return form_key(k);
     }
@@ -658,7 +666,7 @@ fn names(roles: &[Role]) -> Vec<AgentName> {
         .collect()
 }
 
-fn find_role<'a>(org: &'a Org, k: &RoleKey) -> Option<&'a Role> {
+pub(crate) fn find_role<'a>(org: &'a Org, k: &RoleKey) -> Option<&'a Role> {
     let roles = match &k.team {
         Some(t) => &org.teams.iter().find(|x| &x.name == t)?.roles,
         None => &org.roles,
@@ -686,7 +694,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 
 mod agent;
 mod cards;
-mod give_work;
+pub(crate) mod give_work;
 pub(crate) mod mouse;
 mod panes;
 mod settings;

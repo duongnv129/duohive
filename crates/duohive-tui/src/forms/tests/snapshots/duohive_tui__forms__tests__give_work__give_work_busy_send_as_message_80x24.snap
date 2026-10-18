@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/forms/tests/give_work.rs
+expression: "lines.join(\"\\n\")"
+---
+ DuoHive  ● 1 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ──────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments           ● 1     ┃│    ● working                                 │
+┃   ▾ Backend          ● 1     ┃│                                              │
+┃     auth-service     ○   1d  ┃│                                              │
+┃▌    billing-api      ●   3m  ┃│                                              │
+┃   ▾ QA                       ┃│                                              │
+┃     pay-qa           ○   1d  ┃│                                              │
+┃ ┌─ Give work · billing-api · ● working ────────────────────────────────────┐ │
+┃ │ Task  [ Also cover the timeout path.__________________________________ ] │ │
+┃ │ billing-api is working. Give work when it is at rest, or send this as a  │ │
+┃ │ message: it is typed in when billing-api is at rest.                     │ │
+┃ │          [ Give work ] (disabled)   ▌[ Send as message instead ]         │ │
+┃ └──────────────────────────────────────────────────────────────────────────┘ │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ enter send as message · alt+enter new line · esc

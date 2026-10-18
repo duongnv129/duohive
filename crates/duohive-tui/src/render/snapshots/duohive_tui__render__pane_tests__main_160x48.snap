@@ -9,7 +9,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃▌│  ├─ ◇ Backend               ● 1 ◆ 1          ┃│           worktrees inherit: off                                                                           │
 ┃ │  │  ├─ auth-service         ● working    2m  ┃│ Prompt    (none)                                                                                           │
 ┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
-┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│ e edit                                                                                                     │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│ space give work to this role · e edit                                                                      │
 ┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
 ┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
 ┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │

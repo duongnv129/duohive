@@ -10,7 +10,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ │  │  ├─ auth-service         ● working    2m  ┃│           worktrees inherit: off               │
 ┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│ Prompt    (none)                               │
 ┃ │  └─ ◇ QA                                     ┃│                                                │
-┃ │     └─ pay-qa               ○ stopped    1d  ┃│ e edit                                         │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│ space give work to this role · e edit          │
 ┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
 ┃    ├─ squad-1                ~● working    1m  ┃│                                                │
 ┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │

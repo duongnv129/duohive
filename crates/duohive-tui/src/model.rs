@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use duohive_core::card::{Card, CardId};
 use duohive_core::command::Command;
-use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
+use duohive_core::event::{AgentView, Event, NeedsYouItem, RoleOutcome, Snapshot};
 use duohive_core::inbox::{MessageId, Sender};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, Org, RoleKey};
@@ -302,11 +302,35 @@ impl UiModel {
                     self.focus.card = None;
                 }
             }
-            // Phase 3 events reach the TUI as their tasks build them.
-            Event::ToolResult { .. } | Event::RoleAssigned { .. } | Event::AssignRefused { .. } => {
-            }
+            e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
+            // Duo's tool results show as its action lines (UI §4.6).
+            Event::ToolResult { .. } => {}
         }
         true
+    }
+
+    /// The answer to your task for a role: taken or carded closes its dialog with a note;
+    /// refused keeps it open with the task and the reason under it (P3-D28).
+    fn apply_role(&mut self, e: Event) {
+        match e {
+            Event::RoleAssigned { role, outcome, .. } => {
+                if self.role_dialog_for(&role).is_some() {
+                    self.dialog = None;
+                }
+                self.footer_note = Some(match outcome {
+                    RoleOutcome::Given { agent, .. } => format!("{agent} took the task"),
+                    RoleOutcome::Card(_) => NO_FREE_CARD.to_owned(),
+                });
+            }
+            Event::AssignRefused { role, reason, .. } => match self.role_dialog_for(&role) {
+                Some(g) => {
+                    g.sent = false;
+                    g.note = Some(reason);
+                }
+                None => self.footer_note = Some(reason),
+            },
+            _ => {}
+        }
     }
 
     /// A message event. Messages between agents show only as `✉` (UI §4.7): only yours
@@ -341,13 +365,37 @@ impl UiModel {
         }
     }
 
-    /// The open Give work dialog follows its agent's state.
+    /// The open Give work dialog follows its agent's state, or a role's its agents'.
     fn sync_give_work(&mut self, agent: &AgentName) {
-        let view = self.view(agent).clone();
-        if let Some(Dialog::GiveWork(g)) = &mut self.dialog
-            && &g.agent == agent
-        {
-            g.sync(&view);
+        let Some(Dialog::GiveWork(g)) = &self.dialog else {
+            return;
+        };
+        match g.role().cloned() {
+            Some(role) => {
+                let member = crate::input::find_role(&self.org, &role)
+                    .is_some_and(|r| r.agents.iter().any(|a| &a.name == agent));
+                let fresh = member
+                    .then(|| crate::input::give_work::role_dialog(self, &role, ""))
+                    .flatten();
+                if let (Some(fresh), Some(Dialog::GiveWork(g))) = (fresh, &mut self.dialog) {
+                    g.follow_role(fresh);
+                }
+            }
+            None if &g.agent == agent => {
+                let view = self.view(agent).clone();
+                if let Some(Dialog::GiveWork(g)) = &mut self.dialog {
+                    g.sync(&view);
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// The open Give work dialog, when it is `role`'s.
+    fn role_dialog_for(&mut self, role: &RoleKey) -> Option<&mut GiveWork> {
+        match &mut self.dialog {
+            Some(Dialog::GiveWork(g)) if g.role() == Some(role) => Some(g),
+            _ => None,
         }
     }
 
@@ -587,13 +635,15 @@ pub(crate) static UNKNOWN_VIEW: AgentView = AgentView {
     inbox: 0,
 };
 
-/// The footer note when the system has no desktop notifier (UI §4.1.4).
 /// What the reopened dialog adds when the task wasn't taken.
 const NOT_TAKEN_RETRY: &str = " · enter to try again";
 /// Ends a note about work that waits for `space`; not shown while typing, where `space`
 /// goes to the agent.
 pub(crate) const SPACE_RETRY: &str = " · space to try again";
+/// The footer note when a role's task raised a clone card (UI §4.5, P3-D3).
+const NO_FREE_CARD: &str = "No free agent · a card in the chat proposes one";
 
+/// The footer note when the system has no desktop notifier (UI §4.1.4).
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";
 
 #[cfg(test)]

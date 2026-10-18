@@ -282,8 +282,7 @@ fn agent_pane_for_agents_and_groups() {
     let s = side(&m);
     assert!(s.contains("┌─ ◇ Backend · in Payments ─"), "{s}");
     assert!(s.contains("2 agents · ● 1 working · ◆ 1 waiting"), "{s}");
-    assert!(s.contains("e edit"));
-    assert!(!s.contains("space"));
+    assert!(s.contains("space give work to this role · e edit"), "{s}");
     m.selected = NodeKey::Team(NodeName::parse("Payments").unwrap());
     assert!(side(&m).contains("3 agents · ● 1 working · ◆ 1 waiting"));
 }

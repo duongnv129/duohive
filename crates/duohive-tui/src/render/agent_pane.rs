@@ -39,6 +39,10 @@ const MIN_PLACE: usize = 4;
 /// The label column of a team or role summary.
 const LABEL_CELLS: usize = 10;
 const STATE_WORDS: [&str; 4] = ["working", "waiting", "quiet", "errored"];
+/// A team summary's last line.
+const TEAM_KEYS: &str = "e edit";
+/// A role summary's last line (UI §4.1.2, P2-D3).
+const ROLE_KEYS: &str = "space give work to this role · e edit";
 /// The rows a full team or role summary takes with its defaults on one line.
 const SUMMARY_ROWS: usize = 6;
 /// How to answer Claude's folder-trust dialog, whose highlighted choice is `No, exit`
@@ -163,7 +167,15 @@ fn content(
             let title = format!("▣ {t}");
             (
                 title,
-                summary(m, p, &names, &team.defaults, &NodeKey::Duo, cells, rows),
+                summary(
+                    m,
+                    p,
+                    &names,
+                    &team.defaults,
+                    &NodeKey::Duo,
+                    (cells, rows),
+                    TEAM_KEYS,
+                ),
             )
         }
         NodeKey::Role(key) => role(m, p, key, cells, rows),
@@ -203,7 +215,15 @@ fn role(
     let names: Vec<&AgentName> = role.agents.iter().map(|a| &a.name).collect();
     (
         title,
-        summary(m, p, &names, &role.defaults, &parent, cells, rows),
+        summary(
+            m,
+            p,
+            &names,
+            &role.defaults,
+            &parent,
+            (cells, rows),
+            ROLE_KEYS,
+        ),
     )
 }
 
@@ -318,7 +338,7 @@ fn agent(
     (title, body)
 }
 
-/// A team or role summary: counts, defaults and prompt, then the edit key. When the pane
+/// A team or role summary: counts, defaults and prompt, then its keys. When the pane
 /// is too short for all of it, the defaults and prompt go first (UI §3's shrink order).
 fn summary(
     m: &UiModel,
@@ -326,8 +346,8 @@ fn summary(
     names: &[&AgentName],
     own: &Fields,
     parent: &NodeKey,
-    cells: usize,
-    rows: usize,
+    (cells, rows): (usize, usize),
+    keys: &str,
 ) -> Vec<Line<'static>> {
     let views: Vec<_> = names.iter().filter_map(|n| m.agents.get(*n)).collect();
     let noun = if names.len() == 1 { "agent" } else { "agents" };
@@ -374,7 +394,7 @@ fn summary(
         p,
     ));
     let prompt = truncate_end(&prompt, room);
-    let keys = Line::from(Span::styled(format!("{PAD}e edit"), fg(p.fg_muted)));
+    let keys = Line::from(Span::styled(format!("{PAD}{keys}"), fg(p.fg_muted)));
     if rows < SUMMARY_ROWS + defaults.len() - 2 {
         return vec![Line::from(counts), Line::default(), keys];
     }

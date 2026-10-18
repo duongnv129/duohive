@@ -285,7 +285,7 @@ fn agent_pane_footer_fits_what_is_selected() {
 }
 
 #[test]
-fn role_summary_has_phase_2_footer() {
+fn role_summary_offers_give_work() {
     let mut m = spec_model();
     m.selected = NodeKey::Role(RoleKey {
         team: Some(nn("Payments")),
@@ -307,8 +307,11 @@ fn role_summary_has_phase_2_footer() {
         .take_while(|l| !l.starts_with('└'))
         .filter(|l| !l.is_empty())
         .collect();
-    assert_eq!(body.last().map(String::as_str), Some("e edit"), "{body:#?}");
-    assert!(!pane.join("\n").contains("space give work to this role"));
+    assert_eq!(
+        body.last().map(String::as_str),
+        Some("space give work to this role · e edit"),
+        "{body:#?}"
+    );
 }
 
 #[test]
