@@ -9,8 +9,10 @@ use crate::chat::ChatKind;
 use crate::command::OrgEdit;
 use crate::event::Event;
 use crate::inbox::{MessageKind, Sender};
+use crate::org::Fields;
 use crate::status::AgentState;
 use crate::tool::{ErrorCode, ToolError, ToolOk, ToolResult};
+use crate::validate::forbidden_flags_error;
 
 impl Engine {
     /// `propose_org_change` (TD §6.2): a valid change raises a card and
@@ -79,6 +81,10 @@ impl Engine {
                 None => return super::reject(EDIT_KEEPS_KIND),
             },
         };
+        // Your edit is refused, not answered: the card waits to be fixed (P3-D31).
+        if let Some(reason) = set_fields(&change).find_map(forbidden_flags_error) {
+            return super::reject(reason);
+        }
         let summary = change.summary(&self.org);
         let mut out = Vec::new();
         let outcome = match self.apply_card(&change, &mut out) {
@@ -229,6 +235,25 @@ fn kept_kind(proposed: &CardChange, edited: CardChange) -> Option<CardChange> {
         }),
         _ => None,
     }
+}
+
+/// The fields `change` sets, at every node it adds or edits.
+fn set_fields(change: &CardChange) -> impl Iterator<Item = &Fields> {
+    let fields = match change {
+        CardChange::NewAgent { agent, .. } => Some(&agent.fields),
+        CardChange::Stop { .. } => None,
+        CardChange::Org(edit) => match edit {
+            OrgEdit::AddTeam(d) | OrgEdit::EditTeam { draft: d, .. } => Some(&d.defaults),
+            OrgEdit::AddRole { role: d, .. } | OrgEdit::EditRole { draft: d, .. } => {
+                Some(&d.defaults)
+            }
+            OrgEdit::AddAgent { agent: d, .. } | OrgEdit::EditAgent { draft: d, .. } => {
+                Some(&d.fields)
+            }
+            OrgEdit::EditOrgDefaults { .. } | OrgEdit::Delete(_) | OrgEdit::Move { .. } => None,
+        },
+    };
+    fields.into_iter()
 }
 
 /// The first refusal among `events`.

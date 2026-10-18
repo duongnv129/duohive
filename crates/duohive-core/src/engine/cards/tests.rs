@@ -21,6 +21,7 @@ use crate::status::AgentState;
 use crate::testkit::{RuntimeCall, n};
 use crate::time::Millis;
 use crate::tool::{CallId, ErrorCode, ToolCall, ToolError, ToolOk, ToolResult};
+use crate::worktree::RunIn;
 
 fn nn(s: &str) -> NodeName {
     NodeName::parse(s).unwrap()
@@ -269,6 +270,133 @@ fn propose_invalid_change_refused() {
     assert!(raised(&events).is_empty());
     assert!(h.engine.snapshot().cards.is_empty());
     assert!(h.store.state.lock().unwrap().cards.is_empty());
+}
+
+/// `pay-web` added to QA with `flags`.
+fn add_web_with_flags(flags: &str) -> OrgEdit {
+    OrgEdit::AddAgent {
+        role: qa(),
+        agent: AgentDraft {
+            name: n("pay-web"),
+            fields: Fields {
+                flags: Some(flags.into()),
+                ..Fields::default()
+            },
+        },
+    }
+}
+
+const SKIP: &str = "--dangerously-skip-permissions is never allowed";
+const ALLOW_SKIP: &str = "--allow-dangerously-skip-permissions is never allowed";
+
+#[test]
+fn propose_dangerous_flags_refused() {
+    let mut h = Harness::new();
+    idle(&mut h, "Duo");
+    let flagged = |flags: &str| Fields {
+        flags: Some(flags.into()),
+        ..Fields::default()
+    };
+    let cases = [
+        (add_web_with_flags("--dangerously-skip-permissions"), SKIP),
+        (
+            add_web_with_flags("--allow-dangerously-skip-permissions"),
+            ALLOW_SKIP,
+        ),
+        (
+            add_web_with_flags("--verbose --dangerously-skip-permissions=true"),
+            SKIP,
+        ),
+        (
+            add_web_with_flags("--model opus '--allow-dangerously-skip-permissions' -v"),
+            ALLOW_SKIP,
+        ),
+        (
+            OrgEdit::EditTeam {
+                key: nn("Payments"),
+                draft: TeamDraft {
+                    name: nn("Payments"),
+                    defaults: flagged("--debug --dangerously-skip-permissions"),
+                },
+            },
+            SKIP,
+        ),
+        (
+            OrgEdit::AddTeam(TeamDraft {
+                name: nn("Growth"),
+                defaults: flagged("--allow-dangerously-skip-permissions=1"),
+            }),
+            ALLOW_SKIP,
+        ),
+    ];
+    for (edit, message) in cases {
+        let (result, events) = propose(&mut h, edit);
+        assert_eq!(
+            result,
+            Err(ToolError::new(ErrorCode::InvalidChange, message))
+        );
+        assert!(raised(&events).is_empty());
+    }
+    assert!(h.engine.snapshot().cards.is_empty());
+    assert!(h.store.state.lock().unwrap().cards.is_empty());
+}
+
+#[test]
+fn edited_card_with_dangerous_flags_refused() {
+    let mut h = Harness::new();
+    idle(&mut h, "Duo");
+    pend(&mut h, add_web());
+    // The edit is refused and the card stays pending, to fix or answer again.
+    let events = h.send(Command::ApproveCard {
+        card: CardId(1),
+        edited: Some(Box::new(CardChange::Org(add_web_with_flags(
+            "--verbose --dangerously-skip-permissions",
+        )))),
+    });
+    assert_eq!(rejected(&events), [SKIP]);
+    assert!(answered(&events).is_empty());
+    assert!(!has_agent(&h, "pay-web"));
+    assert_eq!(h.engine.snapshot().cards.len(), 1);
+    // A new-agent card's edit too.
+    let mut out = Vec::new();
+    let id = h.engine.raise_card(
+        CardSource::Duo,
+        CardChange::NewAgent {
+            role: qa(),
+            agent: AgentDraft {
+                name: n("pay-qa-2"),
+                fields: Fields::default(),
+            },
+            task: "Add retry cases".into(),
+            run: RunIn::Directory,
+            clone_of: None,
+        },
+        &mut out,
+    );
+    let events = h.send(Command::ApproveCard {
+        card: id,
+        edited: Some(Box::new(CardChange::NewAgent {
+            role: qa(),
+            agent: AgentDraft {
+                name: n("pay-qa-2"),
+                fields: Fields {
+                    flags: Some("--allow-dangerously-skip-permissions=true".into()),
+                    ..Fields::default()
+                },
+            },
+            task: String::new(),
+            run: RunIn::Directory,
+            clone_of: None,
+        })),
+    });
+    assert_eq!(rejected(&events), [ALLOW_SKIP]);
+    assert!(answered(&events).is_empty());
+    assert!(!has_agent(&h, "pay-qa-2"));
+    assert_eq!(h.engine.snapshot().cards.len(), 2);
+    // Approved unedited, the card still applies.
+    let events = approve(&mut h, 1);
+    assert_eq!(answered(&events), [(CardId(1), CardOutcome::Approved)]);
+    assert!(has_agent(&h, "pay-web"));
 }
 
 #[test]

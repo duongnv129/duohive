@@ -7,6 +7,7 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
 use duohive_core::status::WaitingOn;
 use duohive_core::tool::WAIT_MAX_MINUTES;
+use duohive_core::validate::forbidden_flag;
 use serde_json::Value;
 
 use crate::detect::probe_version;
@@ -77,6 +78,10 @@ impl CliAdapter for ClaudeAdapter {
     /// --mcp-config <run>/mcp.json
     /// [--model=m] [--effort=e] [flags…] [-- <task>]` (S1.2, S1.3, S1.6, S1.8, S1.11).
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError> {
+        // Defence in depth: validation already refuses these (P3-D31).
+        if let Some(flag) = spec.agent.flags.iter().find_map(|f| forbidden_flag(f)) {
+            return Err(LaunchError::Invalid(format!("{flag} is never allowed")));
+        }
         let settings_path = spec.run_dir.join(SETTINGS_FILE);
         let mut settings = command_hooks(spec, &HOOKS)?;
         if let Some(obj) = settings.as_object_mut() {
@@ -509,6 +514,34 @@ mod tests {
             ClaudeAdapter.launch(&s),
             Err(duohive_core::adapter::LaunchError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn launch_refuses_dangerous_flags() {
+        // P3-D31: never started without prompts, whatever the org says.
+        for (flags, flag) in [
+            (
+                vec!["--dangerously-skip-permissions"],
+                "--dangerously-skip-permissions",
+            ),
+            (
+                vec!["--verbose", "--allow-dangerously-skip-permissions=true"],
+                "--allow-dangerously-skip-permissions",
+            ),
+            (
+                vec!["--dangerously-skip-permissions=1", "--debug"],
+                "--dangerously-skip-permissions",
+            ),
+        ] {
+            let mut s = spec(Some("t"));
+            s.agent.flags = flags.into_iter().map(str::to_owned).collect();
+            assert_eq!(
+                ClaudeAdapter.launch(&s),
+                Err(duohive_core::adapter::LaunchError::Invalid(format!(
+                    "{flag} is never allowed"
+                )))
+            );
+        }
     }
 
     #[test]
