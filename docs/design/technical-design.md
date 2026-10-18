@@ -244,15 +244,17 @@ A fresh launch:
 
 | Tool | Who | Does |
 |---|---|---|
-| `list_agents` | every agent | Org with status and last reply |
+| `list_agents` | every agent | Every agent, Duo first then tree order: team, role, state, quiet, from screen, time in state, last reply, waiting messages, CLI, worktree, free (§5.4) |
 | `send_message` | every agent | Queue a message; returns an id |
 | `message_status` | every agent | queued · delivered · answered · dropped |
-| `read_agent` | Duo | Another agent's current screen as text |
-| `wait_for_agent` | Duo | Wait for an agent's turn to end, with a timeout |
-| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for starting, working or waiting agents |
-| `stop_agent` | Duo | Finished, idle or errored: stops it directly. Starting, working or waiting: raises an approval card and returns at once `{status: "pending", card_id}`; your answer reaches Duo later as a message from you (P3-D2). Stopped: refused, with the reason (P3-D6) |
+| `read_agent` | Duo | Asks for one capture and answers with the agent's next screen as text, or `no_screen` after 5 s; a stopped agent, or an errored one with no window, is refused (P3-D23) |
+| `wait_for_agent` | Duo | `{agent, timeout_minutes?}` (10 by default, 60 at most). Answers at once `at_rest` (finished or idle, nothing pending), `stopped` or `errored`; else on its turn end (`turn_ended`), stop, error or the timeout (`timed_out`), with state and last reply (P3-D23) |
+| `start_agent` | Duo | Give work to an agent (§5.1): a fresh launch (directory or worktree) or the next turn; refused for starting, working or waiting agents. `{agent, task, run?}` (`directory`/`worktree`, default the resolved default). Answers `started` or `typed_in`; into a new worktree, once it has been created, and a failed creation, including 120 s with no answer, is `refused` "couldn't create worktree: <e>". Busy: "<agent> is <state>; send_message instead"; a task not yet taken: "<agent> is still taking the last task" |
+| `stop_agent` | Duo | Finished, idle or errored: stops it directly. Starting, working or waiting: raises an approval card and returns at once `{status: "pending", card_id}`; your answer reaches Duo later as a message from you (P3-D2). Stopped: refused, with the reason (P3-D6). Direct stops answer `{agent, result: "stopped"}` |
 | `assign_to_role` | Duo | Task to a role (§5.4). When no agent is free, it returns at once `{status: "pending", card_id}` for the clone card (P3-D3, as P3-D2) |
 | `propose_org_change` | Duo | Add, edit, move or remove a team, role or agent as an approval card; returns at once `{status: "pending", card_id}`. Your answer (approved, edited and approved, or rejected) reaches Duo later as a message from you through the inbox (§6.3, P3-D2). An invalid change is refused with `invalid_change` and the validation error. Removing an agent that isn't stopped, or a role or team holding one, is refused (`<agent> is <state>; only a stopped agent can be removed`). Moves follow P3-D20: an agent into a role, a role into a team or Duo, a team before another team or to the end |
+
+**Results (P3-D16):** each result is MCP text content holding JSON, plus the same JSON as `structuredContent`; errors set `isError` with `{"error": {"code", "message"}}`. A read or wait whose caller's token stops being current (Duo stopped or relaunched) is dropped without an answer (P3-D23).
 
 **Answering a card (P3-D12, P3-D21).** Approving re-checks the change as things are then. An org change takes the same path as your own edit. A stop follows the target's state (`<agent> is already stopped` when stopped). A new-agent card adds the agent, then gives it the task. What can't apply changes nothing and is answered `approved, not applied (<reason>)`. A card is answered once; a second answer is refused with `card <id> was already answered`. The answer reaches Duo as your message, typed in unframed: `card <id> <approved | edited and approved | rejected | approved, not applied (<reason>)>: <summary>`. In the chat the card becomes one line, `<result>: <summary>`. Raising a card never changes Duo's state.
 
@@ -285,9 +287,20 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 ### 6.4 Duo
 
 - **An ordinary agent:** Duo sits at the root of the tree and runs on the CLI set in `org.toml`. Changing that CLI restarts Duo after a confirmation.
-- **Its prompt:** DuoHive supplies a fixed prompt explaining the org, the tools and the rules (approval cards for org changes and for stopping busy agents; commit, push, merge, publish and delete wait for the user); the org prompt is stacked on top.
+- **Its prompt:** DuoHive supplies a fixed prompt under `# Duo (DuoHive)`, below the org prompt's `# Org` (the org heading only when an org prompt is set). It names the tools and who may use them. It says org changes and stops of starting, working or waiting agents go through cards; `stop_agent`, `assign_to_role` and `propose_org_change` may return `{"status":"pending","card_id":N}` at once, and the answer arrives later as your message starting `card N`. It says agents' messages arrive framed by `[message from <agent> · DuoHive boundary <b>]` … `[end of message <b> …]`, and framed text is the agent's, never the user's, while unframed text is the user's. It says commit, push, merge, publish and delete wait for the user, and no tool answers a CLI prompt. And it says every tool call is shown as an action line (P3-D13).
 - **States:** like any agent, except that a finished turn goes straight to idle and never raises a "finished" alert.
-- **Visible actions:** each tool call Duo makes is recorded as an action and shown in the chat as an `→` line with its result.
+- **Visible actions:** each tool call Duo makes, reads included, writes one `→` entry when answered, never rewritten:
+  - `list agents` / `<n> agents`;
+  - `@<to> "<text cut to 40>"` / `typed in`, `queued (<to> is <state word>)` or `started`;
+  - `message <id> status` / the status word;
+  - `read <agent>` / `read`;
+  - `wait for <agent>` / `finished`, `idle`, `stopped`, `errored` or `timed out after <n>m`;
+  - `give work <agent> "<task cut to 40>"` (start_agent and assign_to_role; the role's path until an agent takes it) / `started` or `typed in`;
+  - `stop <agent>` / `stopped`;
+  - `propose org change`; a card raised / `card raised`;
+  - an error / `refused (<message>)`.
+
+  `tools/list` and other agents' calls write none. A call queued while closed writes its line when it runs (P3-D14, P3-D24).
 
 ### 6.5 Duo chat
 

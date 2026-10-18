@@ -398,7 +398,7 @@ Measured 2026-10-18 on macOS. A throwaway tmux server and a temporary data direc
 | Silent calls | Claude Code moved a DuoHive call to a background task after 120 s, and ended a silent one at 1800 s (`sent no response or progress for 1800s; aborting … set a per-server "timeout" (ms)`) |
 | Per-server `timeout` | Honoured in the per-launch `mcp.json`: with `120000` the call ended at 309 s instead of 1800 s |
 
-The adapter writes `"timeout": 3690000` (61.5 min, past the helper's 60 min 30 s wait for `wait_for_agent`; commit `46fd597`). The run with the full 3,690,000 ms is recorded separately.
+The adapter writes `"timeout": 3690000` (61.5 min, past the helper's 60 min 30 s wait for `wait_for_agent`; commit `46fd597`). With `"timeout": 3690000` in the per-launch `mcp.json`, Claude Code 2.1.302 ended the 60-minute `wait_for_agent` at its own limit: "timed out after 3690s" (started 11:56:58, ended 12:58). The call had moved to a background task after 120 s. The run also showed that the helper answered requests one at a time, so a long call blocked the agent's other calls; fixed in `c5b4a6c` (each request in its own task).
 
 ## S2 OpenCode
 
