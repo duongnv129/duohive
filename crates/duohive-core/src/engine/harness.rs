@@ -75,6 +75,8 @@ pub(crate) struct Setup {
     pub start: Millis,
     /// Whether the notifier reports itself available.
     pub notifier_available: bool,
+    /// The store; pass another harness's to restart on its state.
+    pub store: FakeStore,
 }
 
 impl Default for Setup {
@@ -89,6 +91,7 @@ impl Default for Setup {
             settings: Settings::default(),
             start: T0,
             notifier_available: true,
+            store: FakeStore::default(),
         }
     }
 }
@@ -108,7 +111,7 @@ impl Setup {
 
     fn build_with(self, clock: FakeClock, engine_clock: Box<dyn Clock>) -> Harness {
         let runtime = FakeRuntime::default();
-        let store = FakeStore::default();
+        let store = self.store;
         let cfg = EngineConfig {
             home: HOME.into(),
             data_dir: DATA_DIR.into(),

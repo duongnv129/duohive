@@ -7,6 +7,7 @@ use crate::adapter::{
 use crate::alert::Alert;
 use crate::cli_kind::CliKind;
 use crate::hook::HookMessage;
+use crate::inbox::{Message, MessageId, MessageStatus};
 use crate::inherit::expand_home;
 use crate::launch::{Key, LaunchCommand, LaunchSpec, Token, WindowId};
 use crate::names::{AgentName, NodeName};
@@ -129,16 +130,21 @@ impl Clock for TokioClock {
     }
 }
 
-/// Tokens `tok-1`, `tok-2`, and so on.
+/// Tokens `tok-1`, `tok-2`, and so on; boundaries `b00000000001`, `b00000000002`, ….
 #[derive(Debug, Default)]
 pub struct FakeIds {
     issued: u64,
+    boundaries: u64,
 }
 
 impl Ids for FakeIds {
     fn new_token(&mut self) -> Token {
         self.issued += 1;
         Token(format!("tok-{}", self.issued))
+    }
+    fn boundary(&mut self) -> String {
+        self.boundaries += 1;
+        format!("b{:011x}", self.boundaries)
     }
 }
 
@@ -228,6 +234,8 @@ pub struct FakeStoreState {
     pub pending: Vec<HookMessage>,
     /// Tool calls queued while closed, oldest first.
     pub queued_tool_calls: Vec<QueuedToolCall>,
+    /// Messages by id.
+    pub messages: BTreeMap<MessageId, Message>,
 }
 
 impl Default for FakeStoreState {
@@ -244,6 +252,7 @@ impl Default for FakeStoreState {
             worktrees: BTreeMap::new(),
             pending: Vec::new(),
             queued_tool_calls: Vec::new(),
+            messages: BTreeMap::new(),
         }
     }
 }
@@ -352,6 +361,32 @@ impl Store for FakeStore {
         Ok(std::mem::take(
             &mut self.state.lock().unwrap().queued_tool_calls,
         ))
+    }
+
+    fn load_messages(&mut self, since: Millis) -> Result<Vec<Message>, StoreError> {
+        let st = self.state.lock().unwrap();
+        let newest = st.messages.keys().next_back().copied();
+        Ok(st
+            .messages
+            .values()
+            .filter(|m| {
+                matches!(m.status, MessageStatus::Queued | MessageStatus::Delivered)
+                    || m.queued_at >= since
+                    || Some(m.id) == newest
+            })
+            .cloned()
+            .collect())
+    }
+
+    fn find_message(&mut self, id: MessageId) -> Result<Option<Message>, StoreError> {
+        Ok(self.state.lock().unwrap().messages.get(&id).cloned())
+    }
+
+    fn save_message(&mut self, m: &Message) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        Self::check_save(&mut st)?;
+        st.messages.insert(m.id, m.clone());
+        Ok(())
     }
 }
 

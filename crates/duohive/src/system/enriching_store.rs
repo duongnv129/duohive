@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use duohive_core::adapter::Adapters;
 use duohive_core::hook::HookMessage;
+use duohive_core::inbox::{Message, MessageId};
 use duohive_core::names::AgentName;
 use duohive_core::org::Org;
 use duohive_core::ports::{OrgFileError, QueuedToolCall, SessionRow, Store, StoreError};
@@ -93,5 +94,17 @@ impl Store for EnrichingStore {
 
     fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError> {
         self.inner.take_queued_tool_calls()
+    }
+
+    fn load_messages(&mut self, since: Millis) -> Result<Vec<Message>, StoreError> {
+        self.inner.load_messages(since)
+    }
+
+    fn find_message(&mut self, id: MessageId) -> Result<Option<Message>, StoreError> {
+        self.inner.find_message(id)
+    }
+
+    fn save_message(&mut self, m: &Message) -> Result<(), StoreError> {
+        self.inner.save_message(m)
     }
 }

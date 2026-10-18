@@ -1,11 +1,41 @@
 //! Agents' tool calls (TD §6.2). The token is checked first, then the caller's
 //! rights, so a refused call has no other effect; each tool is answered by the
-//! task that builds it.
+//! task that builds it. Calls queued while DuoHive was closed run here too,
+//! after `Reconnected`, with no one to answer (P3-D10, P3-D24).
 
 use super::Engine;
+use super::rights::Caller;
+use super::signals::same_token;
 use crate::event::Event;
+use crate::inbox::{MessageKind, Sender};
 use crate::launch::Token;
-use crate::tool::{CallId, ErrorCode, ToolCall, ToolError, ToolName, ToolOk, ToolResult};
+use crate::ports::SessionRow;
+use crate::tool::{
+    CallId, ErrorCode, Rights, ToolCall, ToolError, ToolName, ToolOk, ToolResult, parse_call,
+};
+
+/// The caller whose session row holds `token`, with that session's rights (P3-D30).
+fn row_caller(rows: &[SessionRow], token: &Token) -> Option<Caller> {
+    let mut found = None;
+    // Every row is compared, so the time taken says nothing about which matched.
+    for row in rows {
+        let holds = row
+            .token
+            .as_ref()
+            .is_some_and(|t| same_token(&t.0, &token.0));
+        if holds {
+            found = Some(Caller {
+                agent: row.agent.clone(),
+                rights: if row.launched_as_duo {
+                    Rights::Duo
+                } else {
+                    Rights::Agent
+                },
+            });
+        }
+    }
+    found
+}
 
 /// The tool a call is for; `None` for `Rights`, which isn't a tool.
 fn tool_name(call: &ToolCall) -> Option<ToolName> {
@@ -32,17 +62,69 @@ impl Engine {
         call: &ToolCall,
     ) -> Vec<Event> {
         let mut out = Vec::new();
-        let result = self.tool_result(token, call, &mut out);
+        let result = self
+            .caller(token)
+            .and_then(|caller| self.run_call(&caller, call, &mut out));
         out.push(Event::ToolResult { call_id, result });
         out
     }
 
-    fn tool_result(&mut self, token: &Token, call: &ToolCall, _out: &mut Vec<Event>) -> ToolResult {
-        let caller = self.caller(token)?;
+    /// Runs `call` for `caller`, once its rights allow the tool.
+    fn run_call(&mut self, caller: &Caller, call: &ToolCall, out: &mut Vec<Event>) -> ToolResult {
         let Some(tool) = tool_name(call) else {
             return Ok(ToolOk::Rights(caller.rights));
         };
-        Self::allowed(&caller, tool)?;
-        Err(ToolError::new(ErrorCode::Unavailable, "not built yet"))
+        Self::allowed(caller, tool)?;
+        match call {
+            ToolCall::SendMessage { to, text } => self
+                .send(
+                    Sender::Agent(caller.agent.clone()),
+                    to,
+                    MessageKind::Text,
+                    text.clone(),
+                    out,
+                )
+                .map(|(message, outcome)| ToolOk::Queued { message, outcome }),
+            ToolCall::MessageStatus { id } => self.message_status(&caller.agent, *id),
+            _ => Err(ToolError::new(ErrorCode::Unavailable, "not built yet")),
+        }
+    }
+
+    /// Start-up: takes the calls queued while DuoHive was closed and finds each
+    /// one's caller among the session rows just loaded (P3-D24). An unknown
+    /// token or arguments that don't parse drop the call with a log line.
+    pub(super) fn take_closed_calls(&mut self, rows: &[SessionRow], out: &mut Vec<Event>) {
+        let calls = match self.ports.store.take_queued_tool_calls() {
+            Ok(calls) => calls,
+            Err(e) => {
+                out.push(Event::CommandRejected {
+                    reason: format!("couldn't read queued tool calls: {e}"),
+                });
+                return;
+            }
+        };
+        for queued in calls {
+            let Some(caller) = row_caller(rows, &queued.token) else {
+                tracing::warn!(request = queued.id, tool = %queued.tool, "queued tool call dropped: no session holds its token");
+                continue;
+            };
+            match parse_call(&queued.tool, &queued.arguments) {
+                Ok(call) => self.closed_calls.push((caller, call)),
+                Err(e) => tracing::warn!(
+                    request = queued.id, tool = %queued.tool, agent = %caller.agent, error = %e.message,
+                    "queued tool call dropped: bad arguments"
+                ),
+            }
+        }
+    }
+
+    /// After `Reconnected`: the calls queued while closed, in order. Their
+    /// results go nowhere (`CallId::REPLAY` is never published); a refusal is logged.
+    pub(super) fn run_closed_calls(&mut self, out: &mut Vec<Event>) {
+        for (caller, call) in std::mem::take(&mut self.closed_calls) {
+            if let Err(e) = self.run_call(&caller, &call, out) {
+                tracing::info!(agent = %caller.agent, ?call, error = %e.message, "queued tool call refused");
+            }
+        }
     }
 }

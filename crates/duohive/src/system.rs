@@ -224,6 +224,10 @@ pub async fn start_system(
     // ORDER MATTERS: bind before anything spawns a process (tmux below, CLI
     // `--version` detection). On macOS std marks the socket close-on-exec only
     // after creating it, so a process spawned meanwhile would inherit the listener.
+    // It also comes before `spawn_core`, whose `start_up` takes the tool calls
+    // queued while closed (P3-D24): from here a helper's call connects (and
+    // waits in the listen backlog), so every call either connects or was
+    // queued before the take, and none is left in the queue.
     let mut listener = HookListener::bind(&paths.run_sock()).map_err(|e| match e {
         ListenerError::AlreadyRunning => StartError::AlreadyRunning,
         ListenerError::Io(e) => StartError::Listener(e),

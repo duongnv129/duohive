@@ -2,6 +2,7 @@
 
 pub mod closed;
 pub mod db;
+mod messages;
 pub mod org_file;
 pub mod paths;
 pub mod settings_file;

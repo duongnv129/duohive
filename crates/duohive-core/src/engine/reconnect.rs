@@ -48,6 +48,10 @@ impl Engine {
             });
             Vec::new()
         });
+        // Before the inventory settles any row, so a token is checked against
+        // the sessions as they were when DuoHive closed (P3-D24).
+        self.take_closed_calls(&rows, &mut out);
+        self.load_inbox(&mut out);
         // Stopped means no row: a stale one goes.
         let (stopped, rows): (Vec<_>, Vec<_>) = rows
             .into_iter()
@@ -164,7 +168,8 @@ impl Engine {
         out
     }
 
-    /// Step 4: `NeedsYouChanged` (always) and `Reconnected`.
+    /// Step 4: `NeedsYouChanged` (always) and `Reconnected`; then the calls
+    /// queued while closed run (P3-D24), and agents at rest get their waiting messages.
     fn finish_reconnect(&mut self, out: &mut Vec<Event>) {
         let items = self.needs_you();
         self.needs_you_shown.clone_from(&items);
@@ -173,6 +178,8 @@ impl Engine {
         // Orphan sessions no longer hold their worktrees in use.
         self.worktrees_stale = true;
         out.push(Event::Reconnected);
+        self.run_closed_calls(out);
+        self.deliver_all(out);
     }
 
     /// Puts a row's state back, with `last_signal_at = now`: time DuoHive was

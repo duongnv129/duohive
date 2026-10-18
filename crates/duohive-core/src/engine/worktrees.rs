@@ -243,6 +243,9 @@ impl Engine {
         if self.state_of(agent) != AgentState::Stopped {
             self.save_row(agent, &mut out);
         }
+        if let Some(id) = self.rt_mut(agent).launch_message.take() {
+            self.drop_message(id, format!("couldn't create worktree: {error}"), &mut out);
+        }
         out
     }
 

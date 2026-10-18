@@ -9,7 +9,9 @@
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 
+use duohive_core::card::CardId;
 use duohive_core::hook::HookMessage;
+use duohive_core::inbox::{Message, MessageId, MessageKind, MessageStatus, Sender};
 use duohive_core::launch::{Token, WindowId};
 use duohive_core::ports::{SessionRow, Store};
 use duohive_core::status::{AgentState, Status};
@@ -73,10 +75,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 4);
+    assert_eq!(user_version(&first), 5);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 4);
+    assert_eq!(user_version(&second), 5);
 }
 
 #[test]
@@ -497,7 +499,7 @@ fn migration_3_applies_on_v2_db() {
         .unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 4);
+    assert_eq!(user_version(&conn), 5);
 }
 
 #[test]
@@ -506,7 +508,8 @@ fn migration_4_applies_on_v3_db() {
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
         conn.execute_batch(
-            "DROP TABLE pending_tool_calls;
+            "DROP TABLE messages;
+             DROP TABLE pending_tool_calls;
              ALTER TABLE sessions DROP COLUMN launched_as_duo;
              INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
                error, last_reply, task_at_launch, saw_end_hook, last_task)
@@ -522,7 +525,7 @@ fn migration_4_applies_on_v3_db() {
     assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 4);
+    assert_eq!(user_version(&conn), 5);
 }
 
 #[test]
@@ -589,4 +592,87 @@ fn closed_rights_from_launched_as_duo() {
     );
     assert_eq!(rights_for_token(&paths, "nope").unwrap(), None);
     assert_eq!(rights_for_token(&paths, "").unwrap(), None);
+}
+
+fn message(id: u64, from: Sender, kind: MessageKind, status: MessageStatus, at: u64) -> Message {
+    Message {
+        id: MessageId(id),
+        from,
+        to: n("pay-qa"),
+        kind,
+        text: format!("text {id}\nline two"),
+        status,
+        queued_at: Millis(at),
+        delivered_at: None,
+    }
+}
+
+#[test]
+fn messages_round_trip() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let squad = || Sender::Agent(n("squad-1"));
+    let text = MessageKind::Text;
+    let old_answered = message(1, squad(), text, MessageStatus::Answered, 100);
+    let queued = message(2, Sender::You, text, MessageStatus::Queued, 200);
+    let delivered = Message {
+        delivered_at: Some(Millis(350)),
+        ..message(3, squad(), text, MessageStatus::Delivered, 300)
+    };
+    let card_kind = MessageKind::CardAnswer(CardId(9));
+    let card = message(4, Sender::You, card_kind, MessageStatus::Queued, 400);
+    let dropped = |reason: &str| MessageStatus::Dropped {
+        reason: reason.into(),
+    };
+    let recent_dropped = message(5, squad(), text, dropped("no sign it started"), 5_000);
+    let old_dropped = message(6, squad(), text, dropped("gone"), 150);
+    for m in [
+        &old_answered,
+        &queued,
+        &delivered,
+        &card,
+        &recent_dropped,
+        &old_dropped,
+    ] {
+        store.save_message(m).unwrap();
+    }
+    // Queued and delivered whatever their age, recent ones, and the newest id.
+    assert_eq!(
+        store.load_messages(Millis(1_000)).unwrap(),
+        vec![queued.clone(), delivered, card, recent_dropped, old_dropped]
+    );
+    assert_eq!(
+        store.find_message(MessageId(1)).unwrap(),
+        Some(old_answered)
+    );
+    assert_eq!(store.find_message(MessageId(42)).unwrap(), None);
+    // Saving again replaces.
+    let taken = Message {
+        status: MessageStatus::Delivered,
+        delivered_at: Some(Millis(260)),
+        ..queued
+    };
+    store.save_message(&taken).unwrap();
+    assert_eq!(store.find_message(MessageId(2)).unwrap(), Some(taken));
+}
+
+#[test]
+fn migration_5_applies() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch("DROP TABLE messages; PRAGMA user_version = 4;")
+            .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    assert_eq!(store.load_messages(Millis(0)).unwrap(), vec![]);
+    let first = message(1, Sender::You, MessageKind::Text, MessageStatus::Queued, 1);
+    store.save_message(&first).unwrap();
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 5);
+    let sender: Option<String> = conn
+        .query_row("SELECT sender FROM messages WHERE id = 1", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(sender, None);
 }

@@ -10,6 +10,7 @@ use crate::adapter::{CliAdapter, CliPresence, untested_notice};
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
+use crate::inbox::MessageId;
 use crate::inherit::{expand_home, resolve};
 use crate::launch::{Key, LaunchSpec};
 use crate::names::AgentName;
@@ -108,7 +109,10 @@ impl Engine {
                 Err(GiveRefusal::Pending)
             }
             AgentState::Finished | AgentState::Idle => {
-                out.extend(self.type_next_turn(agent, task));
+                match self.type_next_turn(agent, task, None) {
+                    Ok(events) => out.extend(events),
+                    Err(reason) => out.extend(reject(reason)),
+                }
                 Ok(Given::TypedIn)
             }
             // Starting has no input box yet; working and waiting are busy.
@@ -312,6 +316,13 @@ impl Engine {
             rt.delivery = None;
         });
         self.change(agent, &Trigger::Launch, None, &mut out);
+        // Your message to a stopped agent is taken by the launch it starts (P3-D18).
+        let rt = self.rt_mut(agent);
+        if rt.task_at_launch
+            && let Some(id) = rt.launch_message.take()
+        {
+            self.mark_delivered(id, &mut out);
+        }
         let notice = untested_notice(cli.binary(), &version, adapter.tested_versions());
         let rt = self.rt_mut(agent);
         if rt.notice != notice {
@@ -339,36 +350,50 @@ impl Engine {
         rt.last_task = task;
         self.update_run(agent, &mut out, |rt| rt.worktree = None);
         self.change(agent, &Trigger::Launch, None, &mut out);
-        self.change(agent, &Trigger::LaunchFailed, Some(reason), &mut out);
+        self.change(
+            agent,
+            &Trigger::LaunchFailed,
+            Some(reason.clone()),
+            &mut out,
+        );
+        if let Some(id) = self.rt_mut(agent).launch_message.take() {
+            self.drop_message(id, reason, &mut out);
+        }
         out
     }
 
     /// Give work on finished or idle: the task is typed in as the next turn. The
     /// agent stays at rest until a sign it took the task (P2-D11): a busy or
-    /// prompt-submit hook, or a `~` busy read, moves it to working.
-    fn type_next_turn(&mut self, agent: &AgentName, task: String) -> Vec<Event> {
-        let (before, dialog, submit) = match self.with_running_adapter(agent, |a| {
+    /// prompt-submit hook, or a `~` busy read, moves it to working. A message
+    /// (`message` set) goes in the same way but isn't the agent's last task.
+    pub(super) fn type_next_turn(
+        &mut self,
+        agent: &AgentName,
+        task: String,
+        message: Option<MessageId>,
+    ) -> Result<Vec<Event>, String> {
+        let (before, dialog, submit) = self.with_running_adapter(agent, |a| {
             (a.before_paste_keys(), a.dialog_check(), a.submit_keys())
-        }) {
-            Ok(keys) => keys,
-            Err(reason) => return reject(reason),
-        };
+        })?;
         self.ports
             .runtime
             .paste(agent, before, dialog, task.clone(), submit);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(agent);
-        rt.last_task = Some(task.clone());
+        if message.is_none() {
+            rt.last_task = Some(task.clone());
+        }
         rt.last_signal_at = now;
         let mut out = Vec::new();
         self.update_run(agent, &mut out, |rt| {
             rt.delivery = Some(Delivery {
                 task,
                 due: now + DELIVERY_WAIT,
+                message,
             });
         });
         self.save_row(agent, &mut out);
-        out
+        Ok(out)
     }
 
     /// `PasteFailed`: a pending delivery is reported not taken, with the reason.
@@ -384,23 +409,28 @@ impl Engine {
         self.not_taken(agent, reason)
     }
 
-    /// Ends `agent`'s pending delivery as not taken (P2-D11).
+    /// Ends `agent`'s pending delivery as not taken (P2-D11): a task is
+    /// reported, a message is dropped and never pasted again. The next waiting
+    /// message may then go in.
     pub(super) fn not_taken(&mut self, agent: &AgentName, reason: String) -> Vec<Event> {
         let mut out = Vec::new();
-        let mut task = None;
-        self.update_run(agent, &mut out, |rt| {
-            task = rt.delivery.take().map(|d| d.task);
-        });
-        if let Some(task) = task {
-            out.insert(
+        let mut ended = None;
+        self.update_run(agent, &mut out, |rt| ended = rt.delivery.take());
+        match ended {
+            Some(Delivery {
+                message: Some(id), ..
+            }) => self.drop_message(id, reason, &mut out),
+            Some(Delivery { task, .. }) => out.insert(
                 0,
                 Event::GiveWorkNotTaken {
                     agent: agent.clone(),
                     task,
                     reason,
                 },
-            );
+            ),
+            None => {}
         }
+        self.deliver_next(agent, &mut out);
         out
     }
 

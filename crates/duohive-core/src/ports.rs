@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::adapter::DialogCheck;
 use crate::alert::Alert;
 use crate::hook::HookMessage;
+use crate::inbox::{Message, MessageId};
 use crate::launch::{Key, LaunchCommand, Token, WindowId};
 use crate::names::AgentName;
 use crate::org::Org;
@@ -27,6 +28,8 @@ pub trait Clock: Send {
 pub trait Ids: Send {
     /// A fresh token.
     fn new_token(&mut self) -> Token;
+    /// A fresh message boundary: 12 lowercase hex characters (P3-D18).
+    fn boundary(&mut self) -> String;
 }
 
 /// The terminal multiplexer. Fire-and-forget; results return as [`RuntimeEvent`] inputs.
@@ -241,6 +244,13 @@ pub trait Store: Send {
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError>;
     /// Takes the tool calls queued while DuoHive was closed, oldest first, and deletes them.
     fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError>;
+    /// The messages still queued or delivered, those queued at `since` or later,
+    /// and the newest one whatever its status (so ids continue), by id.
+    fn load_messages(&mut self, since: Millis) -> Result<Vec<Message>, StoreError>;
+    /// One message, whatever its age.
+    fn find_message(&mut self, id: MessageId) -> Result<Option<Message>, StoreError>;
+    /// Inserts or replaces a message, keyed by id.
+    fn save_message(&mut self, m: &Message) -> Result<(), StoreError>;
 }
 
 /// A live view of one agent's pane. Opening a stream closes any other.

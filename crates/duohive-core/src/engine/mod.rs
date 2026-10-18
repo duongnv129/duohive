@@ -5,6 +5,7 @@ mod alerts;
 mod driver;
 #[cfg(test)]
 mod harness;
+mod inbox;
 mod lifecycle;
 mod org_edit;
 mod reconnect;
@@ -17,6 +18,7 @@ mod worktrees;
 pub use driver::run_core;
 pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
+use rights::Caller;
 use signals::Exit;
 use worktrees::Creating;
 
@@ -30,6 +32,7 @@ use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::{AgentView, Event, NeedsYouItem, Snapshot};
 use crate::hook::HookMessage;
+use crate::inbox::{Message, MessageId};
 use crate::inherit::{expand_home, resolve};
 use crate::launch::{Token, WindowId};
 use crate::names::AgentName;
@@ -40,6 +43,7 @@ use crate::ports::{
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
+use crate::tool::ToolCall;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
 use crate::worktree::{TaskId, WorktreeRow};
 
@@ -117,6 +121,8 @@ struct ExitPending {
 struct Delivery {
     task: String,
     due: Millis,
+    /// The message this paste carries; `None` for a task you gave.
+    message: Option<MessageId>,
 }
 
 /// One agent's runtime state.
@@ -162,6 +168,8 @@ struct AgentRt {
     delivery: Option<Delivery>,
     /// The worktree being created for the next launch (P2-D20).
     creating: Option<Creating>,
+    /// Your message the next launch carries as its task (P3-D18).
+    launch_message: Option<MessageId>,
 }
 
 impl AgentRt {
@@ -199,6 +207,7 @@ impl AgentRt {
             launched_as_duo: false,
             delivery: None,
             creating: None,
+            launch_message: None,
         }
     }
 }
@@ -236,6 +245,15 @@ pub struct Engine {
     worktree_generations: HashMap<(AgentName, TaskId), u64>,
     /// The next incarnation number.
     next_generation: u64,
+    /// Messages queued or delivered, and the last 10 minutes' others, by id (TD §6.3).
+    inbox: Vec<Message>,
+    /// The next message id.
+    next_message: u64,
+    /// The agent you are typing into, which nothing is pasted into (P3-D19).
+    typing: Option<AgentName>,
+    /// Calls queued while DuoHive was closed, with the callers start-up
+    /// found for their tokens; run after `Reconnected` (P3-D24).
+    closed_calls: Vec<(Caller, ToolCall)>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -271,6 +289,10 @@ impl Engine {
             worktree_check_due: now + timers::WORKTREE_CHECK_EVERY,
             worktree_generations: HashMap::new(),
             next_generation: 0,
+            inbox: Vec::new(),
+            next_message: 1,
+            typing: None,
+            closed_calls: Vec::new(),
             cfg,
             ports,
             adapters,
@@ -373,12 +395,12 @@ impl Engine {
                 token,
                 call,
             } => self.on_tool(call_id, &token, &call),
-            Command::SendMessage { .. }
-            | Command::ChatToDuo { .. }
+            Command::SendMessage { to, text } => self.send_yours(to, text),
+            Command::Typing { agent } => self.typing(agent),
+            Command::ChatToDuo { .. }
             | Command::AssignToRole { .. }
             | Command::ApproveCard { .. }
-            | Command::RejectCard { .. }
-            | Command::Typing { .. } => reject("not built yet"),
+            | Command::RejectCard { .. } => reject("not built yet"),
         }
     }
 
@@ -398,7 +420,7 @@ impl Engine {
                     problem: problems.remove(&name),
                     worktree: rt.and_then(|r| r.worktree.clone()),
                     delivery_pending: rt.is_some_and(|r| r.delivery.is_some()),
-                    inbox: 0,
+                    inbox: self.waiting(&name),
                 };
                 (name, view)
             })
@@ -413,7 +435,7 @@ impl Engine {
             worktrees: self.worktrees_shown.clone(),
             cards: Vec::new(),
             chat: Vec::new(),
-            your_queued: Vec::new(),
+            your_queued: self.your_queued(),
         }
     }
 
@@ -513,14 +535,18 @@ impl Engine {
         });
         self.alert_after(agent, &before, out);
         // P2-D11: leaving rest ends a delivery's wait; a stopped agent runs in no worktree.
+        let mut ended = None;
         self.update_run(agent, out, |rt| {
             if !to.is_at_rest() {
-                rt.delivery = None;
+                ended = rt.delivery.take().and_then(|d| d.message);
             }
             if to == AgentState::Stopped {
                 rt.worktree = None;
             }
         });
+        if let Some(id) = ended {
+            self.delivery_left_rest(agent, id, to, out);
+        }
         if to == AgentState::Stopped {
             self.delete_row(agent, out);
         } else {
@@ -529,6 +555,10 @@ impl Engine {
         // TD §5.3: an agent's worktrees are checked when it finishes.
         if to == AgentState::Finished {
             self.check_worktrees(Some(agent), out);
+        }
+        // TD §6.3: at rest, a waiting message may go in.
+        if to.is_at_rest() {
+            self.deliver_next(agent, out);
         }
         true
     }

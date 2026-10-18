@@ -37,6 +37,11 @@ ALTER TABLE sessions ADD COLUMN worktree TEXT;
 CREATE TABLE pending_tool_calls(id INTEGER PRIMARY KEY AUTOINCREMENT, token TEXT NOT NULL, tool TEXT NOT NULL,
   arguments TEXT NOT NULL, queued_at INTEGER NOT NULL);
 ALTER TABLE sessions ADD COLUMN launched_as_duo INTEGER NOT NULL DEFAULT 0;
+", "
+-- sender NULL = you; kind 'text' | 'card'; status 'queued' | 'delivered' | 'answered' | 'dropped'.
+CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NULL, kind TEXT NOT NULL,
+  card INTEGER, text TEXT NOT NULL, status TEXT NOT NULL, reason TEXT, queued_at INTEGER NOT NULL,
+  delivered_at INTEGER);
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {
