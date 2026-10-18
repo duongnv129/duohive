@@ -1,8 +1,8 @@
 //! Agents' tool calls (TD §6.2). The token is checked first, then the caller's
 //! rights, so a refused call has no other effect; each tool is answered by the
 //! task that builds it. Calls queued while DuoHive was closed run here too,
-//! after `Reconnected`, with no one to answer and no action line (P3-D10,
-//! P3-D24).
+//! after `Reconnected`, with no one to answer but with their action lines
+//! (P3-D10, P3-D24).
 
 use super::Engine;
 use super::assign::Assigned;
@@ -99,17 +99,29 @@ impl Engine {
         let Some(result) = self.run_call(&caller, call, Some((call_id, token)), &mut out) else {
             return out;
         };
+        self.answer_or_park(call_id, line, result, &mut out);
+        out
+    }
+
+    /// Publishes `result`, or holds the call while its worktree is created (P3-D23).
+    fn answer_or_park(
+        &mut self,
+        call_id: CallId,
+        line: Option<&ToolCall>,
+        result: ToolResult,
+        out: &mut Vec<Event>,
+    ) {
         match result {
             Ok(ToolOk::Given {
                 agent,
                 given: Given::CreatingWorktree,
             }) => self.park_until_created(call_id, agent, line.cloned()),
-            result => self.publish_result(call_id, line, result, &mut out),
+            result => self.publish_result(call_id, line, result, out),
         }
-        out
     }
 
-    /// Publishes `result` for `call_id`, after `line`'s action line (P3-D14).
+    /// Publishes `result` for `call_id`, after `line`'s action line (P3-D14);
+    /// a replayed call's result goes nowhere (P3-D24).
     pub(super) fn publish_result(
         &mut self,
         call_id: CallId,
@@ -120,11 +132,13 @@ impl Engine {
         if let Some((text, word)) = line.and_then(|call| action_line(call, &result)) {
             self.chat_action(text, word, out);
         }
-        out.push(Event::ToolResult { call_id, result });
+        if call_id != CallId::REPLAY {
+            out.push(Event::ToolResult { call_id, result });
+        }
     }
 
     /// Holds `call` until `agent`'s worktree creation ends (P3-D23). A
-    /// replayed call has no one to answer, so it isn't held. A held call is
+    /// replayed call is held only for its action line. A held call is
     /// answered even when its caller has since stopped: the work it asked
     /// for went ahead, and its action line records it.
     pub(super) fn park_until_created(
@@ -133,7 +147,7 @@ impl Engine {
         agent: AgentName,
         line: Option<ToolCall>,
     ) {
-        if call != CallId::REPLAY {
+        if call != CallId::REPLAY || line.is_some() {
             self.parked.push(Parked {
                 call_id: call,
                 agent,
@@ -242,13 +256,19 @@ impl Engine {
         }
     }
 
-    /// After `Reconnected`: the calls queued while closed, in order. Their
-    /// results go nowhere (`CallId::REPLAY` is never published); a refusal is logged.
+    /// After `Reconnected`: the calls queued while closed, in order, each
+    /// with its action line when Duo made it (P3-D24). Their results go
+    /// nowhere (`CallId::REPLAY` is never published); a refusal is logged.
     pub(super) fn run_closed_calls(&mut self, out: &mut Vec<Event>) {
         for (caller, call) in std::mem::take(&mut self.closed_calls) {
-            if let Some(Err(e)) = self.run_call(&caller, &call, None, out) {
+            let Some(result) = self.run_call(&caller, &call, None, out) else {
+                continue;
+            };
+            if let Err(e) = &result {
                 tracing::info!(agent = %caller.agent, ?call, error = %e.message, "queued tool call refused");
             }
+            let line = (caller.rights == Rights::Duo).then_some(&call);
+            self.answer_or_park(CallId::REPLAY, line, result, out);
         }
     }
 }

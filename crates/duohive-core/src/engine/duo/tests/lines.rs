@@ -1,9 +1,13 @@
 //! Action lines (P3-D14): one `→` entry per answered call of Duo's.
 
+use super::super::super::harness::T0;
 use super::*;
 use crate::chat::cut;
 use crate::inbox::MessageId;
+use crate::launch::Token;
 use crate::org::RoleKey;
+use crate::ports::{LiveWindow, QueuedToolCall, SessionRow};
+use crate::status::Status;
 
 /// Duo's call: its result and its action lines, checking there is at most one.
 fn line_of(h: &mut Harness, call: ToolCall) -> (ToolResult, (String, String)) {
@@ -134,5 +138,79 @@ fn assign_lines_name_the_role_until_an_agent_takes_it() {
             format!("give work Generalist \"{TASK}\""),
             "card raised".into()
         )
+    );
+}
+
+/// A restored idle session for `agent` on window `@<agent>`, holding `token`.
+fn idle_row(agent: &str, token: &str, launched_as_duo: bool) -> SessionRow {
+    SessionRow {
+        agent: n(agent),
+        token: Some(Token(token.into())),
+        window: Some(WindowId(format!("@{agent}"))),
+        status: Status {
+            state: AgentState::Idle,
+            quiet: false,
+            quiet_since: None,
+            from_screen: false,
+            since: T0,
+            error: None,
+            waiting_on: None,
+        },
+        last_reply: None,
+        task_at_launch: false,
+        saw_end_hook: false,
+        last_task: None,
+        worktree: None,
+        launched_as_duo,
+    }
+}
+
+#[test]
+fn replayed_duo_calls_write_their_action_lines() {
+    // P3-D24: calls queued while closed run after `Reconnected`, each with
+    // its action line when Duo made it, and no result.
+    let mut h = Harness::new();
+    {
+        let mut st = h.store.state.lock().unwrap();
+        st.sessions
+            .insert(n("Duo"), idle_row("Duo", "tok-duo", true));
+        st.sessions
+            .insert(n("squad-1"), idle_row("squad-1", "tok-squad", false));
+        let calls = [
+            (
+                "tok-duo",
+                "propose_org_change",
+                json!({"change": {"op": "add_team", "name": "Growth", "fields": {}}}),
+            ),
+            (
+                "tok-squad",
+                "send_message",
+                json!({"to": "pay-qa", "text": "hi"}),
+            ),
+        ];
+        for (id, (token, tool, arguments)) in (1..).zip(calls) {
+            st.queued_tool_calls.push(QueuedToolCall {
+                id,
+                token: Token(token.into()),
+                tool: tool.into(),
+                arguments,
+                queued_at: T0,
+            });
+        }
+    }
+    let mut events = h.engine.start_up();
+    let windows = ["Duo", "squad-1"].map(|agent| LiveWindow {
+        agent: n(agent),
+        window: WindowId(format!("@{agent}")),
+        dead: None,
+        activity_secs: 0,
+    });
+    events.extend(h.input(Input::Runtime(RuntimeEvent::Inventory(windows.to_vec()))));
+    assert!(events.contains(&Event::Reconnected), "{events:?}");
+    let (results, events) = split(events);
+    assert!(results.is_empty(), "{results:?}");
+    assert_eq!(
+        actions(&events),
+        [pair("propose org change", "card raised")]
     );
 }
