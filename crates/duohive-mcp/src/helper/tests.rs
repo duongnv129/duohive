@@ -250,6 +250,33 @@ async fn closed_changes_queue_and_answer_queued() {
 }
 
 #[tokio::test]
+async fn no_answer_in_time_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut cfg = config(dir.path(), Some("tok-duo"));
+    cfg.answer_timeout = Duration::from_millis(200);
+    let held = Arc::new(Mutex::new(Vec::new()));
+    let keep = Arc::clone(&held);
+    let listener = UnixListener::bind(&cfg.sock).unwrap();
+    tokio::spawn(async move {
+        // Accepts and holds every connection open, never answering.
+        while let Ok((stream, _)) = listener.accept().await {
+            keep.lock().unwrap().push(stream);
+        }
+    });
+    let answers = session(
+        cfg,
+        Arc::new(FakeFallback::default()),
+        &[init(), call(3, "list_agents", &json!({}))],
+    )
+    .await;
+    assert_eq!(error_code(&answers[1]), "interrupted");
+    assert_eq!(
+        answers[1]["result"]["structuredContent"]["error"]["message"],
+        "DuoHive sent no answer within 0 s"
+    );
+}
+
+#[tokio::test]
 async fn closed_mid_call_answers_interrupted_not_queued() {
     let dir = tempfile::tempdir().unwrap();
     let cfg = config(dir.path(), Some("tok-duo"));

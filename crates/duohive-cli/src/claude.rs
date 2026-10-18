@@ -6,6 +6,7 @@ use duohive_core::adapter::{
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
 use duohive_core::status::WaitingOn;
+use duohive_core::tool::WAIT_MAX_MINUTES;
 use serde_json::Value;
 
 use crate::detect::probe_version;
@@ -31,6 +32,11 @@ const SETTINGS_FILE: &str = "settings.json";
 
 /// The per-launch MCP config, passed with `--mcp-config` (TD §5.2).
 const MCP_FILE: &str = "mcp.json";
+
+/// How long Claude Code lets a DuoHive tool run silent, in ms: past the helper's own
+/// wait for `wait_for_agent` (60 min + 30 s). Its default, 1800 s, would cut a long
+/// wait short (checked live, Task 3.2).
+const MCP_TOOL_TIMEOUT_MS: u64 = (WAIT_MAX_MINUTES as u64 * 60 + 90) * 1000;
 
 /// The one tool pattern each launch pre-approves: DuoHive's own (P3-D1).
 const DUOHIVE_TOOLS: &str = "mcp__duohive__*";
@@ -86,6 +92,7 @@ impl CliAdapter for ClaudeAdapter {
             "type": "stdio",
             "command": utf8(&spec.hook_exe, "DuoHive's path")?,
             "args": ["mcp"],
+            "timeout": MCP_TOOL_TIMEOUT_MS,
         }}});
         let mcp = serde_json::to_string_pretty(&mcp)
             .map_err(|e| LaunchError::Invalid(format!("couldn't build the MCP config: {e}")))?;
@@ -567,7 +574,8 @@ mod tests {
         assert_eq!(
             mcp_json(&cmd),
             serde_json::json!({"mcpServers": {"duohive": {
-                "type": "stdio", "command": "/usr/local/bin/duohive", "args": ["mcp"]
+                "type": "stdio", "command": "/usr/local/bin/duohive", "args": ["mcp"],
+                "timeout": 3_690_000
             }}})
         );
     }

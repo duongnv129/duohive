@@ -101,8 +101,10 @@ enum Asked {
     Answered(Value),
     /// Connecting failed: DuoHive is closed.
     Closed,
-    /// Connected, but no answer came (P3-D24).
+    /// Connected, but the connection ended with no answer (P3-D24).
     CutOff,
+    /// Connected, but no answer came within the timeout (P3-D24).
+    TimedOut(Duration),
 }
 
 /// Sends one line to DuoHive and reads its one-line answer.
@@ -120,7 +122,8 @@ async fn ask(cfg: &HelperConfig, request: &Value, timeout: Duration) -> Asked {
     let mut answer = String::new();
     match tokio::time::timeout(timeout, reader.read_line(&mut answer)).await {
         Ok(Ok(n)) if n > 0 => serde_json::from_str(&answer).map_or(Asked::CutOff, Asked::Answered),
-        _ => Asked::CutOff,
+        Ok(_) => Asked::CutOff,
+        Err(_) => Asked::TimedOut(timeout),
     }
 }
 
@@ -131,7 +134,7 @@ async fn list_tools(cfg: &HelperConfig, closed: &dyn ClosedFallback) -> Vec<Valu
     let request = json!({ "kind": "tools", "token": token });
     match ask(cfg, &request, cfg.answer_timeout).await {
         Asked::Answered(v) => v["ok"]["tools"].as_array().cloned().unwrap_or_default(),
-        Asked::CutOff => Vec::new(),
+        Asked::CutOff | Asked::TimedOut(_) => Vec::new(),
         Asked::Closed => closed.rights(token).map_or_else(Vec::new, |rights| {
             specs(rights)
                 .into_iter()
@@ -160,6 +163,10 @@ async fn call_tool(
             (None, None) => tool_error("interrupted", "DuoHive's answer was unreadable"),
         },
         Asked::CutOff => tool_error("interrupted", "DuoHive closed during the call"),
+        Asked::TimedOut(after) => tool_error(
+            "interrupted",
+            &format!("DuoHive sent no answer within {} s", after.as_secs()),
+        ),
         Asked::Closed => closed_call(closed, token, name, arguments),
     }
 }
