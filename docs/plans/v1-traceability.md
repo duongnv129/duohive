@@ -191,7 +191,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §6.3 Inbox: delivery counts once the recipient leaves rest (P2-D11) | 2 | 2.12 |
 | §7 Storage: files, `state.db`, single instance (`run.lock`), quit and shutdown, logs | 1 | T16–17, T22, T27, T29 |
 | §7 Storage: worktrees table, `sessions.worktree` | 2 | 2.11, 2.13 |
-| §7 Storage: messages, cards, chat tables | 3 | 3.4, 3.6, 3.8 |
+| §7 Storage: tool calls queued while closed, messages, cards, chat tables | 3 | 3.2, 3.4, 3.6, 3.8 |
 | §7 Storage: timestamped template backup | 4 | 4.4 |
 | §8 Errors: CLI, launch, crash, Duo, tmux, `org.toml`, directory, hook silent | 1 | T11–T16, T23 |
 | §8 Errors: worktree, no notifier | 2 | 2.10, 2.12, 2.13 |
