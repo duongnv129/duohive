@@ -12,7 +12,7 @@ use duohive_core::view::PaneInput;
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
-use crate::forms::{Chooser, Form, FormOutcome};
+use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
 use crate::model::{Confirm, Dialog, UiModel};
 use crate::tree::tree_rows;
 
@@ -245,8 +245,17 @@ fn form_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
-/// Applies an action to the model; pure. Any key clears the footer note.
+/// Applies an action to the model; pure. Any key clears the footer note. A card keeps
+/// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    let out = apply(m, a);
+    if m.focus.pane != Pane::Chat {
+        m.focus.card = None;
+    }
+    out
+}
+
+fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
     // A refusal arrives before any further input; later ones aren't about the last send.
     m.give_sent = None;
@@ -264,6 +273,11 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         None => {}
+    }
+    if m.focus.pane == Pane::Chat
+        && let Some(out) = cards::card_action(m, a)
+    {
+        return out;
     }
     if m.zoomed_agent().is_some()
         && matches!(
@@ -421,14 +435,32 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
             m.dialog = Some(Dialog::Form(f));
             Vec::new()
         }
-        FormOutcome::Cancel => Vec::new(),
-        FormOutcome::Edit(edit) => {
-            f.saving = true;
-            m.dialog = Some(Dialog::Form(f));
-            vec![UiEffect::Send(Command::EditOrg(edit))]
+        FormOutcome::Cancel => {
+            // A card's form goes back to the card, unanswered (UI §4.6).
+            if let FormPurpose::Card(id) = f.purpose {
+                crate::chat::focus_card(m, id);
+            }
+            Vec::new()
         }
+        FormOutcome::Edit(edit) => match f.purpose {
+            FormPurpose::Card(id) => cards::approve_edited(m, id, edit),
+            FormPurpose::Edit => {
+                f.saving = true;
+                m.dialog = Some(Dialog::Form(f));
+                vec![UiEffect::Send(Command::EditOrg(edit))]
+            }
+        },
         FormOutcome::Confirm(c) => {
-            m.dialog = Some(Dialog::Confirm(Box::new(Confirm { back: Some(f), ..c })));
+            let on_yes = match f.purpose {
+                FormPurpose::Card(id) => cards::approve_command(m, id, c.on_yes),
+                FormPurpose::Edit => c.on_yes,
+            };
+            let c = Confirm {
+                back: Some(f),
+                on_yes,
+                ..c
+            };
+            m.dialog = Some(Dialog::Confirm(Box::new(c)));
             Vec::new()
         }
     }
@@ -653,6 +685,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 }
 
 mod agent;
+mod cards;
 mod give_work;
 pub(crate) mod mouse;
 mod panes;
@@ -661,6 +694,8 @@ mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
+#[cfg(test)]
+mod card_tests;
 #[cfg(test)]
 mod chat_tests;
 #[cfg(test)]

@@ -5,6 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use duohive_core::card::{Card, CardId};
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, Snapshot};
 use duohive_core::inbox::{MessageId, Sender};
@@ -165,6 +166,8 @@ pub struct UiModel {
     pub give_later: Option<(AgentName, String, Option<RunIn>)>,
     /// The worktrees the engine lists, as it last published them.
     pub worktrees: Vec<WorktreeRow>,
+    /// Pending approval cards (UI §4.6).
+    pub cards: BTreeMap<CardId, Card>,
 }
 
 impl UiModel {
@@ -201,6 +204,7 @@ impl UiModel {
             give_sent: None,
             give_later: None,
             worktrees: Vec::new(),
+            cards: BTreeMap::new(),
         }
     }
 
@@ -287,12 +291,20 @@ impl UiModel {
                 return self.update_view(&agent, |v| v.inbox = waiting);
             }
             Event::MessageRefused { reason, .. } => chat::refused(self, reason),
+            // The chat draws a pending card at its place (UI §4.6).
+            Event::CardRaised(card) => {
+                self.cards.insert(card.id, *card);
+            }
+            // Its `CardResult` chat line follows and takes its place.
+            Event::CardAnswered { card, .. } => {
+                self.cards.remove(&card);
+                if self.focus.card == Some(card) {
+                    self.focus.card = None;
+                }
+            }
             // Phase 3 events reach the TUI as their tasks build them.
-            Event::ToolResult { .. }
-            | Event::CardRaised(_)
-            | Event::CardAnswered { .. }
-            | Event::RoleAssigned { .. }
-            | Event::AssignRefused { .. } => {}
+            Event::ToolResult { .. } | Event::RoleAssigned { .. } | Event::AssignRefused { .. } => {
+            }
         }
         true
     }
@@ -451,12 +463,13 @@ impl UiModel {
         }
     }
 
-    /// Replaces the Needs you list. The cursor stays on the same agent; when that agent
-    /// has left, it keeps its row number, clamped to the new last row (UI §4.1.3).
+    /// Replaces the Needs you list. The cursor stays on the same agent or card; when it
+    /// has left, the cursor keeps its row number, clamped to the new last row (UI §4.1.3).
     fn set_needs_you(&mut self, items: Vec<NeedsYouItem>) {
         let at = self.focus.needs_you_cursor;
-        let under_cursor = self.needs_you.get(at).map(|i| i.agent.clone());
-        let same = under_cursor.and_then(|a| items.iter().position(|i| i.agent == a));
+        let key = |i: &NeedsYouItem| (i.agent.clone(), i.card);
+        let under_cursor = self.needs_you.get(at).map(key);
+        let same = under_cursor.and_then(|k| items.iter().position(|i| key(i) == k));
         let last = items.len().saturating_sub(1);
         self.focus.needs_you_cursor = same.unwrap_or(at).min(last);
         self.needs_you = items;
@@ -485,6 +498,14 @@ impl UiModel {
         self.chat.entries = s.chat;
         self.chat.scroll = None;
         self.queued = s.your_queued.into_iter().collect();
+        self.cards = s.cards.into_iter().map(|c| (c.id, c)).collect();
+        if self
+            .focus
+            .card
+            .is_some_and(|c| !self.cards.contains_key(&c))
+        {
+            self.focus.card = None;
+        }
         self.keep_selection_valid();
     }
 

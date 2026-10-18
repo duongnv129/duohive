@@ -3,10 +3,12 @@
 //! engine publishes.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use duohive_core::card::CardId;
 use duohive_core::chat::{ChatEntry, ChatId, ChatKind};
 use duohive_core::command::Command;
 use duohive_core::names::AgentName;
 
+use crate::focus::{AgentMode, Pane};
 use crate::format::{pad_right, state_cell, width};
 use crate::forms::LineEdit;
 use crate::input::{Action, UiEffect};
@@ -129,6 +131,14 @@ pub(crate) fn chat_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             Action::Enter | Action::Tab => return take(m, a == Action::Enter),
             _ => {}
         }
+    }
+    // `↑` from an empty input focuses the newest card (UI §4.6).
+    if a == Action::Up && m.chat_input.text().is_empty() {
+        if let Some(newest) = m.cards.values().max_by_key(|c| (c.raised_at, c.id)) {
+            let id = newest.id;
+            focus_card(m, id);
+        }
+        return Vec::new();
     }
     let input = &mut m.chat_input;
     match a {
@@ -263,6 +273,31 @@ pub(crate) fn scroll(m: &mut UiModel, up: bool, rows: usize) {
     } else {
         Some((top + rows).min(bottom))
     };
+}
+
+/// Focuses card `id` in the chat, so it takes `y`, `e` and `n` (UI §4.6), and scrolls
+/// the history to it when it doesn't show whole.
+pub(crate) fn focus_card(m: &mut UiModel, id: CardId) {
+    if !m.cards.contains_key(&id) {
+        return;
+    }
+    m.focus.pane = Pane::Chat;
+    m.focus.agent_mode = AgentMode::Selected;
+    m.focus.card = Some(id);
+    m.suggest = None;
+    let (Some(fit), Some((start, len))) = (
+        crate::render::chat_history(m),
+        crate::render::chat_card_span(m, id),
+    ) else {
+        return;
+    };
+    let bottom = fit.len.saturating_sub(fit.room);
+    let top = m.chat.scroll.map_or(fit.follow, |t| t.min(bottom));
+    if start >= top && start + len <= top + fit.room {
+        return;
+    }
+    let target = start.min(bottom);
+    m.chat.scroll = (target != fit.follow.min(bottom)).then_some(target);
 }
 
 /// Your message was refused (`MessageRefused`): the line comes back into the input with

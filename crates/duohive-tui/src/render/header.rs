@@ -10,7 +10,7 @@ use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
 use crate::focus::Pane;
 use crate::format::{truncate_end, width, wrap_capped};
-use crate::forms::{FieldKind, SettingsRow, SettingsState};
+use crate::forms::{FieldKind, SettingsRow, SettingsState, card_editable};
 use crate::model::{Dialog, SPACE_RETRY, UiModel};
 use crate::theme::Palette;
 
@@ -32,6 +32,9 @@ const AGENT_KEYS_STOPPED: &str = " z zoom · space give work";
 /// A team or role's summary: no agent keys apply there.
 const SUMMARY_KEYS: &str = " tab pane · esc back";
 const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
+/// A focused card's keys (UI §4.6); `e edit` only where it can.
+const CARD_KEYS: &str = " y approve · e edit · n reject · esc input";
+const CARD_KEYS_NO_EDIT: &str = " y approve · n reject · esc input";
 const SETTINGS_KEYS: &str = " ↑↓ move · space change · esc back";
 const SETTINGS_STEP_KEYS: &str = " ↑↓ move · space change · ←→ step · esc back";
 /// While a Settings text box is open.
@@ -152,11 +155,20 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             Pane::NeedsYou => NEEDS_YOU_KEYS,
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
             Pane::Agent => agent_keys(m),
-            Pane::Chat => CHAT_KEYS,
+            Pane::Chat => chat_keys(m),
         }
         .to_owned(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
+}
+
+/// The chat's keys, or a focused card's.
+fn chat_keys(m: &UiModel) -> &'static str {
+    match m.focus.card.and_then(|id| m.cards.get(&id)) {
+        Some(card) if card_editable(card) => CARD_KEYS,
+        Some(_) => CARD_KEYS_NO_EDIT,
+        None => CHAT_KEYS,
+    }
 }
 
 /// The agent pane's keys for what it shows: a running agent's terminal, a stopped

@@ -141,8 +141,14 @@ pub(super) fn needs_you_move(m: &mut UiModel, down: bool) {
 }
 
 /// `enter` in Needs you: selects the agent under the cursor, unfolds its team and role,
-/// and focuses the agent pane in Selected mode (UI §4.1.3).
+/// and focuses the agent pane in Selected mode; on a card row, focuses that card in the
+/// chat (UI §4.1.3).
 pub(super) fn needs_you_enter(m: &mut UiModel) -> Option<AgentName> {
-    let agent = m.needs_you.get(m.focus.needs_you_cursor)?.agent.clone();
+    let item = m.needs_you.get(m.focus.needs_you_cursor)?;
+    if let Some(card) = item.card {
+        crate::chat::focus_card(m, card);
+        return None;
+    }
+    let agent = item.agent.clone();
     m.reveal_agent(&agent).then_some(agent)
 }

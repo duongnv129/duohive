@@ -3,6 +3,7 @@
 
 use std::collections::BTreeSet;
 
+use duohive_core::card::{Card, CardId};
 use duohive_core::chat::{ChatEntry, ChatKind};
 use duohive_core::inbox::MessageId;
 use duohive_core::time::Millis;
@@ -40,7 +41,30 @@ const AGENT_CELLS: usize = 18;
 const COMMAND_CELLS: usize = 10;
 
 /// One screen row of history: styled pieces.
-type Row = Vec<(String, Color)>;
+type Row = super::card::Row;
+
+/// What the history shows, in order: the engine's entries, and each pending card at
+/// its place (UI §4.6), after the entries up to when it was raised.
+#[derive(Clone, Copy)]
+enum Item<'a> {
+    Entry(&'a ChatEntry),
+    Card(&'a Card),
+}
+
+fn items(m: &UiModel) -> Vec<Item<'_>> {
+    let mut cards: Vec<&Card> = m.cards.values().collect();
+    cards.sort_by_key(|c| (c.raised_at, c.id));
+    let mut cards = cards.into_iter().peekable();
+    let mut out = Vec::with_capacity(m.chat.entries.len() + m.cards.len());
+    for e in &m.chat.entries {
+        while let Some(c) = cards.next_if(|c| c.raised_at < e.at) {
+            out.push(Item::Card(c));
+        }
+        out.push(Item::Entry(e));
+    }
+    out.extend(cards.map(Item::Card));
+    out
+}
 
 /// How the history fits a chat pane.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,6 +86,7 @@ struct RowCtx<'a> {
     cells: usize,
     who_cells: usize,
     queued: &'a BTreeSet<MessageId>,
+    now: Millis,
 }
 
 /// Draws the chat pane in `r`; returns where the cursor goes while the input has focus.
@@ -96,8 +121,8 @@ pub(super) fn draw(
     let fit = history_fit(r, m, compact)?;
     let x = r.x + 2;
     let cells = usize::from(r.width - 4);
-    let rc = row_ctx(m, p, ctx.utc_offset_secs, cells, compact);
-    let history = chat_rows(&m.chat.entries, &rc);
+    let rc = row_ctx(m, p, ctx.utc_offset_secs, cells, compact, ctx.now);
+    let history = chat_rows(m, &rc);
     let bottom = fit.len.saturating_sub(fit.room);
     let top = m.chat.scroll.map_or(fit.follow, |t| t.min(bottom));
     for (i, pieces) in history.iter().skip(top).take(fit.room).enumerate() {
@@ -124,12 +149,10 @@ pub(super) fn history_fit(r: Rect, m: &UiModel, compact: bool) -> Option<History
     let room = usize::from(r.height - 2) - 1;
     // Row counts don't depend on colours or the time zone.
     let p = Palette::dark();
-    let rc = row_ctx(m, &p, 0, cells, compact);
-    let per_entry: Vec<usize> = m
-        .chat
-        .entries
-        .iter()
-        .map(|e| entry_rows(e, &rc).len())
+    let rc = row_ctx(m, &p, 0, cells, compact, m.now);
+    let per_entry: Vec<usize> = items(m)
+        .into_iter()
+        .map(|i| item_rows(i, &rc).len())
         .collect();
     let len: usize = per_entry.iter().sum();
     let bottom = len.saturating_sub(room);
@@ -147,6 +170,7 @@ fn row_ctx<'a>(
     offset_secs: i32,
     cells: usize,
     compact: bool,
+    now: Millis,
 ) -> RowCtx<'a> {
     let gap = if compact { COMPACT_GAP } else { WIDE_GAP };
     RowCtx {
@@ -156,12 +180,102 @@ fn row_ctx<'a>(
         cells,
         who_cells: width(m.org.duo.name.as_str()).max(width(YOU)) + gap,
         queued: &m.queued,
+        now,
     }
 }
 
-/// Every entry as screen rows, wrapped with a hanging indent under the message text.
-fn chat_rows(entries: &[ChatEntry], rc: &RowCtx<'_>) -> Vec<Row> {
-    entries.iter().flat_map(|e| entry_rows(e, rc)).collect()
+/// Every entry and card as screen rows, wrapped with a hanging indent under the
+/// message text.
+fn chat_rows(m: &UiModel, rc: &RowCtx<'_>) -> Vec<Row> {
+    items(m)
+        .into_iter()
+        .flat_map(|i| item_rows(i, rc))
+        .collect()
+}
+
+fn item_rows(item: Item<'_>, rc: &RowCtx<'_>) -> Vec<Row> {
+    match item {
+        Item::Entry(e) => entry_rows(e, rc),
+        Item::Card(c) => card_rows(c, rc),
+    }
+}
+
+/// A pending card, indented like action lines (UI §4.6).
+fn card_rows(c: &Card, rc: &RowCtx<'_>) -> Vec<Row> {
+    let indent = card_indent(rc);
+    let focused = rc.m.focus.pane == Pane::Chat && rc.m.focus.card == Some(c.id);
+    let cells = rc.cells.saturating_sub(indent);
+    super::card::card_rows(c, rc.m, rc.now, focused, cells, rc.p)
+        .into_iter()
+        .map(|row| {
+            std::iter::once((" ".repeat(indent), rc.p.fg))
+                .chain(row)
+                .collect()
+        })
+        .collect()
+}
+
+/// Cards and action lines start under the message column.
+fn card_indent(rc: &RowCtx<'_>) -> usize {
+    CLOCK_CELLS + rc.who_cells
+}
+
+/// What a press at `at` hits in a chat pane at `r`: a card, and the button under it.
+pub(super) fn card_at(
+    r: Rect,
+    m: &UiModel,
+    compact: bool,
+    at: Position,
+) -> Option<(CardId, Option<char>)> {
+    let fit = history_fit(r, m, compact)?;
+    let first = r.y + 1;
+    let room = u16::try_from(fit.room).unwrap_or(u16::MAX);
+    if at.y < first || at.y >= first.saturating_add(room) {
+        return None;
+    }
+    let bottom = fit.len.saturating_sub(fit.room);
+    let top = m.chat.scroll.map_or(fit.follow, |t| t.min(bottom));
+    let row = top + usize::from(at.y - first);
+    let (card, start, len) = card_spans(r, m, compact)
+        .into_iter()
+        .find(|(_, start, len)| (*start..start + len).contains(&row))?;
+    let p = Palette::dark();
+    let rc = row_ctx(m, &p, 0, usize::from(r.width - 4), compact, m.now);
+    let left = usize::from(r.x) + 2 + card_indent(&rc);
+    let x = usize::from(at.x);
+    let card_cells = rc
+        .cells
+        .saturating_sub(card_indent(&rc))
+        .min(super::card::CARD_WIDTH);
+    if x < left || x >= left + card_cells {
+        return None;
+    }
+    let c = m.cards.get(&card)?;
+    // The button row is the last but one.
+    let button = (row + 2 == start + len)
+        .then(|| x.checked_sub(left + super::card::text_offset()))
+        .flatten()
+        .and_then(|col| super::card::button_at(c, col));
+    Some((card, button))
+}
+
+/// Each pending card's first history row and row count, at a chat pane at `r`.
+pub(super) fn card_spans(r: Rect, m: &UiModel, compact: bool) -> Vec<(CardId, usize, usize)> {
+    if r.width < 6 {
+        return Vec::new();
+    }
+    let p = Palette::dark();
+    let rc = row_ctx(m, &p, 0, usize::from(r.width - 4), compact, m.now);
+    let mut start = 0;
+    let mut out = Vec::new();
+    for item in items(m) {
+        let len = item_rows(item, &rc).len();
+        if let Item::Card(c) = item {
+            out.push((c.id, start, len));
+        }
+        start += len;
+    }
+    out
 }
 
 /// One entry's rows: `10:05 you   text` and `10:05 Duo   text`, wrapped under the text;
@@ -182,7 +296,11 @@ fn entry_rows(e: &ChatEntry, rc: &RowCtx<'_>) -> Vec<Row> {
             said(e, &duo, p.accent_duo, None, rc)
         }
         ChatKind::Action { result } => action(&e.text, Some(result), indent, text_cells, p),
-        ChatKind::CardResult { .. } => action(&e.text, None, indent, text_cells, p),
+        // `→ approved: stop squad-1   10:16` (UI §4.6).
+        ChatKind::CardResult { .. } => {
+            let when = clock(e.at, rc.offset_secs);
+            action(&e.text, Some(&when), indent, text_cells, p)
+        }
         ChatKind::Note => paragraphs(&e.text, text_cells)
             .into_iter()
             .map(|t| vec![(" ".repeat(indent), p.fg), (t, p.fg_muted)])
