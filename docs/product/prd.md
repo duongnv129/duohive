@@ -396,6 +396,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Merged worktrees | Normal, squash and rebase merges, against `origin`'s default branch (else local); re-checked on finish, after start-up, when the list opens and every 10 minutes | Normal merges only, on start | Squash and rebase merges are common; nothing piles up |
 | Benchmark platform | Targets gated on Apple M-series; Linux reported, not blocking. Hook states < 1 s / < 2 s; screen-read states < 2 s | One gate for all platforms | The author's machine is the target; screen reads are honestly slower |
 | UX checks | The phase 2 pass plus a pre-launch check of the phase 3–4 screens | One pass only | Later screens get the same scrutiny |
+| Skipping permission prompts | Never allowed: `--dangerously-skip-permissions` and `--allow-dangerously-skip-permissions` are refused everywhere (decided 2026-10-18) | Allow per agent | Every risky action stays behind the CLI's own prompts and DuoHive's approvals |
 
 ---
 
