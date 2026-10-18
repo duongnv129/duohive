@@ -224,3 +224,15 @@ The release binary on macOS (`cargo build --release -p duohive`), at the Task 3.
 | With `rmcp =3.5.1` (`server`, `transport-io`), a do-nothing stdio server reachable from `main` | 11,085,488 | no |
 
 `rmcp` adds about 2.3 MB and takes the binary over the PRD's 10 MB target, so P3-D8's fallback applies: no `rmcp`. Task 3.2 writes the helper's MCP server as a hand-written JSON-RPC over stdio. The probe was removed after measuring.
+
+
+### The `duohive mcp` helper (Task 3.2, 2026-10-18)
+
+Release build, 20 runs of the helper started and asked to initialize.
+
+| Measure | Median | Max |
+|---|---|---|
+| Resident memory | 2,880 KB | 2,912 KB |
+| Start to `initialize` answered | 14.5 ms | 435 ms (the first, cold run) |
+
+Each running agent holds one helper, so 10 agents hold about 29 MB of helpers. They are separate processes and are not counted in DuoHive's memory target.
