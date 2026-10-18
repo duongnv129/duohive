@@ -1,6 +1,6 @@
 # DuoHive — UI/UX Spec
 
-**Status:** Draft v1 · **Last updated:** 2026-10-05
+**Status:** Draft v1 · **Last updated:** 2026-10-17
 Living document, updated in place. It is the source of truth for what every screen looks like and how it behaves. The [PRD](../product/prd.md) says what DuoHive does and why; the [technical design](../design/technical-design.md) says how it is built.
 
 ---
@@ -12,7 +12,7 @@ Living document, updated in place. It is the source of truth for what every scre
 | **Purpose** | Steer a team of AI agents from one screen |
 | **Audience** | A manager who glances at it many times a day; the first question is always *who needs me?* |
 | **Tone** | A dense, calm, technical control room. Quiet by default; loud only when someone needs you |
-| **Memorable detail** | **Amber means "needs you."** It is the hive's honey colour, the one warm accent in a cool, neutral palette, so the eye goes straight to what is waiting. Duo's glyph is a honeycomb cell, `⬢`. |
+| **Memorable detail** | **Amber means "needs you."** It is the hive's honey colour, and it colours only the glyphs of states that need you (focus is the one accent, §2.3), so the eye goes straight to what is waiting. Duo's glyph is a honeycomb cell, `⬢`. |
 | **Constraints** | 80×24 minimum. Colour is never the only signal. Every action works by key and by mouse. The same key does the same thing in every pane. |
 
 **Anti-patterns:**
@@ -192,7 +192,7 @@ Six agents plus Duo. The org pane has focus, and auth-service is selected.
 
 #### 4.1.1 Filter
 
-`f` cycles a filter by state (◆ need you, ● working, ✓ finished, off). The tree keeps only matching agents and their parents, and a chip shows in the header. `esc` clears it. Clicking a header count sets the same filter.
+`f` cycles a filter by state (◆ need you, ● working, ✓ finished, off). The tree keeps only matching agents and their parents, and a chip shows in the header. `esc` in the org pane clears it. Clicking a header count sets the same filter.
 
 ```
  DuoHive   6 agents · ● 2 working · ◆ 2 need you   filtered: ◆ · esc clears                 ? help 
@@ -224,7 +224,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **Scrolled while typing** (snapshot only): Typing stays, and the title reads `· TYPING · scrolled`. `PgUp` / `PgDn` page the snapshot, `ctrl+q` leaves Typing and stays scrolled, the wheel or `PgDn` past the bottom returns to live (Typing stays), and any other key returns to live and goes to the agent.
 - **A stopped agent, or one not shown live yet:** the wheel does nothing. A horizontal wheel does nothing anywhere.
 
-**Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts. Clicks are DuoHive's and never reach the agent. Clicks do nothing while zoomed, and the mouse does nothing while a dialog, a confirmation, Settings, Worktrees or the too-small screen is open. Right-click and drag come with §4.4.2.
+**Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts. Clicks are DuoHive's and never reach the agent. Clicks do nothing while zoomed, and the mouse, wheel included, does nothing on the too-small screen. While a dialog, a confirmation, Settings or Worktrees is open, the wheel does nothing; clicks there do what their key does (§5). Right-click and drag come with §4.4.2.
 
 ```
 ┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
@@ -317,7 +317,7 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 
 #### 4.1.3 Needs you
 
-- **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval · Add pay-web`, §4.6).
+- **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval  1m  Add pay-web`, §4.6).
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
   - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode. A click elsewhere in the pane focuses it.
@@ -325,8 +325,8 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 
 #### 4.1.4 Desktop alerts
 
-- **When:** an agent becomes waiting, quiet or errored; Duo raises an approval card; an agent other than Duo finishes. Each kind can be turned off in Settings.
-- **Content:** the title is "<agent> needs you" (or "<agent> finished"); the body is the last reply.
+- **When:** an agent becomes waiting, quiet or errored; an approval card is raised; an agent other than Duo finishes. Each kind can be turned off in Settings.
+- **Content:** the title is "<agent> needs you" (or "<agent> finished"); the body is the last reply. A card's alert follows the `needs you` toggle; its title is "Duo needs you" and its body the card's summary.
 - **Click:** selects the agent, where the system's notifier reports clicks (Linux `notify-send --action`). It doesn't raise the terminal window: neither notifier can name the window DuoHive runs in.
 - **Once:** one alert per agent per state change.
 - **Unavailable:** when the system has no notifier, the footer says "desktop alerts unavailable" once per session.
@@ -641,7 +641,7 @@ What happens depends on the agent's state:
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**A role:** a free agent (stopped, finished or idle) takes the task; the dialog shows which one, and `↑↓` in "Goes to" picks another.
+**A role:** a free agent (stopped, finished or idle, and not still taking a task or getting a worktree ready) takes the task; the dialog shows which one, and `↑↓` in "Goes to" picks another.
 
 ```
 ┌─ Give work · role Generalist (1 of 3 free) ────────────────────────────────────────────┐
@@ -652,29 +652,31 @@ What happens depends on the agent's state:
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**A role with no free agent:** `enter` asks Duo to propose a new agent. That raises an approval card that holds the task; approving it creates the agent and gives it the task.
+**A role with no free agent:** `enter` proposes a new agent. DuoHive raises an approval card from Duo that holds the task, even while Duo is stopped or busy; approving it creates the agent and gives it the task.
 
 ```
 ┌─ Give work · role Payments › Backend (0 of 2 free) ────────────────────────────────────┐
 │ Task     [ Add an idempotency key to POST /payments.________________________ ]         │
-│ Goes to  No free agent · enter asks Duo to propose one                                 │
+│ Goes to  No free agent · enter proposes one                                            │
 │          (the approval card holds the task)                                            │
-│                                             enter ask Duo · esc                        │
+│                                             enter propose one · esc                    │
 └────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.6 Duo's approval cards and actions
 
-When Duo proposes an org change, or wants to stop a working or waiting agent, a card appears in the chat, outlined in amber.
+When Duo proposes an org change, or wants to stop a starting, working or waiting agent, a card appears in the chat. Its outline is `border` (heavy when focused), and its title starts with an amber `◆` (`status.attention`; P3-D4, P2-D27).
 
 - **Keys:** `↑` from an empty chat input focuses the newest card (heavy border). `y`, `e` and `n` act only while a card has focus; `esc` returns to the input.
   - **Approve** (`y`) applies the change.
-  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the chat.
+  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the chat. On a stop card `e` is disabled, and the footer says `nothing to edit · y or n`. On a new-agent card it opens the agent form; the task the card holds is kept unchanged.
   - **Reject** (`n`) tells Duo it was declined.
 - **Several cards:** only the newest takes keys; reach the others from Needs you.
 - **Answered cards** collapse into one `→` line with the result ("→ approved: stop squad-1").
-- **Duo isn't blocked:** Duo keeps working while a card waits. Each card is its own Needs you row.
+- **Duo isn't blocked:** Duo keeps working while a card waits; your answer reaches Duo later as a message from you. Each card is its own Needs you row.
 - **Action lines:** each of Duo's actions shows as a `→` line with its result: `delivered`, `queued (… is working)`, `started`, `typed in`, `stopped`, `refused`.
+
+The mock shows the card focused (heavy outline); unfocused, its outline is the light `border`.
 
 ```
 ┌─ ⬢ Duo · ● working ──────────────────────────────────────────────────────────────────────────────┐
@@ -684,7 +686,7 @@ When Duo proposes an org change, or wants to stop a working or waiting agent, a 
 │ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                    │
 │             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                │
 │             → give work pay-qa "PAY-88c QA: retry cases"                started                  │
-│             ┏━ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                   │
+│             ┏━ ◆ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                   │
 │             ┃ + Add agent pay-web in Payments › Frontend (new role)          ┃                   │
 │             ┃   CLI Claude Code · ~/code/web · worktrees on                  ┃                   │
 │             ┃ [y] Approve   [e] Edit   [n] Reject                            ┃                   │
@@ -766,8 +768,9 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 ```
 ┌─ Replace your org? ──────────────────────────────────────────┐
 │                                                              │
-│  A new org from Product Team replaces your current org       │
-│  (6 agents). Running agents are stopped first.               │
+│  A new org from Product Team replaces your teams, roles and  │
+│  agents (6 agents). Duo and the org defaults are kept.       │
+│  Running agents in it are stopped first.                     │
 │  Your current org.toml is kept as a backup.                  │
 │                                                              │
 │                           [ y Replace ]   ▌[ n Cancel ]      │
@@ -801,7 +804,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.10 Settings
 
-`,` opens Settings. Settings are personal and saved to `settings.toml` as you change them. Org-level defaults and Duo live in the org (Edit org, §4.4.1). "New org from template…" replaces the current org after a confirmation (§4.8) and keeps a backup.
+`,` opens Settings. Settings are personal and saved to `settings.toml` as you change them. Org-level defaults and Duo live in the org (Edit org, §4.4.1). "New org from template…" replaces the org's teams, roles and agents after a confirmation (§4.8), keeps Duo and the org defaults, and keeps a backup.
 
 ```
 ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐
@@ -917,34 +920,6 @@ Below 100 columns it becomes one scrolling column:
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
 
-### 4.13 Resume an old session (v1.1)
-
-Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
-
-```
-┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐
-│ ⌕ Search…                                                                  │
-│                                                                            │
-│ ▌ Retry loop for failed payouts                                            │
-│   3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere        │
-│                                                                            │
-│   Payout ledger migration                                                  │
-│   1 day ago · main · 7.3MB                                                 │
-│                                                                            │
-│   Flaky webhook test                                                       │
-│   2 days ago · fix/webhook-flake · 610KB                                   │
-├────────────────────────────────────────────────────────────────────────────┤
-│ enter resume · type to search · ↑↓ move · esc cancel                       │
-└────────────────────────────────────────────────────────────────────────────┘
-```
-
-- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its first prompt, cut with `…`.
-- **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
-- **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
-- **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
-- **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
-- **Empty:** `No <CLI> sessions for <dir>` with `esc close`. **Unreadable** (an untested Claude Code session format, or `opencode session list` failing): `Couldn't read <CLI>'s sessions: <reason>` in `status.error`, and the agent is unchanged.
-
 ### 4.12 Errors and empty states
 
 Errors are shown where they apply, with how to fix them.
@@ -1011,6 +986,34 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 └────────────────────────────────────────────────┘
 ```
 
+### 4.13 Resume an old session (v1.1)
+
+Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
+
+```
+┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐
+│ ⌕ Search…                                                                  │
+│                                                                            │
+│ ▌ Retry loop for failed payouts                                            │
+│   3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere         │
+│                                                                            │
+│   Payout ledger migration                                                  │
+│   1 day ago · main · 7.3MB                                                 │
+│                                                                            │
+│   Flaky webhook test                                                       │
+│   2 days ago · fix/webhook-flake · 610KB                                   │
+├────────────────────────────────────────────────────────────────────────────┤
+│ enter resume · type to search · ↑↓ move · esc cancel                       │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its first prompt, cut with `…`.
+- **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
+- **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
+- **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
+- **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
+- **Empty:** `No <CLI> sessions for <dir>` with `esc close`. **Unreadable** (an untested Claude Code session format, or `opencode session list` failing): `Couldn't read <CLI>'s sessions: <reason>` in `status.error`, and the agent is unchanged.
+
 ## 5. Interaction rules
 
 | Rule | Detail |
@@ -1018,8 +1021,8 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
 | Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
-| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
-| Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of working or waiting agents, come as approval cards |
+| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. With the mouse on, the terminal's own text selection takes its bypass modifier (`⌥`-drag in iTerm2) |
+| Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of starting, working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
 | Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |
 
@@ -1052,4 +1055,4 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 The screens are checked against the PRD's [UX principles](../product/prd.md#ux-principles) twice:
 
 1. **After phase 2:** during phase 2 the author keeps a **friction log** (anything slow, confusing or missed). At the end of the phase, the UI/UX improvement pass fixes the top items and re-checks every screen.
-2. **Before launch:** a second check covers the phase 3–4 screens (Duo's chat and cards, task to a role, first-run templates, Settings' Keys and Org rows and the key-binding editor).
+2. **Before launch:** a second check covers the phase 3–4 screens (Duo's chat and cards, the suggestion popup, task to a role, first-run templates, the no-CLI screen, `Replace your org?`, Settings' Keys row and the Org group's `New org from template…` row, the key-binding editor, the `?` key map, the filter, Move to…, the right-click menu, and the model and effort dropdowns).

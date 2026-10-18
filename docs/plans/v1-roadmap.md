@@ -33,7 +33,7 @@ How each phase's plan is written and kept consistent with the PRD, the UI/UX spe
 |---|---|---|---|---|---|
 | 0 | Foundations and spikes | Cargo workspace (7 crates), toolchain, licence, CI; Makefile, cargo-deny, typos and community files (README, CONTRIBUTING, code of conduct, security policy); spike S0 (tmux activity subscriptions at 100 windows); spikes S1 Claude Code and S2 OpenCode (per-launch instructions, hooks, MCP, model lists, reply extraction) | Spike report written; TD updated where a mechanism changed | 3–5 days | done 2026-10-04 |
 | 1 | Org and agents | Core domain (org, inheritance, validation); engine (command/event loop, full state machine, Give work by state, quiet, Needs you); store (`org.toml`, `settings.toml`, `state.db`); tmux runtime; the Claude Code and OpenCode adapters and `duohive hook`; minimal TUI (tree with live status, forms); basic `bench` | The author's daily agents run in DuoHive with correct status; `bench` reports at 10 agents | 2–3 weeks | done 2026-10-04 |
-| 2 | One screen | Three-pane layout; agent pane (Selected and Typing modes, zoom); Needs you you can act on; desktop alerts and their Settings; Give work with worktrees and merge clean-up; touchpad scrolling and click to select; theme `auto` follows the terminal; friction log, then the UI/UX improvement pass | A day's work needs no `tmux attach` | 2 weeks | in progress: code and UI/UX pass done 2026-10-17; only the three-day run without `tmux attach` remains, with friction entry 22 watched during it |
+| 2 | One screen | Three-pane layout; agent pane (Selected and Typing modes, zoom); Needs you you can act on; desktop alerts and their Settings; Give work with worktrees and merge clean-up; touchpad scrolling and click to select; theme `auto` follows the terminal; quiet colour; the OpenCode 2.0 port; friction log, then the UI/UX improvement pass | A day's work needs no `tmux attach` | 2 weeks | in progress: code and UI/UX pass done 2026-10-17; only the three-day run without `tmux attach` remains, with friction entry 22 watched during it |
 | 3 | Duo and messaging | MCP endpoint and helper; token-checked tool rights (tokens exist since phase 1); inbox; Duo, Duo chat and `→` lines; approval cards; task to a role | A "what's blocked, then fix it" round trip happens entirely in chat; a task given to a role reaches a free agent | 2–3 weeks | pending |
 | 4 | Scale and polish | `bench` at 100 agents and tuning; first run with templates; model and effort picker; key-binding editor; key and mouse completeness (`?`, filter, move, the mouse beyond phase 2's wheel and click); the accessibility re-check | Every benchmark target in Success Metrics (idle CPU, memory, status freshness, start-up, binary size) passes on Apple M-series | 1–2 weeks | pending |
 | 5 | Open-source launch | Pre-launch UX check; CI release gate; `cargo-dist` release, Homebrew tap, crate; README finished for launch; name checks | DuoHive is public; 30-day daily use and < 10 minutes to a first team | 1 week + 30-day test | pending |
@@ -43,7 +43,7 @@ Total: roughly 9–12 weeks of focused work.
 ## Dependencies
 
 - tmux 3.2 or newer; Claude Code and OpenCode at pinned versions for spikes S1 and S2.
-- Crates: `ratatui`, `crossterm`, `tokio`, `rusqlite`, `toml`, `serde`, `thiserror`, `tracing`, `insta`, `vt100` (or similar); an MCP server crate chosen in phase 3.
+- Crates: `ratatui`, `crossterm`, `tokio`, `rusqlite`, `toml`, `serde`, `thiserror`, `tracing`, `insta`, `vt100` (pinned in phase 2); an MCP server crate chosen in phase 3.
 
 ## Risks
 

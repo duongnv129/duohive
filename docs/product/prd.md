@@ -4,8 +4,8 @@
 >
 > **Vision: an Engineer Factory.** Define your team once, break each story into small, well-specified subtasks, and the right agent picks up each one and gets it done.
 
-**Status:** Draft v1 · **Owner:** the author · **Last updated:** 2026-10-05
-Living document, updated in place. It says *what* DuoHive must do and *why*; the technical design is a separate, later document.
+**Status:** Draft v1 · **Owner:** the author · **Last updated:** 2026-10-17
+Living document, updated in place. It says *what* DuoHive must do and *why*; the [technical design](../design/technical-design.md) says how.
 
 ---
 
@@ -118,7 +118,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
 | **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
-| **Must** | Give a task to a role: a free agent in it takes the task; if none is free, Duo proposes a new agent through an approval card | Task runners never have to pick a teammate |
+| **Must** | Give a task to a role: a free agent in it takes the task; if none is free, an approval card from Duo proposes a new agent, even while Duo is stopped or busy | Task runners never have to pick a teammate |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
 | **v1.1** | Resume an old session: pick a past Claude Code or OpenCode session for an agent's directory, including ones started outside DuoHive, and the agent continues it with its full context | Finish work an earlier session started without briefing the agent again |
 | **Won't (v1)** | Delegation chains, Jira, revive or fork (resume comes in v1.1), diff review, shared tasks and locks, nested terminals, Codex (deferred to after v1), custom CLIs | See *What We're NOT Building* |
@@ -172,7 +172,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
     | finished or idle | Types the task in as the next turn of the existing session, which keeps its context |
     | working or waiting | Refused, with the offer "send as message instead"; the message waits until the agent is at rest |
 
-  - **Free:** for a task given to a role, a free agent is one that is stopped, finished or idle.
+  - **Free:** for a task given to a role, a free agent is one that is stopped, finished or idle, and not still taking a task or getting a worktree ready.
   - **Stopping:** it stops when you or Duo stop it, or when its CLI exits normally. `s` on a running agent stops it, asking first. Its next task starts a fresh session.
   - **Deleting:** only a stopped agent can be deleted.
   - **Renaming:** only while the agent is stopped and has no worktrees.
@@ -181,9 +181,9 @@ You (the manager)                ← root; your manager agent, Duo, lives here
     - **merged into:** `origin`'s default branch when there is a remote, else the local default branch;
     - **checked:** when the agent finishes, after start-up, when the worktree list opens, and every 10 minutes;
     - **by hand:** an unmerged or dirty worktree stays until you remove it, and removing one that isn't merged and clean asks first.
-- **Messages to a stopped agent:** your own `@agent` message starts it, with the message as its task. A message from another agent waits, shown as `queued · stopped`. Your messages to a working agent also wait until it is at rest.
+- **Messages to a stopped agent:** your own `@agent` message starts it, with the message as its task. A message from another agent waits, shown as `queued · stopped`. Your messages to a working agent also wait until it is at rest. Your answer to an approval card, when Duo is stopped, waits for Duo as `queued · stopped` and doesn't start it.
 - **Where the org lives:** in a readable file (`org.toml`) you can share or keep in git. DuoHive writes it, and hand edits are picked up on the next start. Live state (sessions, chat history) stays on your machine.
-  - **One org per install in v1.** "New org from template" replaces the current org after a confirmation, keeping a backup.
+  - **One org per install in v1.** "New org from template" replaces the current org's teams, roles and agents after a confirmation, keeping Duo, the org defaults and a backup.
   - **A missing directory** makes only that agent invalid, with the error on its row; the rest of the org keeps working.
   - **Org defaults vs Settings:** `org.toml` holds the org-level defaults (org prompt, default CLI, model, effort, worktree setting) and Duo's name and CLI, edited through **Edit org** on the Duo row. Settings are personal only: your name, theme, key bindings, alerts and the quiet threshold.
 
@@ -200,7 +200,7 @@ Duo is a Claude Code or OpenCode session at the root of your org. "Duo" is the d
 | Give a task to a role | "Give the flaky date test to the Generalists" |
 | Propose an org change (add, edit, move or remove a team, role or agent); it happens only after you approve | "No frontend agent in Payments. Add `pay-web` (Frontend, Claude, ~/code/web)? [Approve] [Edit] [Reject]" |
 | **Cannot:** change the org without your approval | The org's structure stays yours |
-| **Cannot:** stop a working or waiting agent without your approval | Stopping a finished or idle agent is direct |
+| **Cannot:** stop a starting, working or waiting agent without your approval | Stopping a finished, idle or errored agent is direct; a stopped agent is refused |
 | **Cannot:** propose removing an agent that isn't stopped | The core rejects it |
 | **Cannot:** approve anything for you | Commit, push, merge, publish and delete wait for you |
 
@@ -214,8 +214,8 @@ Duo is a Claude Code or OpenCode session at the root of your org. "Duo" is the d
 - **Identity:** each session gets a per-launch secret token, generated by DuoHive, passed in the session's environment and checked by DuoHive on every tool call. It is never a name anyone can set, so no agent can use Duo's tools, and agents can't build delegation chains.
 
 - **Visible actions:** every action Duo takes appears in the chat as an `→` line.
-- **Approval cards:** a proposed org change, or Duo stopping a working or waiting agent, shows as a card in the chat with **Approve** (`y`), **Edit** (opens the form pre-filled) and **Reject** (`n`). Nothing changes until you approve. Each pending card is also listed in Needs you, and Duo keeps working while it waits.
-- **Approvals stay with you:** commit, push, merge, publish and delete wait for you, for **every agent**, Duo included. Each CLI's own permission prompts enforce this: DuoHive never auto-approves, and Duo cannot approve for you.
+- **Approval cards:** a proposed org change, or Duo stopping a starting, working or waiting agent, shows as a card in the chat with **Approve** (`y`), **Edit** (opens the form pre-filled; not on a stop card) and **Reject** (`n`). Nothing changes until you approve. Each pending card is also listed in Needs you, and Duo keeps working while it waits: your answer reaches Duo later as a message from you.
+- **Approvals stay with you:** commit, push, merge, publish and delete wait for you, for **every agent**, Duo included. Each CLI's own permission prompts enforce this: DuoHive never auto-approves, and Duo cannot approve for you. The one exception: each launch pre-approves DuoHive's own tools (messages, status, Duo's actions), none of which commits, pushes, merges, publishes or deletes.
 
 ### One screen
 
@@ -271,7 +271,7 @@ The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); th
 
 ### Setup templates
 
-Templates give a ready-made org in seconds; everything they create stays editable. They are offered at first run and later through "New org from template", which replaces the current org after a confirmation and keeps a backup.
+Templates give a ready-made org in seconds; everything they create stays editable. They are offered at first run and later through "New org from template", which replaces the current org's teams, roles and agents after a confirmation, keeping Duo, the org defaults and a backup.
 
 | Template | What you get | For |
 |---|---|---|
@@ -346,7 +346,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | # | Phase | Delivers | Status | Depends |
 |---|---|---|---|---|
 | 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | done 2026-10-04 | – |
-| 2 | One screen | Three-pane layout; agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option; touchpad scrolling and click to select; theme `auto` follows the terminal; the UI/UX improvement pass at the end | in progress: code and UI/UX pass done 2026-10-17; only the three-day run without `tmux attach` remains | 1 |
+| 2 | One screen | Three-pane layout; agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option; touchpad scrolling and click to select; theme `auto` follows the terminal; quiet colour; the OpenCode 2.0 port; the UI/UX improvement pass at the end | in progress: code and UI/UX pass done 2026-10-17; only the three-day run without `tmux attach` remains | 1 |
 | 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | pending | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents on the release benchmark, first-run setup with templates (Agent Squad needs task to a role, phase 3), model and effort picker, key and mouse completeness, the key-binding editor, the accessibility re-check | pending | 3 |
 | 5 | Open-source launch | The pre-launch UX check of the phase 3–4 screens, the CI release gate, README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
@@ -354,7 +354,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 - **Phase 1:** the author can run a real team of agents from the tree. Done when the author's daily agents run in DuoHive with correct status, and `bench` reports the basic numbers at 10 agents.
 - **Phase 2:** the author never needs to leave DuoHive to watch or answer an agent; a friction log is kept during use, and the UI/UX improvement pass runs at the end of the phase. Done when a day's work needs no `tmux attach`.
 - **Phase 3:** the author directs the team through Duo. Done when a "what's blocked, then fix it" round trip happens entirely in chat, and a task given to a role reaches a free agent.
-- **Phase 4:** DuoHive meets every target in Success Metrics on the release benchmark.
+- **Phase 4:** DuoHive meets every benchmark target in Success Metrics (idle CPU, memory, status freshness, start-up, binary size) on the release benchmark.
 - **Phase 5:** DuoHive is public, and the key hypothesis is tested (30 days of daily use, under 10 minutes to the first team).
 - **v1.1, after v1 is released:** resuming an old session (*Resume an old session*), tracked in the [v1.1 roadmap](../plans/v1.1-roadmap.md). Codex stays a candidate.
 
@@ -382,14 +382,14 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Branding | Keep DuoHive; lead with "Duo + your Engineer Factory", not "Hive" | Rename (Duocrew, DuoHQ); decide at launch | "Hive" is crowded among agent tools; "Duo" and the factory story set DuoHive apart. No software named DuoHive was found |
 | Distribution | Open source, Apache-2.0, own repo | Proprietary; fork an existing tool | The author owns and drives the product |
 | States | stopped, starting, working, waiting on you, finished, idle, errored; quiet as an overlay. Finished becomes idle when you look; Duo goes straight to idle | One "done" state; quiet as its own state | You see what's new without losing what's merely at rest; Duo's turns don't raise alerts |
-| Giving work by state | Stopped: fresh session. Finished or idle: next turn of the same session. Working or waiting: refused, with "send as message instead". Free means stopped, finished or idle | Always a fresh session; queue silently | Keeps context where it helps and never types over a busy agent |
+| Giving work by state | Stopped: fresh session. Finished or idle: next turn of the same session. Working or waiting: refused, with "send as message instead". Free means stopped, finished or idle, and not still taking a task or getting a worktree ready | Always a fresh session; queue silently | Keeps context where it helps and never types over a busy agent |
 | Errors | A failed launch or a crash is errored, in Needs you, until you give work or stop it; a normal exit is stopped | Fall back to stopped | A crash can't pass for a clean stop |
 | Needs you and alerts | Waiting, quiet, errored agents and pending approval cards, oldest first; alerts for those and for finished (never Duo) | Agents only | Cards wait on you too |
 | Tool rights and identity | Every agent: `list_agents`, `send_message`, `message_status`; Duo only: read, wait, start, stop, assign, propose. Identity is a per-launch secret token | Same tools for all; identity by name | No agent can act as Duo, so there are no delegation chains |
-| Approvals | Commit, push, merge, publish and delete wait for you for every agent, through each CLI's own prompts; DuoHive never auto-approves | DuoHive-level approval; trust Duo | One rule for all agents, enforced where the action happens |
-| Duo stopping agents | Working or waiting: approval card. Finished or idle: direct. Removing a running agent can't be proposed | Always direct; always a card | Stopping live work is your call; tidying idle agents is not worth a card |
-| Messages to a stopped agent | Yours start it with the message as its task; an agent's message waits (`queued · stopped`) | Always queue; always start | You can wake an agent by talking to it; agents can't start each other |
-| The org file | One org per install; new org from template replaces it with a backup; a missing directory invalidates only that agent | Several orgs; reject the whole file | Simple for v1, and one bad path doesn't take the team down |
+| Approvals | Commit, push, merge, publish and delete wait for you for every agent, through each CLI's own prompts; DuoHive never auto-approves, except its own tools, none of which commits, pushes, merges, publishes or deletes | DuoHive-level approval; trust Duo | One rule for all agents, enforced where the action happens |
+| Duo stopping agents | Starting, working or waiting: approval card. Finished, idle or errored: direct. Stopped: refused. Removing a running agent can't be proposed | Always direct; always a card | Stopping live work is your call; tidying idle agents is not worth a card |
+| Messages to a stopped agent | Yours start it with the message as its task; an agent's message waits (`queued · stopped`); your answer to a card waits for a stopped Duo and doesn't start it | Always queue; always start | You can wake an agent by talking to it; agents can't start each other |
+| The org file | One org per install; new org from template replaces its teams, roles and agents after a confirmation, keeping Duo, the org defaults and a backup; a missing directory invalidates only that agent | Several orgs; reject the whole file | Simple for v1, and one bad path doesn't take the team down |
 | Org defaults vs Settings | `org.toml`: org defaults and Duo's name and CLI (Edit org). `settings.toml`: personal only | All in Settings | The shared file carries what the team shares; personal taste stays personal |
 | Phases | Phase 1 adds a minimal tree, the forms and a basic `bench`; phase 3 adds approval cards and task to a role; templates in phase 4 | Templates earlier | Each phase is usable; Agent Squad needs task to a role |
 | Names | "Give work" is the one term; the Agent Squad role is Generalist, directly under Duo; rename only while stopped with no worktrees | "Quick prompt"; "Squad" | One word per idea; renaming can't orphan sessions or worktrees |
