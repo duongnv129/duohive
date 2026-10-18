@@ -2,9 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::command::{AgentDraft, OrgEdit};
+use crate::command::{AgentDraft, MoveTarget, OrgEdit};
 use crate::names::AgentName;
-use crate::org::RoleKey;
+use crate::org::{NodeKey, Org, RoleKey};
 use crate::time::Millis;
 use crate::worktree::RunIn;
 
@@ -72,4 +72,235 @@ pub struct Card {
     pub raised_at: Millis,
     /// The answer and when, once answered.
     pub answer: Option<(CardOutcome, Millis)>,
+}
+
+impl Card {
+    /// A one-line summary of the change, such as `stop squad-1` or `add pay-web`.
+    pub fn summary(&self, org: &Org) -> String {
+        self.change.summary(org)
+    }
+}
+
+impl CardChange {
+    /// A one-line summary, as [`Card::summary`]; roles are named by their breadcrumb.
+    pub fn summary(&self, org: &Org) -> String {
+        match self {
+            CardChange::Stop { agent } => format!("stop {agent}"),
+            CardChange::NewAgent { agent, .. } => format!("add {}", agent.name),
+            CardChange::Org(edit) => edit_summary(edit, org),
+        }
+    }
+}
+
+fn edit_summary(edit: &OrgEdit, org: &Org) -> String {
+    let role = |key: &RoleKey| org.breadcrumb(&NodeKey::Role(key.clone()));
+    match edit {
+        OrgEdit::AddTeam(d) => format!("add team {}", d.name),
+        OrgEdit::AddRole { team, role: d, .. } => format!(
+            "add role {}",
+            role(&RoleKey {
+                team: team.clone(),
+                role: d.name.clone(),
+            })
+        ),
+        OrgEdit::AddAgent { agent, .. } => format!("add {}", agent.name),
+        OrgEdit::EditTeam { key, .. } => format!("edit team {key}"),
+        OrgEdit::EditRole { key, .. } => format!("edit role {}", role(key)),
+        OrgEdit::EditAgent { key, .. } => format!("edit {key}"),
+        OrgEdit::EditOrgDefaults { .. } => "edit the org defaults".to_owned(),
+        OrgEdit::Delete(node) => format!("remove {}", node_name(node, org)),
+        OrgEdit::Move { node, to } => {
+            let place = match to {
+                MoveTarget::Into(NodeKey::Role(key)) => format!("to {}", key.role),
+                MoveTarget::Into(NodeKey::Team(team)) => format!("to {team}"),
+                MoveTarget::Into(NodeKey::Duo) => format!("to {}", org.duo.name),
+                MoveTarget::Into(NodeKey::Agent(agent)) => format!("to {agent}"),
+                MoveTarget::Before(team) => format!("before {team}"),
+                MoveTarget::End => "to the end".to_owned(),
+            };
+            format!("move {} {place}", node_name(node, org))
+        }
+    }
+}
+
+/// `team Growth`, `role Payments › QA`, an agent's name, or Duo's.
+fn node_name(node: &NodeKey, org: &Org) -> String {
+    match node {
+        NodeKey::Duo => org.duo.name.to_string(),
+        NodeKey::Team(team) => format!("team {team}"),
+        NodeKey::Role(_) => format!("role {}", org.breadcrumb(node)),
+        NodeKey::Agent(agent) => agent.to_string(),
+    }
+}
+
+impl CardOutcome {
+    /// How the answer reads (P3-D12): `approved`, `edited and approved`,
+    /// `rejected` or `approved, not applied (<reason>)`.
+    pub fn words(&self) -> String {
+        match self {
+            CardOutcome::Approved => "approved".to_owned(),
+            CardOutcome::EditedApproved => "edited and approved".to_owned(),
+            CardOutcome::Rejected => "rejected".to_owned(),
+            CardOutcome::NotApplied(reason) => format!("approved, not applied ({reason})"),
+        }
+    }
+}
+
+/// The message that answers card `id` to Duo (P3-D12), such as
+/// `card 1 approved: stop squad-1`.
+pub fn answer_text(id: CardId, outcome: &CardOutcome, summary: &str) -> String {
+    format!("card {} {}", id.0, result_line(outcome, summary))
+}
+
+/// The chat's `→` line for an answered card (P3-D12): `approved: stop squad-1`.
+pub fn result_line(outcome: &CardOutcome, summary: &str) -> String {
+    format!("{}: {summary}", outcome.words())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::command::{MoveTarget, TeamDraft};
+    use crate::names::NodeName;
+    use crate::org::{Fields, NodeKey};
+    use crate::testkit::{example_org, n};
+
+    fn nn(s: &str) -> NodeName {
+        NodeName::parse(s).unwrap()
+    }
+
+    fn card(change: CardChange) -> Card {
+        Card {
+            id: CardId(1),
+            source: CardSource::Duo,
+            change,
+            raised_at: Millis(0),
+            answer: None,
+        }
+    }
+
+    fn qa() -> RoleKey {
+        RoleKey {
+            team: Some(nn("Payments")),
+            role: nn("QA"),
+        }
+    }
+
+    fn org_card(edit: OrgEdit) -> CardChange {
+        CardChange::Org(edit)
+    }
+
+    #[test]
+    fn summaries() {
+        let org = example_org();
+        let draft = AgentDraft {
+            name: n("pay-web"),
+            fields: Fields::default(),
+        };
+        let cases = [
+            (
+                CardChange::Stop {
+                    agent: n("squad-1"),
+                },
+                "stop squad-1",
+            ),
+            (
+                org_card(OrgEdit::AddAgent {
+                    role: qa(),
+                    agent: draft.clone(),
+                }),
+                "add pay-web",
+            ),
+            (
+                CardChange::NewAgent {
+                    role: qa(),
+                    agent: draft,
+                    task: "retry cases".into(),
+                    run: RunIn::Directory,
+                    clone_of: Some(n("pay-qa")),
+                },
+                "add pay-web",
+            ),
+            (
+                org_card(OrgEdit::AddTeam(TeamDraft {
+                    name: nn("Growth"),
+                    defaults: Fields::default(),
+                })),
+                "add team Growth",
+            ),
+            (
+                org_card(OrgEdit::Move {
+                    node: NodeKey::Agent(n("pay-qa")),
+                    to: MoveTarget::Into(NodeKey::Role(qa())),
+                }),
+                "move pay-qa to QA",
+            ),
+            (
+                org_card(OrgEdit::Move {
+                    node: NodeKey::Role(qa()),
+                    to: MoveTarget::Into(NodeKey::Duo),
+                }),
+                "move role Payments \u{203a} QA to Duo",
+            ),
+            (
+                org_card(OrgEdit::Move {
+                    node: NodeKey::Team(nn("Growth")),
+                    to: MoveTarget::Before(nn("Payments")),
+                }),
+                "move team Growth before Payments",
+            ),
+            (
+                org_card(OrgEdit::Move {
+                    node: NodeKey::Team(nn("Growth")),
+                    to: MoveTarget::End,
+                }),
+                "move team Growth to the end",
+            ),
+            (
+                org_card(OrgEdit::Delete(NodeKey::Team(nn("Growth")))),
+                "remove team Growth",
+            ),
+            (
+                org_card(OrgEdit::Delete(NodeKey::Role(qa()))),
+                "remove role Payments \u{203a} QA",
+            ),
+            (
+                org_card(OrgEdit::Delete(NodeKey::Agent(n("pay-qa")))),
+                "remove pay-qa",
+            ),
+        ];
+        for (change, want) in cases {
+            assert_eq!(card(change).summary(&org), want);
+        }
+    }
+
+    #[test]
+    fn answer_and_result_lines() {
+        let s = "stop squad-1";
+        let not_applied = CardOutcome::NotApplied("squad-1 is already stopped".into());
+        assert_eq!(
+            answer_text(CardId(3), &CardOutcome::Approved, s),
+            "card 3 approved: stop squad-1"
+        );
+        assert_eq!(
+            answer_text(CardId(3), &CardOutcome::EditedApproved, s),
+            "card 3 edited and approved: stop squad-1"
+        );
+        assert_eq!(
+            answer_text(CardId(3), &CardOutcome::Rejected, s),
+            "card 3 rejected: stop squad-1"
+        );
+        assert_eq!(
+            answer_text(CardId(3), &not_applied, s),
+            "card 3 approved, not applied (squad-1 is already stopped): stop squad-1"
+        );
+        assert_eq!(
+            result_line(&CardOutcome::Approved, s),
+            "approved: stop squad-1"
+        );
+        assert_eq!(
+            result_line(&not_applied, s),
+            "approved, not applied (squad-1 is already stopped): stop squad-1"
+        );
+    }
 }

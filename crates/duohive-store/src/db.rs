@@ -46,6 +46,10 @@ CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NU
 -- kind 'you' (message) | 'duo' | 'action' (result) | 'card' (card, result = the outcome); notes are never stored.
 CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL,
   result TEXT, card INTEGER, message INTEGER);
+", "
+-- source 'duo' | 'no_free_agent'; change: CardChange as JSON; outcome NULL while pending.
+CREATE TABLE cards(id INTEGER PRIMARY KEY, source TEXT NOT NULL, change TEXT NOT NULL, raised_at INTEGER NOT NULL,
+  outcome TEXT, answered_at INTEGER);
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {

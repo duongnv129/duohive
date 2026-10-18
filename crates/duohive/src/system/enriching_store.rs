@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use duohive_core::adapter::Adapters;
+use duohive_core::card::Card;
 use duohive_core::chat::ChatEntry;
 use duohive_core::hook::HookMessage;
 use duohive_core::inbox::{Message, MessageId};
@@ -115,5 +116,13 @@ impl Store for EnrichingStore {
 
     fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError> {
         self.inner.save_chat(entry)
+    }
+
+    fn load_cards(&mut self) -> Result<Vec<Card>, StoreError> {
+        self.inner.load_cards()
+    }
+
+    fn save_card(&mut self, card: &Card) -> Result<(), StoreError> {
+        self.inner.save_card(card)
     }
 }

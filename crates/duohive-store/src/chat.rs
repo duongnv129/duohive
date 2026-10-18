@@ -18,7 +18,7 @@ fn id_of(v: i64) -> Option<u64> {
     u64::try_from(v).ok()
 }
 
-fn outcome_text(o: &CardOutcome) -> String {
+pub(crate) fn outcome_text(o: &CardOutcome) -> String {
     match o {
         CardOutcome::Approved => "approved".to_owned(),
         CardOutcome::EditedApproved => "edited and approved".to_owned(),
@@ -27,7 +27,7 @@ fn outcome_text(o: &CardOutcome) -> String {
     }
 }
 
-fn outcome_from(text: &str) -> Option<CardOutcome> {
+pub(crate) fn outcome_from(text: &str) -> Option<CardOutcome> {
     match text {
         "approved" => Some(CardOutcome::Approved),
         "edited and approved" => Some(CardOutcome::EditedApproved),

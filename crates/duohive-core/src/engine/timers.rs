@@ -165,7 +165,8 @@ impl Engine {
         self.save_row(agent, out);
     }
 
-    /// Needs you: waiting, quiet and errored agents, oldest first, then by name (D13).
+    /// Needs you: waiting, quiet and errored agents and pending cards, oldest
+    /// first, then by name (D13, P3-D25).
     pub fn needs_you(&self) -> Vec<NeedsYouItem> {
         let mut items: Vec<NeedsYouItem> = self
             .agents
@@ -193,7 +194,17 @@ impl Engine {
                 })
             })
             .collect();
-        // Agents iterate in name order and the sort is stable: ties stay by name.
+        // P3-D25: each pending card is a Duo row, by when it was raised.
+        items.extend(self.cards.iter().map(|card| NeedsYouItem {
+            agent: self.org.duo.name.clone(),
+            state: AgentState::Waiting,
+            quiet: false,
+            since: card.raised_at,
+            excerpt: Some(card.summary(&self.org)),
+            card: Some(card.id),
+        }));
+        // Agents iterate in name order, then cards by id, and the sort is
+        // stable: ties stay in that order.
         items.sort_by_key(|i| i.since);
         items
     }

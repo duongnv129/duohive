@@ -64,7 +64,7 @@ impl Engine {
     }
 
     /// Stores an entry (a `Note` never is), then publishes it as `ChatLine`.
-    fn chat_entry(&mut self, kind: ChatKind, text: String, out: &mut Vec<Event>) {
+    pub(super) fn chat_entry(&mut self, kind: ChatKind, text: String, out: &mut Vec<Event>) {
         let entry = ChatEntry {
             id: ChatId(self.next_chat),
             at: self.ports.clock.now(),

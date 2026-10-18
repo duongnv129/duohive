@@ -58,3 +58,13 @@ pub fn alert_for(
         body: last_reply.unwrap_or_default().to_owned(),
     })
 }
+
+/// A card's alert (P3-D5): `<Duo> needs you`, with the card's summary as its body.
+pub fn card_alert(duo: &AgentName, summary: &str) -> Alert {
+    Alert {
+        agent: duo.clone(),
+        kind: AlertKind::NeedsYou,
+        title: format!("{duo} needs you"),
+        body: summary.to_owned(),
+    }
+}

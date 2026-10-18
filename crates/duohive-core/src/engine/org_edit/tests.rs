@@ -472,6 +472,7 @@ fn org_save_failure_changes_nothing() {
 }
 
 mod duo_reload_settings;
+mod moves;
 
 #[test]
 fn preview_edit_applies_and_validates() {

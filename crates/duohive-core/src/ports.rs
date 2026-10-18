@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::adapter::DialogCheck;
 use crate::alert::Alert;
+use crate::card::Card;
 use crate::chat::ChatEntry;
 use crate::hook::HookMessage;
 use crate::inbox::{Message, MessageId};
@@ -256,6 +257,10 @@ pub trait Store: Send {
     fn load_chat(&mut self, last: usize) -> Result<Vec<ChatEntry>, StoreError>;
     /// Appends a chat entry (a `Note` is never stored).
     fn save_chat(&mut self, entry: &ChatEntry) -> Result<(), StoreError>;
+    /// The pending cards, and the newest card answered or not, so ids continue.
+    fn load_cards(&mut self) -> Result<Vec<Card>, StoreError>;
+    /// Inserts or replaces a card, keyed by id.
+    fn save_card(&mut self, card: &Card) -> Result<(), StoreError>;
 }
 
 /// A live view of one agent's pane. Opening a stream closes any other.

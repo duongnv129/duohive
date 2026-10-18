@@ -53,6 +53,7 @@ impl Engine {
         self.take_closed_calls(&rows, &mut out);
         self.load_inbox(&mut out);
         self.load_chat(&mut out);
+        self.load_cards(&mut out);
         // Stopped means no row: a stale one goes.
         let (stopped, rows): (Vec<_>, Vec<_>) = rows
             .into_iter()

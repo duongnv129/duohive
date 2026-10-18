@@ -86,6 +86,7 @@ impl Engine {
                 )
                 .map(|(message, outcome)| ToolOk::Queued { message, outcome }),
             ToolCall::MessageStatus { id } => self.message_status(&caller.agent, *id),
+            ToolCall::ProposeOrgChange { change } => self.propose_org_change(change, out),
             _ => Err(ToolError::new(ErrorCode::Unavailable, "not built yet")),
         }
     }

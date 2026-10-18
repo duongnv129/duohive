@@ -2,6 +2,7 @@
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
 mod alerts;
+mod cards;
 mod chat;
 mod driver;
 #[cfg(test)]
@@ -29,6 +30,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::adapter::{Adapters, CliPresence};
+use crate::card::Card;
 use crate::chat::ChatEntry;
 use crate::cli_kind::CliKind;
 use crate::command::Command;
@@ -260,6 +262,10 @@ pub struct Engine {
     chat: Vec<ChatEntry>,
     /// The next chat entry id.
     next_chat: u64,
+    /// Pending cards, oldest first (TD §6.2).
+    cards: Vec<Card>,
+    /// The next card id.
+    next_card: u64,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -301,6 +307,8 @@ impl Engine {
             closed_calls: Vec::new(),
             chat: Vec::new(),
             next_chat: 1,
+            cards: Vec::new(),
+            next_card: 1,
             cfg,
             ports,
             adapters,
@@ -406,9 +414,9 @@ impl Engine {
             Command::SendMessage { to, text } => self.send_yours(to, text),
             Command::Typing { agent } => self.typing(agent),
             Command::ChatToDuo { text } => self.chat_to_duo(text),
-            Command::AssignToRole { .. }
-            | Command::ApproveCard { .. }
-            | Command::RejectCard { .. } => reject("not built yet"),
+            Command::ApproveCard { card, edited } => self.approve_card(card, edited.map(|c| *c)),
+            Command::RejectCard { card } => self.reject_card(card),
+            Command::AssignToRole { .. } => reject("not built yet"),
         }
     }
 
@@ -441,7 +449,7 @@ impl Engine {
             settings_error: self.settings_error.clone(),
             reconnecting: self.reconnect.as_ref().map_or(0, |r| r.reconnecting),
             worktrees: self.worktrees_shown.clone(),
-            cards: Vec::new(),
+            cards: self.cards.clone(),
             chat: self.chat.clone(),
             your_queued: self.your_queued(),
         }
