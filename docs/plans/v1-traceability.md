@@ -59,8 +59,9 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Where the org lives; missing directory | 1 | T8, T14, T16 |
 | Org defaults: Edit org | 1 | T25 |
 | Settings screen: You, Attention, Look | 2 | 2.17 (P2-D13) |
-| Settings screen: Keys, Org | 4 | 4.6, 4.4 |
-| Approvals stay with you: OpenCode `edit` and `bash` ask; no auto-approve flags | 1 | T20–21 |
+| Settings screen: the Keys row and the Org group's `New org from template…` row | 4 | 4.6, 4.4 |
+| Approvals stay with you: OpenCode `edit` and `bash` ask; no auto-approve flags (except DuoHive's own tools from phase 3, P3-D1) | 1 | T20–21 |
+| Approvals: each launch pre-approves only DuoHive's own MCP tools (P3-D1) | 3 | 3.2 |
 | Approvals stay with you: no tool answers a prompt | 3 | 3.5 |
 | Desktop alerts: Needs you entries and non-Duo finished | 2 | 2.9, 2.10 |
 | Desktop alerts: a raised card | 3 | 3.6 |
@@ -103,9 +104,11 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.1.2 Agent pane: full empty-org copy | 3 | 3.9 |
 | §4.1.3 Needs you: agents | 2 | 2.6 |
 | §4.1.3 Needs you: card rows | 3 | 3.10 |
+| §4.1.3, §4.6 Clicks on card rows and card buttons (P2-D25) | 3 | 3.10 |
 | §4.1.4 Desktop alerts: agents (click: P2-D18, UI edit in 2.20) | 2 | 2.9, 2.10, 2.20 |
 | §4.1.4 Desktop alerts: a raised card | 3 | 3.6 |
 | §4.2 Zoomed agent | 2 | 2.8 |
+| §4.1.2, §4.12 Claude's trust-dialog hint (P2-D23; friction entry 3) | 2 | 2.20 |
 | §4.1.2, §4.2, §4.5, §4.9, §4.10: UX pass fixes (footers that fit a stopped agent and a team or role, the wrapped Defaults line, the task box's word wrap, the worktree list's middle cut and empty list, Settings' Org heading; friction entries 10, 14–16, 19) | 2 | 2.20 |
 | §4.3 First-run setup; no-CLI screen | 4 | 4.3 |
 | §4.4.1 Forms, including the worktree radio's git-repo rule | 1 | T25 |
@@ -121,7 +124,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.8 Confirmations: Replace your org | 4 | 4.4 |
 | §4.9 Worktrees | 2 | 2.16 |
 | §4.10 Settings: You, Attention, Look | 2 | 2.17 |
-| §4.10 Settings: Keys, Org; the key-binding editor | 4 | 4.6, 4.4 |
+| §4.10 Settings: the Keys row, the Org group's `New org from template…` row; the key-binding editor | 4 | 4.6, 4.4 |
 | §4.11 Key map: phase 1 keys (D8) | 1 | T24 |
 | §4.11 Key map: phase 2 keys (P2-D9) | 2 | 2.5–2.8, 2.15–2.17 |
 | §4.11 Key map: chat and card keys | 3 | 3.9, 3.10 |
@@ -137,7 +140,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §5 Interaction rules: typing goes where focus is (agent pane, chat) | 2 | 2.5, 2.7 |
 | §5 Interaction rules: cards answer only with focus | 3 | 3.10 |
 | §5 Interaction rules: mouse wheel (Typing too) and click to select and focus (P2-D25) | 2 | 2.21 |
-| §5 Interaction rules: mouse parity (right-click, drag, header counts) | 4 | 4.7 |
+| §5 Interaction rules: mouse parity (right-click, drag, header counts; clicks in dialogs, forms, lists and first run, P4-D2) | 4 | 4.7 |
 | §6 Accessibility: glyph and word, `NO_COLOR` | 1 | T23 |
 | §6 Accessibility: colour-blind and contrast re-check | 4 | 4.9 |
 | §7 Copy: phase 1–2 screens | 2 | 2.20 |
@@ -160,7 +163,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §3.3 Concurrency: git checks and worktree re-check timers | 2 | 2.13, 2.14 |
 | §3.3 Concurrency: the MCP listener | 3 | 3.1 |
 | §3.4 Workspace | 0 | T1 |
-| §3.4 `duohive-mcp` content | 3 | 3.1 |
+| §3.4 `duohive-mcp` content | 3 | 3.1, 3.2 |
 | §4.1–§4.2 Status pipeline and engine | 1 | T9, T12–13, T19 |
 | §4.1 Start-up: git checks after the first frame | 2 | 2.13 |
 | §4.2 The finished/idle next-turn row (P2-D11) | 2 | 2.12 |
@@ -173,12 +176,15 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §5.1 Launch path | 1 | T11 |
 | §5.1 Launch path: Run choice, delivery confirmation | 2 | 2.12 |
 | §5.2 CLI adapters | 1 | T20–21 |
+| §5.2 CLI adapters: OpenCode 2.0 port (P2-D24; friction entry 20) | 2 | 2.20 |
+| §4.2, §5.5, §8 A failed turn errors the agent (P2-D24; friction entry 4) | 2 | 2.20 |
 | §5.2 CLI adapters: MCP | 3 | 3.2 |
 | §5.2 CLI adapters: model lists | 4 | 4.5 |
 | §5.3 Worktrees | 2 | 2.11–2.14 |
 | §5.3 Worktrees: a creation git never answers (P2-D22) | 2 | 2.20 |
 | §5.4 Task to a role | 3 | 3.7 |
 | §5.5 Stop and exit | 1 | T11, T12, T19 |
+| §5.5 Vim-safe quit keys for Claude Code (friction entry 1) | 2 | 2.20 |
 | §4.2, §5.5 OpenCode dialog check before the paste and before `Enter` (friction entry 6) | 2 | 2.20 |
 | §6.1–§6.5 Identity, tools, inbox, Duo, Duo chat (token generation: D1) | 3 | 3.1–3.8 |
 | §6.4 Changing Duo's CLI restarts Duo after a confirmation | 1 | T14, T25 |
@@ -218,6 +224,7 @@ Interim behaviour that a later phase removes. They are listed in the plans and h
 | D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3 |
 | P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9 |
 | P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11 |
+| P2-D25: clicks ignored in dialogs, confirmations, Settings and Worktrees | 2.21 | 4.7 (P4-D2) |
 | P2-D13: Settings without the Keys row and the Org group's `New org from template…` row (the Org heading and its note show) | 2.17 | 4.4, 4.6 |
 | P2-D9: no `?` (footer and header), `f`, `m` or mouse beyond P2-D25's wheel and click | phase 2 | 4.6–4.9 |
 | T23: errored-row hint without `space retry` | phase 1 | 2.15 |

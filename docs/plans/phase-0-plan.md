@@ -25,7 +25,7 @@
 - Data access only through the `Store` port; SQLite via `rusqlite`; migrations append-only.
 - Paths (D18): config dir `$XDG_CONFIG_HOME/duohive` else `~/.config/duohive`; data dir `$XDG_DATA_HOME/duohive` else `~/.local/share/duohive`; `DUOHIVE_CONFIG_DIR` / `DUOHIVE_DATA_DIR` override both (tests, bench). Files: `org.toml`, `settings.toml` (config dir); `state.db`, `run.sock`, `run/<agent>/`, `logs/` (data dir).
 - tmux: DuoHive's own server `tmux -L duohive` (overridable by `DUOHIVE_TMUX_SOCKET`), one session `duohive`, one window per agent; tmux ≥ 3.2 required.
-- The user's global CLI configuration is never modified; every hook, instruction and setting is passed per launch from `<data_dir>/run/<agent>/`. DuoHive passes no auto-approve flags of its own (TD §2).
+- The user's global CLI configuration is never modified; every hook, instruction and setting is passed per launch from `<data_dir>/run/<agent>/`. DuoHive passes no auto-approve flags of its own (TD §2), except DuoHive's own MCP tools from phase 3 (P3-D1).
 - States (PRD, UI §2.1): `stopped ○`, `starting ◌`, `working ●`, `waiting ◆`, `finished ✓`, `idle ◦`, `errored ✕`; `quiet ◷` overlay on working and starting only; `~` marks a screen-read state. Rows say "waiting"; definitions say "waiting on you".
 - Quiet threshold default 5 minutes, from `settings.toml` (`quiet_after_minutes`, minimum 1, D19).
 - Duo goes straight to idle after a turn and is never "finished".
