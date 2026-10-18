@@ -48,6 +48,7 @@ fn row(state: AgentState) -> SessionRow {
         saw_end_hook: false,
         last_task: Some("fix it".into()),
         worktree: None,
+        launched_as_duo: false,
     }
 }
 
@@ -72,10 +73,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 3);
+    assert_eq!(user_version(&first), 4);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 3);
+    assert_eq!(user_version(&second), 4);
 }
 
 #[test]
@@ -496,5 +497,96 @@ fn migration_3_applies_on_v2_db() {
         .unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 3);
+    assert_eq!(user_version(&conn), 4);
+}
+
+#[test]
+fn migration_4_applies_on_v3_db() {
+    let (_t, paths) = temp_paths();
+    {
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch(
+            "DROP TABLE pending_tool_calls;
+             ALTER TABLE sessions DROP COLUMN launched_as_duo;
+             INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
+               error, last_reply, task_at_launch, saw_end_hook, last_task)
+               VALUES ('Duo', 'tok-d', '@1', 'idle', 0, NULL, 0, 1, NULL, NULL, 0, 0, NULL);
+             PRAGMA user_version = 3;",
+        )
+        .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let rows = store.load_sessions().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert!(!rows[0].launched_as_duo);
+    assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 4);
+}
+
+#[test]
+fn session_launched_as_duo_round_trips() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let r = SessionRow {
+        launched_as_duo: true,
+        ..row(AgentState::Idle)
+    };
+    store.save_session(&r).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![r]);
+}
+
+#[test]
+fn queued_tool_calls_round_trip() {
+    use duohive_store::closed::queue_tool_call;
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let args = serde_json::json!({"to": "pay-qa", "text": "hi"});
+    let first = queue_tool_call(&paths, "tok-1", "send_message", &args, Millis(10)).unwrap();
+    let second = queue_tool_call(
+        &paths,
+        "tok-2",
+        "stop_agent",
+        &serde_json::json!({"agent": "pay-qa"}),
+        Millis(20),
+    )
+    .unwrap();
+    assert!(second > first);
+    let calls = store.take_queued_tool_calls().unwrap();
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].id, first);
+    assert_eq!(calls[0].token, Token("tok-1".into()));
+    assert_eq!(calls[0].tool, "send_message");
+    assert_eq!(calls[0].arguments, args);
+    assert_eq!(calls[0].queued_at, Millis(10));
+    assert_eq!(calls[1].tool, "stop_agent");
+    assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
+}
+
+#[test]
+fn closed_rights_from_launched_as_duo() {
+    use duohive_core::tool::Rights;
+    use duohive_store::closed::rights_for_token;
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    store
+        .save_session(&SessionRow {
+            agent: n("Duo"),
+            token: Some(Token("tok-duo".into())),
+            launched_as_duo: true,
+            ..row(AgentState::Idle)
+        })
+        .unwrap();
+    store.save_session(&row(AgentState::Idle)).unwrap();
+    assert_eq!(
+        rights_for_token(&paths, "tok-duo").unwrap(),
+        Some(Rights::Duo)
+    );
+    assert_eq!(
+        rights_for_token(&paths, "tok-1").unwrap(),
+        Some(Rights::Agent)
+    );
+    assert_eq!(rights_for_token(&paths, "nope").unwrap(), None);
+    assert_eq!(rights_for_token(&paths, "").unwrap(), None);
 }

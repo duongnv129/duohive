@@ -155,6 +155,8 @@ struct AgentRt {
     cli: Option<CliKind>,
     /// The worktree the current session runs in (saved on its session row).
     worktree: Option<TaskId>,
+    /// The current session was launched as Duo (P3-D30).
+    launched_as_duo: bool,
     /// A next-turn paste not yet taken (P2-D11).
     delivery: Option<Delivery>,
     /// The worktree being created for the next launch (P2-D20).
@@ -193,6 +195,7 @@ impl AgentRt {
             killed_window: None,
             cli: None,
             worktree: None,
+            launched_as_duo: false,
             delivery: None,
             creating: None,
         }
@@ -581,6 +584,7 @@ impl Engine {
             saw_end_hook: rt.saw_end_hook,
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
+            launched_as_duo: rt.launched_as_duo,
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

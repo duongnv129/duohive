@@ -190,6 +190,7 @@ impl Engine {
         rt.saw_end_hook = row.saw_end_hook;
         rt.last_task = row.last_task;
         rt.worktree = row.worktree;
+        rt.launched_as_duo = row.launched_as_duo;
         rt.last_signal_at = now;
         rt.start_deadline = deadline;
         row.agent

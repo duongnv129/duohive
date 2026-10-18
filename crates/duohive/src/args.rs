@@ -20,6 +20,8 @@ pub enum Cli {
     BenchAgent(BenchAgentArgs),
     /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--view] [--json]`.
     Bench(BenchArgs),
+    /// `duohive mcp`: serve MCP on stdin/stdout for the agent whose `DUOHIVE_TOKEN` it has.
+    Mcp,
     /// `duohive --help` (or `-h`): print [`USAGE`].
     Help,
 }
@@ -29,6 +31,7 @@ pub const USAGE: &str = "\
 usage: duohive                 run DuoHive (your agents keep running in tmux after you quit)
        duohive hook <agent> <event>
                                forward one CLI hook (agent CLIs call this; prints nothing)
+       duohive mcp             serve DuoHive's tools over MCP on stdin/stdout (agent CLIs run this)
        duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--view] [--json]
                                measure CPU, memory and hook latency with fake agents
                                (--view holds one live pane stream open throughout)
@@ -45,6 +48,8 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
             event: event.clone(),
         }),
         [cmd, ..] if cmd == "hook" => Err("usage: duohive hook <agent> <event>".to_owned()),
+        [cmd] if cmd == "mcp" => Ok(Cli::Mcp),
+        [cmd, ..] if cmd == "mcp" => Err("usage: duohive mcp".to_owned()),
         [cmd, rest @ ..] if cmd == "bench-agent" => parse_bench_agent(rest),
         [cmd, rest @ ..] if cmd == "bench" => parse_bench(rest).map(Cli::Bench),
         [other, ..] => Err(format!("unknown command \"{other}\"")),

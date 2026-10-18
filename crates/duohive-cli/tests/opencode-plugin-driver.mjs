@@ -423,6 +423,15 @@ const results = {};
     query("edit", "allow", ["b.txt"]),
     query("edit", "allow", ["c.txt"]),
   ];
+  // DuoHive's own tools run with no prompt (P3-D1); nothing else is loosened.
+  results.evaluateDuohive = [
+    query("duohive_list_agents", "ask", []),
+    query("duohive_send_message", "allow", ["x"]),
+    query("duohive_stop_agent", "deny", []),
+    query("other_list_agents", "ask", []),
+    query("edit", "allow", ["d.txt"]),
+    query("duohive", "ask", []),
+  ];
   await ev.cleanup();
 }
 

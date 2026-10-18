@@ -1,5 +1,6 @@
 //! duohive-store crate: file and database adapters behind the `Store` port.
 
+pub mod closed;
 pub mod db;
 pub mod org_file;
 pub mod paths;

@@ -13,7 +13,7 @@ use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, Fields, Org, Role, Team};
 use crate::ports::{
     CheckWorktree, Clock, CreateWorktree, Git, Ids, Notifier, OrgFileError, PaneView,
-    RemoveWorktree, Runtime, SessionRow, Store, StoreError,
+    QueuedToolCall, RemoveWorktree, Runtime, SessionRow, Store, StoreError,
 };
 use crate::settings::Settings;
 use crate::status::WaitingOn;
@@ -226,6 +226,8 @@ pub struct FakeStoreState {
     pub worktrees: BTreeMap<(AgentName, TaskId), WorktreeRow>,
     /// Queued hooks, oldest first.
     pub pending: Vec<HookMessage>,
+    /// Tool calls queued while closed, oldest first.
+    pub queued_tool_calls: Vec<QueuedToolCall>,
 }
 
 impl Default for FakeStoreState {
@@ -241,6 +243,7 @@ impl Default for FakeStoreState {
             deleted_sessions: Vec::new(),
             worktrees: BTreeMap::new(),
             pending: Vec::new(),
+            queued_tool_calls: Vec::new(),
         }
     }
 }
@@ -343,6 +346,12 @@ impl Store for FakeStore {
     fn queue_pending_hook(&mut self, msg: &HookMessage, _at: Millis) -> Result<(), StoreError> {
         self.state.lock().unwrap().pending.push(msg.clone());
         Ok(())
+    }
+
+    fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError> {
+        Ok(std::mem::take(
+            &mut self.state.lock().unwrap().queued_tool_calls,
+        ))
     }
 }
 

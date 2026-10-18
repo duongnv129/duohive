@@ -102,6 +102,11 @@ impl CliAdapter for OpencodeAdapter {
             "plugins".into(),
             json!([{"package": file_url(&plugin_dir)?, "options": options}]),
         );
+        // DuoHive's tools (P3-D1). Shape from S2.5 (1.18), re-checked on 2.0 in Task 3.2.
+        config.insert(
+            "mcp".into(),
+            json!({"duohive": {"type": "local", "command": [hook_exe, "mcp"], "enabled": true}}),
+        );
         if let Some(model) = &agent.model {
             let model = match &agent.effort {
                 Some(effort) if !model.contains('#') => format!("{model}#{effort}"),

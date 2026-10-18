@@ -8,6 +8,7 @@ use duohive::args::{Cli, USAGE, parse_args};
 use duohive::bench::{BenchArgs, BenchError, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
+use duohive::mcp_cmd::run_mcp;
 use duohive::startup::{EXIT_GRACE, block_on_then_exit, env_vars, run_app_main};
 
 fn main() -> ExitCode {
@@ -29,6 +30,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Cli::BenchAgent(args)) => run_bench_agent(&args, &env_vars()),
+        Ok(Cli::Mcp) => run_mcp(&env_vars()),
         Ok(Cli::Bench(args)) => bench(args),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");

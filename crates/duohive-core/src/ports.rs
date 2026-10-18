@@ -186,6 +186,23 @@ pub struct SessionRow {
     pub last_task: Option<String>,
     /// The task whose worktree the agent runs in.
     pub worktree: Option<TaskId>,
+    /// This session was launched as Duo, so its token has Duo's rights (P3-D30).
+    pub launched_as_duo: bool,
+}
+
+/// A tool call made while DuoHive was closed, waiting to run (P3-D10, P3-D24).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QueuedToolCall {
+    /// Its row id.
+    pub id: u64,
+    /// The caller's launch token.
+    pub token: Token,
+    /// The tool's name.
+    pub tool: String,
+    /// The arguments, as the helper received them.
+    pub arguments: serde_json::Value,
+    /// When it was queued.
+    pub queued_at: Millis,
 }
 
 /// A store failure.
@@ -222,6 +239,8 @@ pub trait Store: Send {
     /// Queues a hook DuoHive took but did not apply before shutting down, after
     /// any already queued, for the next start to replay (Review Focus 3).
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError>;
+    /// Takes the tool calls queued while DuoHive was closed, oldest first, and deletes them.
+    fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError>;
 }
 
 /// A live view of one agent's pane. Opening a stream closes any other.
@@ -482,6 +501,7 @@ mod tests {
             saw_end_hook: false,
             last_task: None,
             worktree: None,
+            launched_as_duo: false,
         }
     }
 

@@ -217,6 +217,7 @@ fn row(agent: &str, state: AgentState, window: &str) -> SessionRow {
         saw_end_hook: false,
         last_task: None,
         worktree: None,
+        launched_as_duo: false,
     }
 }
 

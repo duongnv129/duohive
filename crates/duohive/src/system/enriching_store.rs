@@ -6,7 +6,7 @@ use duohive_core::adapter::Adapters;
 use duohive_core::hook::HookMessage;
 use duohive_core::names::AgentName;
 use duohive_core::org::Org;
-use duohive_core::ports::{OrgFileError, SessionRow, Store, StoreError};
+use duohive_core::ports::{OrgFileError, QueuedToolCall, SessionRow, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_core::time::Millis;
 use duohive_core::worktree::{TaskId, WorktreeRow};
@@ -89,5 +89,9 @@ impl Store for EnrichingStore {
 
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError> {
         self.inner.queue_pending_hook(msg, at)
+    }
+
+    fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError> {
+        self.inner.take_queued_tool_calls()
     }
 }

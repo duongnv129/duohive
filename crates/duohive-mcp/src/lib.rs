@@ -3,7 +3,9 @@
 
 pub mod calls;
 pub mod endpoint;
+pub mod helper;
 pub mod protocol;
+pub mod rpc;
 pub mod tools;
 
 #[cfg(test)]

@@ -6,7 +6,7 @@ use duohive_core::hook::HookMessage;
 use duohive_core::launch::{Token, WindowId};
 use duohive_core::names::AgentName;
 use duohive_core::org::Org;
-use duohive_core::ports::{OrgFileError, SessionRow, Store, StoreError};
+use duohive_core::ports::{OrgFileError, QueuedToolCall, SessionRow, Store, StoreError};
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
@@ -83,6 +83,7 @@ fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, String>> {
         saw_end_hook: r.get("saw_end_hook")?,
         last_task: r.get("last_task")?,
         worktree: r.get::<_, Option<String>>("worktree")?.map(TaskId),
+        launched_as_duo: r.get("launched_as_duo")?,
     }))
 }
 
@@ -199,8 +200,8 @@ impl Store for SqliteStore {
         self.conn
             .execute(
                 "INSERT OR REPLACE INTO sessions (agent, token, window, state, quiet, quiet_since, \
-                 from_screen, since, error, last_reply, task_at_launch, saw_end_hook, last_task, worktree) \
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                 from_screen, since, error, last_reply, task_at_launch, saw_end_hook, last_task, worktree, \
+                 launched_as_duo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                 rusqlite::params![
                     row.agent.as_str(),
                     row.token.as_ref().map(|t| t.0.as_str()),
@@ -216,6 +217,7 @@ impl Store for SqliteStore {
                     row.saw_end_hook,
                     row.last_task,
                     row.worktree.as_ref().map(|t| t.0.as_str()),
+                    row.launched_as_duo,
                 ],
             )
             .map(drop)
@@ -294,6 +296,10 @@ impl Store for SqliteStore {
 
     fn take_pending_hooks(&mut self) -> Result<Vec<HookMessage>, StoreError> {
         take_pending(&mut self.conn)
+    }
+
+    fn take_queued_tool_calls(&mut self) -> Result<Vec<QueuedToolCall>, StoreError> {
+        crate::closed::take_queued(&mut self.conn)
     }
 
     fn queue_pending_hook(&mut self, msg: &HookMessage, at: Millis) -> Result<(), StoreError> {
