@@ -347,7 +347,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 |---|---|---|---|---|
 | 1 | Org and agents | Define the org (file, a minimal org tree and the team, role and agent forms), start and stop standing agents on Claude Code and OpenCode, the org tree with live status, a basic `bench` | done 2026-10-04 | – |
 | 2 | One screen | Three-pane layout; agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option; touchpad scrolling and click to select; theme `auto` follows the terminal; quiet colour; the OpenCode 2.0 port; the UI/UX improvement pass at the end | in progress: code and UI/UX pass done 2026-10-17; only the three-day run without `tmux attach` remains | 1 |
-| 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | pending | 2 |
+| 3 | Duo and messaging | Duo chat pane, agent-to-agent messages, Duo's start and stop, visible actions, approval cards, task to a role | done 2026-10-18 | 2 |
 | 4 | Scale and polish | Performance targets met at 100 agents on the release benchmark, first-run setup with templates (Agent Squad needs task to a role, phase 3), model and effort picker, key and mouse completeness, the key-binding editor, the accessibility re-check | pending | 3 |
 | 5 | Open-source launch | The pre-launch UX check of the phase 3–4 screens, the CI release gate, README, install channels, CONTRIBUTING, name checks done (trademark search in USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`, since `.com` is taken; GitHub org; `duohive` crate), 30-day daily-use test passed | pending | 4 |
 

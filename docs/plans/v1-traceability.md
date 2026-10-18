@@ -213,17 +213,17 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 
 ## Phase-scoped adaptations
 
-Interim behaviour that a later phase removes. They are listed in the plans and here, never in the UI spec, which describes the final screens.
+Interim behaviour that a later phase removes. Rows marked removed were taken out by the task named (phase 3, 2026-10-18). They are listed in the plans and here, never in the UI spec, which describes the final screens.
 
 | Adaptation | Introduced | Removed by |
 |---|---|---|
-| D7: attach hint and side pane | phase 1 | 2.5, 2.7 (P2-D3) |
-| D7 / P2-D3: empty-org and empty-role copy without "ask Duo" | phase 1 | 3.9 |
-| P2-D3: role summary without `space give work to this role` | 2.5 | 3.11 |
+| D7: attach hint and side pane | phase 1 | 2.5, 2.7 (P2-D3), removed |
+| D7 / P2-D3: empty-org and empty-role copy without "ask Duo" | phase 1 | 3.9, removed |
+| P2-D3: role summary without `space give work to this role` | 2.5 | 3.11, removed |
 | D14: free-text model and effort | phase 1 | 4.5 |
 | D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3 |
-| P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9 |
-| P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11 |
+| P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9, removed |
+| P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11, removed |
 | P2-D25: clicks ignored in dialogs, confirmations, Settings and Worktrees | 2.21 | 4.7 (P4-D2) |
 | P2-D13: Settings without the Keys row and the Org group's `New org from template…` row (the Org heading and its note show) | 2.17 | 4.4, 4.6 |
 | P2-D9: no `?` (footer and header), `f`, `m` or mouse beyond P2-D25's wheel and click | phase 2 | 4.6–4.9 |

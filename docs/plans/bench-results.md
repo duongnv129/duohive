@@ -236,3 +236,61 @@ Release build, 20 runs of the helper started and asked to initialize.
 | Start to `initialize` answered | 14.5 ms | 435 ms (the first, cold run) |
 
 Each running agent holds one helper, so 10 agents hold about 29 MB of helpers. They are separate processes and are not counted in DuoHive's memory target.
+
+## Phase 3 acceptance
+
+Run on 2026-10-18 on macOS (aarch64), by the author, on the author's own org with real Duo on Claude Code and on OpenCode. Agent names are masked (`agent A`, `new agent`). Runs made before Duo was restarted on the new build did not count; each result below is from a Duo launched with the helper config (`launched_as_duo`).
+
+### Items 1 to 3, on each CLI
+
+| # | Check | Claude Code Duo | OpenCode Duo |
+|---|---|---|---|
+| 1 | "What's blocked, then fix it" entirely in the chat | PASS | PASS |
+| 2 | A role task reaches a free agent; with none free, a `no_free_agent` card is approved and the new agent takes the task | PASS | PASS |
+| 3 | A card answered while Duo was stopped is queued, Duo is not started, and the answer is delivered when Duo next runs | PASS, delivered 80 s later | PASS, delivered 30 s later |
+
+Check 1, the chat lines (both CLIs):
+
+```
+you: what's blocked?
+→ list agents   N agents
+→ read agent A   read
+duo: agent A is waiting on a permission prompt…
+you: fix it: stop agent A
+→ stop agent A   card raised
+card: approved: stop agent A
+```
+
+Duo then acknowledged. No `tmux attach` and no typing into an agent pane was needed.
+
+Check 2: the first role task went to a free agent. With no agent free in the role, a `no_free_agent` card held the task; approving it added the new agent to the role, which took the task. Duo received the `approved` answer.
+
+Check 3: with Duo stopped, approving the card queued the answer and did not start Duo. When Duo was started, it received the answer and acted on it.
+
+### Item 4: the 10-agent targets with the release binary
+
+| Measure | Result | Target |
+|---|---|---|
+| Release binary | 9,711,712 B | under 10 MB |
+| Idle CPU (`duohive bench --agents 10`) | 0.0 % | under 1 % |
+| Memory (peak) | 13.8 MB | under 20 MB |
+| Hook to screen p50 / p95 / max | 21 / 36 / 37 ms | under 1 s |
+
+All 10-agent targets are met. The bench's fake agents run no helpers; the MCP helpers (about 2.9 MB each, measured in Task 3.2) are outside DuoHive's own budget.
+
+### Observations (not defects)
+
+- `s` on a running agent asks "Stop agent?" first; the runbook for a stopped-Duo check must say to confirm it.
+- A give on a busy agent's row queues a message, not a role task.
+
+### Deferred minor findings from the final review
+
+Follow-ups, none blocking phase 3:
+
+- #6: the helper's 30 s answer timeout is shorter than the 120 s creation wait for `start_agent` and `assign_to_role` in a worktree.
+- #7: the helper lingers up to 60 minutes after its stdin ends when Duo's waits were dropped.
+- #8: the OpenCode `evaluate` match `/^duohive_[a-z_]+$/` is broader than the 9 tool names.
+- #9: `pending_tool_calls` has no cap.
+- #10: `tools.rs` logs the call at info level, so message and task text reach the logs.
+- #11: a new-agent card is answered `approved` when the task launch failed.
+- #12: an agent can message itself.
