@@ -521,7 +521,8 @@ fn move_node(org: &mut Org, node: &NodeKey, to: &MoveTarget) -> Result<(), Strin
     Ok(())
 }
 
-fn find_role<'a>(org: &'a Org, key: &RoleKey) -> Option<&'a Role> {
+/// The role at `key`, if the org has it.
+pub(super) fn find_role<'a>(org: &'a Org, key: &RoleKey) -> Option<&'a Role> {
     let roles = match &key.team {
         Some(t) => &org.teams.iter().find(|team| &team.name == t)?.roles,
         None => &org.roles,

@@ -4,14 +4,16 @@
 //! after `Reconnected`, with no one to answer (P3-D10, P3-D24).
 
 use super::Engine;
+use super::assign::Assigned;
 use super::rights::Caller;
 use super::signals::same_token;
 use crate::event::Event;
 use crate::inbox::{MessageKind, Sender};
 use crate::launch::Token;
+use crate::names::AgentName;
 use crate::ports::SessionRow;
 use crate::tool::{
-    CallId, ErrorCode, Rights, ToolCall, ToolError, ToolName, ToolOk, ToolResult, parse_call,
+    CallId, ErrorCode, Given, Rights, ToolCall, ToolError, ToolName, ToolOk, ToolResult, parse_call,
 };
 
 /// The caller whose session row holds `token`, with that session's rights (P3-D30).
@@ -54,7 +56,8 @@ fn tool_name(call: &ToolCall) -> Option<ToolName> {
 }
 
 impl Engine {
-    /// Answers one tool call with an `Event::ToolResult`.
+    /// Answers one tool call with an `Event::ToolResult`; a call whose work
+    /// waits for a worktree is answered when git answers (P3-D23).
     pub(super) fn on_tool(
         &mut self,
         call_id: CallId,
@@ -65,8 +68,41 @@ impl Engine {
         let result = self
             .caller(token)
             .and_then(|caller| self.run_call(&caller, call, &mut out));
-        out.push(Event::ToolResult { call_id, result });
+        match result {
+            Ok(ToolOk::Given {
+                agent,
+                given: Given::CreatingWorktree,
+            }) => self.park_until_created(call_id, agent),
+            result => out.push(Event::ToolResult { call_id, result }),
+        }
         out
+    }
+
+    /// Holds `call` until `agent`'s worktree creation ends (P3-D23). A
+    /// replayed call has no one to answer, so it isn't held.
+    pub(super) fn park_until_created(&mut self, call: CallId, agent: AgentName) {
+        if call != CallId::REPLAY {
+            self.parked.push((call, agent));
+        }
+    }
+
+    /// Answers every call held for `agent`'s worktree creation with `result`.
+    pub(super) fn answer_parked(
+        &mut self,
+        agent: &AgentName,
+        result: &ToolResult,
+        out: &mut Vec<Event>,
+    ) {
+        let (due, keep) = std::mem::take(&mut self.parked)
+            .into_iter()
+            .partition(|(_, a)| a == agent);
+        self.parked = keep;
+        for (call_id, _) in due {
+            out.push(Event::ToolResult {
+                call_id,
+                result: result.clone(),
+            });
+        }
     }
 
     /// Runs `call` for `caller`, once its rights allow the tool.
@@ -87,6 +123,12 @@ impl Engine {
                 .map(|(message, outcome)| ToolOk::Queued { message, outcome }),
             ToolCall::MessageStatus { id } => self.message_status(&caller.agent, *id),
             ToolCall::ProposeOrgChange { change } => self.propose_org_change(change, out),
+            ToolCall::AssignToRole { role, task } => self
+                .assign(role, task.clone(), None, None, out)
+                .map(|assigned| match assigned {
+                    Assigned::Given { agent, given } => ToolOk::Given { agent, given },
+                    Assigned::Card(card) => ToolOk::Pending { card },
+                }),
             _ => Err(ToolError::new(ErrorCode::Unavailable, "not built yet")),
         }
     }

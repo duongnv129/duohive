@@ -19,6 +19,7 @@ use crate::names::AgentName;
 use crate::ports::{CheckWorktree, CreateWorktree, GitError, RemoveWorktree};
 use crate::status::AgentState;
 use crate::time::Millis;
+use crate::tool::{ErrorCode, Given, ToolError, ToolOk};
 use crate::validate::{DirStatus, agent_problem};
 use crate::worktree::{
     BaseRef, MergeState, TaskId, WorktreeRow, WorktreeState, branch_name, task_id, task_slug,
@@ -197,6 +198,27 @@ impl Engine {
         let Creating { task, row, .. } = c;
         let id = row.task.clone();
         let mut out = self.launch(agent, Some(task), Some((id.clone(), row.path.clone())));
+        // P3-D23: a tool call waiting for this worktree is answered now.
+        let result = if self.state_of(agent).is_running() {
+            Ok(ToolOk::Given {
+                agent: agent.clone(),
+                given: Given::Started { worktree: true },
+            })
+        } else {
+            let reason = self
+                .agents
+                .get(agent)
+                .and_then(|rt| rt.status.error.clone())
+                .or_else(|| {
+                    out.iter().find_map(|e| match e {
+                        Event::CommandRejected { reason } => Some(reason.clone()),
+                        _ => None,
+                    })
+                })
+                .unwrap_or_else(|| "couldn't start".to_owned());
+            Err(ToolError::new(ErrorCode::Refused, reason))
+        };
+        self.answer_parked(agent, &result, &mut out);
         let in_use = self.agents.get(agent).and_then(|rt| rt.worktree.as_ref()) == Some(&id);
         let row = WorktreeRow {
             base: Some(base),
@@ -246,6 +268,11 @@ impl Engine {
         if let Some(id) = self.rt_mut(agent).launch_message.take() {
             self.drop_message(id, format!("couldn't create worktree: {error}"), &mut out);
         }
+        let refused = ToolError::new(
+            ErrorCode::Refused,
+            format!("couldn't create worktree: {error}"),
+        );
+        self.answer_parked(agent, &Err(refused), &mut out);
         out
     }
 

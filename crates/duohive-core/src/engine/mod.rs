@@ -2,6 +2,7 @@
 //! adapter inputs, publishes events, and reaches the world only through the ports.
 
 mod alerts;
+mod assign;
 mod cards;
 mod chat;
 mod driver;
@@ -47,7 +48,7 @@ use crate::ports::{
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
-use crate::tool::ToolCall;
+use crate::tool::{CallId, ToolCall};
 use crate::validate::{DirProbe, DirStatus, agent_problem};
 use crate::worktree::{TaskId, WorktreeRow};
 
@@ -266,6 +267,8 @@ pub struct Engine {
     cards: Vec<Card>,
     /// The next card id.
     next_card: u64,
+    /// Tool calls waiting for an agent's worktree creation, oldest first (P3-D23).
+    parked: Vec<(CallId, AgentName)>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -309,6 +312,7 @@ impl Engine {
             next_chat: 1,
             cards: Vec::new(),
             next_card: 1,
+            parked: Vec::new(),
             cfg,
             ports,
             adapters,
@@ -416,7 +420,12 @@ impl Engine {
             Command::ChatToDuo { text } => self.chat_to_duo(text),
             Command::ApproveCard { card, edited } => self.approve_card(card, edited.map(|c| *c)),
             Command::RejectCard { card } => self.reject_card(card),
-            Command::AssignToRole { .. } => reject("not built yet"),
+            Command::AssignToRole {
+                role,
+                task,
+                pick,
+                run,
+            } => self.assign_yours(role, task, pick, run),
         }
     }
 
