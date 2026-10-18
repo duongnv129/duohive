@@ -3,14 +3,12 @@
 //! the snapshot carries the last [`CHAT_LOAD`].
 
 use super::Engine;
-use crate::chat::{CHAT_LOAD, ChatEntry, ChatId, ChatKind, cut};
+use crate::chat::{CHAT_LOAD, ChatEntry, ChatId, ChatKind};
+use crate::duo::{send_result, sent_line};
 use crate::event::Event;
 use crate::inbox::{MessageKind, Sender};
 use crate::names::AgentName;
 use crate::tool::SendOutcome;
-
-/// How much of a message an action line quotes (P3-D14).
-const QUOTE: usize = 40;
 
 impl Engine {
     /// `ChatToDuo` (P3-D26): a `you` line, then your message to Duo — typed
@@ -54,8 +52,7 @@ impl Engine {
         outcome: SendOutcome,
         out: &mut Vec<Event>,
     ) {
-        let line = format!("@{to} \"{}\"", cut(text, QUOTE));
-        self.chat_action(line, send_result(to, outcome), out);
+        self.chat_action(sent_line(to, text), send_result(to, outcome), out);
     }
 
     /// Duo's reply at a turn end: always a line, even when it repeats the last one.
@@ -98,15 +95,6 @@ impl Engine {
                 reason: format!("couldn't load the chat: {e}"),
             }),
         }
-    }
-}
-
-/// A send's result word (P3-D14): `typed in`, `queued (<to> is <state>)` or `started`.
-pub(super) fn send_result(to: &AgentName, outcome: SendOutcome) -> String {
-    match outcome {
-        SendOutcome::TypedIn => "typed in".to_owned(),
-        SendOutcome::Queued(state) => format!("queued ({to} is {})", state.word()),
-        SendOutcome::Started => "started".to_owned(),
     }
 }
 

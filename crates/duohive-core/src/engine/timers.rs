@@ -54,11 +54,12 @@ impl Engine {
 
     /// A timer is due: zero exits past their grace, start timeouts, screen
     /// reads, quiet, deliveries waiting past `DELIVERY_WAIT`, worktree creations
-    /// waiting past `CREATE_WAIT` and the 10-minute
-    /// worktree check.
+    /// waiting past `CREATE_WAIT`, Duo's waits and reads past their timeouts
+    /// and the 10-minute worktree check.
     pub(super) fn on_tick(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
         let mut out = self.expire_exits();
+        self.expire_waits(now, &mut out);
         if self.worktree_check_due <= now {
             self.worktree_check_due = now + WORKTREE_CHECK_EVERY;
             self.check_worktrees(None, &mut out);
@@ -221,7 +222,7 @@ impl Engine {
     /// When the next timer is due: settle reads, start timeouts, pre-timeout
     /// reads, zero exits waiting for their end hook, quiet thresholds,
     /// deliveries waiting for a sign they were taken, worktree creations
-    /// waiting for git, and, while there are
+    /// waiting for git, Duo's waits and reads (P3-D23), and, while there are
     /// worktrees, the 10-minute check.
     /// Each is cleared or acted on by the `Tick` that reaches it.
     pub fn next_deadline(&self) -> Option<Millis> {
@@ -242,6 +243,7 @@ impl Engine {
             })
             .flatten()
             .chain(worktree_check)
+            .chain(self.waits_due())
             .min()
     }
 }

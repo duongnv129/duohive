@@ -1,12 +1,14 @@
 //! Agents' tool calls (TD §6.2). The token is checked first, then the caller's
 //! rights, so a refused call has no other effect; each tool is answered by the
 //! task that builds it. Calls queued while DuoHive was closed run here too,
-//! after `Reconnected`, with no one to answer (P3-D10, P3-D24).
+//! after `Reconnected`, with no one to answer and no action line (P3-D10,
+//! P3-D24).
 
 use super::Engine;
 use super::assign::Assigned;
 use super::rights::Caller;
 use super::signals::same_token;
+use crate::duo::action_line;
 use crate::event::Event;
 use crate::inbox::{MessageKind, Sender};
 use crate::launch::Token;
@@ -39,6 +41,11 @@ fn row_caller(rows: &[SessionRow], token: &Token) -> Option<Caller> {
     found
 }
 
+/// Reads and waits change nothing, so they are never queued while closed.
+fn not_replayed() -> ToolError {
+    ToolError::new(ErrorCode::DuohiveClosed, "DuoHive was closed")
+}
+
 /// The tool a call is for; `None` for `Rights`, which isn't a tool.
 fn tool_name(call: &ToolCall) -> Option<ToolName> {
     Some(match call {
@@ -55,9 +62,22 @@ fn tool_name(call: &ToolCall) -> Option<ToolName> {
     })
 }
 
+/// A call waiting for an agent's worktree creation (P3-D23).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct Parked {
+    /// The call to answer.
+    pub call_id: CallId,
+    /// The agent whose worktree is being created.
+    pub agent: AgentName,
+    /// The call, when its answer writes an action line (Duo's, P3-D14).
+    pub line: Option<ToolCall>,
+}
+
 impl Engine {
-    /// Answers one tool call with an `Event::ToolResult`; a call whose work
-    /// waits for a worktree is answered when git answers (P3-D23).
+    /// Answers one tool call with an `Event::ToolResult`, after its action
+    /// line when Duo made it (P3-D14). A read or wait is answered when the
+    /// agent's screen or state answers it, and a call whose work waits for a
+    /// worktree when git answers (P3-D23).
     pub(super) fn on_tool(
         &mut self,
         call_id: CallId,
@@ -65,24 +85,60 @@ impl Engine {
         call: &ToolCall,
     ) -> Vec<Event> {
         let mut out = Vec::new();
-        let result = self
-            .caller(token)
-            .and_then(|caller| self.run_call(&caller, call, &mut out));
+        let caller = match self.caller(token) {
+            Ok(caller) => caller,
+            Err(e) => {
+                out.push(Event::ToolResult {
+                    call_id,
+                    result: Err(e),
+                });
+                return out;
+            }
+        };
+        let line = (caller.rights == Rights::Duo).then_some(call);
+        let Some(result) = self.run_call(&caller, call, Some((call_id, token)), &mut out) else {
+            return out;
+        };
         match result {
             Ok(ToolOk::Given {
                 agent,
                 given: Given::CreatingWorktree,
-            }) => self.park_until_created(call_id, agent),
-            result => out.push(Event::ToolResult { call_id, result }),
+            }) => self.park_until_created(call_id, agent, line.cloned()),
+            result => self.publish_result(call_id, line, result, &mut out),
         }
         out
     }
 
+    /// Publishes `result` for `call_id`, after `line`'s action line (P3-D14).
+    pub(super) fn publish_result(
+        &mut self,
+        call_id: CallId,
+        line: Option<&ToolCall>,
+        result: ToolResult,
+        out: &mut Vec<Event>,
+    ) {
+        if let Some((text, word)) = line.and_then(|call| action_line(call, &result)) {
+            self.chat_action(text, word, out);
+        }
+        out.push(Event::ToolResult { call_id, result });
+    }
+
     /// Holds `call` until `agent`'s worktree creation ends (P3-D23). A
-    /// replayed call has no one to answer, so it isn't held.
-    pub(super) fn park_until_created(&mut self, call: CallId, agent: AgentName) {
+    /// replayed call has no one to answer, so it isn't held. A held call is
+    /// answered even when its caller has since stopped: the work it asked
+    /// for went ahead, and its action line records it.
+    pub(super) fn park_until_created(
+        &mut self,
+        call: CallId,
+        agent: AgentName,
+        line: Option<ToolCall>,
+    ) {
         if call != CallId::REPLAY {
-            self.parked.push((call, agent));
+            self.parked.push(Parked {
+                call_id: call,
+                agent,
+                line,
+            });
         }
     }
 
@@ -93,25 +149,34 @@ impl Engine {
         result: &ToolResult,
         out: &mut Vec<Event>,
     ) {
-        let (due, keep) = std::mem::take(&mut self.parked)
+        let (due, keep): (Vec<Parked>, Vec<Parked>) = std::mem::take(&mut self.parked)
             .into_iter()
-            .partition(|(_, a)| a == agent);
+            .partition(|p| &p.agent == agent);
         self.parked = keep;
-        for (call_id, _) in due {
-            out.push(Event::ToolResult {
-                call_id,
-                result: result.clone(),
-            });
+        for p in due {
+            self.publish_result(p.call_id, p.line.as_ref(), result.clone(), out);
         }
     }
 
-    /// Runs `call` for `caller`, once its rights allow the tool.
-    fn run_call(&mut self, caller: &Caller, call: &ToolCall, out: &mut Vec<Event>) -> ToolResult {
+    /// Runs `call` for `caller`, once its rights allow the tool. `asked` is
+    /// the call and token to answer later; `None` for a replayed call.
+    /// Returns `None` when a read or wait will answer later.
+    fn run_call(
+        &mut self,
+        caller: &Caller,
+        call: &ToolCall,
+        asked: Option<(CallId, &Token)>,
+        out: &mut Vec<Event>,
+    ) -> Option<ToolResult> {
         let Some(tool) = tool_name(call) else {
-            return Ok(ToolOk::Rights(caller.rights));
+            return Some(Ok(ToolOk::Rights(caller.rights)));
         };
-        Self::allowed(caller, tool)?;
-        match call {
+        if let Err(e) = Self::allowed(caller, tool) {
+            return Some(Err(e));
+        }
+        Some(match call {
+            ToolCall::Rights => Ok(ToolOk::Rights(caller.rights)),
+            ToolCall::ListAgents => Ok(self.list_agents(&caller.agent)),
             ToolCall::SendMessage { to, text } => self
                 .send(
                     Sender::Agent(caller.agent.clone()),
@@ -122,6 +187,23 @@ impl Engine {
                 )
                 .map(|(message, outcome)| ToolOk::Queued { message, outcome }),
             ToolCall::MessageStatus { id } => self.message_status(&caller.agent, *id),
+            ToolCall::ReadAgent { agent } => match asked {
+                Some((id, token)) => return self.read_agent(id, token, agent),
+                None => Err(not_replayed()),
+            },
+            ToolCall::WaitForAgent {
+                agent,
+                timeout_minutes,
+            } => match asked {
+                Some((id, token)) => {
+                    return self.wait_for_agent(id, token, agent, *timeout_minutes);
+                }
+                None => Err(not_replayed()),
+            },
+            ToolCall::StartAgent { agent, task, run } => {
+                self.start_by_tool(agent, task.clone(), *run, out)
+            }
+            ToolCall::StopAgent { agent } => self.stop_by_tool(agent, out),
             ToolCall::ProposeOrgChange { change } => self.propose_org_change(change, out),
             ToolCall::AssignToRole { role, task } => self
                 .assign(role, task.clone(), None, None, out)
@@ -129,8 +211,7 @@ impl Engine {
                     Assigned::Given { agent, given } => ToolOk::Given { agent, given },
                     Assigned::Card(card) => ToolOk::Pending { card },
                 }),
-            _ => Err(ToolError::new(ErrorCode::Unavailable, "not built yet")),
-        }
+        })
     }
 
     /// Start-up: takes the calls queued while DuoHive was closed and finds each
@@ -165,7 +246,7 @@ impl Engine {
     /// results go nowhere (`CallId::REPLAY` is never published); a refusal is logged.
     pub(super) fn run_closed_calls(&mut self, out: &mut Vec<Event>) {
         for (caller, call) in std::mem::take(&mut self.closed_calls) {
-            if let Err(e) = self.run_call(&caller, &call, out) {
+            if let Some(Err(e)) = self.run_call(&caller, &call, None, out) {
                 tracing::info!(agent = %caller.agent, ?call, error = %e.message, "queued tool call refused");
             }
         }

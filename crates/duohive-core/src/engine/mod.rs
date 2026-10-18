@@ -6,6 +6,7 @@ mod assign;
 mod cards;
 mod chat;
 mod driver;
+mod duo;
 #[cfg(test)]
 mod harness;
 mod inbox;
@@ -19,10 +20,12 @@ mod tools;
 mod worktrees;
 
 pub use driver::run_core;
+use duo::{Read, Wait};
 pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
 use rights::Caller;
 use signals::Exit;
+use tools::Parked;
 use worktrees::Creating;
 
 use std::collections::{BTreeMap, HashMap};
@@ -48,7 +51,7 @@ use crate::ports::{
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
-use crate::tool::{CallId, ToolCall};
+use crate::tool::ToolCall;
 use crate::validate::{DirProbe, DirStatus, agent_problem};
 use crate::worktree::{TaskId, WorktreeRow};
 
@@ -268,7 +271,11 @@ pub struct Engine {
     /// The next card id.
     next_card: u64,
     /// Tool calls waiting for an agent's worktree creation, oldest first (P3-D23).
-    parked: Vec<(CallId, AgentName)>,
+    parked: Vec<Parked>,
+    /// Duo's `wait_for_agent` calls not yet answered, oldest first (P3-D23).
+    waits: Vec<Wait>,
+    /// Duo's `read_agent` calls waiting for a screen, oldest first (P3-D23).
+    reads: Vec<Read>,
     cfg: EngineConfig,
     ports: Ports,
     adapters: Arc<Adapters>,
@@ -313,6 +320,8 @@ impl Engine {
             cards: Vec::new(),
             next_card: 1,
             parked: Vec::new(),
+            waits: Vec::new(),
+            reads: Vec::new(),
             cfg,
             ports,
             adapters,
@@ -344,7 +353,11 @@ impl Engine {
             Input::Runtime(RuntimeEvent::Started { agent, window }) => {
                 self.on_started(&agent, window)
             }
-            Input::Runtime(RuntimeEvent::Screen { agent, text }) => self.on_screen(&agent, &text),
+            Input::Runtime(RuntimeEvent::Screen { agent, text }) => {
+                let mut out = self.on_screen(&agent, &text);
+                self.answer_reads(&agent, &text, &mut out);
+                out
+            }
             Input::Runtime(RuntimeEvent::PaneDied {
                 agent,
                 window,
@@ -572,6 +585,8 @@ impl Engine {
         if let Some(id) = ended {
             self.delivery_left_rest(agent, id, to, out);
         }
+        // P3-D23: a turn end, stop or error answers the waits on it.
+        self.end_waits(agent, before.state, to, out);
         if to == AgentState::Stopped {
             self.delete_row(agent, out);
         } else {

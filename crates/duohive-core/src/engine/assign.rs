@@ -108,7 +108,7 @@ impl Engine {
 
     /// Free (TD §5.4): stopped, finished or idle, with no delivery pending
     /// (P2-D11), no worktree being created (P2-D20), and not being stopped.
-    fn is_free(&self, agent: &AgentName) -> bool {
+    pub(super) fn is_free(&self, agent: &AgentName) -> bool {
         let Some(rt) = self.agents.get(agent) else {
             // No runtime state yet: never launched, so stopped.
             return true;

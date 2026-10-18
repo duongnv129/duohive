@@ -6,6 +6,7 @@ pub mod card;
 pub mod chat;
 pub mod cli_kind;
 pub mod command;
+pub mod duo;
 pub mod engine;
 pub mod event;
 pub mod hook;
