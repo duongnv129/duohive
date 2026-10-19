@@ -200,10 +200,10 @@ Six agents plus Duo. The org pane has focus, and auth-service is selected.
 - **The selected row is filtered out:** the selection moves to the first remaining match (the agent pane follows), and returns to nothing special when the filter clears.
 - **Width:** the chip is `filtered: ◆ · esc clears` at 100 columns and wider; below that it is `filter ◆`; the counts and `? help` are never dropped.
 
-At 80 columns the header reads:
+At 80×24 the header uses the compact counts (§4.1) and the chip:
 
 ```
- DuoHive  6 agents · ● 2 working · ◆ 2 need you  filter ◆        ? help
+ DuoHive  ● 2 · ◆ 2   filter ◆                ? help
 ```
 
 ```
@@ -902,7 +902,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.11 Key map
 
-`?` from anywhere in Selected mode, zoomed too (the zoom footer carries `? help`). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header and the footers of the org pane, Needs you and the agent pane in Selected mode show `? help`; Typing, zoom, dialog, form and chat footers do not.
+`?` from anywhere in Selected mode, zoomed too (the key works; the zoom footer keeps only its own keys). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header, and the footers of the org pane and Needs you (as the mocks in §4.1 show), carry `? help`; the agent pane's, Typing, zoom, dialog, form and chat footers do not.
 
 ```
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────┐

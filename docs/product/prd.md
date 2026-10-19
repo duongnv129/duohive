@@ -60,7 +60,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 | **Daily use (primary)** | Author uses DuoHive as the only agent tool for 30 consecutive days | Self-report log |
 | Time to first team | Install → 3 working agents in < 10 min, README only | 3 first-time users, timed |
 | Idle CPU | < 1% at 10 agents · < 3% at 100 | Built-in benchmark, each release; gated on Apple M-series (Linux numbers are reported but don't block a release) |
-| DuoHive memory | < 20 MB at 10 agents · < 60 MB at 100 | Same benchmark (DuoHive only; agents and the `duohive mcp` helpers excluded, the helpers' total reported) |
+| DuoHive memory | < 20 MB at 10 agents · < 60 MB at 100 | Same benchmark (DuoHive only; agents and the `duohive mcp` helpers excluded, the helpers' total reported; the tmux control client counts) |
 | Status freshness | Reported (hook) states on screen < 1 s at 10 · < 2 s at 100; screen-read (`~`) states < 2 s | Same benchmark |
 | Start-up | First frame < 100 ms at 10 · < 300 ms at 100 | Same benchmark |
 | Binary size | < 10 MB | Release artifact |
