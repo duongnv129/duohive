@@ -1,6 +1,6 @@
 # DuoHive Phase 3 Implementation Plan — Duo and messaging
 
-**Status:** Ready · expanded 2026-10-18 from the outline written 2026-10-05. Phase 2's three-day run without `tmux attach` (Task 2.19 Step 2) passed 2026-10-19; phase 3 started alongside it by the author's choice, and nothing here depended on that run.
+**Status:** Done 2026-10-18 · acceptance passed on Claude Code and OpenCode ([bench results](bench-results.md#phase-3-acceptance)). Expanded 2026-10-18 from the outline written 2026-10-05. Phase 2's three-day run without `tmux attach` (Task 2.19 Step 2) passed 2026-10-19; phase 3 started alongside it by the author's choice, and nothing here depended on that run.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -304,7 +304,7 @@ pub fn render(result: &ToolResult) -> SockAnswer;              // P3-D16 shapes
 - **`Call`:** `parse_call` first (an error answers at once, without the core); then `Command::Tool`, await, `render`, write one line, close. A connection that closes early `forget`s its call; a late `ToolResult` for a forgotten id is dropped.
 - **Ids:** `CallId`s count up from 1 per run and are never reused, so a result never reaches another call. `CallId(0)` is reserved for replayed calls: `Calls` never hands it out and `resolve` ignores it.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - Core (`tool.rs`):
     - `tool_names_round_trip`: `ToolName::parse(t.as_str()) == Some(t)` for all 9; `duo_only` is true for exactly `read_agent`, `wait_for_agent`, `start_agent`, `stop_agent`, `assign_to_role`, `propose_org_change`; `changes` is true for exactly the five of P3-D10.
     - `tools_for_agent_lacks_duo_tools`: `tools_for(Rights::Agent)` is `[ListAgents, SendMessage, MessageStatus]`; `tools_for(Rights::Duo)` is all 9.
@@ -319,11 +319,11 @@ pub fn render(result: &ToolResult) -> SockAnswer;              // P3-D16 shapes
     - `render_matches_p3_d16`: each `ToolOk` renders the P3-D16 JSON (for example `Pending { card: CardId(3) }` → `{"status":"pending","card_id":3}`); each `ErrorCode` renders `{"error":{"code":"<snake>","message":…}}`, and `Limit(Rate)` adds `"limit":"rate"`.
     - With a fake core task that answers `Command::Tool` from a table: `endpoint_answers_unknown_token_error`, `tools_list_for_non_duo_lacks_duo_tools`, `bad_arguments_answered_without_core` (the fake core sees no command), `result_reaches_only_its_call` (two concurrent calls answered in reverse order each get their own result), `early_close_forgets_call` (the stream is dropped; a later `resolve` neither panics nor answers anyone), `replay_id_never_issued` (`open` never returns `CallId(0)`; `resolve(CallId(0), …)` answers nobody).
   - `duohive`: `listener_routes_by_kind`: on a temp `run.sock`, a hook line still reaches `Input::Hook`, and a `call` line reaches `Input::Command(Command::Tool { .. })`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features tool; cargo test -p duohive-mcp; cargo test -p duohive --lib hook_listener`
-- [ ] **Step 3: Implement** the types, the endpoint, the listener routing and the `forward_events` change. The engine's `engine/tools.rs` answers `Err(ToolError { code: Unavailable, message: "not built yet" })` for now.
-- [ ] **Step 4: Measure P3-D8.** Add `rmcp = "=<latest>"` to `duohive-mcp` and a stub use, `cargo build --release -p duohive`, and record the binary size with and without it under "Phase 3" in `bench-results.md`. Under 10 MB and passing `cargo deny check`: keep it. Else remove it and note the fallback; Task 3.2 writes the hand-written server.
-- [ ] **Step 5: Run, see PASS.** `make check`
-- [ ] **Step 6: Edit TD §3.2**, then commit. `feat: mcp endpoint, tool commands and phase 3 shared types`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features tool; cargo test -p duohive-mcp; cargo test -p duohive --lib hook_listener`
+- [x] **Step 3: Implement** the types, the endpoint, the listener routing and the `forward_events` change. The engine's `engine/tools.rs` answers `Err(ToolError { code: Unavailable, message: "not built yet" })` for now.
+- [x] **Step 4: Measure P3-D8.** Add `rmcp = "=<latest>"` to `duohive-mcp` and a stub use, `cargo build --release -p duohive`, and record the binary size with and without it under "Phase 3" in `bench-results.md`. Under 10 MB and passing `cargo deny check`: keep it. Else remove it and note the fallback; Task 3.2 writes the hand-written server.
+- [x] **Step 5: Run, see PASS.** `make check`
+- [x] **Step 6: Edit TD §3.2**, then commit. `feat: mcp endpoint, tool commands and phase 3 shared types`
 
 ### Task 3.2: The `duohive mcp` helper, per-launch MCP config and the closed queue
 
@@ -386,7 +386,7 @@ ALTER TABLE sessions ADD COLUMN launched_as_duo INTEGER NOT NULL DEFAULT 0;
 - `rights_for_token` finds the session row whose token matches (constant-time) and gives `Rights::Duo` when its `launched_as_duo` is set (P3-D30); `queue_tool_call` inserts with `open_db_for_hook`'s 200 ms budget.
 - **On open** (built in Task 3.4): the queued calls run as P3-D24 says.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `helper.rs`, with an in-memory stdin/stdout and a fake socket server on a temp path:
     - `initialize_then_lists_tools_by_rights`: a fake DuoHive answering `Rights::Agent` → `tools/list` has 3 tools; `Rights::Duo` → 9.
     - `call_relays_arguments_untouched`: the fake server receives `{"kind":"call","token":"tok-1","tool":"send_message","arguments":{…}}` byte-equal in its `arguments`, and the MCP answer's `structuredContent` is the server's `ok` JSON.
@@ -405,18 +405,18 @@ ALTER TABLE sessions ADD COLUMN launched_as_duo INTEGER NOT NULL DEFAULT 0;
     - `evaluate_allows_only_duohive_tools` (plugin, under Node, with the provisional match until Step 5): a `duohive` tool request with `effect: "ask"` becomes `allow`; one the user set to `deny` stays `deny`; another server's tool, `edit` and `shell` keep their effects, and `edit` / `shell` `allow` still becomes `ask`.
     - Launch snapshots updated for both CLIs.
   - `crates/duohive/tests/mcp.rs`: `e2e_fake_cli_lists_tools_through_helper`: a running system with one fake agent; spawn `CARGO_BIN_EXE_duohive mcp` with that agent's `DUOHIVE_TOKEN` and `DUOHIVE_DATA_DIR` (`Command::env`), send `initialize` and `tools/list`, and get the 3 every-agent tools; with Duo's token, 9. `helper_exits_on_stdin_end`: closing stdin ends it with status 0 within 1 s.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-mcp helper; cargo test -p duohive-store; cargo test -p duohive-cli; cargo test -p duohive --test mcp`
-- [ ] **Step 3: Implement.** With P3-D8's fallback, `rpc.rs` handles the five methods, echoes the client's `protocolVersion` when it is one it knows, else answers `2025-06-18`.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Live checks (P3-D1).** On the author's machine, with a throwaway org under a temp `DUOHIVE_DATA_DIR` and `DUOHIVE_CONFIG_DIR`, never the user's global CLI config:
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-mcp helper; cargo test -p duohive-store; cargo test -p duohive-cli; cargo test -p duohive --test mcp`
+- [x] **Step 3: Implement.** With P3-D8's fallback, `rpc.rs` handles the five methods, echoes the client's `protocolVersion` when it is one it knows, else answers `2025-06-18`.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Live checks (P3-D1).** On the author's machine, with a throwaway org under a temp `DUOHIVE_DATA_DIR` and `DUOHIVE_CONFIG_DIR`, never the user's global CLI config:
   1. **Claude Code (pinned 2.1):** launch an agent through DuoHive and ask it to call `list_agents`. Record: the tool's name as Claude shows it; whether `mcp__duohive__*` in `permissions.allow` runs it with no prompt; that a file edit in the same session still prompts; that the helper received `DUOHIVE_TOKEN`; that `~/.claude.json` and `~/.claude/settings.json` are byte-equal before and after.
   2. **OpenCode 2.0 (`--standalone`):** the same. Record: whether the per-launch `mcp` server loads and lists its tools; the tools' names as the model sees them (S2.5 had `duohive_ping` on 1.18); the `action` and `resources` the `evaluate` hook receives for a `duohive` tool; that the tool runs with no prompt and an `edit` still asks; that the helper received `DUOHIVE_TOKEN`; that the global config is unchanged.
   3. **Long calls:** on each CLI, a `wait_for_agent` with `timeout_minutes: 60` on an agent kept working for longer. Record whether the CLI's own MCP request timeout ends the call first, and when. If it does, set that timeout per launch where the CLI has a per-launch setting (an environment variable or config key in the run directory, never global), and check again; with no per-launch setting, stop and ask the author whether to lower `WAIT_MAX_MINUTES` (P3-D11) below the CLI's limit.
   4. **The helper's cost:** RSS and start-to-`initialize` time of one `duohive mcp`, in `bench-results.md` under "Phase 3", with the total for 10 agents.
 
   Record 1–3 as the S1.5 and S2.14 addenda in `spike-report.md`. Then set the OpenCode `mcp` key and shape and the plugin's match to what 2 found, update `launch_allows_only_duohive_tools`, `evaluate_allows_only_duohive_tools` and the OpenCode snapshot to them, run `make check`, and edit TD §5.2 and §6.2 to the measured names and mechanism. **If a check fails** (a DuoHive tool still prompts, an edit stops prompting, the token doesn't reach the helper, the MCP server doesn't load, or any global file changes): stop and ask the author before going on. A fallback such as listing each tool name, or passing the token through the CLI's own environment syntax, is only tried with the author's say-so, then checked again.
-- [ ] **Step 6: Edit the TD** (§5.2, §6.2, §6.3 with P3-D10 and P3-D24, §7 with P3-D17, P3-D30, the `pending_tool_calls` table and `sessions.launched_as_duo`).
-- [ ] **Step 7: Commit.** `feat: duohive mcp helper, per-launch mcp config and the closed queue`
+- [x] **Step 6: Edit the TD** (§5.2, §6.2, §6.3 with P3-D10 and P3-D24, §7 with P3-D17, P3-D30, the `pending_tool_calls` table and `sessions.launched_as_duo`).
+- [x] **Step 7: Commit.** `feat: duohive mcp helper, per-launch mcp config and the closed queue`
 
 ### Task 3.3: Tool rights, identity and the shared give path
 
@@ -447,7 +447,7 @@ pub(super) enum GiveRefusal { Unknown, Busy(AgentState), Pending, GettingReady, 
 - `ToolCall::Rights` needs only a known token; every other call is checked with `allowed` first, so a refused call has no other effect.
 - `give_work`'s events and refusals stay exactly as in phase 2: its tests pass unchanged.
 
-- [ ] **Step 1: Write the failing tests** (engine harness).
+- [x] **Step 1: Write the failing tests** (engine harness).
   - `agent_cannot_call_duo_tools`: with `squad-1`'s token, each of the six Duo tools → `NotAllowed`, with no runtime call, card or message; `Rights` → `Rights::Agent`.
   - `duo_token_has_duo_rights`: Duo's token → `Rights::Duo`.
   - `token_of_stopped_agent_rejected`: stop `squad-1`, then a call with its last token → `UnknownToken`.
@@ -456,10 +456,10 @@ pub(super) enum GiveRefusal { Unknown, Busy(AgentState), Pending, GettingReady, 
   - `rename_never_grants_duo_rights`: an agent edited while running keeps `Rights::Agent`.
   - `give_returns_how_it_was_given`: a stopped agent → `Started { worktree: false }`; with `RunIn::NewWorktree` → `CreatingWorktree`; idle → `TypedIn`; working → `Busy(Working)`; pending delivery → `Pending`.
   - Phase 2's `lifecycle` tests pass unchanged.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features rights lifecycle`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: token-checked tool rights and one give path`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features rights lifecycle`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: token-checked tool rights and one give path`
 
 ### Task 3.4: The inbox
 
@@ -514,7 +514,7 @@ CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NU
 - **Start-up:** `load_messages(now - 10 min)` restores queues and limits; `next` ids continue from the highest.
 - **Calls queued while closed** (P3-D10, P3-D24): `start_up` takes them (`take_queued_tool_calls`) and resolves each token against the session rows it loaded; after `Reconnected` they run in order through `engine/tools.rs`, with no caller to answer; an unknown token or bad arguments drop the call with a log line. Each tool that later tasks build runs this way with no further change.
 
-- [ ] **Step 1: Write the failing tests** (engine harness, `FakeIds`, `FakeStore`).
+- [x] **Step 1: Write the failing tests** (engine harness, `FakeIds`, `FakeStore`).
   - Delivery:
     - `delivered_only_at_rest`: a message to a working agent stays `queued` with no paste; on its turn end (finished) it is pasted once.
     - `never_typed_onto_waiting`: a waiting agent with 2 queued messages gets no paste; waiting → working → finished pastes only the first.
@@ -554,10 +554,10 @@ CREATE TABLE messages(id INTEGER PRIMARY KEY, sender TEXT, recipient TEXT NOT NU
     - `replayed_call_publishes_no_tool_result`: the run under `CallId(0)` publishes no `ToolResult`.
     - `queued_before_open_runs_after` (`crates/duohive/tests/mcp.rs`): `queue_tool_call` into a closed data dir, then start the system → the message is queued after `Reconnected`, and a helper call made right after start-up connects instead of queuing.
   - Store: `messages_round_trip`; `migration_5_applies`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features inbox; cargo test -p duohive-store; cargo test -p duohive --test mcp`
-- [ ] **Step 3: Implement**, and edit TD §6.3 and §7.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: inbox with framed, confirmed delivery and limits`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features inbox; cargo test -p duohive-store; cargo test -p duohive --test mcp`
+- [x] **Step 3: Implement**, and edit TD §6.3 and §7.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: inbox with framed, confirmed delivery and limits`
 
 ### Task 3.8: The Duo chat core
 
@@ -596,7 +596,7 @@ CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NUL
 - **`Note` entries** are never stored.
 - **Your `SendMessage`** (from the chat's `@agent` or Give work's Send as message instead) writes `chat_action("@<to> \"<text cut to 40>\"", <result>)` from its `SendOutcome`: `typed in`, `queued (<to> is <state word>)` or `started` (P3-D14's words). A refused one writes nothing (`MessageRefused`).
 
-- [ ] **Step 1: Write the failing tests** (engine harness).
+- [x] **Step 1: Write the failing tests** (engine harness).
   - `queued_until_duo_at_rest`: Duo working → `You` entry, message `queued`, no paste; Duo idle → pasted verbatim.
   - `chat_to_stopped_duo_starts_it`: launches Duo with the text as its task.
   - `reply_becomes_chat_line`: a Duo `Stop` hook with `last_assistant_message: "done"` → `ChatLine(Duo, "done")`; the same text on the next turn → a second entry.
@@ -606,10 +606,10 @@ CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NUL
   - `transcript_survives_restart`: entries saved; a new engine's `Snapshot.chat` holds them in order; with 600 stored, it holds the last 500.
   - `your_message_writes_action_line`: `SendMessage { to: pay-qa, text: "rerun" }` with `pay-qa` working → `ChatLine(Action { result: "queued (pay-qa is working)" }, "@pay-qa \"rerun\"")`; idle → `typed in`; stopped → `started`; to `nobody` → no line.
   - Store: `chat_round_trip` (every stored `ChatKind`); `migration_6_applies`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features chat; cargo test -p duohive-store`
-- [ ] **Step 3: Implement**, and edit TD §6.5 and §7.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: duo chat transcript`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features chat; cargo test -p duohive-store`
+- [x] **Step 3: Implement**, and edit TD §6.5 and §7.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: duo chat transcript`
 
 ### Task 3.6: Approval cards
 
@@ -658,7 +658,7 @@ CREATE TABLE cards(id INTEGER PRIMARY KEY, source TEXT NOT NULL, change TEXT NOT
 - **`Move`:** `preview_edit` validates it (names, levels, D4); an agent's worktree rows and session are untouched.
 - **`propose_org_change`** (dispatched here): `preview_edit` must pass (else `InvalidChange` with the error); removing a non-stopped agent, or a role or team holding one → `Refused("<agent> is <state>; only a stopped agent can be removed")`; else `raise_card(CardSource::Duo, CardChange::Org(edit))`, `Pending`.
 
-- [ ] **Step 1: Write the failing tests** (engine harness).
+- [x] **Step 1: Write the failing tests** (engine harness).
   - `tool_returns_pending_with_card_id`: `propose_org_change` with Duo's token → `Pending { card: CardId(1) }` before any answer; a second → `CardId(2)`.
   - `propose_invalid_change_refused`: a duplicate name → `InvalidChange`, no card; `remove_running_agent_rejected` (and a role holding one).
   - `approve_applies_edit`: an `AddAgent` card approved → `OrgChanged` holds the agent; `CardAnswered(Approved)`.
@@ -677,10 +677,10 @@ CREATE TABLE cards(id INTEGER PRIMARY KEY, source TEXT NOT NULL, change TEXT NOT
   - `pending_cards_survive_restart`: a new engine on the same `FakeStore` has the card in its `Snapshot.cards` and Needs you, with no alert.
   - Move: `move_agent_to_role`, `move_role_to_team_and_root`, `move_team_reorders` (teams `[Payments, Growth, Ops]`: `Growth` `End` → `[Payments, Ops, Growth]`; `Ops` `Before(Payments)` → `[Ops, Payments, Growth]`), `move_team_onto_role_refused` (`Into(Role(..))` for a team → `InvalidChange`, and so is `Before`/`End` for an agent or role), `move_running_agent_applies_next_start` (its session continues; the next launch resolves the new role's defaults).
   - Store: `cards_round_trip` (every `CardChange` and `CardOutcome`); `migration_7_applies`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features cards org_edit; cargo test -p duohive-store`
-- [ ] **Step 3: Implement**, and edit TD §4.2, §6.2 and §7, and UI §4.4.2 (team positions).
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: approval cards, card alerts and org moves`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features cards org_edit; cargo test -p duohive-store`
+- [x] **Step 3: Implement**, and edit TD §4.2, §6.2 and §7, and UI §4.4.2 (team positions).
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: approval cards, card alerts and org moves`
 
 ### Task 3.7: Task to a role
 
@@ -713,7 +713,7 @@ impl Engine { pub(super) fn park_until_created(&mut self, call: CallId, agent: A
 - **Your `AssignToRole`** publishes `RoleAssigned { role, task, outcome: Given { agent, given } }` or `RoleAssigned { .., outcome: Card(id) }`; a refusal (`<agent> isn't free any more`, unknown role, empty task) publishes `AssignRefused { role, task, reason }`, so the dialog stays open with the task (P3-D28).
 - **A worktree pick through the tool** parks the call; `Created(Ok)` answers `Given { Started { worktree: true } }`, a failure answers `Refused("couldn't create worktree: <e>")`.
 
-- [ ] **Step 1: Write the failing tests** (engine harness).
+- [x] **Step 1: Write the failing tests** (engine harness).
   - `longest_at_rest_wins`: `squad-2` finished at t=100, `squad-1` idle at t=50, `squad-3` working → `squad-1` takes it (`TypedIn`).
   - `tie_goes_to_tree_order`.
   - `stopped_counts_as_free`: all stopped → the earliest-stopped launches with the task.
@@ -729,10 +729,10 @@ impl Engine { pub(super) fn park_until_created(&mut self, call: CallId, agent: A
   - `pick_must_still_be_free`: `pick: squad-2`, which started working meanwhile → `AssignRefused { reason: "squad-2 isn't free any more" }`; a pick that is getting a worktree ready → the same.
   - `your_assign_publishes_who_took_it`: `RoleAssigned { outcome: Given { agent: squad-1, given: TypedIn } }`; none free → `RoleAssigned { outcome: Card(CardId(1)) }`.
   - `tool_assign_in_worktree_waits_for_created`: no `ToolResult` until `Created(Ok)`; a creation failure → `Refused`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features assign`
-- [ ] **Step 3: Implement**, and edit TD §5.4.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: give a task to a role`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features assign`
+- [x] **Step 3: Implement**, and edit TD §5.4.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: give a task to a role`
 
 ### Task 3.5: Duo — its prompt and its tools
 
@@ -769,7 +769,7 @@ pub const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
 Each answered call except `Rights` writes `action_line`'s entry through Task 3.8's `chat_action`, then publishes `ToolResult`. Duo's stop or relaunch drops its pending waits and reads with no answer.
 
-- [ ] **Step 1: Write the failing tests** (engine harness, Duo's token unless noted).
+- [x] **Step 1: Write the failing tests** (engine harness, Duo's token unless noted).
   - Prompt: `duo_prompt_has_required_points`: `DUO_PROMPT` contains `card`, `pending`, `[message from`, `DuoHive boundary`, `commit, push, merge, publish and delete`, and each of the 9 tool names; `duo_prompt_under_org_prompt`: with org prompt `O`, Duo's resolved prompt starts `# Org\nO\n\n# Duo (DuoHive)\n`; other agents' prompts don't contain `DUO_PROMPT`.
   - One test per tool, allowed and refused:
     - `list_agents_shows_org_state_and_replies`: 6 agents plus Duo, `squad-2` `finished` with its last reply, `auth-service` `waiting_messages: 1`.
@@ -779,11 +779,11 @@ Each answered call except `Rights` writes `action_line`'s entry through Task 3.8
     - `stop_idle_agent_direct`, `stop_errored_agent_direct`, `stop_busy_agent_raises_card`, `stop_starting_agent_raises_card`, `stop_waiting_agent_raises_card` (each `Pending { card }` with a `CardRaised` for `Stop`), `stop_stopped_agent_refused`.
   - `every_call_is_an_action_line`: each of the 9 tools, answered or refused, adds exactly one `ChatLine` with `ChatKind::Action` whose text and result match P3-D14 (for example `stop squad-1` / `card raised`); `Rights` adds none.
   - `no_tool_answers_a_prompt`: with `billing-api` waiting, no tool sends keys to it (`stop_agent` raises a card; `send_message` queues).
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features duo`
-- [ ] **Step 3: Implement.** Draft `DUO_PROMPT` against P3-D13 and show the draft to the author for P3-Q6; the approved wording must be in place before Task 3.12 Step 5.
-- [ ] **Step 4: Edit the docs:** TD §6.2, §6.4; UI §4.6's "Action lines" bullet drops `delivered` and lists `typed in`, `queued (… is working)`, `started`, `stopped`, `refused` and `card raised` (P3-D14), and says delivery stays visible through `message_status` and the `✉` count.
-- [ ] **Step 5: Run, see PASS.** `make check`
-- [ ] **Step 6: Commit.** `feat: duo's prompt, tools and action lines`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-core --all-features duo`
+- [x] **Step 3: Implement.** Draft `DUO_PROMPT` against P3-D13 and show the draft to the author for P3-Q6; the approved wording must be in place before Task 3.12 Step 5.
+- [x] **Step 4: Edit the docs:** TD §6.2, §6.4; UI §4.6's "Action lines" bullet drops `delivered` and lists `typed in`, `queued (… is working)`, `started`, `stopped`, `refused` and `card raised` (P3-D14), and says delivery stays visible through `message_status` and the `✉` count.
+- [x] **Step 5: Run, see PASS.** `make check`
+- [x] **Step 6: Commit.** `feat: duo's prompt, tools and action lines`
 
 ### Task 3.9: The chat pane
 
@@ -824,7 +824,7 @@ impl Suggest { pub fn take(&self, input: &mut LineEdit); }
 - **Copy restored:** empty org `Your org is empty · n to add a team, role or agent, or ask Duo to set one up`; empty role `no agents yet · n to add one or ask Duo`.
 - **Typing mode** sends `Command::Typing { agent: Some(..) }` on entering and `{ agent: None }` on leaving, or when the stream closes (P3-D19).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - Snapshots matching UI §4.6–§4.7: `chat_history_80x24` / `_160x48` (you, Duo and `→` lines), `chat_suggest_agents_160x48`, `chat_suggest_commands_160x48`, `chat_queued_you_line_160x48`.
   - `at_agent_routes_by_state`: `@pay-qa hi` sends `SendMessage { to: pay-qa, text: "hi" }` whatever the state; the core's action line from Task 3.8's `your_message_writes_action_line` renders as `→ @pay-qa "hi"   queued (pay-qa is working)` (and `typed in`, `started` for an idle and a stopped `pay-qa`), with `✉ 1` on a busy or stopped `pay-qa`'s row.
   - `plain_text_goes_to_duo`: `ChatToDuo`; `@Duo hi` too.
@@ -839,10 +839,10 @@ impl Suggest { pub fn take(&self, input: &mut LineEdit); }
   - `hanging_indent_wraps_under_text`.
   - `empty_org_and_role_ask_duo`: the restored copy, replacing `empty_org_keeps_d7_text`.
   - `typing_mode_sends_typing_command`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui chat suggest`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `make check`. The reviewer checks the snapshot diffs against UI §4.6–§4.7.
-- [ ] **Step 5: Commit.** `feat: duo chat pane with routing and suggestions`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui chat suggest`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** `make check`. The reviewer checks the snapshot diffs against UI §4.6–§4.7.
+- [x] **Step 5: Commit.** `feat: duo chat pane with routing and suggestions`
 
 ### Task 3.10: Approval cards in the TUI
 
@@ -872,7 +872,7 @@ pub fn form_for_card(card: &Card, m: &UiModel) -> Option<Form>;  // None for sto
 - **Needs you:** a card row reads `◆ Duo  approval  1m  <Summary>` (summary's first letter upper-cased, cut with `…`); `enter` or a click on it focuses that card in the chat, so an older card takes the keys.
 - **Mouse:** a click on a card focuses it; a click on `[y]`, `[e]` or `[n]` acts as its key (P2-D25 handed these to phase 3).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `up_from_input_focuses_newest_card`: two pending cards → `↑` focuses the newer; with text in the input, `↑` doesn't.
   - `needs_you_enter_focuses_older_card`: `enter` on the older card's row focuses it and focus moves to the chat.
   - `yen_only_when_focused`: `y` in the input types `y`; focused → `ApproveCard { edited: None }`; `n` → `RejectCard`.
@@ -884,10 +884,10 @@ pub fn form_for_card(card: &Card, m: &UiModel) -> Option<Form>;  // None for sto
   - `needs_you_card_row`: `◆ Duo  approval  1m  Add pay-web`.
   - `click_card_row_focuses_card`, `click_card_button_acts`: a click on `[n]` sends `RejectCard`.
   - Snapshots: `card_focused_80x24` / `_160x48`, `card_unfocused_160x48`, `stop_card_160x48`, `new_agent_card_160x48`, `needs_you_with_card_160x48`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui card`
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: approval cards in the chat and needs you`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui card`
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: approval cards in the chat and needs you`
 
 ### Task 3.11: Give work — roles and Send as message instead
 
@@ -916,7 +916,7 @@ Variant::RoleNoneFree { role: RoleKey, total: usize }
 - **The role summary** ends `space give work to this role · e edit`.
 - **Results:** `AssignRefused` (for example `<agent> isn't free any more`) keeps the dialog open with the task and the reason as the footer note; `RoleAssigned` closes it with `<agent> took the task` or, for `Card`, `No free agent · a card in the chat proposes one`.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - Snapshots of each variant, `_80x24` / `_160x48`: `give_work_role`, `give_work_role_none_free`, `give_work_busy_send_as_message`.
   - `role_pick_cycles_free_agents`: `↓` twice over 2 free agents wraps; the sent `pick` follows.
   - `role_run_row_follows_pick`: a finished pick shows the next-turn line; a stopped pick shows radios preset from its default.
@@ -925,10 +925,10 @@ Variant::RoleNoneFree { role: RoleKey, total: usize }
   - `role_summary_offers_give_work`: replaces `role_summary_has_phase_2_footer`.
   - `team_and_duo_still_note`.
   - `pick_not_free_keeps_dialog`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui give_work`
-- [ ] **Step 3: Implement**, and edit UI §4.5's role mock (P3-D29): the Run choices beside the finished `squad-2` go, and its Run row reads `Run      in ~/code/my-app, as the next turn of squad-2's session`; a line under the mock says the Run row follows the picked agent (radios for a stopped or errored pick).
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: give work to a role, and send as message instead`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui give_work`
+- [x] **Step 3: Implement**, and edit UI §4.5's role mock (P3-D29): the Run choices beside the finished `squad-2` go, and its Run row reads `Run      in ~/code/my-app, as the next turn of squad-2's session`; a line under the mock says the Run row follows the picked agent (radios for a stopped or errored pick).
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: give work to a role, and send as message instead`
 
 ### Task 3.12: End to end and acceptance
 
@@ -941,22 +941,22 @@ The two scripted scenarios are test-first; the real-Duo session and the docs are
 
 **The scripted fake Duo:** with `--mcp-script`, `bench-agent` starts `duohive mcp` as a child (its own `DUOHIVE_TOKEN`), and for each turn runs the first script entry whose `on` is a substring of the turn's text: `{"on": "<text>", "steps": [{"call": "<tool>", "args": {…}} | {"reply": "<text>"}]}`. Each call's answer is logged to `<run>/calls.jsonl`; `$result.<n>.<field>` in a later step's `args` takes a value from the n-th answer (for a `card_id`). The turn ends with its `reply` as `turn-end`'s reply. No model is called.
 
-- [ ] **Step 1: Write the failing tests** (real tmux on a throwaway socket, fake CLIs, `FakeNotifier`, `NoGit`).
+- [x] **Step 1: Write the failing tests** (real tmux on a throwaway socket, fake CLIs, `FakeNotifier`, `NoGit`).
   - `e2e_story_through_the_factory`: org with `auth-service` (Payments › Backend), `pay-qa` (Payments › QA) and `squad-1`, `squad-2` (Generalist), all stopped. `ChatToDuo("Story: let users retry a failed payment")`. The fake Duo calls `start_agent auth-service "PAY-88a backend: retry endpoint"`, `start_agent pay-qa "PAY-88c QA: retry cases"`, `assign_to_role Generalist "PAY-88b frontend: retry button"`, then `wait_for_agent` on each, then replies `PAY-88: all three subtasks finished`. Asserted within 30 s: the chat holds the `you` line, three `→ give work …   started` lines, three `→ wait for …   finished` lines, and the reply; `auth-service`, `pay-qa` and `squad-1` are finished.
   - `e2e_whats_blocked_then_fix_it`: `billing-api` waiting on `ask` (its fake approval), `squad-1` working on a `slow` task. `ChatToDuo("what's blocked?")` → the fake Duo calls `list_agents`, `read_agent billing-api`, and replies `billing-api is waiting on an approval; squad-1 is busy`. `ChatToDuo("fix it: stop squad-1 and tell pay-qa to rerun the tests")` → `stop_agent squad-1` (`card raised`) and `send_message pay-qa "rerun the tests"`. `ApproveCard(card 1)` → `squad-1` stopped; Duo is pasted `card 1 approved: stop squad-1` as a later turn and replies `squad-1 stopped`. Every step is visible as chat entries, with no `tmux attach` and no key sent to any pane but by the inbox.
   - `e2e_role_task_reaches_free_agent`: `AssignToRole { role: Generalist, pick: None }` with `squad-2` finished and `squad-1` working → `squad-2` takes it (busy hook within 6 s); with both working → a `CardRaised` holding the task.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --test e2e_duo`
-- [ ] **Step 3: Implement** the script runner.
-- [ ] **Step 4: Run, see PASS.** `make check`. Then commit: `test: duo end to end with a scripted fake`.
-- [ ] **Step 5: Acceptance on the author's org.** First, the author approves `DUO_PROMPT`'s wording (P3-Q6). Then, with real Duo on Claude Code and on OpenCode, record in `bench-results.md` under "Phase 3 acceptance":
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive --test e2e_duo`
+- [x] **Step 3: Implement** the script runner.
+- [x] **Step 4: Run, see PASS.** `make check`. Then commit: `test: duo end to end with a scripted fake`.
+- [x] **Step 5: Acceptance on the author's org.** First, the author approves `DUO_PROMPT`'s wording (P3-Q6). Then, with real Duo on Claude Code and on OpenCode, record in `bench-results.md` under "Phase 3 acceptance":
   1. a "what's blocked, then fix it" round trip done entirely in the chat (the chat lines, and that no `tmux attach` and no agent-pane typing was needed);
   2. a task given to a role reaching a free agent, and a no-free-agent card approved;
   3. a card answered while Duo was stopped, delivered when Duo next ran;
   4. `duohive bench --agents 10` still meets the 10-agent targets with the helpers running (idle CPU < 1 %, memory < 20 MB, hook → screen < 1 s), and the release binary under 10 MB.
 
   Anything that fails is fixed test-first before Step 6.
-- [ ] **Step 6: Update the docs.** TD §12 row 3 checked against what phase 3 built, and any section a mechanism changed; roadmap row 3 `done <date>` and row 4 next; PRD Delivery Phases row 3 status; `docs/README.md`; the traceability matrix's adaptations table (P2-D8, P2-D10, P2-D3's copy, D7's copy removed).
-- [ ] **Step 7: Run `make check`, then commit.** `docs: phase 3 acceptance and status`
+- [x] **Step 6: Update the docs.** TD §12 row 3 checked against what phase 3 built, and any section a mechanism changed; roadmap row 3 `done <date>` and row 4 next; PRD Delivery Phases row 3 status; `docs/README.md`; the traceability matrix's adaptations table (P2-D8, P2-D10, P2-D3's copy, D7's copy removed).
+- [x] **Step 7: Run `make check`, then commit.** `docs: phase 3 acceptance and status`
 
 **Order:** 3.1 → 3.2 → 3.3 → 3.4 → 3.8 → 3.6 → 3.7 → 3.5, in the order written above: each core task calls what the earlier ones built (Global Constraints). Then 3.9 (after 3.8), 3.10 (after 3.6) and 3.11 (after 3.7), which may run in parallel. 3.12 is last. The task numbers keep the outline's.
 
