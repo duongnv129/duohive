@@ -32,6 +32,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Must | Honest status: exact, `~`, quiet | 1 | T9, T12–13 |
 | Must | Light at scale: 10 agents | 1 | T28 |
 | Must | Light at scale: 100 agents | 4 | 4.1, 4.2, 4.10 |
+| Must | Light at scale: measurement method and three-run script | 4 | 4.1 (`scripts/bench-gate.sh`), 4.10 |
 | Must | Light at scale: release gate | 5 | 5.2 |
 | Must | Agents keep running when DuoHive closes; reopening reconnects | 1 | T15, T29 |
 | Should | Give work with one key (`space`) | 2 | 2.15 |

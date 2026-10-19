@@ -195,10 +195,12 @@ Six agents plus Duo. The org pane has focus, and auth-service is selected.
 
 `f` cycles a filter by state (◆ need you, ● working, ✓ finished, off). The tree keeps only matching agents and their parents, and a chip shows in the header. `esc` in the org pane clears it. Clicking a header count sets the same filter; the header has counts for working and need you, so finished is reached by `f` only.
 
-- **What matches:** ◆ need you matches the agents that are waiting, quiet or errored; ● working and ✓ finished match that state. The header's `need you` count also includes pending approval cards, which are not agents: the filter never hides a card, and the chip counts only the agents it matches. The Needs you list and the chat are not filtered.
+- **What matches:** ◆ need you matches the agents that are waiting, quiet or errored; ● working and ✓ finished match that state. The header's `need you` count also includes pending approval cards, which are not agents: the filter never hides a card, and the chip shows no count. The Needs you list and the chat are not filtered.
 - **Nothing matches:** the tree shows `no agent is <state> · esc clears the filter` in `fg.muted`, and the chip stays.
 - **The selected row is filtered out:** the selection moves to the first remaining match (the agent pane follows), and returns to nothing special when the filter clears.
 - **Width:** the chip is `filtered: ◆ · esc clears` at 100 columns and wider; below that it is `filter ◆`; the counts and `? help` are never dropped.
+
+At 80 columns the header reads:
 
 ```
  DuoHive  6 agents · ● 2 working · ◆ 2 need you  filter ◆        ? help
@@ -233,6 +235,8 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **Otherwise,** the wheel, or `PgUp` in Selected mode, freezes a snapshot of the agent's scrollback (up to 2 000 lines), 3 lines per wheel tick, and the title gains `· scrolled`; the agent keeps running. `PgDn` or the wheel past the bottom, or `enter` to type, returns to the live terminal.
 - **Scrolled while typing** (snapshot only): Typing stays, and the title reads `· TYPING · scrolled`. `PgUp` / `PgDn` page the snapshot, `ctrl+q` leaves Typing and stays scrolled, the wheel or `PgDn` past the bottom returns to live (Typing stays), and any other key returns to live and goes to the agent.
 - **A stopped agent, or one not shown live yet:** the wheel does nothing. A horizontal wheel does nothing anywhere.
+
+**Right-click and drag in Typing mode** are ignored (P4-Q4's default); the wheel and clicks are as below.
 
 **Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts. Clicks are DuoHive's and never reach the agent. Clicks do nothing while zoomed, and the mouse, wheel included, does nothing on the too-small screen. While a dialog, a confirmation, Settings or Worktrees is open, the wheel does nothing; clicks there do what their key does (§5). Right-click and drag come with §4.4.2.
 
@@ -384,7 +388,7 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 
 **What Create org writes:** `[org] cli` is Duo's CLI from step 1 and no other org default; `[duo]` is `Duo` on the same CLI. The template's CLI, directory and worktree choices go on the teams or the Generalist role it creates (TD §7). The app starts its agents only after Create org.
 
-**Replace mode** (Settings → Org → `New org from template…`): the same steps 2 and 3, titled `step 1 of 2` and `step 2 of 2`, with no step 1 (you and Duo are kept). `[ Quit ]` reads `[ Cancel ]`; `esc` goes back, and from the template step cancels back to Settings. `Create org` opens `Replace your org?` (§4.8) instead of writing at once. If an agent can't be stopped, nothing is written and a banner says `<agent> would not stop · org not replaced`.
+**Replace mode** (Settings → Org → `New org from template…`): the same steps 2 and 3, titled `step 1 of 2` and `step 2 of 2`, with no step 1 (you and Duo are kept). `[ Quit ]` reads `[ Cancel ]`; `[ ← Back ]` is hidden on the template step and returns from the form to the template step; `esc` does what Back does, and from the template step cancels back to Settings. `Create org` opens `Replace your org?` (§4.8) instead of writing at once. If an agent can't be stopped, nothing is written and a banner says `<agent> would not stop · org not replaced`.
 
 **Step 3 errors** (shown under the field, `Create org` disabled until fixed): Agent Squad's directory missing, or not a git repo while worktrees are on (the radio is disabled with the reason, as in §4.4.1); the same for each of Product Team's three directories; a squad size outside 1–100; a duplicate team name or agent name; Engineering Org with no non-empty row (`add at least one team`); a directory that doesn't exist, on that row. A failed write shows `couldn't write org.toml · <reason>` and keeps the dialog open.
 
@@ -518,8 +522,8 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
            ┌────────────────────────────────────┐
            │▌inherit: sonnet                    │
            │ sonnet                             │
-           │ anthropic/claude-sonnet-4-5        │
-           │ … 3 more · ↓ scroll                │
+           │ opus                               │
+           │ … 1 more · ↓ scroll                │
            │ use "son" as typed                 │
            └────────────────────────────────────┘
            type to filter · ↑↓ · enter choose · esc close
@@ -528,7 +532,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 - **List and filter:** typing filters the list by substring; `↑↓` move, `enter` chooses, `esc` closes without a change. The list shows at most 6 rows and scrolls (a `… N more` line). The first row is `inherit: <value>`; the last is `use "<typed>" as typed`, which sets a model that isn't listed (Claude Code's other models are typed, TD §5.2).
 - **Which list:** the CLI the form resolves to, including an inherited one (a role under a team on OpenCode lists OpenCode's models).
 - **Loading, empty and failed:** while loading the field reads `loading models…` and typing still works; an empty or failed list shows only the `inherit` and `use "<typed>" as typed` rows, and a failure adds the `✕ couldn't list <cli>'s models · type a name or keep inherit` line.
-- **Effort:** the same popup, listing the chosen model's variants (OpenCode) or the `--effort` choices (Claude Code). With a model of `inherit` and an OpenCode CLI, effort is disabled with `OpenCode sets effort per model · choose a model`. Changing the model clears an effort the new model doesn't offer.
+- **Effort:** the same popup, listing the chosen model's variants (OpenCode) or the `--effort` choices (Claude Code). On OpenCode with a model of `inherit`, the list is the inherited model's variants when that model is known; when none is (no model set anywhere up the tree), effort is disabled with `OpenCode sets effort per model · choose a model`. Changing the model clears an effort the new model doesn't offer.
 - **Role form agent naming:** the New role form's `Agents` field names agents `<team>-<role>-N` (above); first-run templates use their own names (P4-Q6).
 
 **Form errors:** a duplicate name; worktrees on a directory that isn't a git repo (that radio is disabled, with the reason); the model list failing (while it loads, the field shows "loading models…").
@@ -629,7 +633,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 ```
 
 - **Nothing to move to:** when there is no valid target, `m` and the menu row are disabled with `no other place to move <name>`.
-- **Collisions:** a move that would repeat a name is impossible (names are unique across the org); a role moved under a team that already has a role of that name is refused with `<team> already has a role <role>`.
+- **Collisions:** agent and team names are unique across the org and sibling roles are unique within a team, so a move can't repeat them; a role moved under a team that already has a role of that name is refused with `<team> already has a role <role>`.
 - **On a team,** Move to… lists its positions among the teams (`before <team>` for each other team, and `at the end`); teams don't nest.
 - **Drag and drop:** valid targets are highlighted while dragging. An invalid drop (an agent onto a team, a team onto a role) is refused with the reason in the footer. A drop that changes inherited values opens the same list as "Move to…" for confirmation.
 - **`d`** deletes. It is disabled on any agent that isn't stopped, with the reason in the footer. Deleting a role or team lists every agent it removes, and is disabled while any of them is running (§4.8).
@@ -890,7 +894,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 ```
 
 - **Scrolling:** the list scrolls with `↑↓` and `PgUp/PgDn`, with `↓ more` at the foot when it doesn't fit.
-- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable: `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
+- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
 - **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
 - **Conflicts:** a key is unique within its context (the chat's card keys apply while a card is focused, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane and Chat; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the chat). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
@@ -898,7 +902,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.11 Key map
 
-`?` from anywhere in Selected mode. In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header and the footers of the org pane, Needs you and the agent pane in Selected mode show `? help`; Typing, zoom, dialog, form and chat footers do not.
+`?` from anywhere in Selected mode, zoomed too (the zoom footer carries `? help`). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header and the footers of the org pane, Needs you and the agent pane in Selected mode show `? help`; Typing, zoom, dialog, form and chat footers do not.
 
 ```
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────┐
