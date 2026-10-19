@@ -60,7 +60,7 @@ We'll know we're right when **the author replaces their current tool with DuoHiv
 | **Daily use (primary)** | Author uses DuoHive as the only agent tool for 30 consecutive days | Self-report log |
 | Time to first team | Install → 3 working agents in < 10 min, README only | 3 first-time users, timed |
 | Idle CPU | < 1% at 10 agents · < 3% at 100 | Built-in benchmark, each release; gated on Apple M-series (Linux numbers are reported but don't block a release) |
-| DuoHive memory | < 20 MB at 10 agents · < 60 MB at 100 | Same benchmark (DuoHive only, agents excluded) |
+| DuoHive memory | < 20 MB at 10 agents · < 60 MB at 100 | Same benchmark (DuoHive only; agents and the `duohive mcp` helpers excluded, the helpers' total reported) |
 | Status freshness | Reported (hook) states on screen < 1 s at 10 · < 2 s at 100; screen-read (`~`) states < 2 s | Same benchmark |
 | Start-up | First frame < 100 ms at 10 · < 300 ms at 100 | Same benchmark |
 | Binary size | < 10 MB | Release artifact |
@@ -117,6 +117,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch, removed automatically once that branch is merged | Two agents on one repo don't collide; the manager picks per task |
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
+| **Should** | Key bindings you can change: a Keys screen in Settings that refuses clashes | Fits your hands and your terminal's own keys |
 | **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
 | **Must** | Give a task to a role: a free agent in it takes the task; if none is free, an approval card from Duo proposes a new agent, even while Duo is stopped or busy | Task runners never have to pick a teammate |
 | **Could** | Zoom the agent pane; compact tree view | Comfort at high agent counts |
