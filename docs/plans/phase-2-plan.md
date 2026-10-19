@@ -1,6 +1,6 @@
 # DuoHive Phase 2 Implementation Plan — One screen
 
-**Status:** In progress · Tasks 2.1–2.18 merged in `b497418` (2026-10-14). 2.19: friction log started and live checks done; the three-day run is open. 2.21–2.23 done. 2.20 (2026-10-17): the UX pass, its fixes (every friction-log entry but 5, 13 and 22) and the docs are done; marking the phase done waits for the run, with entry 22 watched during it.
+**Status:** Done 2026-10-19 · Tasks 2.1–2.18 merged in `b497418` (2026-10-14). 2.19: friction log, live checks and the three-day run without `tmux attach` done. 2.21–2.23 done. 2.20 (2026-10-17): the UX pass, its fixes (every friction-log entry but 5 and 13) and the docs are done. Entry 22 was not seen and is closed; entry 26 (resume after a tmux server exit) is carried to v1.1.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1063,8 +1063,9 @@ This is acceptance, with no code under test.
 - Modify `docs/plans/bench-results.md` (live checks).
 
 - [x] **Step 1: Start the friction log** the day Tasks 2.1–2.18 are merged. Each entry has the date, the screen, what was slow, confusing or missed, and a severity from 1 to 3.
-- [ ] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
+- [x] **Step 2: Run the author's daily org** for at least three working days without `tmux attach`. Any moment that needs it is a severity-1 entry.
   - Status 2026-10-16: day 1 needed `tmux attach` (reason not recorded); the count starts again.
+  - Status 2026-10-19: done. Three working days with no `tmux attach`. The one issue found, entry 26 (after an iTerm crash the tmux server exited and `Retry` could not resume the old agent session), is carried to v1.1 feature 1 and does not reset the count.
 - [x] **Step 3: Run the live checks** carried from phase 1 and S3, and record each result:
   - a newline and non-ASCII text in OpenCode's `--prompt=`;
   - `--effort=` on a real turn;
@@ -1073,8 +1074,9 @@ This is acceptance, with no code under test.
   - S3.7, the trust dialog in a new worktree path.
 
   If the trust dialog appears, decide with the author whether to accept the `~◆ waiting` it shows or to pre-trust per launch, which must never touch global config.
-- [ ] **Step 4: Commit.** `docs: phase 2 friction log and live checks`
+- [x] **Step 4: Commit.** `docs: phase 2 friction log and live checks`
   - Status 2026-10-16: the friction log and live checks are committed as they stand (entries 1–23); this step closes with Step 2.
+  - Status 2026-10-19: closed with entries 1–26.
 
 ### Task 2.21: TUI — touchpad scrolling and click to select (P2-D25)
 
@@ -1252,7 +1254,7 @@ This is validated by snapshot diffs and the checklist below.
   - `docs/plans/v1-traceability.md`.
 
 - [x] **Step 1: Fix the top friction-log items.**
-  - Status 2026-10-17: every severity 1–3 entry is fixed except 5 (OpenCode's own drawing, not ours), 13 (the P2-D8 chat pane, replaced in 3.9) and 22 (severity 2, watched during the three-day run on `auth-backend` and `duohive-dev`, and closed at sign-off if not seen again). Severity 1: 1, 2, 20. Severity 2: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21), 24 (Task 2.22), 25 (Task 2.23). Severity 3: 6, 8, 10, 14, 15, 16, 18 (P2-D28), 19; 17 is resolved under `auto` by P2-D26. The carried long-name item passes.
+  - Status 2026-10-17: every severity 1–3 entry is fixed except 5 (OpenCode's own drawing, not ours) and 13 (the P2-D8 chat pane, replaced in 3.9). Entry 22 was not seen in the three-day run and closed 2026-10-19; entry 26 goes to v1.1. Severity 1: 1, 2, 20. Severity 2: 3, 4, 7, 9, 11, 12, 21, 23 (Task 2.21), 24 (Task 2.22), 25 (Task 2.23). Severity 3: 6, 8, 10, 14, 15, 16, 18 (P2-D28), 19; 17 is resolved under `auto` by P2-D26. The carried long-name item passes.
   - P2-D25 (friction entries 21 and 23) is built in [Task 2.21](#task-221-tui--touchpad-scrolling-and-click-to-select-p2-d25), before this step.
   - Every severity-1 item, then severity-2 items by count.
   - Also check the carried item "long agent names in the 50-column pane": UI §2.4's middle cut (`billing-…-worker`) stays. If the pass changes how names fit, the change is numbered and UI §2.4 is edited.
@@ -1263,7 +1265,7 @@ This is validated by snapshot diffs and the checklist below.
 
   Record pass or fixed for each screen × principle in `friction-log.md` under "UI/UX pass".
 - [x] **Step 3: Update the docs listed above.** The interim decisions (P2-D3 copy, P2-D8, P2-D10, P2-D13's missing rows) stay in this plan and in the traceability matrix's adaptations table, not in the UI spec.
-  - Status 2026-10-17: done. Phase 2 isn't marked done yet: roadmap row 2, the PRD's Delivery Phases row 2 and `docs/README.md` say the code and the UI/UX pass are done and only the three-day run without `tmux attach` remains (Task 2.19 Step 2), with friction entry 22 watched during it. Row 2 is marked done, and row 3 becomes next, when that run passes.
+  - Status 2026-10-17: done. Status 2026-10-19: the three-day run passed, so roadmap row 2, the PRD's Delivery Phases row 2 and `docs/README.md` mark phase 2 done.
 - [x] **Step 4: Run `make check`, then commit.** `docs: phase 2 UI/UX pass and phase status`
 
 ---
