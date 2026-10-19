@@ -195,10 +195,14 @@ Six agents plus Duo. The org pane has focus, and auth-service is selected.
 
 `f` cycles a filter by state (◆ need you, ● working, ✓ finished, off). The tree keeps only matching agents and their parents, and a chip shows in the header. `esc` in the org pane clears it. Clicking a header count sets the same filter; the header has counts for working and need you, so finished is reached by `f` only.
 
-- **What matches:** ◆ need you matches the agents the header counts as needing you (waiting, quiet and errored); ● working and ✓ finished match that state. The Needs you list and the chat are not filtered. Approval cards are not agents, so no filter hides them.
+- **What matches:** ◆ need you matches the agents that are waiting, quiet or errored; ● working and ✓ finished match that state. The header's `need you` count also includes pending approval cards, which are not agents: the filter never hides a card, and the chip counts only the agents it matches. The Needs you list and the chat are not filtered.
 - **Nothing matches:** the tree shows `no agent is <state> · esc clears the filter` in `fg.muted`, and the chip stays.
 - **The selected row is filtered out:** the selection moves to the first remaining match (the agent pane follows), and returns to nothing special when the filter clears.
-- **Width:** at 80 columns the chip replaces the working count's trailing text first (`filtered: ◆`), then drops `esc clears`; the counts and `? help` are never dropped.
+- **Width:** the chip is `filtered: ◆ · esc clears` at 100 columns and wider; below that it is `filter ◆`; the counts and `? help` are never dropped.
+
+```
+ DuoHive  6 agents · ● 2 working · ◆ 2 need you  filter ◆        ? help
+```
 
 ```
  DuoHive   6 agents · ● 2 working · ◆ 2 need you   filtered: ◆ · esc clears                 ? help 
@@ -382,7 +386,7 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 
 **Replace mode** (Settings → Org → `New org from template…`): the same steps 2 and 3, titled `step 1 of 2` and `step 2 of 2`, with no step 1 (you and Duo are kept). `[ Quit ]` reads `[ Cancel ]`; `esc` goes back, and from the template step cancels back to Settings. `Create org` opens `Replace your org?` (§4.8) instead of writing at once. If an agent can't be stopped, nothing is written and a banner says `<agent> would not stop · org not replaced`.
 
-**Step 3 errors** (shown under the field, `Create org` disabled until fixed): Agent Squad's directory missing, or not a git repo while worktrees are on (the radio is disabled with the reason, as in §4.4.1); a squad size outside 1–100; a duplicate team name or agent name; Engineering Org with no non-empty row (`add at least one team`); a directory that doesn't exist, on that row. A failed write shows `couldn't write org.toml · <reason>` and keeps the dialog open.
+**Step 3 errors** (shown under the field, `Create org` disabled until fixed): Agent Squad's directory missing, or not a git repo while worktrees are on (the radio is disabled with the reason, as in §4.4.1); the same for each of Product Team's three directories; a squad size outside 1–100; a duplicate team name or agent name; Engineering Org with no non-empty row (`add at least one team`); a directory that doesn't exist, on that row. A failed write shows `couldn't write org.toml · <reason>` and keeps the dialog open.
 
 ```
 ┌─ DuoHive needs an agent CLI ─────────────────────────────────────────┐
@@ -886,10 +890,11 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 ```
 
 - **Scrolling:** the list scrolls with `↑↓` and `PgUp/PgDn`, with `↓ more` at the foot when it doesn't fit.
-- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Chat send / new line, Approve / Edit / Reject card). Not rebindable: `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, arrows, `enter` as a button, `PgUp/PgDn`, and the keys of forms, dialogs and the text inputs.
+- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable: `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
+- **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
-- **Conflicts:** a key is unique within its context. The contexts are Everywhere, Org pane, Needs you, Agent pane and Chat; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the chat). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
-- **Storage:** `settings.toml` `[keys]` (TD §7). An unknown action id or a key that doesn't parse is ignored with a notice on the Keys screen, and the default applies.
+- **Conflicts:** a key is unique within its context (the chat's card keys apply while a card is focused, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane and Chat; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the chat). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
+- **Storage:** `settings.toml` `[keys]` (TD §7). An unknown action id or a key that doesn't parse is ignored, and the default applies; the Keys screen shows one line above its footer, `ignored in settings.toml: <id> · using the default` (one line per entry, scrolling with the list).
 
 ### 4.11 Key map
 

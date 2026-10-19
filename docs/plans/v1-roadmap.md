@@ -38,7 +38,7 @@ How each phase's plan is written and kept consistent with the PRD, the UI/UX spe
 | 4 | Scale and polish | `bench` at 100 agents and tuning; first run with templates; model and effort picker; key-binding editor; key and mouse completeness (`?`, filter, move, the mouse beyond phase 2's wheel and click); the accessibility re-check | Every benchmark target in Success Metrics (idle CPU, memory, status freshness, start-up, binary size) passes on Apple M-series | 3–4 weeks (P4-D4: the mouse on every screen and the keymap layer) | next: outline in [phase 4](phase-4-plan.md), full plan when it starts |
 | 5 | Open-source launch | Pre-launch UX check; CI release gate; `cargo-dist` release, Homebrew tap, crate; README finished for launch; name checks | DuoHive is public; 30-day daily use and < 10 minutes to a first team | 1 week + 30-day test | pending |
 
-Total: roughly 9–12 weeks of focused work.
+Total: roughly 10–14 weeks of focused work (phase 4 is 3–4 weeks since P4-D4).
 
 ## Dependencies
 
