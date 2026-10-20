@@ -96,6 +96,68 @@ P4-D1 is recorded in the scope note below.
 
 **Order (P4-D4):** 4.1, then 4.2 (it repeats after any later task that adds start-up or render work). Then 4.6 (the keymap registry, which already holds `m` and `f`, and the editor), since 4.8 and 4.9 read their keys from it. Then 4.3 → 4.4, and 4.5, 4.8 and 4.9, in any order. 4.7 comes after 4.3, 4.5, 4.6, 4.8 and 4.9, since each click test needs its screen. After 4.5, repeat the bench (4.2) to measure the model-list load. 4.10 is last.
 
+## TODO checklist
+
+Tick each box when it is done (the same rule as the phase 2 and 3 plans). Every task follows the test-first order, except 4.10 (acceptance) and the spike. A task is done when `make check` passes and its commit is on its own branch (`feat/phase-4-<topic>`, never `main`). Commit messages are conventional commits, with no `Co-Authored-By` line. Nothing is pushed by an agent.
+
+**Before 4.1**
+
+- [ ] The author confirms the defaults drafted on 2026-10-19: the measurement method (Constraints), P4-D4's 3–4 week estimate and order, one binding per action with context-scoped conflicts (UI §4.10), and the gate running with `--view` on
+- [ ] Expand this outline into the full task-by-task plan, in the format of [phase-3-plan.md](phase-3-plan.md) (files, test code, commands, expected output), and have it reviewed
+- [ ] The author approves the template starter prompts (P4-Q1) and the bench's realistic-output profile (P4-Q2)
+
+**Tasks**
+
+- [ ] **4.1 Full benchmark**
+  - [ ] Failing tests: `report_lists_every_target`, `first_frame_measured_on_reopen`, `tilde_freshness_measured`, `helpers_memory_reported`, `memory_is_end_of_window_not_peak`, `load_above_ceiling_exits_3_discarded`, `worst_of_three_decides`, `turns_default_reaches_100_samples`
+  - [ ] Set `[profile.release]` (strip, lto, codegen-units); record the binary size before and after in `bench-results.md` "Phase 4"
+  - [ ] Implement the bench changes listed in the task; add `scripts/bench-gate.sh` and `make bench-gate`
+  - [ ] `make check`; commit `feat: full benchmark at 100 agents`
+- [ ] **4.2 Tuning at 100**
+  - [ ] Run `make bench-gate` at 100 agents; record each target's result
+  - [ ] For each miss: profile, fix, re-measure, and record before and after (stop rule in the task)
+  - [ ] Repeat after 4.5 and after any task that adds start-up or render work
+  - [ ] `make check`; commit `perf: <what was tuned>` (one commit per fix)
+- [ ] **4.6 Keys: registry, `?` and the editor**
+  - [ ] Failing tests from the task list; the existing key tests must pass unchanged with the default bindings
+  - [ ] Keymap registry with every action id and default key, `m` and `f` included; footers read it
+  - [ ] `?` key map (three columns at 100 wide or more, one column below), `[keys]` in `settings.toml` (TD §7), the Keys screen (UI §4.10)
+  - [ ] TD §7 and UI §4.10 checked against what was built
+  - [ ] `make check`; commit `feat: keymap registry, key map and binding editor`
+- [ ] **4.3 First-run setup**
+  - [ ] Failing core tests (template builders) and TUI snapshots of every step and error state at 80×24 and 160×48
+  - [ ] `templates.rs`, the wizard, the no-CLI screen; the wizard replaces the silent blank org in `Loaded::FirstRun`
+  - [ ] Template starter prompts as approved (P4-Q1)
+  - [ ] `make check`; commit `feat: first-run setup with templates`
+- [ ] **4.4 New org from template**
+  - [ ] Failing tests from the task list, including `replace_aborts_when_a_stop_fails` and the worktree, card and message rules
+  - [ ] `Command::NewOrgFromTemplate`, the replace-mode wizard, `Replace your org?`, the timestamped backup
+  - [ ] `make check`; commit `feat: replace the org from a template`
+- [ ] **4.5 Model and effort picker**
+  - [ ] Spike S4: `opencode models --verbose` on the pinned OpenCode 2.0; update TD §5.2 and record fixtures
+  - [ ] Failing adapter and widget tests; `list_models` on both adapters; `model-cache.json`
+  - [ ] The dropdown widget (type-ahead, `inherit`, typed name) in the forms; effort per model
+  - [ ] Re-run the bench (4.2) for the start-up cost of the model lists
+  - [ ] `make check`; commit `feat: model and effort picker`
+- [ ] **4.8 Move to…**
+  - [ ] Failing tests, including `move_disabled_when_no_target` and `move_refused_on_role_name_collision`
+  - [ ] The picker with the inherited-values diff, sending phase 3's `OrgEdit::Move`
+  - [ ] `make check`; commit `feat: move to…`
+- [ ] **4.9 Filter and the accessibility re-check**
+  - [ ] Failing tests from the task list (filter rules, contrast, `state_never_colour_only`, `NO_COLOR`, Reduce motion, `every_action_has_key_and_click`)
+  - [ ] `f`, the chip, the empty-result and hidden-selection rules; the accessibility fixes the tests find
+  - [ ] `make check`; commit `feat: filter by state and accessibility re-check`
+- [ ] **4.7 Mouse** (after 4.3, 4.5, 4.6, 4.8 and 4.9)
+  - [ ] Replace the three phase 2 tests named in the task; failing tests for each gesture and each screen's clicks
+  - [ ] Right-click menu, the wheel over the org pane and Needs you (with a scroll offset apart from the selection), drag to move and resize, header counts, clicks in dialogs, forms, lists and first run
+  - [ ] `make check`; commit `feat: mouse parity on every screen`
+- [ ] **4.10 Acceptance**
+  - [ ] `make bench-gate` at 10 and 100 agents on Apple M-series, view on, load at most 2; every target passes in three runs
+  - [ ] Record the runs in `bench-results.md` "Phase 4 acceptance"
+  - [ ] A one-hour run with real agents (the risk table)
+  - [ ] Mark roadmap row 4, the PRD row, `docs/README.md` and the README status; check TD §12; update the traceability matrix
+  - [ ] Commit `docs: phase 4 acceptance and status`
+
 ## Risks
 
 | Risk | Response |
