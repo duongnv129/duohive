@@ -522,8 +522,6 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
            ┌────────────────────────────────────┐
            │▌inherit: sonnet                    │
            │ sonnet                             │
-           │ opus                               │
-           │ … 1 more · ↓ scroll                │
            │ use "son" as typed                 │
            └────────────────────────────────────┘
            type to filter · ↑↓ · enter choose · esc close
@@ -902,7 +900,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.11 Key map
 
-`?` from anywhere in Selected mode, zoomed too (the key works; the zoom footer keeps only its own keys). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header, and the footers of the org pane and Needs you (as the mocks in §4.1 show), carry `? help`; the agent pane's, Typing, zoom, dialog, form and chat footers do not.
+`?` from anywhere in Selected mode, zoomed too (the key works; the zoom footer keeps only its own keys). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header (except in Typing mode, where it drops the hint), and the footers of the org pane (`… · ? help`, as the mocks in §4.1 show) and Needs you (`↑↓ move · enter go to agent · ? help`), carry `? help`; the agent pane's, Typing, zoom, dialog, form and chat footers do not.
 
 ```
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────┐
@@ -1086,7 +1084,7 @@ Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plan
 
 ## 6. Accessibility
 
-- **State without colour:** every state has a glyph and a word; `~` is a glyph, not a dimmed colour. Colour-blind safe palettes are tested (deuteranopia, protanopia).
+- **State without colour:** every state has a glyph and a word; `~` is a glyph, not a dimmed colour. Colour-blind safety is tested by the rule that no state is shown by colour alone.
 - **Monochrome (`NO_COLOR`):** the focused pane keeps its heavy border, and the selected row keeps its `▌` bar.
 - **Contrast:** under `auto`, the terminal's theme sets every colour, so its contrast is the terminal theme's; `dim` and the ANSI colours are what terminal themes are designed to keep readable. For `dark` and `light`, computed with the WCAG formula; the lowest ratio of each text token across `bg` and `selection` (`status.working` and Duo are `fg`):
 
