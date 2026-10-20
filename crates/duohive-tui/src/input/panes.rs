@@ -1,46 +1,35 @@
 //! Keys for the main screen's panes: focus, folding and Needs you (UI §4.11, P2-D9).
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent};
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, RoleKey};
 
-use super::Action;
+use super::{Action, bind_action};
 use crate::focus::{AgentMode, Pane};
+use crate::keymap::{Context, Keymap};
 use crate::model::UiModel;
 use crate::render::chat_extra_limit;
 
 /// The action for a key in a pane other than the chat (which types).
-pub(super) fn pane_key(pane: Pane, code: KeyCode) -> Option<Action> {
-    match pane {
-        Pane::Org => match code {
-            KeyCode::Left => Some(Action::Left),
-            KeyCode::Right => Some(Action::Right),
-            KeyCode::Enter => Some(Action::Enter),
-            KeyCode::Char('w') => Some(Action::Worktrees),
-            KeyCode::Char(',') => Some(Action::Settings),
-            code => super::tree_key(code),
-        },
-        Pane::NeedsYou => match code {
-            KeyCode::Char('w') => Some(Action::Worktrees),
-            KeyCode::Char(',') => Some(Action::Settings),
-            KeyCode::Up => Some(Action::Up),
-            KeyCode::Down => Some(Action::Down),
-            KeyCode::Enter => Some(Action::Enter),
-            _ => None,
-        },
+pub(super) fn pane_key(km: &Keymap, pane: Pane, k: &KeyEvent) -> Option<Action> {
+    let context = match pane {
+        Pane::Org => Context::OrgPane,
+        Pane::NeedsYou => Context::NeedsYou,
+        Pane::Agent => Context::AgentPane,
+        Pane::Chat => return None,
+    };
+    let fixed = match (pane, k.code) {
+        (Pane::Org, KeyCode::Left) => Some(Action::Left),
+        (Pane::Org, KeyCode::Right) => Some(Action::Right),
+        (Pane::Org | Pane::NeedsYou | Pane::Agent, KeyCode::Up) => Some(Action::Up),
+        (Pane::Org | Pane::NeedsYou | Pane::Agent, KeyCode::Down) => Some(Action::Down),
+        (Pane::Org | Pane::NeedsYou | Pane::Agent, KeyCode::Enter) => Some(Action::Enter),
         // Typing mode is mapped before this (it takes every key).
-        Pane::Agent => match code {
-            KeyCode::Enter => Some(Action::Enter),
-            KeyCode::Char('z') => Some(Action::Zoom),
-            KeyCode::Char(' ') => Some(Action::GiveWork),
-            KeyCode::Char('w') => Some(Action::Worktrees),
-            KeyCode::Char(',') => Some(Action::Settings),
-            KeyCode::PageUp => Some(Action::PageUp),
-            KeyCode::PageDown => Some(Action::PageDown),
-            _ => None,
-        },
-        Pane::Chat => None,
-    }
+        (Pane::Agent, KeyCode::PageUp) => Some(Action::PageUp),
+        (Pane::Agent, KeyCode::PageDown) => Some(Action::PageDown),
+        _ => None,
+    };
+    fixed.or_else(|| bind_action(km, context, *k))
 }
 
 /// `tab` and `shift+tab` between panes; the agent pane always starts in Selected mode.

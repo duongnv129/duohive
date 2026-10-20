@@ -6,6 +6,7 @@ pub mod focus;
 pub mod format;
 pub mod forms;
 pub mod input;
+pub mod keymap;
 pub mod keys_out;
 mod live;
 pub mod model;

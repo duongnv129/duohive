@@ -8,6 +8,7 @@ use duohive_core::command::{Command, OrgEdit};
 use super::{Action, UiEffect};
 use crate::focus::Pane;
 use crate::forms::form_for_card;
+use crate::keymap::ActionId;
 use crate::model::{Dialog, UiModel};
 
 /// The footer when `e` has nothing to edit (P3-D7).
@@ -18,9 +19,9 @@ const NOTHING_TO_EDIT: &str = "nothing to edit · y or n";
 pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
     let id = m.focus.card?;
     Some(match a {
-        Action::Char('y') => answer(id, true),
-        Action::Char('n') => answer(id, false),
-        Action::Char('e') => edit(m, id),
+        Action::CardApprove => answer(id, true),
+        Action::CardReject => answer(id, false),
+        Action::CardEdit => edit(m, id),
         Action::Esc => {
             m.focus.card = None;
             Vec::new()
@@ -34,9 +35,15 @@ pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
     })
 }
 
-/// A press on one of a card's buttons: its key.
-pub(super) fn press_button(m: &mut UiModel, key: char) -> Vec<UiEffect> {
-    card_action(m, Action::Char(key)).unwrap_or_default()
+/// A press on one of a card's buttons: its action.
+pub(super) fn press_button(m: &mut UiModel, id: ActionId) -> Vec<UiEffect> {
+    let action = match id {
+        ActionId::CardApprove => Action::CardApprove,
+        ActionId::CardEdit => Action::CardEdit,
+        ActionId::CardReject => Action::CardReject,
+        _ => return Vec::new(),
+    };
+    card_action(m, action).unwrap_or_default()
 }
 
 fn answer(card: CardId, yes: bool) -> Vec<UiEffect> {

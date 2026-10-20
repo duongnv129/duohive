@@ -11,6 +11,7 @@ use super::{RenderCtx, fg, put};
 use crate::focus::Pane;
 use crate::format::{truncate_end, width, wrap_capped};
 use crate::forms::{FieldKind, SettingsRow, SettingsState, card_editable};
+use crate::keymap::{ActionId, Keymap};
 use crate::model::{Dialog, SPACE_RETRY, UiModel};
 use crate::theme::Palette;
 
@@ -20,21 +21,12 @@ const MAX_BANNER_LINES: usize = 3;
 
 /// Added to a form's keys while a prompt field has focus.
 const NEWLINE_KEY: &str = " · alt+enter new line";
-/// The focused pane's keys (P2-D9); `? help` arrives in phase 4.
-const ORG_KEYS: &str =
-    " tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom";
-/// The org pane's keys in the compact layout (UI §4.1's compact mock).
-const ORG_KEYS_COMPACT: &str = " tab pane · ↑↓ move · space give work";
-const NEEDS_YOU_KEYS: &str = " ↑↓ move · enter go to agent";
 const AGENT_KEYS: &str = " enter type · z zoom · PgUp/PgDn scroll · space give work";
 /// A stopped agent has no terminal to type in or scroll.
 const AGENT_KEYS_STOPPED: &str = " z zoom · space give work";
 /// A team or role's summary: no agent keys apply there.
 const SUMMARY_KEYS: &str = " tab pane · esc back";
 const CHAT_KEYS: &str = " enter send · alt+enter new line · tab pane";
-/// A focused card's keys (UI §4.6); `e edit` only where it can.
-const CARD_KEYS: &str = " y approve · e edit · n reject · esc input";
-const CARD_KEYS_NO_EDIT: &str = " y approve · n reject · esc input";
 const SETTINGS_KEYS: &str = " ↑↓ move · space change · esc back";
 const SETTINGS_STEP_KEYS: &str = " ↑↓ move · space change · ←→ step · esc back";
 /// While a Settings text box is open.
@@ -121,6 +113,14 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
         let room = w.saturating_sub(usize::from(x - r.x));
         x = put(buf, x, r.y, &text, room, style);
     }
+    if !m.typing() && m.dialog.is_none() {
+        let help = format!(" · {} help", m.keymap.key(ActionId::KeyMap).label());
+        let room = w.saturating_sub(usize::from(x - r.x));
+        // Drop it whole rather than cut it mid-hint on a narrow header.
+        if room >= width(&help) {
+            put(buf, x, r.y, &help, room, fg(p.fg_muted));
+        }
+    }
 }
 
 /// The footer: Typing's footer (with any note) while typing, the note when one is set,
@@ -150,24 +150,64 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
         (None, Some(Dialog::Confirm(c))) => confirm_keys(&c.yes_label),
         (None, Some(Dialog::Settings(s))) => settings_keys(s).to_owned(),
         (None, _) => match m.focus.pane {
-            Pane::Org if compact => ORG_KEYS_COMPACT,
-            Pane::Org => ORG_KEYS,
-            Pane::NeedsYou => NEEDS_YOU_KEYS,
+            Pane::Org if compact => org_keys_compact(&m.keymap),
+            Pane::Org => org_keys(&m.keymap),
+            Pane::NeedsYou => needs_you_keys(&m.keymap),
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
-            Pane::Agent => agent_keys(m),
+            Pane::Agent => agent_keys(m).to_owned(),
             Pane::Chat => chat_keys(m),
         }
-        .to_owned(),
+        .clone(),
     };
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
 }
 
+/// The org pane's keys (P2-D9), with `? help` (UI §4.11).
+fn org_keys(km: &Keymap) -> String {
+    let k = |a| km.key(a).label();
+    format!(
+        " tab pane · ↑↓ move · {} give work · {} start/stop · {} new · {} edit · {} zoom · {} help",
+        k(ActionId::GiveWork),
+        k(ActionId::StartStop),
+        k(ActionId::New),
+        k(ActionId::Edit),
+        k(ActionId::Zoom),
+        k(ActionId::KeyMap),
+    )
+}
+
+/// The org pane's keys in the compact layout (UI §4.1's compact mock).
+fn org_keys_compact(km: &Keymap) -> String {
+    format!(
+        " tab pane · ↑↓ move · {} give work",
+        km.key(ActionId::GiveWork).label()
+    )
+}
+
+/// The Needs you list's keys (UI §4.11).
+fn needs_you_keys(km: &Keymap) -> String {
+    format!(
+        " ↑↓ move · enter go to agent · {} help",
+        km.key(ActionId::KeyMap).label()
+    )
+}
+
 /// The chat's keys, or a focused card's.
-fn chat_keys(m: &UiModel) -> &'static str {
+fn chat_keys(m: &UiModel) -> String {
+    let k = |a| m.keymap.key(a).label();
     match m.focus.card.and_then(|id| m.cards.get(&id)) {
-        Some(card) if card_editable(card) => CARD_KEYS,
-        Some(_) => CARD_KEYS_NO_EDIT,
-        None => CHAT_KEYS,
+        Some(card) if card_editable(card) => format!(
+            " {} approve · {} edit · {} reject · esc input",
+            k(ActionId::CardApprove),
+            k(ActionId::CardEdit),
+            k(ActionId::CardReject)
+        ),
+        Some(_) => format!(
+            " {} approve · {} reject · esc input",
+            k(ActionId::CardApprove),
+            k(ActionId::CardReject)
+        ),
+        None => CHAT_KEYS.to_owned(),
     }
 }
 

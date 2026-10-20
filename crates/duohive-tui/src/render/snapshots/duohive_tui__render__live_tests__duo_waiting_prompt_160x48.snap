@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/live_tests.rs
 expression: "lines.join(\"\\n\")"
 ---
- DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you · ? help                                                                                                       
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · OpenCode · your manager agent ────────────────────────────────────────────────────────────────────┐
 ┃▌⬢ Duo · your manager agent    ◆ waiting    1m  ┃│ opencode wants to run: gh pr list --state open                                                             │
 ┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ Allow? (y) yes  (n) no                                                                                     │
@@ -49,4 +49,4 @@ expression: "lines.join(\"\\n\")"
 │                                                                                                                                                              │
 │ ❯                                                                                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help

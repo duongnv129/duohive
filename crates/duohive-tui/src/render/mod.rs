@@ -8,6 +8,8 @@ mod dialog;
 mod form;
 mod give_work;
 mod header;
+mod help;
+mod keys_editor;
 mod needs_you;
 mod org_pane;
 mod screens;
@@ -215,7 +217,7 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
 pub(crate) fn chat_card_at(
     m: &UiModel,
     at: ratatui::layout::Position,
-) -> Option<(duohive_core::card::CardId, Option<char>)> {
+) -> Option<(duohive_core::card::CardId, Option<crate::keymap::ActionId>)> {
     let a = pane_areas(m)?;
     if !a.chat.contains(at) || a.zoomed {
         return None;
@@ -429,6 +431,8 @@ mod chat_tests;
 mod colour_tests;
 #[cfg(test)]
 mod give_work_tests;
+#[cfg(test)]
+mod help_tests;
 #[cfg(test)]
 mod live_tests;
 #[cfg(test)]

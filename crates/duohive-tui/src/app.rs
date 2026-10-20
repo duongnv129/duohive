@@ -382,7 +382,7 @@ pub(crate) async fn run_loop<B: Backend>(
     // Boxed: the model (and the copy each input compares against) would make the loop's
     // future too large to keep on the stack (`clippy::large_futures`).
     let mut m = Box::new(UiModel::new(Org::blank(CliKind::Claude)));
-    m.settings = cfg.settings.clone();
+    m.set_settings(cfg.settings.clone());
     m.org_toml = cfg.org_toml.clone();
     m.dirs = SharedDirs(Arc::clone(&cfg.dirs));
     m.home = cfg.home.clone();

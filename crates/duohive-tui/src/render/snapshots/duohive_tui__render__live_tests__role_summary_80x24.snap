@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/live_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
- DuoHive  ● 2 · ◆ 2                                                             
+ DuoHive  ● 2 · ◆ 2 · ? help                                                    
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ◇ Backend · in Payments ────────────────────┐
 ┃ ⬢ Duo                ◦   1m  ┃│ 2 agents · ● 1 working · ◆ 1 waiting         │
 ┃ ▾ Payments           ● 1 ◆ 1 ┃│ Defaults  CLI inherit: Claude Code           │

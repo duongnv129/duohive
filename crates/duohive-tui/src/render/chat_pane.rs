@@ -16,6 +16,7 @@ use crate::focus::Pane;
 use crate::format::{
     marker, pad_right, state_cell, status_glyph, status_word, truncate_middle, width, wrap_words,
 };
+use crate::keymap::ActionId;
 use crate::model::UiModel;
 use crate::suggest::SuggestKind;
 use crate::theme::Palette;
@@ -226,7 +227,7 @@ pub(super) fn card_at(
     m: &UiModel,
     compact: bool,
     at: Position,
-) -> Option<(CardId, Option<char>)> {
+) -> Option<(CardId, Option<ActionId>)> {
     let fit = history_fit(r, m, compact)?;
     let first = r.y + 1;
     let room = u16::try_from(fit.room).unwrap_or(u16::MAX);
@@ -255,7 +256,7 @@ pub(super) fn card_at(
     let button = (row + 2 == start + len)
         .then(|| x.checked_sub(left + super::card::text_offset()))
         .flatten()
-        .and_then(|col| super::card::button_at(c, col));
+        .and_then(|col| super::card::button_at(&m.keymap, c, col));
     Some((card, button))
 }
 

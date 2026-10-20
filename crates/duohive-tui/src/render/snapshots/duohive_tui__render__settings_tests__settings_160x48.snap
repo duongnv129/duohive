@@ -28,12 +28,12 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃                                         │  Look                                                                    │                                         │
 ┃                                         │    Theme               [ auto ▾ ]                                        │                                         │
 ┃                                         │    Last reply under agents [x]  Reduce motion [ ]                        │                                         │
+┃                                         │  Keys                  [ Edit key bindings → ]                           │                                         │
 ┃                                         │  Org                                                                     │                                         │
 ┃                                         │    org defaults and Duo: e on Duo (Edit org)                             │                                         │
 ┃                                         │                                                                          │                                         │
 ┃                                         │  changes save immediately · esc back                                     │                                         │
 ┃                                         └──────────────────────────────────────────────────────────────────────────┘                                         │
-┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │
 ┃                                                ┃│                                                                                                            │

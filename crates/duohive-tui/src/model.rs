@@ -23,6 +23,7 @@ use ratatui::layout::Rect;
 use crate::chat::{self, ChatLines};
 use crate::focus::Focus;
 use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
+use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
 /// A dialog over the main screen.
@@ -40,6 +41,10 @@ pub enum Dialog {
     Worktrees(WorktreeList),
     /// Personal settings (UI §4.10).
     Settings(SettingsState),
+    /// The key map (UI §4.11).
+    KeyMap(KeyMapState),
+    /// The key bindings editor (UI §4.10).
+    Keys(KeysState),
 }
 
 /// The worktree list's own state; its rows are `UiModel::worktrees`.
@@ -125,6 +130,10 @@ pub struct UiModel {
     pub reconnecting: u32,
     /// The settings in use; `v` changes and saves them.
     pub settings: Settings,
+    /// The key bindings in use, built from `settings.keys` (UI §4.11).
+    pub keymap: Keymap,
+    /// Settings entries the key map ignored, one line each (UI §4.10).
+    pub keys_notices: Vec<String>,
     /// The time ages are measured to when an action needs one (the stop dialog).
     pub now: Millis,
     /// `org.toml`, which `o` opens in `$EDITOR`.
@@ -184,6 +193,8 @@ impl UiModel {
             dialog: None,
             reconnecting: 0,
             settings: Settings::default(),
+            keymap: Keymap::default(),
+            keys_notices: Vec::new(),
             now: Millis(0),
             org_toml: PathBuf::new(),
             dirs: SharedDirs(Arc::new(NoProbe)),
@@ -206,6 +217,14 @@ impl UiModel {
             worktrees: Vec::new(),
             cards: BTreeMap::new(),
         }
+    }
+
+    /// Replaces the settings and rebuilds the key map from them (UI §4.11).
+    pub fn set_settings(&mut self, settings: Settings) {
+        let (keymap, notices) = Keymap::from_settings(&settings.keys);
+        self.settings = settings;
+        self.keymap = keymap;
+        self.keys_notices = notices;
     }
 
     /// Applies an engine event; `true` when the screen needs a redraw.

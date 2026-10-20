@@ -13,6 +13,7 @@ use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
+use crate::keymap::{ActionId, Context, Keymap};
 use crate::model::{Confirm, Dialog, UiModel};
 use crate::tree::tree_rows;
 
@@ -98,6 +99,20 @@ pub enum Action {
     Worktrees,
     /// `,`: Settings.
     Settings,
+    /// `?`: the key map (UI §4.11).
+    KeyMap,
+    /// `f`: filter the tree by state (UI §4.1.4).
+    Filter,
+    /// `m`: move the selection (UI §4.8).
+    Move,
+    /// `y` on a focused card.
+    CardApprove,
+    /// `e` on a focused card.
+    CardEdit,
+    /// `n` on a focused card.
+    CardReject,
+    /// The key a binding capture took (UI §4.10).
+    Capture(KeyEvent),
 }
 
 /// What the app loop does after an action.
@@ -153,6 +168,9 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if matches!(&m.dialog, Some(Dialog::Settings(s)) if s.editing.is_some()) {
         return form_key(k);
     }
+    if matches!(&m.dialog, Some(Dialog::Keys(s)) if s.capturing) {
+        return Some(Action::Capture(k));
+    }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
     if m.dialog.is_none() {
         match (ctrl, k.code) {
@@ -160,8 +178,13 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             (true, KeyCode::Down) => return Some(Action::ChatShrink),
             _ => {}
         }
-        // The chat input always takes typed text (UI §5).
+        // The chat input always takes typed text (UI §5), card keys aside.
         if m.focus.pane == Pane::Chat {
+            if m.focus.card.is_some()
+                && let Some(id) = m.keymap.card_action(&k)
+            {
+                return Some(mapped(id));
+            }
             return chat_key(k);
         }
     }
@@ -182,20 +205,28 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         return common;
     }
     match &m.dialog {
-        Some(Dialog::Confirm(_)) => match k.code {
+        Some(d) => dialog_key(d, k),
+        None => panes::pane_key(&m.keymap, m.focus.pane, &k),
+    }
+}
+
+/// The keys of an open dialog (forms and Give work took theirs earlier).
+fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
+    match d {
+        Dialog::Confirm(_) => match k.code {
             KeyCode::Char('y') => Some(Action::DialogYes),
             KeyCode::Char('n') => Some(Action::DialogNo),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Worktrees(_)) => match k.code {
+        Dialog::Worktrees(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Char('d') => Some(Action::Delete),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Settings(_)) => match k.code {
+        Dialog::Settings(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Left => Some(Action::Left),
@@ -203,29 +234,58 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter | KeyCode::Char(' ') => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Chooser(_)) => match k.code {
+        Dialog::Chooser(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Form(_) | Dialog::GiveWork(_)) | None => panes::pane_key(m.focus.pane, k.code),
+        Dialog::KeyMap(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::PageUp => Some(Action::PageUp),
+            KeyCode::PageDown => Some(Action::PageDown),
+            KeyCode::Char('?') => Some(Action::Esc),
+            _ => None,
+        },
+        Dialog::Keys(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::PageUp => Some(Action::PageUp),
+            KeyCode::PageDown => Some(Action::PageDown),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            KeyCode::Backspace => Some(Action::Backspace),
+            _ => None,
+        },
+        // Forms and Give work took their keys above, before `common`.
+        Dialog::Form(_) | Dialog::GiveWork(_) => None,
     }
 }
 
-fn tree_key(code: KeyCode) -> Option<Action> {
-    match code {
-        KeyCode::Up => Some(Action::Up),
-        KeyCode::Down => Some(Action::Down),
-        KeyCode::Char('s') => Some(Action::StartStop),
-        KeyCode::Char('n') => Some(Action::New),
-        KeyCode::Char('e') => Some(Action::Edit),
-        KeyCode::Char('d') => Some(Action::Delete),
-        KeyCode::Char('v') => Some(Action::ToggleReplies),
-        KeyCode::Char('o') => Some(Action::OpenOrgFile),
-        KeyCode::Char('z') => Some(Action::Zoom),
-        KeyCode::Char(' ') => Some(Action::GiveWork),
-        _ => None,
+/// The action a bound key asks for in `context`.
+fn bind_action(km: &Keymap, context: Context, k: KeyEvent) -> Option<Action> {
+    km.action_for(context, &k).map(mapped)
+}
+
+/// The action a bound id names.
+fn mapped(id: ActionId) -> Action {
+    match id {
+        ActionId::GiveWork => Action::GiveWork,
+        ActionId::StartStop => Action::StartStop,
+        ActionId::New => Action::New,
+        ActionId::Edit => Action::Edit,
+        ActionId::Move => Action::Move,
+        ActionId::Delete => Action::Delete,
+        ActionId::Zoom => Action::Zoom,
+        ActionId::LastReply => Action::ToggleReplies,
+        ActionId::OpenOrg => Action::OpenOrgFile,
+        ActionId::Settings => Action::Settings,
+        ActionId::Worktrees => Action::Worktrees,
+        ActionId::Filter => Action::Filter,
+        ActionId::KeyMap => Action::KeyMap,
+        ActionId::CardApprove => Action::CardApprove,
+        ActionId::CardEdit => Action::CardEdit,
+        ActionId::CardReject => Action::CardReject,
     }
 }
 
@@ -280,6 +340,8 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
+        Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
+        Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
         None => {}
     }
     if m.focus.pane == Pane::Chat
@@ -311,6 +373,13 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         Action::Worktrees => return worktrees::open(m),
         Action::Settings => return settings::open(m),
+        Action::KeyMap => return keymap::open(m),
+        Action::Filter
+        | Action::Move
+        | Action::CardApprove
+        | Action::CardEdit
+        | Action::CardReject
+        | Action::Capture(_) => return Vec::new(),
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);
@@ -695,6 +764,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 mod agent;
 mod cards;
 pub(crate) mod give_work;
+mod keymap;
 pub(crate) mod mouse;
 mod panes;
 mod settings;
@@ -706,6 +776,8 @@ mod agent_tests;
 mod card_tests;
 #[cfg(test)]
 mod chat_tests;
+#[cfg(test)]
+mod keymap_tests;
 #[cfg(test)]
 mod mouse_tests;
 #[cfg(test)]

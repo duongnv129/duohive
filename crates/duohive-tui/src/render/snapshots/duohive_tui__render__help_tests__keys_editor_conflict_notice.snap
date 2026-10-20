@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/help_tests.rs
+expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━┌─ Key bindings ───────────────────────────────────────────────────────────┐─┐
+┃ │                                                                          │ │
+┃ │  Action                  Key                                             │ │
+┃ │▌ Give work               s is already Start / stop · rebind that first   │ │
+┃▌│  Start / stop            s                                               │ │
+┃ │  New                     n                                               │ │
+┃ │  Edit                    e                                               │ │
+┃ │  Move                    m                                               │ │
+┃ │  Delete                  d                                               │ │
+┃ │  Zoom                    z                                               │ │
+┃ │  Last reply              v                                               │ │
+┃ │  Open org.toml           o                                               │ │
+┃ │  Settings                ,                                               │ │
+┃ │  Worktrees               w                                               │ │
+┣━│  Filter                  f                                               │ │
+┃ │  Key map                 ?                                               │ │
+┃ │  Approve card            y                                               │ │
+┗━│  Edit card               e                                               │─┘
+┌─│  Reject card             n                                               │─┐
+│ │                                                                          │ │
+│ │  enter rebind (press the new key) · backspace default · esc back         │ │
+└─└──────────────────────────────────────────────────────────────────────────┘─┘
+ tab pane · ↑↓ move · space give work

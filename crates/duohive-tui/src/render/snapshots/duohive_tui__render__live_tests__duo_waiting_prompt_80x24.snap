@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/live_tests.rs
 expression: "lines.join(\"\\n\")"
 ---
- DuoHive  ● 2 · ◆ 2                                                             
+ DuoHive  ● 2 · ◆ 2 · ? help                                                    
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · OpenCode · your manager agent ──────┐
 ┃▌⬢ Duo                ◆   1m  ┃│ opencode wants to run: gh pr list --state op │
 ┃ ▾ Payments           ● 1 ◆ 1 ┃│ en                                           │

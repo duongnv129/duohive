@@ -238,3 +238,11 @@ fn esc_goes_back_and_never_quits() {
     press(&mut m, code(KeyCode::Enter));
     assert_eq!(map_key(&m, key('q')), Some(Action::Char('q')));
 }
+
+#[test]
+fn settings_has_a_keys_row_that_opens_the_editor() {
+    let mut m = open();
+    go_to(&mut m, SettingsRow::Keys);
+    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
+    assert!(matches!(m.dialog, Some(Dialog::Keys(_))));
+}
