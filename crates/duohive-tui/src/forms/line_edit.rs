@@ -130,4 +130,18 @@ impl LineEdit {
             .collect();
         (visible, col)
     }
+
+    /// The first `cells` of the text, for a box that isn't focused. Newlines show
+    /// as `↵`.
+    pub fn head(&self, cells: usize) -> String {
+        let mut used = 0;
+        self.text
+            .graphemes(true)
+            .map(|g| if g == "\n" { NEWLINE_GLYPH } else { g })
+            .take_while(|g| {
+                used += width(g);
+                used <= cells
+            })
+            .collect()
+    }
 }

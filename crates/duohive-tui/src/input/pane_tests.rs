@@ -425,6 +425,7 @@ fn cursor_follows_agent_across_a_snapshot() {
         cards: Vec::new(),
         chat: Vec::new(),
         your_queued: Vec::new(),
+        first_run: None,
     };
     m.apply(Event::Snapshot(Box::new(s)));
     assert_eq!(m.focus.needs_you_cursor, 0);

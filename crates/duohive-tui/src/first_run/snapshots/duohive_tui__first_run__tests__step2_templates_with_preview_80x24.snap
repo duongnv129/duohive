@@ -1,0 +1,23 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Choose a starting org · step 2 of 3 ────────────────────────────────┐    
+    │                                                                      │    
+    │▌Agent Squad      a Generalist role; any free agent takes a task      │    
+    │ Product Team     Backend · Frontend · QA, one agent each             │    
+    │ Engineering Org  several teams, each Backend + QA                    │    
+    │ Blank            just you and Duo; build it yourself                 │    
+    │                                                                      │    
+    │  ┄ Preview ┄                                                         │    
+    │  ⬢ Duo                                                               │    
+    │  └─ ◇ Generalist                                                     │    
+    │     ├─ squad-1                                                       │    
+    │     ├─ squad-2                                                       │    
+    │     └─ squad-3                                                       │    
+    │  ↑↓ choose · enter · esc     [ ← Back ]   [ Next → ]   [ Quit ]      │    
+    └──────────────────────────────────────────────────────────────────────┘

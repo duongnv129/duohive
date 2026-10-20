@@ -287,7 +287,7 @@ pub async fn start_system(
         settle_after: SETTLE_AFTER,
         end_hook_grace: END_HOOK_GRACE,
     };
-    let engine = Engine::new(
+    let mut engine = Engine::new(
         org,
         org_error,
         settings.clone(),
@@ -296,6 +296,10 @@ pub async fn start_system(
         ports,
         Arc::clone(&adapters),
     );
+    // UI §4.3: no org.toml yet, so the UI opens the wizard with this inventory.
+    if let Some(list) = first_run_inventory.clone() {
+        engine.set_first_run(list);
+    }
     // The detection task detects unless this first run already did.
     let first_run = first_run_inventory.is_some();
     let (events_tx, events) = mpsc::unbounded_channel();

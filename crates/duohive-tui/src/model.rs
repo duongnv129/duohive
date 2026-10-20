@@ -5,7 +5,9 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use duohive_core::adapter::CliPresence;
 use duohive_core::card::{Card, CardId};
+use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, RoleOutcome, Snapshot};
 use duohive_core::inbox::{MessageId, Sender};
@@ -21,6 +23,7 @@ use duohive_core::worktree::{RunIn, WorktreeRow};
 use ratatui::layout::Rect;
 
 use crate::chat::{self, ChatLines};
+use crate::first_run::FirstRun;
 use crate::focus::Focus;
 use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
 use crate::keymap::{KeyMapState, Keymap, KeysState};
@@ -177,6 +180,10 @@ pub struct UiModel {
     pub worktrees: Vec<WorktreeRow>,
     /// Pending approval cards (UI §4.6).
     pub cards: BTreeMap<CardId, Card>,
+    /// No org exists yet: the CLIs detection found (UI §4.3).
+    pub first_run: Option<Vec<(CliKind, CliPresence)>>,
+    /// The first-run wizard, while `first_run` is `Some`.
+    pub wizard: Option<FirstRun>,
 }
 
 impl UiModel {
@@ -216,6 +223,8 @@ impl UiModel {
             give_later: None,
             worktrees: Vec::new(),
             cards: BTreeMap::new(),
+            first_run: None,
+            wizard: None,
         }
     }
 
@@ -253,15 +262,20 @@ impl UiModel {
                 self.set_needs_you(items);
             }
             Event::OrgFileError(e) => self.org_error = e,
-            Event::CommandRejected { reason } => match &mut self.dialog {
-                Some(Dialog::Form(f)) if f.saving => f.reject(reason),
-                _ => match self.give_sent.clone() {
-                    Some((agent, task, run)) => {
-                        self.reopen_give_work(&agent, &task, Some(run), &reason, "");
-                    }
-                    None => self.footer_note = Some(reason),
-                },
-            },
+            Event::CommandRejected { reason } => {
+                if self.reject_wizard(&reason) {
+                    return true;
+                }
+                match &mut self.dialog {
+                    Some(Dialog::Form(f)) if f.saving => f.reject(reason),
+                    _ => match self.give_sent.clone() {
+                        Some((agent, task, run)) => {
+                            self.reopen_give_work(&agent, &task, Some(run), &reason, "");
+                        }
+                        None => self.footer_note = Some(reason),
+                    },
+                }
+            }
             Event::GiveWorkRefused {
                 agent,
                 state,
@@ -322,9 +336,24 @@ impl UiModel {
                 }
             }
             e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
+            // The wizard's org is saved: the main screen takes over (UI §4.3).
+            Event::OrgCreated => {
+                self.first_run = None;
+                self.wizard = None;
+            }
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
         }
+        true
+    }
+
+    /// A refusal while the wizard is up: Create org keeps it open with the reason
+    /// under its fields (UI §4.3).
+    fn reject_wizard(&mut self, reason: &str) -> bool {
+        let Some(w) = self.wizard.as_mut() else {
+            return false;
+        };
+        w.write_error = Some(reason.to_owned());
         true
     }
 
@@ -566,6 +595,16 @@ impl UiModel {
         self.chat.scroll = None;
         self.queued = s.your_queued.into_iter().collect();
         self.cards = s.cards.into_iter().map(|c| (c.id, c)).collect();
+        // No org yet: the wizard, once, so a later snapshot keeps what was typed.
+        self.first_run = s.first_run;
+        match &self.first_run {
+            Some(list) if self.wizard.is_none() => {
+                let name = self.settings.your_name.clone();
+                self.wizard = Some(FirstRun::new(list.clone(), name));
+            }
+            Some(_) => {}
+            None => self.wizard = None,
+        }
         if self
             .focus
             .card
@@ -817,6 +856,7 @@ mod tests {
             cards: Vec::new(),
             chat: Vec::new(),
             your_queued: Vec::new(),
+            first_run: None,
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);

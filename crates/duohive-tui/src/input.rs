@@ -151,6 +151,10 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
     }
+    // The wizard owns every key while it is up, so its fields can type `q` (UI §4.3).
+    if m.wizard.is_some() {
+        return crate::first_run::map_key(k);
+    }
     if m.typing() {
         return Some(agent::typing_key(k));
     }
@@ -323,12 +327,27 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     out
 }
 
+/// The first-run wizard's keys (UI §4.3); Create org sends `Command::CreateOrg`.
+fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    let Some(w) = m.wizard.as_mut() else {
+        return Vec::new();
+    };
+    match crate::first_run::key(w, a, m.dirs.probe(), &m.home) {
+        crate::first_run::Outcome::Continue => Vec::new(),
+        crate::first_run::Outcome::Quit => vec![UiEffect::Quit],
+        crate::first_run::Outcome::Create(command) => vec![UiEffect::Send(*command)],
+    }
+}
+
 fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
     // A refusal arrives before any further input; later ones aren't about the last send.
     m.give_sent = None;
     if a == Action::Quit {
         return vec![UiEffect::Quit];
+    }
+    if m.wizard.is_some() {
+        return wizard_action(m, a);
     }
     match m.dialog.take() {
         Some(Dialog::Confirm(c)) => return confirm_action(m, c, a),
@@ -452,6 +471,10 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 /// Pasted text goes to the agent while typing (as a bracketed paste), to the open form's
 /// focused field, or to the focused chat input; elsewhere it is dropped.
 pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
+    if let Some(w) = m.wizard.as_mut() {
+        crate::first_run::paste(w, text);
+        return Vec::new();
+    }
     if m.typing() {
         // Scrolled back while typing: the paste returns to live, as any key (P2-D25).
         m.scrolled = false;

@@ -5,6 +5,7 @@ mod alerts;
 mod assign;
 mod cards;
 mod chat;
+mod create_org;
 mod driver;
 mod duo;
 #[cfg(test)]
@@ -231,6 +232,8 @@ pub struct Engine {
     cli: Option<HashMap<CliKind, CliPresence>>,
     /// `None` until the first `DirInventory`: pending (D26).
     dirs: Option<HashMap<PathBuf, DirStatus>>,
+    /// No org exists yet: the detected CLIs, until `CreateOrg` (UI §4.3).
+    first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
     /// The Needs you list last reported in `NeedsYouChanged`.
@@ -301,6 +304,7 @@ impl Engine {
             agents: BTreeMap::new(),
             cli: None,
             dirs: None,
+            first_run: None,
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
@@ -332,6 +336,12 @@ impl Engine {
             .map(|name| (name, AgentRt::stopped(now)))
             .collect();
         engine
+    }
+
+    /// Marks the session a first run: no `org.toml` yet, and this inventory is
+    /// what the wizard shows (UI §4.3). Called before `start_up`.
+    pub fn set_first_run(&mut self, inventory: Vec<(CliKind, CliPresence)>) {
+        self.first_run = Some(inventory);
     }
 
     /// Handles one input and returns the events it caused, ending with
@@ -439,6 +449,11 @@ impl Engine {
                 pick,
                 run,
             } => self.assign_yours(role, task, pick, run),
+            Command::CreateOrg {
+                template,
+                your_name,
+                duo_cli,
+            } => self.create_org(&template, your_name, duo_cli),
         }
     }
 
@@ -474,6 +489,7 @@ impl Engine {
             cards: self.cards.clone(),
             chat: self.chat.clone(),
             your_queued: self.your_queued(),
+            first_run: self.first_run.clone(),
         }
     }
 

@@ -5,6 +5,7 @@ pub(crate) mod card;
 mod card_fields;
 pub(crate) mod chat_pane;
 mod dialog;
+mod first_run;
 mod form;
 mod give_work;
 mod header;
@@ -97,6 +98,13 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     let p = &ctx.palette;
     let buf = frame.buffer_mut();
     buf.set_style(area, Style::default().fg(p.fg).bg(p.bg));
+    // No org yet: the wizard is the screen (UI §4.3).
+    if m.wizard.is_some() {
+        if let Some(at) = first_run::draw(buf, area, m, ctx) {
+            frame.set_cursor_position(at);
+        }
+        return;
+    }
     let banners = header::banners(m, usize::from(area.width));
     let banner_rows = u16::try_from(banners.len()).unwrap_or(u16::MAX);
     let typing = m.focus.pane == Pane::Chat;

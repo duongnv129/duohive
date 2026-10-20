@@ -265,6 +265,7 @@ fn reconnecting_state_in_agent_pane() {
             cards: Vec::new(),
             chat: Vec::new(),
             your_queued: Vec::new(),
+            first_run: None,
         }))
     };
     let mut m = UiModel::new(spec.org.clone());

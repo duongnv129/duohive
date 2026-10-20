@@ -1,0 +1,21 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Set up Agent Squad · step 3 of 3 ───────────────────────────────────┐    
+    │                                                                      │    
+    │▌ Agents        [3                           ]                        │    
+    │  Directory     [~/code/app                  ] ✓ git repo             │    
+    │  CLI           (•) Claude Code   (-) OpenCode                        │    
+    │  Worktrees     [x] own worktree per task                             │    
+    │  Role prompt   [You are a careful engineer. ]                        │    
+    │  You can change all of this later.                                   │    
+    │  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │    
+    │                                                                      │    
+    └──────────────────────────────────────────────────────────────────────┘

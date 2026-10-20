@@ -374,17 +374,18 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 │  DuoHive runs your AI coding agents as a team.                       │
 │  Duo, your manager agent, helps you steer it.                        │
 │                                                                      │
-│  Your name     [ Duong_______________ ]                              │
-│  Duo runs on   (•) Claude Code  (-) OpenCode                         │
-│                found: claude 2.1 · opencode not found                │
+│▌ Your name     [Duong                       ]                        │
+│  Duo runs on   (•) Claude Code   (-) OpenCode                        │
+│  found: claude 2.1.0 · opencode not found                            │
 │                                                                      │
-│  enter next · esc quit (asks first)      [ Next → ]   [ Quit ]       │
+│  enter next · esc quit (asks first)       [ Next → ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 **No CLI at all:** a blocking screen, like the tmux one (§4.12).
 
-**Blank** has no form on step 3: the step shows `You and Duo only. Add teams, roles and agents later with n.` and the buttons `[ ← Back ] [ Create org ] [ Quit ]`.
+**Blank** has no form on step 3: the step shows `You and Duo only. Add teams, roles and agents later with n.`, and its first control is `Create org` (there are no fields, so `enter` creates the org rather than going back).
 
 **What Create org writes:** `[org] cli` is Duo's CLI from step 1 and no other org default; `[duo]` is `Duo` on the same CLI. The template's CLI, directory and worktree choices go on the teams or the Generalist role it creates (TD §7). The app starts its agents only after Create org.
 
@@ -410,19 +411,18 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 ```
 ┌─ Choose a starting org · step 2 of 3 ────────────────────────────────┐
 │                                                                      │
-│▌ Agent Squad      a Generalist role; any free agent takes a task     │
-│  Product Team     Backend · Frontend · QA, one agent each            │
-│  Engineering Org  several teams, each Backend + QA                   │
-│  Blank            just you and Duo; build it yourself                │
+│▌Agent Squad      a Generalist role; any free agent takes a task      │
+│ Product Team     Backend · Frontend · QA, one agent each             │
+│ Engineering Org  several teams, each Backend + QA                    │
+│ Blank            just you and Duo; build it yourself                 │
 │                                                                      │
-│  ┄ Preview ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄     │
+│  ┄ Preview ┄                                                         │
 │  ⬢ Duo                                                               │
 │  └─ ◇ Generalist                                                     │
 │     ├─ squad-1                                                       │
 │     ├─ squad-2                                                       │
 │     └─ squad-3                                                       │
-│                                                                      │
-│                            [ ← Back ]   [ Next → ]   [ Quit ]        │
+│  ↑↓ choose · enter · esc     [ ← Back ]   [ Next → ]   [ Quit ]      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -433,32 +433,33 @@ Agent Squad (worktrees default to on; 1–100 agents):
 ```
 ┌─ Set up Agent Squad · step 3 of 3 ───────────────────────────────────┐
 │                                                                      │
-│  Agents        [ 3 ]  (1–100)                                        │
-│  Directory     [ ~/code/my-app____________________ ]  ✓ git repo     │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Worktrees     [x] new work runs in its own worktree                 │
-│  Role prompt   [ You are a careful engineer. Keep changes small; ]   │
-│                [ run the tests before you say you are done.     ]    │
-│                                                                      │
+│▌ Agents        [3                           ]                        │
+│  Directory     [~/code/app                  ] ✓ git repo             │
+│  CLI           (•) Claude Code   (-) OpenCode                        │
+│  Worktrees     [x] own worktree per task                             │
+│  Role prompt   [You are a careful engineer. ]                        │
 │  You can change all of this later.                                   │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+A focused field too long for its box scrolls to keep the cursor in view; an unfocused one shows the text's start. A squad size outside 1–100 shows `✕ agents must be 1–100` after the field.
 
 Product Team:
 
 ```
 ┌─ Set up Product Team · step 3 of 3 ──────────────────────────────────┐
 │                                                                      │
-│  Team name     [ Product_____________ ]                              │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Backend dir   [ ~/code/api_______________ ]  ✓ git repo             │
-│  Frontend dir  [ ~/code/web_______________ ]  ✓ git repo             │
-│  QA dir        [ ~/code/api_______________ ]  ✓ git repo             │
-│  Worktrees     [ ] new work runs in its own worktree                 │
+│▌ Team name     [Product                     ]                        │
+│  CLI           (•) Claude Code   (-) OpenCode                        │
+│  Backend dir   [~/code/app                  ] ✓ git repo             │
+│  Frontend dir  [                            ] ✕ required             │
+│  QA dir        [                            ] ✕ required             │
+│  Worktrees     [ ] own worktree per task                             │
 │                                                                      │
 │  Each role gets one agent and a starter prompt you can edit.         │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -467,18 +468,20 @@ Engineering Org (one "team name + repo" row per team):
 ```
 ┌─ Set up Engineering Org · step 3 of 3 ───────────────────────────────┐
 │                                                                      │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Teams         name                 repo                             │
-│              [ Payments_______ ]  [ ~/code/payments____ ] ✓          │
-│              [ Growth_________ ]  [ ~/code/growth______ ] ✓          │
-│              [ _______________ ]  [ ___________________ ]            │
-│                [ + Add team ]   empty rows are ignored               │
-│  Worktrees     [ ] new work runs in its own worktree                 │
+│▌ CLI           (•) Claude Code   (-) OpenCode                        │
+│  name                 repo                                           │
+│  [Payments          ] [~/code/app              ] ✓ git repo          │
+│  [Web               ] [~/code/plain            ] ✓ found             │
+│    [ + Add team ]  empty rows are ignored                            │
+│  Worktrees     [ ] own worktree per task                             │
 │                                                                      │
 │  Each team gets Backend and QA roles with one agent each.            │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+Starting with no teams, the form shows one row; `+ Add team` appends another, and a row with both fields empty is ignored (so is its error).
 
 ### 4.4 Org editing
 

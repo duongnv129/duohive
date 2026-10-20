@@ -18,6 +18,7 @@ pub mod org;
 pub mod ports;
 pub mod settings;
 pub mod status;
+pub mod templates;
 pub mod time;
 pub mod tool;
 pub mod validate;

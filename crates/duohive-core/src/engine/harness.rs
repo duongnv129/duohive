@@ -69,6 +69,8 @@ pub(crate) struct Setup {
     pub without_adapter: Option<CliKind>,
     /// Sent right after `Engine::new`; `None` sends nothing (D30).
     pub inventory: Option<Vec<(CliKind, CliPresence)>>,
+    /// Makes the engine a first run with this inventory (UI §4.3).
+    pub first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// The engine's settings.
     pub settings: Settings,
     /// When the clock starts.
@@ -88,6 +90,7 @@ impl Default for Setup {
             opencode: StubAdapter::new(CliKind::Opencode),
             without_adapter: None,
             inventory: Some(all_found()),
+            first_run: None,
             settings: Settings::default(),
             start: T0,
             notifier_available: true,
@@ -143,7 +146,10 @@ impl Setup {
                 .map(|a| Box::new(a) as Box<dyn crate::adapter::CliAdapter>)
                 .collect(),
         ));
-        let engine = Engine::new(self.org, None, self.settings, None, cfg, ports, adapters);
+        let mut engine = Engine::new(self.org, None, self.settings, None, cfg, ports, adapters);
+        if let Some(list) = self.first_run.clone() {
+            engine.set_first_run(list);
+        }
         let mut h = Harness {
             engine,
             call_log: runtime.calls,
