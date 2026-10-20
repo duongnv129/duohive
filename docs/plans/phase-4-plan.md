@@ -1,11 +1,23 @@
-# DuoHive Phase 4 Plan — Scale and polish (outline)
+# DuoHive Phase 4 Implementation Plan — Scale and polish
 
-**Status:** Outline · written 2026-10-05, revised 2026-10-19 after phases 2 and 3 were done and a two-reviewer spec check (task order, measurement method, risks and the specs for the picker, key editor, filter and replace flow) · expanded into a full test-first plan, in the format of [phase-3-plan.md](phase-3-plan.md), when phase 4 starts. Depends on phase 3 (Agent Squad needs task to a role).
+**Status:** Ready · outline written 2026-10-05, specs revised 2026-10-19 after a dual-reviewer check, expanded into this task-by-task plan 2026-10-20. Depends on phase 3 (Agent Squad needs task to a role). The defaults in Constraints (the measurement method, the 3–4 week estimate, one binding per action with context-scoped conflicts, the gate run with the view on) are the author's to confirm; they are the first item in the TODO checklist.
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for templates, model and effort, key and mouse; Setup templates; UX principles) · [UI/UX spec](../ux/ui-spec.md) §4.1.1, §4.3, §4.4.1 (model fields), §4.4.2 (menu, move, drag), §4.8 (replace org), §4.10, §4.11, §5, §6 · [Technical design](../design/technical-design.md) §4.3, §5.2 (model lists), §7, §8, §10 · [Roadmap](v1-roadmap.md) row 4 · [Traceability](v1-traceability.md).
 
 **Goal:** DuoHive meets every Success Metric at 100 agents on Apple M-series. A new user gets a ready-made org from a template. Model and effort come from each CLI. Every action works by key and by mouse, with a `?` map and editable bindings.
 
 **Done when (roadmap):** Every benchmark target in Success Metrics (idle CPU, memory, status freshness, start-up, binary size) passes on Apple M-series.
+
+## Review Focus
+
+The spec is silent on these; each has a test in the owning task.
+
+1. A `settings.toml` `[keys]` table that is garbage (an unknown id, a key that does not parse, two actions on one key): defaults apply, notices show, nothing crashes (4.6).
+2. A CLI whose model command hangs or is not installed: the form still opens and typing works (4.5, `list_models_times_out_after_10s`).
+3. Replacing the org while an agent waits on an approval or holds a worktree: nothing is written if a stop fails, worktree rows are kept (4.4).
+4. A template directory written with `~`, a trailing space or a path that does not exist (4.3, `squad_directory_tilde_expanded` and the error states).
+5. Mouse events past the last row or column, or during a resize (4.7, `mouse_outside_screen_ignored`).
 
 ## Constraints carried
 
@@ -79,26 +91,232 @@ P4-D1 is recorded in the scope note below.
 | Colour-blind safety: a state is never shown by colour alone (glyph and word per state), contrast re-verified (theme `auto` follows the terminal since P2-D26) | UI §2.3, §4.10, §6 | 4.9 |
 | Phase 4 acceptance: every target on Apple M-series | Roadmap row 4 | 4.10 |
 
+## File structure
+
+| Crate | New | Modified |
+|---|---|---|
+| `duohive` | `tests/bench_gate_script.rs`; `scripts/bench-gate.sh` | `src/bench/{mod,report,measure,observe}.rs`, `src/args.rs`, `src/main.rs`, `src/system.rs` (first-run hand-off), `Cargo.toml`, `Makefile`, `.github/workflows/ci.yml` |
+| `duohive-cli` | `src/models.rs` (parsers for `claude --help` and `opencode models --verbose`); fixtures under `src/assets/models/` | `src/{claude,opencode,fake}.rs`, `src/lib.rs` |
+| `duohive-core` | `src/templates.rs` | `src/{command,event,adapter,org_edit?,lib}.rs`, `src/engine/*` (new-org command), `src/testkit.rs` (stub `list_models`) |
+| `duohive-store` | `src/model_cache.rs` | `src/org_file.rs` (timestamped backup), `src/lib.rs`, `src/settings_file.rs` (tests only: `[keys]` round trip) |
+| `duohive-tui` | `src/keymap.rs`; `src/filter.rs`; `src/first_run/{mod,steps,forms}.rs`; `src/forms/{dropdown,move_to}.rs`; `src/render/{help,keys_editor,menu,first_run,dropdown}.rs`; `src/input/{menu,drag}.rs` | `src/{input,model,theme}.rs`, `src/input/{panes,mouse,settings,worktrees,give_work,cards}.rs`, `src/chat.rs`, `src/render/{header,org_pane,settings,dialog,mod}.rs`, `src/forms/{field,org,agent,role,team}.rs`, `src/tree.rs` |
+
+Dependency rule (TD §3.4) is unchanged: `duohive-core` gains `templates.rs` and a `list_models` method on `CliAdapter` but does no I/O; the model cache and the backup live in `duohive-store`; the parsers live in `duohive-cli`.
+
 ## Tasks
 
-| # | Task | Crates and files | Test intent | Spec |
-|---|---|---|---|---|
-| 4.1 | **Full benchmark.** Run at `--agents 100` (the flag already accepts 1–1000). The bench already runs every fifth fake agent without hooks (`SCREEN_READ_EVERY`) but doesn't time them: add the `~` freshness timing, first-frame timing at 10 and 100 (today `first_frame` is `None`), the binary size, and a realistic-output profile (P4-Q2), all by the method in Constraints. Set `[profile.release]` (strip, lto, codegen-units) here and record the size after it (P4-D4). The bench changes the method needs: memory becomes a current-RSS sample at the end of the window plus the tmux client's (today it is the whole-run peak, `peak_rss_mb`, still reported); `--idle-secs` defaults to 60 with a 30 s settle; `--turns` defaults so 100 hook samples are taken at each count; load above the ceiling exits 3 with `discarded: load`; `scripts/bench-gate.sh` (run by `make bench-gate`) runs `duohive bench` three times, retries a discarded run at most twice, and takes the worst. Phase 5's `--gate` (5.2) moves the same three-run rule into the binary and replaces the script. The report prints every PRD target with pass or fail, and the machine load. It also reports the `duohive mcp` helpers' total memory and start time (reported, not gated), measured by spawning N real `duohive mcp` processes beside the fake agents and summing their resident size | `duohive/src/bench/*`; `duohive-cli/src/fake.rs` if the fake needs a timing hook; `scripts/bench-gate.sh`; `.github/workflows/ci.yml`; `Makefile`; `Cargo.toml` | `report_lists_every_target`, `first_frame_measured_on_reopen`, `tilde_freshness_measured`, `helpers_memory_reported`, `memory_is_end_of_window_not_peak`, `load_above_ceiling_exits_3_discarded`, `worst_of_three_decides`, `turns_default_reaches_100_samples`; a bench run at 100 in CI on macOS (reported; `.github/workflows/ci.yml`) | TD §10; PRD Success Metrics |
-| 4.2 | **Tuning at 100.** Profile and fix what misses a target. Candidates: activity-poll batching, settle-read concurrency, render diffing, start-up work deferred after the first frame (the model lists of 4.5 load after it, and are measured here once they exist). Each fix is measured before and after; it stops when every target passes in three runs, or when a target still misses after the S0 fallback, which goes to the author | `duohive-tmux`, `duohive-tui`, `duohive-core` as found | Each change lands with the bench numbers before and after in `bench-results.md` "Phase 4" | TD §4.3, §13 |
-| 4.3 | **First-run setup.** Step 1: your name and Duo's CLI from those detected, with versions and `(-)` for missing. Step 2: the templates with a live preview. Step 3: each template's form (Agent Squad 1–100, directory `✓ git repo`, CLI, worktrees on, role prompt, all set on its Generalist role, not in the org defaults; Product Team's and Engineering Org's CLI and worktree choices are set on each team they create, not in the org defaults; Product Team; Engineering Org rows with `+ Add team`; Blank, which shows a one-line summary instead of a form). `esc` on step 1 asks before quitting; on later steps it goes back. Today a first run silently builds a blank org (`system.rs`, `Loaded::FirstRun`); the wizard replaces that, and the engine starts only after Create org. The no-CLI blocking screen. Template builders live in core as pure functions | `duohive-core/src/templates.rs`; `duohive-tui/src/first_run/*`; `duohive/src/startup.rs` (no `org.toml` → first run) | Core: `squad_has_n_agents_under_root_role`, `squad_worktrees_on`, `product_team_three_roles_with_prompts`, `engineering_org_skips_empty_rows`, `templates_validate`, `template_agent_names_unique`, `templates_write_only_org_cli`, `blank_writes_org_cli_and_duo`. TUI snapshots of every step and every error state (UI §4.3) at 80×24 and 160×48; `no_cli_blocks`; `first_run_applies_name_and_duo_cli` | PRD Setup templates; UI §4.3; TD §8 |
-| 4.4 | **New org from template.** The Settings Org row opens the wizard in replace mode (UI §4.3): the template step and its form, titled `of 2`, with Cancel in place of Quit. `Create org` opens UI §4.8's `Replace your org?` (focus on Cancel). Only the tree is replaced; `[duo]` and the org-level defaults and prompt are kept (P4-D3). Running agents in the old tree are stopped after the confirmation (TD §5.5's grace kill applies); if any window can't be stopped, nothing is written and a banner says which agent. Duo keeps running. The backup is written as `org.toml.<timestamp>.bak`. The old agents' worktree rows stay listed under `w`; their session rows go; pending cards and queued messages that name a removed agent are dropped with the reason `agent removed`; a template agent name that matches a kept worktree row gets the next free number (`squad-4`, `backend-2`, `payments-backend-2`) | `duohive-core` `Command::NewOrgFromTemplate`; `duohive-store/src/org_file.rs`; TUI settings | `replace_stops_agents_then_writes`, `replace_keeps_duo_and_org_defaults`, `replace_keeps_duo_running`, `timestamped_backup_kept`, `cancel_changes_nothing`, `replace_aborts_when_a_stop_fails`, `replace_keeps_worktree_rows`, `replace_drops_cards_and_messages_for_removed_agents`, `template_name_skips_kept_worktree_names`, `replace_mode_back_and_cancel` | PRD The org file; TD §7; UI §4.8 |
-| 4.5 | **Model and effort picker.** First a 30-minute spike (S4) of `opencode models --verbose` on the pinned OpenCode 2.0, since 2.0 already dropped `--model` and `--agent` and the fixtures can't be recorded without it; TD §5.2 is updated from it. Adapters list models and efforts asynchronously after the first frame, cached in `<data_dir>/model-cache.json` per CLI and version (TD §7). The `Choice` field only cycles with ←→, so this adds a new dropdown widget (UI §4.4.1): a popup list with type-ahead, an `inherit` entry, and a typed custom name; the Effort list is the chosen model's variants | `duohive-core/src/adapter.rs` (`list_models`); `duohive-cli/src/{claude,opencode}.rs`; `duohive-tui/src/forms/*` | Adapter tests parse recorded `claude --help` and `opencode models --verbose` fixtures, the latter re-recorded on the pinned OpenCode 2.0, confirming its variants map to `#<effort>`; `loading_then_list`, `failure_allows_typing`, `typeahead_filters_117_models`, `custom_name_accepted`, `inherit_uses_the_inherited_clis_list`, `effort_resets_when_model_changes`, `opencode_effort_disabled_without_model`, `claude_effort_list_from_help_flag`, `empty_list_allows_typing`, `cache_hit_per_cli_version`; form and popup snapshots | PRD Should; TD §5.2; UI §4.4.1 |
-| 4.6 | **Keys.** Built first among the key tasks, as a keymap registry: every action has an id and a default key, and `input.rs`, its sub-modules and the footers (hard-coded in `render/header.rs` today) read it. The registry holds every action, `m` and `f` included, from the start; 4.8 and 4.9 build what those keys do. `?` opens the key map (three columns at 100 wide or more, one scrolling column below). The key-binding editor (Settings → Keys) follows UI §4.10: the rebindable actions, the reserved keys, the capture state and the conflict rule are defined there, and `settings.keys` follows TD §7. `? help` shows in the header and the org-pane and Needs you footers (UI §4.11), never in Typing mode, forms or the chat input (P2-D9); `?` itself works zoomed | `duohive-tui/src/{keymap.rs, render/help.rs, render/keys_editor.rs}`; `input.rs`, `input/panes.rs`, `chat.rs`, `settings.rs`, `worktrees.rs` and `render/header.rs` read it | `help_lists_current_bindings`, `rebind_applies_everywhere`, `conflict_refused_in_same_context`, `conflict_check_covers_reserved_keys`, `two_context_action_rebinds_both`, `backspace_restores_default`, `esc_cancels_capture`, `unknown_id_notice_shown`, `same_key_allowed_in_different_contexts`, `reserved_keys_refused`, `invalid_saved_key_falls_back_to_default`, `every_action_has_a_default_key`, `typing_and_forms_unaffected`, `help_hint_in_header_and_org_needs_you_footers_80x24`, `help_key_works_zoomed`; snapshots at 160×48 and 80×24 | UI §4.10, §4.11; PRD Should |
-| 4.7 | **Mouse.** Builds on P2-D25 (mouse reporting, the wheel, click to select and focus, already in phase 2). Right-click opens the node menu (every action with its key; disabled actions give the reason); the wheel over the org pane and Needs you (it scrolls the viewport and leaves the selection where it is, which needs a scroll offset apart from the selection); dragging a node moves it, highlighting valid targets and refusing invalid ones with the reason; dragging the chat edge resizes; clicking a header count filters. Clicks on dialog and form buttons, list rows (Worktrees, Settings, Move to…, pickers, the key-binding editor) and first-run steps do what their key does (P4-D2) | `duohive-tui/src/{input/mouse.rs, render/menu.rs}`; (mouse capture is on since P2-D25) | One test per gesture with synthetic `MouseEvent`s; `invalid_drop_refused_with_reason`; `typing_mode_right_click_and_drag_ignored`; replaces three phase 2 tests: 2.21's `mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small` with `wheel_ignored_in_dialogs_confirmations_settings_worktrees` and `mouse_ignored_on_too_small_screen` (wheel included), `wheel_ignored_over_org_and_needs_you` with `wheel_scrolls_org_and_needs_you_without_moving_selection`, and `right_middle_click_and_drag_ignored` with `right_click_opens_menu_and_drag_moves_node` (middle-click stays ignored); `click_ignored_while_zoomed` kept; `every_action_has_a_click_path`, `no_color_menu_and_drag_readable`, `reduce_motion_menu_and_drag`; a click test per screen (`click_dialog_buttons`, `click_form_buttons`, `click_worktree_rows`, `click_settings_rows`, `click_move_to_rows`, `click_picker_rows`, `click_key_binding_rows`, `click_first_run_steps`) | UI §4.4.2, §5; PRD Should |
-| 4.8 | **Move to….** Built on phase 3's `OrgEdit::Move` (Task 3.6, P3-D20; `Move { node, to: MoveTarget }`), which already moves an agent into a role, a role into a team or the root, and a team to a position among the teams (`Before(team)` or `End`), and applies to a running agent at its next start; on a team the picker lists positions; the picker lists valid targets and the inherited values that change (`worktrees off → on`) before you confirm; drag and drop shares it | `duohive-tui/src/forms/move_to.rs` | `move_lists_inherited_changes`, `invalid_targets_absent`, `move_sends_org_edit_move`, `move_disabled_when_no_target`, `move_refused_on_role_name_collision` | UI §4.4.2 |
-| 4.9 | **Filter, theme and accessibility.** `f` cycles `◆ need you` (waiting, quiet and errored agents, as the header roll-up counts them), `● working`, `✓ finished`, off, with a chip in the header; `esc` in the org pane clears it; an empty result and a hidden selection follow UI §4.1.1. The accessibility re-check, by tests: the contrast table (`dark` and `light`; `auto` uses the terminal's own colours), a state is never shown by colour alone (each has its own glyph and word), the `NO_COLOR` and Reduce motion renders of the screens built before it (first run, replace, pickers, key map and editor, Move to…, the filter chip), and the key half of keyboard-only reach; 4.7 adds the click half and the menu and drag renders | `duohive-tui/src/{filter.rs, theme.rs}` | `filter_keeps_matches_and_parents`, `filter_need_you_includes_quiet_and_errored`, `filter_never_hides_cards`, `filter_empty_result_message`, `filter_clears_hidden_selection_to_first_match`, `esc_in_org_pane_clears_filter`, `esc_elsewhere_keeps_filter`, `contrast_ratios_meet_4_5`, `state_never_colour_only`, `no_color_new_screens_readable`, `reduce_motion_new_screens`, `every_action_has_key` | UI §2.3, §4.1.1, §6 |
-| 4.10 | **Acceptance.** Run the full bench at 10 and 100 on Apple M-series by the method in Constraints (three runs each, with the live view on); every target passes; also a one-hour run with real agents; record in `bench-results.md`; mark roadmap row 4, the PRD row, `docs/README.md` and the README status done; update the traceability matrix; check TD §12 | docs | All targets pass in three runs out of three | Roadmap row 4 |
+Test names are the ones the checklist and the Spec coverage table cite. Every task ends with `make check` and a conventional commit on its own branch. Where a signature is given, it is the one later tasks use.
+
+### Task 4.1: Full benchmark
+
+**Files:**
+- Modify `crates/duohive/src/bench/{mod.rs, report.rs, measure.rs, observe.rs}`, `args.rs`, `main.rs`; `crates/duohive-cli/src/fake.rs` only if a timing hook is needed.
+- Create `scripts/bench-gate.sh`, `crates/duohive/tests/bench_gate_script.rs`.
+- Modify `Makefile` (`bench-gate`), `.github/workflows/ci.yml` (a macOS job that runs `duohive bench --agents 100` and prints the report; reported, not gating), `Cargo.toml` (`[profile.release]`).
+
+**Interfaces:**
+- Consumes: `run_bench_detailed(BenchArgs) -> Result<BenchOutcome, BenchError>`; `BenchReport`, `Targets::for_agents`, `BenchOutcome::to_json`; `measure::{load_average, process_stats, peak_rss_mb}`; `Observer`; `SCREEN_READ_EVERY`.
+- Produces: `BenchError::LoadTooHigh { load: f64 }` (exit code 3, message `discarded: load <n>`); `BenchReport` gains `rss_end_mb: f64`, `tilde_ms: Percentiles`, `first_frame_ms: Option<f64>` (the existing `peak_rss_mb` stays, reported but not gated); `Targets` gains `tilde_ms: 2000.0` and `first_frame_ms: 100.0` / `300.0`; `BenchOutcome::to_json` gains `targets: {idle_cpu, memory, hook, tilde, first_frame: {value, target, pass}}` and `all_pass: bool`; `BenchArgs::default()` becomes `idle_secs: 60` and `turns: 0` meaning "derive" through `pub fn turns_for(agents: u32, requested: u32) -> u32`; `measure::current_rss_mb(pid: u32) -> Option<f64>` (a `process_stats` wrapper, no new `unsafe`). `BenchArgs` gains no bool (the workspace denies `struct_excessive_bools`).
+
+- [ ] **Step 1: Write the failing tests** (inline `#[cfg(test)]`, beside the code)
+  - `report.rs`: `report_lists_every_target` (the `Display` text has a line each for idle CPU, memory, hook, `~` and first frame, each ending `MISSED` only when over); `memory_is_end_of_window_not_peak` (a report with `peak_rss_mb: 80.0`, `rss_end_mb: 15.0` at 10 agents passes memory); `tilde_freshness_judged_on_p95` (p95 1.9 s passes, 2.1 s is `MISSED`); `first_frame_missed_is_said_so` (`Some(320.0)` at 100 agents is `MISSED`; `None` prints `not measured` and counts as a miss in `all_pass`); `json_has_per_target_pass` (the keys above).
+  - `mod.rs`: `turns_default_reaches_100_samples` (`turns_for(10, 0) >= 50`, `turns_for(100, 0) >= 5`, and an explicit `--turns 7` is returned unchanged); `helpers_memory_reported` (the outcome carries `helpers_rss_mb: Option<f64>` and the report prints it as `reported`); `first_frame_measured_on_reopen` (an integration test in `tests/bench.rs`: `--agents 2 --idle-secs 2 --turns 1 --json` has `first_frame_ms > 0`); `tilde_freshness_measured` (an integration test with `--agents 5`: every `SCREEN_READ_EVERY`-th agent is a no-hook fake, so `tilde_ms.max > 0`).
+  - `args.rs`: `bench_defaults_are_the_gate_method` (`idle_secs == 60`).
+  - `main.rs`: `load_above_ceiling_exits_3_discarded` (`bench_failure_code(&BenchError::LoadTooHigh{load: 2.5}) == 3`; the message starts `discarded: load`).
+  - `tests/bench_gate_script.rs`: `worst_of_three_decides` (the script run against a stub `DUOHIVE_BIN` that prints `--json` fixtures: two passing runs and one failing run exit non-zero, the failing target named; all passing exits 0); `discarded_run_is_retried_twice` (a stub exiting 3 twice then passing exits 0; exiting 3 three times exits 3).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive --lib bench; cargo test -p duohive --test bench --test bench_gate_script`
+- [ ] **Step 3: Implement the bench changes** in this order, each making its tests pass:
+  - a current-RSS sample at the end of the idle window plus the control clients' (the bench's own and, with `--view`, the view's), kept beside the existing peak;
+  - the `~` timing: `Observer` already times hook agents only, so add a second sample set for the screen-read agents (`Wants` for them comes from the settle path: output settling to the frame showing the state);
+  - first frame on reopen: after the turns, quit the system leaving the tmux sessions, start it again with `SystemOptions.first_frame: Some(rx)`, and time from the start of `run_app_on` to the first draw into the test backend; also time `duohive --version` as a separate `exec_ms` line;
+  - the helpers: spawn N `duohive mcp` processes with no calls beside the fakes and sum their `process_stats` (reported only);
+  - the load check at the start and end of a run: above 2.0 returns `BenchError::LoadTooHigh`;
+  - `Targets` and the `Display`/JSON additions above; replace the `not measured` line with only what is still unmeasured.
+- [ ] **Step 4: `scripts/bench-gate.sh` and `make bench-gate`.** The script (POSIX `sh`, `DUOHIVE_BIN` default `target/release/duohive`) runs `bench --agents 10 --json` and `--agents 100 --json`, three counted runs each; a run that exits 3 is retried at most twice before the script exits 3; the result is the worst value per target and `all_pass` over the worst runs; it prints one line per target and exits 0 or 1.
+- [ ] **Step 5: `[profile.release]`.** Add `strip = true`, `lto = "thin"`, `codegen-units = 1` to the workspace `Cargo.toml`; build with `make release`; record the size before (9,829,520 B) and after in `bench-results.md` "Phase 4". If the size is not under 10,000,000 B, add `opt-level = "s"` and record that. Update TD §10.
+- [ ] **Step 6: Run, see PASS.** `make check`; then `make release && make bench-gate` once, and record the first numbers at 10 and 100 agents in `bench-results.md` under "Phase 4" (the format of "Phase 3 acceptance", Item 4).
+- [ ] **Step 7: Commit.** `feat: full benchmark at 100 agents`
+
+### Task 4.2: Tuning at 100 agents
+
+**Files:** as found by profiling; `docs/plans/bench-results.md`. This task has no failing-test step: it is measured before and after.
+
+**Interfaces:** consumes the gate from 4.1 (`make bench-gate`).
+
+- [ ] **Step 1: Run `make bench-gate`** and list every target that misses at 100 agents, with its three values.
+- [ ] **Step 2: For each miss, in order,** profile (`cargo flamegraph` or `sample` on macOS), change one thing, and re-run the gate. Candidates: activity-poll batching and settle-read concurrency (`duohive-tmux`), render diffing (`duohive-tui`), start-up work deferred after the first frame. Record before and after in `bench-results.md` "Phase 4". The S0 fallback (pause unselected panes harder, read on settle only; TD §13) is the last resort; a target that still misses after it goes to the author.
+- [ ] **Step 3: Each fix is its own commit** on a `perf/phase-4-<topic>` branch: `perf: <what changed>`. A fix that changes behaviour gets a failing test first.
+- [ ] **Step 4: Repeat** after 4.5 (the model lists load after the first frame) and after any task that adds start-up or render work; the task is finished when all targets pass in three runs at 10 and 100 agents.
+
+### Task 4.6: Keymap registry, the `?` key map and the binding editor
+
+**Files:**
+- Create `crates/duohive-tui/src/keymap.rs`, `render/{help.rs, keys_editor.rs}`.
+- Modify `input.rs`, `input/{panes.rs, settings.rs, worktrees.rs}`, `chat.rs`, `model.rs` (`UiModel.keymap`, `Dialog::KeyMap`, `Dialog::Keys`), `render/{header.rs, settings.rs, dialog.rs}`, `forms/settings.rs` (`SettingsRow::Keys`), `app.rs` (build the keymap from `settings.keys`, send `UpdateSettings` on a change).
+- Test: inline `keymap.rs`, `input/keymap_tests.rs`, `render/help_tests.rs`; the existing key tests stay unchanged.
+
+**Interfaces:**
+- Produces (`keymap.rs`):
+  - `pub enum ActionId { GiveWork, StartStop, New, Edit, Move, Delete, Zoom, LastReply, OpenOrg, Settings, Worktrees, Filter, KeyMap, CardApprove, CardEdit, CardReject }` with `pub fn id(self) -> &'static str` (the TD §7 snake_case ids) and `ActionId::from_id(&str) -> Option<ActionId>`.
+  - `pub enum Context { Everywhere, OrgPane, NeedsYou, AgentPane, Chat }`.
+  - `pub struct Binding { pub code: KeyCode, pub mods: KeyModifiers }`, `pub fn parse_binding(&str) -> Option<Binding>` (`"g"`, `"shift+n"`, `"ctrl+g"`, `"f2"`), `Binding::label(&self) -> String`.
+  - `pub struct Keymap`; `Keymap::from_settings(&BTreeMap<String, String>) -> (Keymap, Vec<String>)` (notices for an unknown id or a key that does not parse; the default applies); `key(&self, ActionId) -> Binding`; `action_for(&self, Context, &KeyEvent) -> Option<ActionId>`; `rebind(&mut self, ActionId, Binding) -> Result<(), RebindError>`; `reset(&mut self, ActionId)`; `overrides(&self) -> BTreeMap<String, String>` (only changed bindings); `contexts(ActionId) -> &'static [Context]`.
+  - `pub enum RebindError { Reserved(String), Conflict { key: String, action: ActionId } }`.
+  - Defaults (UI §4.11): `GiveWork` space, `StartStop` `s`, `New` `n`, `Edit` `e`, `Move` `m`, `Delete` `d`, `Zoom` `z`, `LastReply` `v`, `OpenOrg` `o`, `Settings` `,`, `Worktrees` `w`, `Filter` `f`, `KeyMap` `?`, `CardApprove` `y`, `CardEdit` `e`, `CardReject` `n`. `GiveWork` and `Zoom` live in `OrgPane` and `AgentPane`; the card actions in `Chat`; `Settings`, `Worktrees`, `Filter`, `KeyMap` in `Everywhere`.
+  - Reserved (refused, and counted by the conflict check): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q`, `ctrl+up`, `ctrl+down`, the arrows, `enter`, `pageup`, `pagedown`.
+- Consumes: `Settings.keys: BTreeMap<String, String>`; `Action`, `map_key`, `update`, `UiEffect::Send(Command::UpdateSettings(..))`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - `keymap.rs`: `defaults_match_the_spec` (every `ActionId` has the default key above); `every_action_has_a_default_key`; `parse_and_label_round_trip` (`"ctrl+g"`, `"shift+n"`, `"f2"`, `" "`); `rebind_applies_everywhere` (`Zoom` rebound to `x`: `action_for(OrgPane, x) == Some(Zoom)` and `action_for(AgentPane, x) == Some(Zoom)`, and `z` no longer maps); `two_context_action_rebinds_both`; `conflict_refused_in_same_context` (`Edit` to `s` gives `Conflict { action: StartStop, .. }`); `same_key_allowed_in_different_contexts` (`CardEdit` stays `e` beside `Edit`); `everywhere_key_conflicts_with_pane_key` (`Filter` to `s` is refused); `reserved_keys_refused` (`q`, `ctrl+up`, `enter`, `esc`); `conflict_check_covers_reserved_keys`; `overrides_only_changed_bindings`; `backspace_restores_default` (`reset`); `invalid_saved_key_falls_back_to_default` and `unknown_id_notice_shown` (`from_settings` with `{"nope": "x", "zoom": "???"}` gives two notices and default bindings).
+  - `input/keymap_tests.rs`: `rebind_applies_to_map_key` (after `rebind(StartStop, "x")`, `map_key(x)` is `Action::StartStop` and `s` is `None`); `typing_and_forms_unaffected` (in Typing mode, a form and the chat input, every key, `?` included, reaches the agent or the field); `esc_cancels_capture`; `enter_captures_next_key_and_sends_update_settings`; `reserved_key_refused_with_message` (`q is reserved`); `conflict_message_names_the_action` (`s is already Start / stop · rebind that first`); `question_mark_opens_the_key_map_selected_mode_only` and `help_key_works_zoomed`; `question_mark_ignored_in_dialogs`.
+  - `render/help_tests.rs`: `help_lists_current_bindings` (a rebinding shows in the map); snapshots `key_map_160x48` (three columns), `key_map_100x30` (exactly 100 wide), `key_map_80x24` (one column, `↓ more`), `keys_editor_80x24`, `keys_editor_conflict_notice`, `keys_editor_ignored_settings_line`.
+  - `render/pane_tests.rs`: update `footer_matches_focused_pane` for the `? help` strings: the org footer `… · ? help`, the Needs you footer `↑↓ move · enter go to agent · ? help`; the header carries `? help` in Selected mode and not in Typing mode; add `help_hint_in_header_and_org_needs_you_footers_80x24`.
+  - `forms/settings`: `settings_has_a_keys_row_that_opens_the_editor`.
+  - `duohive-store/src/settings_file.rs`: `keys_round_trip` (a `[keys]` table with an unknown id loads and saves unchanged).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui keymap help keys; cargo test -p duohive-store keys_round_trip`
+- [ ] **Step 3: Implement `keymap.rs`** to the interfaces above (a `Vec<(ActionId, Binding)>` and a context table; no I/O).
+- [ ] **Step 4: Thread the keymap through input.** `UiModel.keymap: Keymap` built in `app.rs` from `settings.keys` (notices kept in `UiModel.keys_notices`); `tree_key` and `pane_key` take `&Keymap` and map through `action_for`; `chat_key` maps only the card keys through it; the footers in `render/header.rs` become functions of `(&Keymap, mode)` that print `Binding::label` (the default strings are unchanged apart from `? help`); the Worktrees screen's `d` stays fixed (it is that screen's own remove key, not the `Delete` action).
+- [ ] **Step 5: `?`, the key map and the editor.** `?` opens `Dialog::KeyMap` from the main screen (any pane, zoomed too); it is a character in Typing mode, forms and the chat input, and ignored in dialogs. `Dialog::Keys` is opened by Settings' new Keys row: `↑↓`/`PgUp`/`PgDn` move, `enter` starts the capture (`press the new key · esc cancels`), the next key is taken through `Keymap::rebind`, `backspace` calls `reset`; on success emit `Command::UpdateSettings` with the new `keys`; on error show the refusal on the row (UI §4.10 wording).
+- [ ] **Step 6: Run, see PASS.** `make check`; review the snapshot diffs against UI §4.10–§4.11.
+- [ ] **Step 7: Edit the docs** (TD §7 and UI §4.10 against what was built), then commit. `feat: keymap registry, key map and binding editor`
+
+### Task 4.3: First-run setup and templates
+
+**Files:**
+- Create `crates/duohive-core/src/templates.rs`; `crates/duohive-tui/src/first_run/{mod.rs, steps.rs, forms.rs}`, `render/first_run.rs`.
+- Modify `duohive-core/src/{command.rs, event.rs, lib.rs, engine/*}`, `duohive/src/system.rs` and `startup.rs` (hand the first-run flag to the app), `duohive-tui/src/{model.rs, app.rs, input.rs}`.
+
+**Interfaces:**
+- Produces (`templates.rs`):
+  - `pub enum TemplateInput { AgentSquad(SquadInput), ProductTeam(ProductInput), EngineeringOrg(EngineeringInput), Blank }`, all `Serialize`/`Deserialize`.
+  - `pub struct SquadInput { pub size: u32, pub directory: String, pub cli: CliKind, pub worktrees: bool, pub prompt: Option<String> }`; `pub struct ProductInput { pub cli: CliKind, pub directories: [String; 3] /* backend, frontend, qa */, pub worktrees: bool }`; `pub struct EngineeringInput { pub cli: CliKind, pub worktrees: bool, pub teams: Vec<(String, String)> /* name, repo */ }`.
+  - `pub struct OrgTree { pub teams: Vec<Team>, pub roles: Vec<Role> }`.
+  - `pub fn build_tree(input: &TemplateInput, kept_names: &BTreeSet<AgentName>) -> Result<OrgTree, TemplateError>` (pure; `kept_names` are the agent names that still have worktree rows, so a clash takes the next free number).
+  - `pub fn first_run_org(duo_cli: CliKind, tree: OrgTree) -> Org` (`Org::blank(duo_cli)` plus the tree; `[org]` keeps only `cli`).
+  - `pub enum TemplateError { SizeOutOfRange, DuplicateTeam(String), NoTeams, Invalid(Vec<FieldError>) }`; `pub const STARTER_PROMPTS: [(&str, &str); 4]` (Generalist, Backend, Frontend, QA; wording approved by the author, P4-Q1).
+- Command: `Command::CreateOrg { template: TemplateInput, your_name: Option<String>, duo_cli: CliKind }` (first run only; the engine builds the tree with `build_tree`, validates, saves, starts the org) and, from 4.4, `Command::NewOrgFromTemplate { template: TemplateInput }`.
+- Consumes: `Org::blank(CliKind)`, `validate::validate`, `Store::save_org`, `Store::save_settings`, `Fields`, `Role`, `Team`, `AgentDef`.
+
+- [ ] **Step 1: Write the failing tests.**
+  - Core, `templates.rs`: `squad_has_n_agents_under_root_role` (`size: 3` gives one Generalist role directly under Duo with `squad-1..3`); `squad_worktrees_on` (`Fields.worktree == Some(true)` on the role, not in `OrgDefaults`); `product_team_three_roles_with_prompts` (Backend, Frontend, QA, one agent each, a starter prompt per role); `engineering_org_skips_empty_rows`; `engineering_org_needs_one_team` (`NoTeams`); `templates_validate` (every template's `first_run_org` passes `validate`); `template_agent_names_unique`; `templates_write_only_org_cli` (`OrgDefaults` equals `Org::blank(cli).defaults`); `blank_writes_org_cli_and_duo`; `squad_size_bounds` (0 and 101 refused, 1 and 100 accepted); `template_name_skips_kept_worktree_names` (`kept_names` holding `squad-1` and `backend` gives `squad-2` first and `backend-2`, `payments-backend-2`).
+  - Engine, `engine/tests/create_org.rs`: `create_org_saves_and_starts_the_org`, `create_org_sets_your_name_and_duo_cli` (`UpdateSettings` saved, `org.duo.cli` set), `create_org_refused_when_an_org_exists`, `first_run_flag_clears_after_create`.
+  - TUI, `first_run/` tests with snapshots at 80×24 and 160×48: `step1_you_and_duo`, `step1_missing_cli_radio_disabled`, `step2_templates_with_preview`, `step3_agent_squad`, `step3_product_team`, `step3_engineering_org`, `step3_blank_summary`, and the error states of UI §4.3 (`squad_directory_missing`, `squad_not_git_with_worktrees_on`, `squad_size_out_of_range`, `product_team_directory_errors`, `engineering_no_rows`, `duplicate_team_name`, `write_failed_keeps_dialog`); `no_cli_blocks` (no supported CLI found: the blocking screen, `q` quits); `esc_on_step1_asks_before_quit`; `esc_on_later_steps_goes_back`; `first_run_creates_org_command` (Create org sends `Command::CreateOrg` with the built `TemplateInput`); `first_run_applies_name_and_duo_cli`; `squad_directory_tilde_expanded` (core: `~/code/app` resolves against the home directory, a trailing space is trimmed).
+  - `duohive` integration `tests/app.rs`: `first_run_starts_nothing_until_create_org` (no org.toml: the app shows the wizard and no tmux window exists until Create org).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core templates create_org; cargo test -p duohive-tui first_run`
+- [ ] **Step 3: Implement `templates.rs`** (pure builders over `Org`/`Team`/`Role`), and `Command::CreateOrg` in the engine (validate, `save_org`, `save_settings`, then the normal org-changed events).
+- [ ] **Step 4: Replace the silent blank org** in `system.rs` (`Loaded::FirstRun`): keep detecting the CLIs once, start the engine on `Org::blank(first_found)` but mark `first_run: true` in the first snapshot; no agent starts (the blank org has none). The TUI shows the wizard while `UiModel.first_run` is true and sends `Command::CreateOrg` from Create org.
+- [ ] **Step 5: The wizard.** `first_run/mod.rs` holds `FirstRun { step, you, duo_cli, template, squad, product, engineering }` and the step transitions; `steps.rs` the three step bodies; `forms.rs` the field sets (reusing `Field`/`LineEdit`; the engineering rows use a small repeating-row field). Render per UI §4.3 with `draw_box`. Template starter prompts come from `STARTER_PROMPTS`.
+- [ ] **Step 6: Run, see PASS.** `make check`; review snapshots against UI §4.3.
+- [ ] **Step 7: Edit the docs** (UI §4.3 and TD §7/§8 against what was built; the deferred D28 row of the traceability). Commit. `feat: first-run setup with templates`
+
+### Task 4.4: New org from template
+
+**Files:**
+- Modify `duohive-core/src/{command.rs, event.rs, engine/*}`, `duohive-store/src/{org_file.rs, lib.rs}` (timestamped backup, `Store::save_org_replacing`), `duohive-tui/src/{first_run/*, forms/settings.rs, input/settings.rs, render/settings.rs, input.rs}`, `crates/duohive/src/system.rs` (stop-then-write sequencing).
+
+**Interfaces:**
+- Produces: `Command::NewOrgFromTemplate { template: TemplateInput }`; `Event::OrgReplaced`; `Event::OrgReplaceFailed { agent: Option<AgentName>, reason: String }` (banner `<agent> would not stop · org not replaced`); in `org_file.rs`: `pub fn backup_timestamped(paths: &Paths, now: Millis) -> Result<PathBuf, StoreError>` writing `org.toml.<YYYYMMDD-HHMMSS>.bak` (P4-Q5) beside `org.toml`; `Store::save_org` keeps writing `org.toml.bak` as today.
+- Consumes: `templates::{build_tree, first_run_org}`, `Store::{load_worktrees, save_org}`, `Command::StopAgent`, TD §5.5's grace kill, the existing messages/cards tables.
+
+- [ ] **Step 1: Write the failing tests.**
+  - Engine, `engine/tests/replace_org.rs`: `replace_stops_agents_then_writes` (running agents get `StopAgent`; `save_org` is called only after every one is stopped); `replace_keeps_duo_and_org_defaults` (`[duo]` and `OrgDefaults` equal before and after); `replace_keeps_duo_running`; `timestamped_backup_kept` (a file `org.toml.<stamp>.bak` with the old text); `cancel_changes_nothing`; `replace_aborts_when_a_stop_fails` (a stop that never completes: no write, `OrgReplaceFailed` names the agent); `replace_keeps_worktree_rows` (rows survive and `kept_names` feeds `build_tree`); `replace_drops_cards_and_messages_for_removed_agents` (queued messages and pending cards naming a removed agent are dropped with reason `agent removed`); `template_name_skips_kept_worktree_names` (engine level: the new squad starts at `squad-4` when `squad-1..3` have rows); `replace_mode_back_and_cancel`.
+  - Store: `backup_name_is_timestamped_and_beside_org_toml`.
+  - TUI: `settings_org_row_opens_replace_wizard`; snapshots `replace_template_step_80x24` (`step 1 of 2`, Cancel in place of Quit, no Back on the first step), `replace_form_step`, `replace_your_org_dialog` (UI §4.8, focus on Cancel); `create_org_in_replace_mode_opens_confirmation`; `esc_goes_back_then_cancels`; `replace_failed_banner`.
+  - `duohive` integration `tests/e2e.rs`: `replace_org_end_to_end` (a running fake agent is stopped, the new tree is on disk, the backup exists).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-core replace_org; cargo test -p duohive-store backup; cargo test -p duohive-tui replace`
+- [ ] **Step 3: Implement the engine sequence:** on `NewOrgFromTemplate` build the tree (with the kept names from `load_worktrees`), validate, stop every running agent in the old tree, wait for `Stopped` with the grace kill, then write the backup, `save_org`, drop the session rows and the messages and cards that name removed agents, and emit `OrgReplaced`; any stop that does not complete emits `OrgReplaceFailed` and writes nothing.
+- [ ] **Step 4: Settings Org row and replace mode** in the TUI: `SettingsRow::Org` opens the wizard at the template step with `replace: true` (titles `step N of 2`, `[ Cancel ]`, Back hidden on the first step); Create org opens `Dialog::Confirm` `Replace your org?` (UI §4.8) with the agent count, and Replace sends the command.
+- [ ] **Step 5: Run, see PASS.** `make check`
+- [ ] **Step 6: Edit the docs** (TD §7, UI §4.8/§4.10), then commit. `feat: replace the org from a template`
+
+### Task 4.5: Model and effort picker
+
+**Files:**
+- Create `duohive-cli/src/models.rs`, fixtures `duohive-cli/src/assets/models/{claude-help.txt, opencode-models-verbose.txt}`, `duohive-store/src/model_cache.rs`, `duohive-tui/src/forms/dropdown.rs`, `render/dropdown.rs`.
+- Modify `duohive-core/src/{adapter.rs, command.rs, event.rs, testkit.rs}`, `duohive-cli/src/{claude.rs, opencode.rs, fake.rs}`, `duohive-tui/src/forms/{field.rs, org.rs, agent.rs, role.rs, team.rs}`, `crates/duohive/src/system.rs`, `docs/design/technical-design.md` §5.2.
+
+**Interfaces:**
+- Produces: in `adapter.rs`: `pub struct ModelList { pub models: Vec<String>, pub efforts: Vec<String>, pub variants: BTreeMap<String, Vec<String>> }` (`variants` is per model, OpenCode only) and `CliAdapter::list_models(&self) -> Result<ModelList, ModelListError>` (default `Err(ModelListError::Unsupported)`); `Command::ListModels { cli: CliKind }` and `Event::ModelsListed { cli: CliKind, result: Result<ModelList, String> }`; in `models.rs`: `pub fn parse_claude_help(text: &str) -> Result<ModelList, ModelListError>` and `pub fn parse_opencode_models(text: &str) -> Result<ModelList, ModelListError>`; in `model_cache.rs`: `pub fn read(paths: &Paths, cli: CliKind, version: &str) -> Option<ModelList>` and `pub fn write(paths: &Paths, cli: CliKind, version: &str, list: &ModelList) -> Result<(), StoreError>` (`<data_dir>/model-cache.json`, keyed by CLI and version); in the TUI: `FieldKind::Dropdown { options: Vec<String>, state: DropdownState }` and `pub struct DropdownState { open: bool, filter: LineEdit, cursor: usize, loading: bool, error: Option<String> }`.
+- Consumes: `CliPresence::Found { version }`, `Field`, `LineEdit`, `draw_box`, the form `Choice` fields it replaces for Model and Effort.
+
+- [ ] **Step 1: Spike S4 (30 minutes, no tests).** On the pinned OpenCode 2.0 run `opencode models --verbose`; save the output as the fixture, note the variants format, and edit TD §5.2 (the "re-checked on 2.0 in 4.5" clause) with what it shows. Also save `claude --help` as the Claude fixture. If `opencode` is not installed on the machine, say so in `bench-results.md` and keep the recorded 1.18 fixture, marking the 2.0 check open for the author.
+- [ ] **Step 2: Write the failing tests.**
+  - `duohive-cli/src/models.rs`: `claude_help_gives_aliases_and_efforts` (from the fixture: aliases include `sonnet`/`opus`/`haiku`, efforts match `--effort`'s choices); `claude_help_parse_failure_is_an_error`; `opencode_models_verbose_gives_variants_as_efforts`; `opencode_variants_map_to_hash_effort` (a model's variant `high` becomes launch `provider/model#high`); `empty_output_is_an_error`.
+  - Store: `cache_hit_per_cli_version` and `cache_miss_on_new_version`.
+  - Engine: `list_models_uses_cache_then_refreshes` (a fresh cache answers at once; a stale version calls the adapter); `list_models_failure_is_reported`; `list_models_runs_after_the_first_frame` (no adapter call before the first-frame gate).
+  - TUI dropdown: `loading_then_list` (`loading models…` then the options; typing works while loading); `typeahead_filters_117_models` (a 117-model list filtered by substring, six rows visible, `… N more · ↓ scroll`); `custom_name_accepted` (the `use "<typed>" as typed` row sets the value); `inherit_row_first_and_sets_inherit`; `inherit_uses_the_inherited_clis_list` (a role under a team on OpenCode lists OpenCode's models); `effort_resets_when_model_changes`; `opencode_effort_disabled_without_model` (`OpenCode sets effort per model · choose a model`, and enabled when the inherited model is known); `claude_effort_list_from_help_flag`; `empty_list_allows_typing`; `list_models_times_out_after_10s` (a CLI whose model command hangs fails the list with a timeout; the form stays usable); `failure_allows_typing` (the `✕ couldn't list <cli>'s models · type a name or keep inherit` line); `esc_closes_without_change`; snapshots `dropdown_closed`, `dropdown_open_filtered`, `dropdown_loading`, `dropdown_failed` at 100×30 and 80×24.
+- [ ] **Step 3: Run, see FAIL.** `cargo test -p duohive-cli models; cargo test -p duohive-store model_cache; cargo test -p duohive-tui dropdown`
+- [ ] **Step 4: Implement** the parsers, `list_models` on both adapters (running the CLI's own command with the same PATH rules as `detect`), the cache, `Command::ListModels` handling (cache first, then the adapter on a blocking task, then `ModelsListed`), and `system.rs` requests the lists for the org's CLIs after the first frame. `FakeCliAdapter` returns a fixed small list.
+- [ ] **Step 5: The widget.** `FieldKind::Dropdown` replaces the free-text Model and Effort fields (`FieldId::Model`, `FieldId::Effort`) in the org, team, role and agent forms; `enter` or a click opens the popup under the field (UI §4.4.1), `↑↓` move, typing filters, `enter` chooses, `esc` closes; the popup is drawn by `render/dropdown.rs` and clips to the screen.
+- [ ] **Step 6: Run, see PASS.** `make check`; then repeat the bench (Task 4.2, step 4) for the start-up cost of the lists.
+- [ ] **Step 7: Edit the docs** (TD §5.2/§7, UI §4.4.1), then commit. `feat: model and effort picker`
+
+### Task 4.8: Move to…
+
+**Files:** Create `duohive-tui/src/forms/move_to.rs`, `render/move_to.rs`. Modify `duohive-tui/src/{model.rs, input.rs}`, `input/panes.rs` (the `Move` action from 4.6).
+
+**Interfaces:**
+- Consumes: `OrgEdit::Move { node: NodeKey, to: MoveTarget }` (P3-D20), `MoveTarget::{Into(NodeKey), Before(NodeName), End}`, `inherit::resolve`, `Keymap` (`ActionId::Move`).
+- Produces: `pub struct MoveTo { node: NodeKey, targets: Vec<MoveOption>, cursor: usize }`; `pub struct MoveOption { pub label: String, pub to: MoveTarget, pub current: bool, pub changes: Vec<InheritedChange> }`; `pub struct InheritedChange { pub field: &'static str, pub from: String, pub to: String }`; `pub fn valid_targets(org: &Org, node: &NodeKey) -> Vec<MoveOption>`; `Dialog::MoveTo(MoveTo)`.
+
+- [ ] **Step 1: Write the failing tests** (`forms/move_to.rs` inline, `input/move_tests.rs`, `render/move_tests.rs`): `move_lists_inherited_changes` (`worktrees off → on`, `role prompt QA → Generalist` for `pay-qa` into Generalist); `invalid_targets_absent` (an agent has no team as a target; a team has positions only); `move_sends_org_edit_move` (`enter` sends `Command::EditOrg(OrgEdit::Move { .. })`); `move_disabled_when_no_target` (`m` sets the footer `no other place to move <name>` and opens nothing); `move_refused_on_role_name_collision` (`<team> already has a role <role>`); `move_on_team_lists_positions` (`before <team>` rows and `at the end`); `current_target_marked_and_skipped`; `m_on_duo_does_nothing`; snapshot `move_to_100x30` and `move_to_80x24`.
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui move_to`
+- [ ] **Step 3: Implement `valid_targets`** over the org tree and `resolve` (a pure function), the dialog input (`↑↓`, `enter`, `esc`) and the render per UI §4.4.2.
+- [ ] **Step 4: Run, see PASS.** `make check`
+- [ ] **Step 5: Commit.** `feat: move to…`
+
+### Task 4.9: Filter and the accessibility re-check
+
+**Files:** Create `duohive-tui/src/filter.rs`. Modify `model.rs` (`UiModel.filter: Filter`), `tree.rs` (`tree_rows` takes the filter), `render/{header.rs, org_pane.rs}`, `input/panes.rs`, `theme.rs`; tests in `filter.rs`, `render/filter_tests.rs`, `render/a11y_tests.rs`.
+
+**Interfaces:**
+- Produces: `pub enum Filter { Off, NeedYou, Working, Finished }` with `next(self) -> Filter`, `matches(&self, &AgentView) -> bool` (`NeedYou` = waiting, quiet or errored; `Working` = working and not quiet; `Finished` = finished), `chip(&self, compact: bool) -> Option<String>` (`filtered: ◆ · esc clears`, `filter ◆` below 100 columns); `tree_rows(.., filter: Filter)`; `ActionId::Filter` handler.
+- Consumes: `roll_up_counts`, `AgentView`, `Keymap`, the header counts (`needs_you.len()` includes card rows; the chip shows no count).
+
+- [ ] **Step 1: Write the failing tests.**
+  - Filter: `filter_keeps_matches_and_parents`; `filter_need_you_includes_quiet_and_errored`; `filter_never_hides_cards` (the Needs you list and the chat are unchanged); `filter_empty_result_message` (`no agent is <state> · esc clears the filter`); `filter_clears_hidden_selection_to_first_match`; `esc_in_org_pane_clears_filter`; `esc_elsewhere_keeps_filter`; `f_cycles_need_you_working_finished_off`; `header_count_click_sets_filter_for_two_states` is added in 4.7; snapshots `filter_chip_100x30` (99 columns) and `filter_chip_80x24` (`DuoHive  ● 2 · ◆ 2   filter ◆  … ? help`).
+  - Accessibility: `contrast_ratios_meet_4_5` (a new test over `Palette::dark()` and `light()` for every text/background pair in UI §6's table, computed from the RGB values; `auto` is excluded because it uses the terminal's colours); `state_never_colour_only` (in `mono()` every state's row still differs by glyph and word); `no_color_new_screens_readable` and `reduce_motion_new_screens` (render the first-run steps, replace dialog, dropdown, key map, key editor, Move to… and the filter chip with `NO_COLOR` and with `reduce_motion`: no panic, glyph and word present, no spinner); `every_action_has_key` (every `ActionId` has a default key and appears in the key map text).
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui filter a11y contrast`
+- [ ] **Step 3: Implement** `Filter`, the `tree_rows` filtering (matches plus their parents), the chip in the header, and the empty and hidden-selection rules; add whatever the accessibility tests find (a missing glyph, a failing ratio) as fixes in `theme.rs`/`render`.
+- [ ] **Step 4: Run, see PASS.** `make check`
+- [ ] **Step 5: Commit.** `feat: filter by state and accessibility re-check`
+
+### Task 4.7: Mouse parity on every screen
+
+**Files:** Create `duohive-tui/src/input/{menu.rs, drag.rs}`, `render/menu.rs`. Modify `input/mouse.rs`, `model.rs` (`UiModel.menu: Option<Menu>`, `UiModel.drag: Option<Drag>`, `UiModel.org_scroll: usize`), `render/{org_pane.rs, needs_you.rs, mod.rs}`, `app/terminal.rs` (stop dropping `Drag` and `Moved` mouse events), and the dialog input modules for the per-screen clicks; tests in `input/mouse_tests.rs`, `input/menu_tests.rs`, `render/menu_tests.rs`.
+
+**Interfaces:**
+- Consumes: `on_mouse`, `pane_areas`, `org_key_at`, `needs_you_item_at`, `Keymap`, `OrgEdit::Move`, `valid_targets` (4.8), `Filter` (4.9), the dialogs and wizard of 4.3–4.6.
+- Produces: `pub struct Menu { pub node: NodeKey, pub at: Position, pub rows: Vec<MenuRow> }`, `pub struct MenuRow { pub action: ActionId, pub label: String, pub key: String, pub disabled: Option<String> }`; `pub struct Drag { pub node: NodeKey, pub over: Option<DropTarget> }`; `UiModel.org_scroll` (a scroll offset apart from the selection).
+
+- [ ] **Step 1: Replace three phase 2 tests** in `input/mouse_tests.rs` and write the new ones:
+  - `wheel_ignored_in_dialogs_confirmations_settings_worktrees` and `mouse_ignored_on_too_small_screen` (wheel included) replace `mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small`;
+  - `wheel_scrolls_org_and_needs_you_without_moving_selection` replaces `wheel_ignored_over_org_and_needs_you`;
+  - `right_click_opens_menu_and_drag_moves_node` replaces `right_middle_click_and_drag_ignored` (middle-click stays ignored: `middle_click_ignored`);
+  - kept: `click_ignored_while_zoomed`.
+  - New gestures: `right_click_menu_lists_every_action_with_its_key`, `menu_disabled_row_gives_the_reason`, `menu_stays_on_screen_at_the_edges`, `menu_closes_on_esc_click_elsewhere_and_action`, `team_role_duo_menus_differ` (Duo has Edit org; team and role have New here, Edit, Move to, Delete, and Give work for roles), `drag_highlights_valid_targets`, `invalid_drop_refused_with_reason` (footer text), `drop_opens_move_to_when_inherited_values_change`, `drag_chat_edge_resizes`, `header_count_click_sets_filter_for_two_states` (working and need you; finished by `f` only), `typing_mode_right_click_and_drag_ignored` (P4-Q4); `mouse_outside_screen_ignored` (events past the last row or column, or arriving during a resize, change nothing).
+  - One click test per screen: `click_dialog_buttons`, `click_form_buttons`, `click_worktree_rows`, `click_settings_rows`, `click_move_to_rows`, `click_picker_rows` (the dropdown), `click_key_binding_rows`, `click_first_run_steps`, `click_replace_dialog_buttons`.
+  - Accessibility and parity: `every_action_has_a_click_path` (each `ActionId` is reachable from the menu or a screen control), `no_color_menu_and_drag_readable`, `reduce_motion_menu_and_drag`.
+- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui mouse menu`
+- [ ] **Step 3: Implement** the menu (built from the node's valid actions through the keymap), the drag state machine in `drag.rs` (press on a row, `Drag(Left)` updates `over`, `Up(Left)` drops; terminal `Drag` and `Moved` events are now forwarded), the org and Needs you scroll offsets, and the per-screen click handlers (each does what its key does, by sending the same `Action` the key would).
+- [ ] **Step 4: Run, see PASS.** `make check`; review snapshots against UI §4.4.2 and §5.
+- [ ] **Step 5: Commit.** `feat: mouse parity on every screen`
+
+### Task 4.10: Acceptance
+
+**Files:** `docs/plans/bench-results.md`, `docs/plans/v1-roadmap.md`, `docs/product/prd.md`, `docs/README.md`, `README.md`, `docs/plans/v1-traceability.md`, `docs/design/technical-design.md` §12. No code under test.
+
+- [ ] **Step 1: Gate run.** On Apple M-series, plugged in, with the 1-minute load at most 2: `make release && make bench-gate` (10 and 100 agents, three counted runs each, `--view` on). Record each run in `bench-results.md` "Phase 4 acceptance" in the format of Phase 3 (the Item 4 table), with the figures without the view beside them. Every target must pass in all three runs. A miss goes back to Task 4.2.
+- [ ] **Step 2: A one-hour run with real agents** (Claude Code and OpenCode, a few agents each, normal work): idle CPU and memory stay within the 10-agent targets; record it.
+- [ ] **Step 3: Walk the screens** once by hand in iTerm2 at 80×24 and 160×48: first run, replace, dropdown, key map and editor, filter, Move to…, the menu and a drag. File any failure as a fix task here.
+- [ ] **Step 4: Update the docs.** TD §12 row 4 checked against what was built; roadmap row 4 `done <date>` and row 5 next; PRD Delivery Phases row 4; `docs/README.md` and `README.md` status; the traceability matrix; this plan's header `Status: Done <date>`.
+- [ ] **Step 5: `make check`, then commit.** `docs: phase 4 acceptance and status`
 
 **Order (P4-D4):** 4.1, then 4.2 (it repeats after any later task that adds start-up or render work). Then 4.6 (the keymap registry, which already holds `m` and `f`, and the editor), since 4.8 and 4.9 read their keys from it. Then 4.3 → 4.4, and 4.5, 4.8 and 4.9, in any order. 4.7 comes after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9, since each click test needs its screen (4.4 supplies the replace wizard, its dialog and the Settings Org row). After 4.5, repeat the bench (4.2) to measure the model-list load. 4.10 is last.
 
 ## TODO checklist
 
-Tick each box when it is done (the same rule as the phase 2 and 3 plans). Every task follows the test-first order, except 4.10 (acceptance), the spike, and 4.2 (tuning), which is measured before and after instead. A task is done when `make check` passes and its commit is on a branch named `feat/phase-4-<topic>` (`perf/phase-4-<topic>` in 4.2), never `main`. Branches are stacked: each later task is cut from the branch of the task it depends on until that is merged, and merged branches are not reused. Commit messages are conventional commits, with no `Co-Authored-By` line. Nothing is pushed by an agent.
+Tick each box when the task is done. The steps inside each task above are ticked as they are done; this list is the overview. A task is done when `make check` passes and its commit is on a branch named `feat/phase-4-<topic>` (`perf/phase-4-<topic>` in 4.2), never `main`. Branches are stacked: each later task is cut from the branch of the task it depends on until that is merged. Commit messages are conventional commits, with no `Co-Authored-By` line. Nothing is pushed by an agent. Tasks 4.2 (tuning), 4.10 (acceptance) and the 4.5 spike are not test-first.
 
 **Before 4.1**
 
@@ -106,58 +324,18 @@ Tick each box when it is done (the same rule as the phase 2 and 3 plans). Every 
 - [ ] Expand this outline into the full task-by-task plan, in the format of [phase-3-plan.md](phase-3-plan.md) (files, test code, commands, expected output), and have it reviewed
 - [ ] The author approves the template starter prompts (P4-Q1) and the bench's realistic-output profile (P4-Q2)
 
-**Tasks**
+**Tasks, in order**
 
-- [ ] **4.1 Full benchmark**
-  - [ ] Failing tests: `report_lists_every_target`, `first_frame_measured_on_reopen`, `tilde_freshness_measured`, `helpers_memory_reported`, `memory_is_end_of_window_not_peak`, `load_above_ceiling_exits_3_discarded`, `worst_of_three_decides`, `turns_default_reaches_100_samples`
-  - [ ] Set `[profile.release]` (strip, lto, codegen-units); record the binary size before and after in `bench-results.md` "Phase 4"
-  - [ ] Implement the bench changes listed in the task; add `scripts/bench-gate.sh` and `make bench-gate` (it runs 10 and 100 agents; `bench` prints a machine-readable `--json` result and the script reads it, since `bench` itself exits 0 on a miss; `worst_of_three_decides` is tested by a script test with a stub bench)
-  - [ ] `make check`; commit `feat: full benchmark at 100 agents`
-- [ ] **4.2 Tuning at 100**
-  - [ ] Run `make bench-gate` at 100 agents; record each target's result
-  - [ ] For each miss: profile, fix, re-measure, and record before and after (stop rule in the task)
-  - [ ] Repeat after 4.5 and after any task that adds start-up or render work
-  - [ ] `make check`; commit `perf: <what was tuned>` (one commit per fix)
-- [ ] **4.6 Keys: registry, `?` and the editor**
-  - [ ] Failing tests from the task list; the existing key tests must pass unchanged with the default bindings
-  - [ ] Keymap registry with every action id and default key, `m` and `f` included; footers read it
-  - [ ] `?` key map (three columns at 100 wide or more, one column below), `[keys]` in `settings.toml` (TD §7), the Keys screen (UI §4.10)
-  - [ ] TD §7 and UI §4.10 checked against what was built
-  - [ ] `make check`; commit `feat: keymap registry, key map and binding editor`
-- [ ] **4.3 First-run setup**
-  - [ ] Failing core tests (template builders) and TUI snapshots of every step and error state at 80×24 and 160×48
-  - [ ] `templates.rs`, the wizard, the no-CLI screen; the wizard replaces the silent blank org in `Loaded::FirstRun`
-  - [ ] Template starter prompts as approved (P4-Q1)
-  - [ ] `make check`; commit `feat: first-run setup with templates`
-- [ ] **4.4 New org from template**
-  - [ ] Failing tests from the task list, including `replace_aborts_when_a_stop_fails` and the worktree, card and message rules
-  - [ ] `Command::NewOrgFromTemplate`, the replace-mode wizard, `Replace your org?`, the timestamped backup
-  - [ ] `make check`; commit `feat: replace the org from a template`
-- [ ] **4.5 Model and effort picker**
-  - [ ] Spike S4: `opencode models --verbose` on the pinned OpenCode 2.0; update TD §5.2 and record fixtures
-  - [ ] Failing adapter and widget tests; `list_models` on both adapters; `model-cache.json`
-  - [ ] The dropdown widget (type-ahead, `inherit`, typed name) in the forms; effort per model
-  - [ ] Re-run the bench (4.2) for the start-up cost of the model lists
-  - [ ] `make check`; commit `feat: model and effort picker`
-- [ ] **4.8 Move to…**
-  - [ ] Failing tests, including `move_disabled_when_no_target` and `move_refused_on_role_name_collision`
-  - [ ] The picker with the inherited-values diff, sending phase 3's `OrgEdit::Move`
-  - [ ] `make check`; commit `feat: move to…`
-- [ ] **4.9 Filter and the accessibility re-check**
-  - [ ] Failing tests from the task list (filter rules, contrast, `state_never_colour_only`, `NO_COLOR`, Reduce motion, `every_action_has_key`)
-  - [ ] `f`, the chip, the empty-result and hidden-selection rules; the accessibility fixes the tests find
-  - [ ] `make check`; commit `feat: filter by state and accessibility re-check`
-- [ ] **4.7 Mouse** (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
-  - [ ] Replace the three phase 2 tests named in the task; failing tests for each gesture and each screen's clicks
-  - [ ] Right-click menu, the wheel over the org pane and Needs you (with a scroll offset apart from the selection), drag to move and resize, header counts, clicks in dialogs, forms, lists and first run
-  - [ ] Add the click half of the accessibility tests (`every_action_has_a_click_path`) and the `NO_COLOR` and Reduce motion renders of the menu and drag highlights
-  - [ ] `make check`; commit `feat: mouse parity on every screen`
-- [ ] **4.10 Acceptance**
-  - [ ] `make bench-gate` at 10 and 100 agents on Apple M-series, view on, load at most 2; every target passes in three runs
-  - [ ] Record the runs in `bench-results.md` "Phase 4 acceptance"
-  - [ ] A one-hour run with real agents (the risk table)
-  - [ ] Mark roadmap row 4, the PRD row, `docs/README.md` and the README status; check TD §12; update the traceability matrix
-  - [ ] Commit `docs: phase 4 acceptance and status`
+- [ ] 4.1 Full benchmark
+- [ ] 4.2 Tuning at 100 agents (repeat after 4.5)
+- [ ] 4.6 Keymap registry, the `?` key map and the binding editor
+- [ ] 4.3 First-run setup and templates
+- [ ] 4.4 New org from template
+- [ ] 4.5 Model and effort picker (spike S4 first)
+- [ ] 4.8 Move to…
+- [ ] 4.9 Filter and the accessibility re-check
+- [ ] 4.7 Mouse parity on every screen (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
+- [ ] 4.10 Acceptance
 
 ## Risks
 
