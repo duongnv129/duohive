@@ -1041,6 +1041,7 @@ async fn e2e_not_taken_reported() {
         exe: PathBuf::from(BIN),
         hooks: true,
         duo_script: None,
+        stamp_dir: None,
     }))]);
     let mut h = env.start_with(Arc::new(ignoring)).await;
     let a = n("e2e-1");

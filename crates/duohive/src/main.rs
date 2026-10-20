@@ -31,6 +31,10 @@ fn main() -> ExitCode {
         }
         Ok(Cli::BenchAgent(args)) => run_bench_agent(&args, &env_vars()),
         Ok(Cli::Mcp) => run_mcp(&env_vars()),
+        Ok(Cli::Version) => {
+            let _ = writeln!(std::io::stdout(), "duohive {}", env!("CARGO_PKG_VERSION"));
+            ExitCode::SUCCESS
+        }
         Ok(Cli::Bench(args)) => bench(args),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");
@@ -77,16 +81,22 @@ fn bench(args: BenchArgs) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
+            if json && let BenchError::LoadTooHigh { load } = &e {
+                let out = serde_json::json!({ "discarded": "load", "load": load });
+                let _ = writeln!(std::io::stdout(), "{out}");
+            } else {
+                let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
+            }
             ExitCode::from(bench_failure_code(&e))
         }
     }
 }
 
-/// 130, the conventional status of a process ended by SIGINT, when interrupted; else 1.
+/// 130 when interrupted; 3 for a run the gate discards (busy machine); else 1.
 fn bench_failure_code(e: &BenchError) -> u8 {
     match e {
         BenchError::Interrupted => 130,
+        BenchError::LoadTooHigh { .. } => 3,
         _ => 1,
     }
 }
@@ -112,5 +122,12 @@ mod tests {
     fn an_interrupted_bench_exits_130() {
         assert_eq!(bench_failure_code(&BenchError::Interrupted), 130);
         assert_eq!(bench_failure_code(&BenchError::Timeout("agents")), 1);
+    }
+
+    #[test]
+    fn load_above_ceiling_exits_3_discarded() {
+        let e = BenchError::LoadTooHigh { load: 7.25 };
+        assert_eq!(bench_failure_code(&e), 3);
+        assert_eq!(e.to_string(), "discarded: load 7.25");
     }
 }

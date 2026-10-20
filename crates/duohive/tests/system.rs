@@ -227,6 +227,7 @@ fn counting(calls: &Arc<AtomicUsize>) -> Arc<Adapters> {
                 exe: PathBuf::from(BIN),
                 hooks,
                 duo_script: None,
+                stamp_dir: None,
             },
             calls: Arc::clone(calls),
         })

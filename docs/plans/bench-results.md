@@ -294,3 +294,45 @@ Follow-ups, none blocking phase 3:
 - #10: `tools.rs` logs the call at info level, so message and task text reach the logs.
 - #11: a new-agent card is answered `approved` when the task launch failed.
 - #12: an agent can message itself.
+
+## Phase 4
+
+First numbers from the reworked bench (end-of-window memory, `~` freshness, first frame on reopen, helpers and exec reported). `make bench-gate` ran three counted runs with `--view` at each tier and took the worst value per target; the targets below are the PRD's.
+
+| | |
+|---|---|
+| Date | 2026-10-20 / 2026-10-21 |
+| Branch | `feat/phase-4-bench` |
+| Machine | Apple M4, 10 CPUs, 16 GiB memory |
+| macOS | 26.4.1 |
+| tmux | 3.7c |
+| Binary | 6,348,352 B (9,829,520 B before `[profile.release]`: `strip`, thin LTO, one codegen unit) |
+
+**The load gate was disabled for this run** (`DUOHIVE_BENCH_IGNORE_LOAD=1`): the machine sat at a 1-minute load average of about 3, above the method's ceiling of 2, and the bench discards such runs. These figures are therefore a first reading, not the acceptance measurement; Task 4.10 re-runs the gate on a quiet machine. `make bench-gate` itself never disables the gate, and a discarded run is retried twice before the gate fails.
+
+### 10 agents (worst of three counted runs)
+
+| Measure | Result | Target |
+|---|---|---|
+| Idle CPU | 0.02 % | under 1 % |
+| Memory (end of window) | 18.08 MB | under 20 MB |
+| Hook → screen (max) | 67.11 ms | under 1000 ms |
+| Screen-read `~` (p95) | 1983.65 ms | under 2000 ms |
+| First frame (reopen) | 44.72 ms | under 100 ms |
+
+### 100 agents (worst of three counted runs)
+
+| Measure | Result | Target |
+|---|---|---|
+| Idle CPU | 0.03 % | under 3 % |
+| Memory (end of window) | 12.81 MB | under 60 MB |
+| Hook → screen (max) | 62.97 ms | under 2000 ms |
+| Screen-read `~` (p95) | 1881.56 ms | under 2000 ms |
+| First frame (reopen) | 58.94 ms | under 300 ms |
+
+Every target passed. Two are close enough to treat as at risk in Task 4.2:
+
+- **`~` freshness** sits at 1.98 s against 2 s at 10 agents (and 1.88 s at 100): the screen read waits for the settle mechanism before it can say `~`. Any tuning that speeds settle-read detection helps; a p95 a few tens of milliseconds slower would miss.
+- **10-agent memory** is 18.08 MB against 20 MB, while the 100-agent run reports 12.81 MB: the 10-agent window's end caught more of the control client's growth than the 100-agent one. Re-measure on a quiet machine before drawing a conclusion.
+
+The informational runs without `--view` were made but their verdict line printed `unknown`: the script's `sed` used a GNU-only `\|` alternation, fixed after this run. The counts are unaffected; the no-view figures are cosmetic and will be in the next gate output.

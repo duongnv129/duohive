@@ -58,6 +58,11 @@ pub fn load_average() -> Option<[f64; 3]> {
     (got == 3).then_some(loads)
 }
 
+/// `pid`'s resident size now, in MB; `None` when it is gone or `ps` fails.
+pub fn current_rss_mb(pid: u32) -> Option<f64> {
+    process_stats(pid).map(|s| s.rss_mb)
+}
+
 /// Another process's CPU time so far and current resident memory.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ProcStats {
@@ -93,6 +98,17 @@ pub fn process_stats(pid: u32) -> Option<ProcStats> {
         cpu: parse_ps_time(time)?,
         rss_mb: rss.trim().parse::<f64>().ok()? / 1024.0,
     })
+}
+
+/// How long `exe --version` takes: exec and linking, which the first-frame
+/// figure leaves out. `None` when it does not run.
+pub fn exec_once(exe: &std::path::Path) -> Option<f64> {
+    let started = std::time::Instant::now();
+    let status = Command::new(exe).arg("--version").output().ok()?;
+    status
+        .status
+        .success()
+        .then(|| started.elapsed().as_secs_f64() * 1000.0)
 }
 
 /// The pids of this process's children whose command line mentions `needle`.
@@ -176,6 +192,15 @@ mod tests {
         let own = process_stats(std::process::id()).unwrap();
         assert!(own.rss_mb > 0.0);
         assert!(process_stats(u32::MAX - 1).is_none());
+    }
+
+    #[test]
+    fn exec_once_times_the_binary() {
+        // `true` exits 0 without output: the case that counts.
+        assert!(exec_once(std::path::Path::new("/usr/bin/true")).is_some());
+        assert!(exec_once(std::path::Path::new("/nonexistent-binary")).is_none());
+        // A binary that rejects the flag is not a measurement.
+        assert!(exec_once(std::path::Path::new("/usr/bin/false")).is_none());
     }
 
     #[test]

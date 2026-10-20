@@ -3,6 +3,12 @@ members = ["crates/*"]
 exclude = ["spikes"]
 resolver = "3"
 
+[profile.release]
+# The binary budget (PRD: under 10 MB): drop symbols, link once, compile as one unit.
+strip = true
+lto = "thin"
+codegen-units = 1
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

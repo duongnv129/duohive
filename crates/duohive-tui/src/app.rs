@@ -100,6 +100,9 @@ pub enum InputEvent {
     Resize(u16, u16),
     /// The wheel, or a button press or release (P2-D25); movement is dropped earlier.
     Mouse(MouseEvent),
+    /// Quit now, as `q` does: the bench's reopen procedure ends the first app
+    /// this way, leaving the agents in tmux (no terminal to type into).
+    Quit,
 }
 
 /// Why the app stopped other than by `q`.
@@ -410,6 +413,7 @@ pub(crate) async fn run_loop<B: Backend>(
                 cfg.running.store(running_agents(&m), Ordering::Relaxed);
             }
             got = input.recv() => match got.ok_or(TuiError::InputClosed)? {
+                InputEvent::Quit => return Ok(()),
                 InputEvent::Resize(w, h) => {
                     set_screen(&mut m, w, h);
                     clock.dirty = true;
