@@ -32,6 +32,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Must | Honest status: exact, `~`, quiet | 1 | T9, T12–13 |
 | Must | Light at scale: 10 agents | 1 | T28 |
 | Must | Light at scale: 100 agents | 4 | 4.1, 4.2, 4.10 |
+| Must | Light at scale: measurement method and three-run script | 4 | 4.1 (`scripts/bench-gate.sh`), 4.10 |
 | Must | Light at scale: release gate | 5 | 5.2 |
 | Must | Agents keep running when DuoHive closes; reopening reconnects | 1 | T15, T29 |
 | Should | Give work with one key (`space`) | 2 | 2.15 |
@@ -40,6 +41,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Should | Model and effort picked from what each CLI offers | 4 | 4.5 (replaces D14) |
 | Should | Every action by key and by mouse: the wheel and click to select (P2-D25) | 2 | 2.21 |
 | Should | Every action by key and by mouse: the rest; `?` key map | 4 | 4.6–4.9 |
+| Should | Key bindings you can change (Keys screen refuses clashes) | 4 | 4.6 |
 | Must | Setup templates | 4 | 4.3, 4.4 |
 | Must | Give a task to a role; none free → card | 3 | 3.7, 3.11 |
 | Could | Zoom the agent pane | 2 | 2.8 |
@@ -192,7 +194,9 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §7 Storage: files, `state.db`, single instance (`run.lock`), quit and shutdown, logs | 1 | T16–17, T22, T27, T29 |
 | §7 Storage: worktrees table, `sessions.worktree` | 2 | 2.11, 2.13 |
 | §7 Storage: tool calls queued while closed, messages, cards, chat tables | 3 | 3.2, 3.4, 3.6, 3.8 |
-| §7 Storage: timestamped template backup | 4 | 4.4 |
+| §7 Storage: timestamped template backup; replace-flow data rules | 4 | 4.4 |
+| §7 Storage: `settings.toml` `[keys]` schema | 4 | 4.6 |
+| §7 Storage: `model-cache.json` | 4 | 4.5 |
 | §8 Errors: CLI, launch, crash, Duo, tmux, `org.toml`, directory, hook silent | 1 | T11–T16, T23 |
 | §8 Errors: worktree, no notifier | 2 | 2.10, 2.12, 2.13 |
 | §8 Errors: message undeliverable | 3 | 3.4 |

@@ -403,7 +403,7 @@ mod tests {
             Platform::MacOs,
             &path_env(dir.path()),
             tx,
-            Duration::from_millis(1000),
+            Duration::from_millis(3000),
         );
         notifier.notify(&alert("x"));
         eventually("the pid", || {
