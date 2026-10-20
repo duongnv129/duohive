@@ -900,7 +900,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.11 Key map
 
-`?` from anywhere in Selected mode, zoomed too (the key works; the zoom footer keeps only its own keys). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. The header (except in Typing mode, where it drops the hint), and the footers of the org pane (`… · ? help`, as the mocks in §4.1 show) and Needs you (`↑↓ move · enter go to agent · ? help`), carry `? help`; the agent pane's, Typing, zoom, dialog, form and chat footers do not.
+`?` from anywhere in Selected mode, zoomed too (the key works; the zoom footer keeps only its own keys). In Typing mode, a form and the chat input, `?` is a character and goes to the agent or the field (P2-D9); leave Typing first (`ctrl+q`). It lists the current bindings, including any you have changed. `?` does nothing while a dialog, Settings or Worktrees is open (they have their own keys; `esc` first). The header (it drops the hint in Typing mode and in forms, where `?` is a character), and the footers of the org pane (`… · ? help`, as the mocks in §4.1 show) and Needs you (`↑↓ move · enter go to agent · ? help`), carry `? help`; the agent pane's, Typing, zoom, dialog, form and chat footers do not.
 
 ```
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────┐
