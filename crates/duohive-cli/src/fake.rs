@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use duohive_core::adapter::{
-    Adapters, CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal,
-    ScreenState,
+    Adapters, CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ModelList,
+    ModelListError, ScreenSignal, ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchSpec};
@@ -185,6 +185,14 @@ impl CliAdapter for FakeCliAdapter {
 
     fn submit_keys(&self) -> Vec<Key> {
         vec![Key::Enter]
+    }
+
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        Ok(ModelList {
+            models: vec!["fake-small".to_owned(), "fake-large".to_owned()],
+            efforts: vec!["low".to_owned(), "high".to_owned()],
+            variants: Default::default(),
+        })
     }
 
     fn startup_prompts(&self) -> bool {

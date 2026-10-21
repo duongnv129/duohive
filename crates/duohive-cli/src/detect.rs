@@ -7,8 +7,11 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use duohive_core::adapter::CliPresence;
+use duohive_core::adapter::{CliPresence, ModelListError};
 use duohive_core::cli_kind::CliKind;
+
+/// How long a model listing may take (TD §5.2).
+pub const LISTING_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How long `--version` may take before DuoHive stops waiting.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -76,6 +79,51 @@ pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPre
     }
 }
 
+/// Runs `<program> <args>` and returns its stdout, giving up after `timeout`: the whole process
+/// group is killed, so a hung listing never holds DuoHive. Stdout is read on a helper thread, so
+/// a long output cannot fill the pipe and block the child. Used for the CLIs' read-only
+/// listings; nothing here writes any CLI configuration.
+pub(crate) fn run_listing(
+    program: &OsStr,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, ModelListError> {
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .process_group(0)
+        .spawn()
+        .map_err(|e| ModelListError::Io(e.to_string()))?;
+    let (tx, rx) = mpsc::channel();
+    if let Some(mut stdout) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let mut out = String::new();
+            let read = stdout.read_to_string(&mut out).map(|_| out);
+            let _ = tx.send(read);
+        });
+    }
+    let result = match rx.recv_timeout(timeout) {
+        Ok(Ok(out)) => Ok(out),
+        Ok(Err(e)) => Err(ModelListError::Io(e.to_string())),
+        Err(_) => {
+            kill_group(child.id());
+            Err(ModelListError::Timeout)
+        }
+    };
+    if !matches!(child.try_wait(), Ok(Some(_))) {
+        let _ = child.kill();
+    }
+    let status = child.wait();
+    match (result, status) {
+        (Ok(out), Ok(st)) if !st.success() && out.trim().is_empty() => {
+            Err(ModelListError::Io(format!("exited with {st}")))
+        }
+        (result, _) => result,
+    }
+}
+
 /// How long to wait for the output once the process group is killed.
 const REAP_GRACE: Duration = Duration::from_millis(500);
 
@@ -100,6 +148,30 @@ mod tests {
     use duohive_core::cli_kind::CliKind;
 
     use super::*;
+
+    #[test]
+    fn list_models_kills_a_hung_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = script(dir.path(), "sleep 30");
+        let start = Instant::now();
+        let result = run_listing(program.as_os_str(), &[], Duration::from_millis(200));
+        assert_eq!(result, Err(ModelListError::Timeout));
+        assert!(start.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn run_listing_returns_stdout() {
+        let dir = tempfile::tempdir().unwrap();
+        let program = script(dir.path(), "printf 'a/b\\nc/d\\n'");
+        let out = run_listing(program.as_os_str(), &[], LOADED_TIMEOUT).unwrap();
+        assert_eq!(out, "a/b\nc/d\n");
+    }
+
+    #[test]
+    fn run_listing_reports_a_missing_program() {
+        let result = run_listing("/no/such/duohive-cli".as_ref(), &[], LOADED_TIMEOUT);
+        assert!(matches!(result, Err(ModelListError::Io(_))));
+    }
 
     #[test]
     fn version_output_parses() {

@@ -5,6 +5,7 @@ mod chat;
 pub mod closed;
 pub mod db;
 mod messages;
+pub mod model_cache;
 pub mod org_file;
 pub mod paths;
 pub mod settings_file;
