@@ -36,7 +36,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::adapter::{Adapters, CliPresence};
+use crate::adapter::{Adapters, CliPresence, ModelList};
 use crate::card::Card;
 use crate::chat::ChatEntry;
 use crate::cli_kind::CliKind;
@@ -114,6 +114,13 @@ pub enum Input {
     AlertClicked {
         /// Which agent.
         agent: AgentName,
+    },
+    /// A CLI's model list, read after the first frame; forwarded to the UI (TD §5.2).
+    ModelsListed {
+        /// Which CLI.
+        cli: CliKind,
+        /// The list, or why it couldn't be read.
+        result: Result<ModelList, String>,
     },
     /// A timer is due.
     Tick,
@@ -394,6 +401,7 @@ impl Engine {
             }
             Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
+            Input::ModelsListed { cli, result } => vec![Event::ModelsListed { cli, result }],
             Input::DirInventory(list) => self.on_dir_inventory(list),
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)

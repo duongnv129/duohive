@@ -10,6 +10,7 @@
 
 mod detection;
 mod enriching_store;
+mod models;
 
 pub use enriching_store::EnrichingStore;
 
@@ -41,7 +42,7 @@ use crate::git::GitCli;
 use crate::hook_listener::{AgentClis, HookListener, InstanceLock, ListenerError};
 use crate::notifier::{ALERT_TIMEOUT, DesktopNotifier, Platform};
 use crate::real_ports::{FsDirProbe, RandomIds, SystemClock};
-use detection::{detect_all, first_found, run_detection};
+use detection::{DetectionInputs, detect_all, first_found, run_detection};
 
 /// The tmux session (D31).
 const SESSION: &str = "duohive";
@@ -302,17 +303,21 @@ pub async fn start_system(
     }
     // The detection task detects unless this first run already did.
     let first_run = first_run_inventory.is_some();
+    let listing_inventory = first_run_inventory.clone();
     let (events_tx, events) = mpsc::unbounded_channel();
     let (commands, commands_rx) = mpsc::channel(COMMAND_QUEUE);
     let (core_tx, core_rx) = mpsc::unbounded_channel();
     let core = spawn_core(engine, first_run_inventory, commands_rx, inputs_rx, core_tx)?;
-    let detection = run_detection(
-        opts.first_frame,
-        (!first_run).then(|| Arc::clone(&adapters)),
-        Arc::clone(&tracker.org),
+    let detection = run_detection(DetectionInputs {
+        first_frame: opts.first_frame,
+        detect: !first_run,
+        adapters: Arc::clone(&adapters),
+        paths: paths.clone(),
+        first_run_inventory: listing_inventory,
+        org: Arc::clone(&tracker.org),
         home,
-        inputs_tx.clone(),
-    );
+        inputs: inputs_tx.clone(),
+    });
     let (listener_stop, stop) = oneshot::channel::<()>();
     let calls = duohive_mcp::calls::Calls::new();
     let serve = listener.serve_until(

@@ -6,6 +6,7 @@
 
 mod agent;
 mod chooser;
+mod dropdown;
 mod field;
 mod give_work;
 mod line_edit;
@@ -27,6 +28,7 @@ use duohive_core::status::AgentState;
 use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
+pub use dropdown::{DropRow, Dropdown, EFFORT_NEEDS_MODEL, Models, VISIBLE_ROWS};
 pub use field::{Field, FieldId, FieldKind, Look};
 pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
@@ -188,6 +190,8 @@ pub struct Form {
     pub(crate) inherited_dir: Option<String>,
     /// The last directory probed and what was found.
     pub(crate) probed: Option<(String, DirStatus)>,
+    /// The CLIs' model lists, for the Model and Effort popups.
+    pub(crate) models: Models,
 }
 
 impl Form {
@@ -210,6 +214,7 @@ impl Form {
             target,
             inherited_dir: None,
             probed: None,
+            models: Models::new(),
         };
         f.focus = f.fields.iter().position(Field::focusable).unwrap_or(0);
         f
@@ -296,6 +301,9 @@ impl Form {
 
     /// Applies a key. Tab order skips read-only fields and ends on Save, then Cancel.
     pub fn handle(&mut self, a: Action, org: &Org) -> FormOutcome {
+        if let Some(out) = self.dropdown_key(a, org) {
+            return out;
+        }
         match a {
             Action::Esc => return FormOutcome::Cancel,
             Action::Save => return self.save(org),
@@ -308,10 +316,79 @@ impl Form {
                 let changed = self.fields.get_mut(self.focus).is_some_and(|f| f.apply(a));
                 if changed {
                     self.revalidate(org);
+                    self.refresh_lists(self.focused_is(FieldId::Model));
                 }
             }
         }
         FormOutcome::Continue
+    }
+
+    /// Whether the focused field edits `id`.
+    fn focused_is(&self, id: FieldId) -> bool {
+        self.fields.get(self.focus).is_some_and(|f| f.id == id)
+    }
+
+    /// The CLI the Model and Effort lists come from: the CLI field's choice, inherited or not.
+    fn resolved_cli(&self) -> Option<CliKind> {
+        dropdown::cli_of(self.field(FieldId::Cli)?.choice())
+    }
+
+    /// Takes the CLIs' lists and points the Model and Effort popups at the right one.
+    pub fn set_models(&mut self, models: &Models) {
+        self.models = models.clone();
+        self.refresh_lists(false);
+    }
+
+    fn refresh_lists(&mut self, model_changed: bool) {
+        let cli = self.resolved_cli();
+        dropdown::refresh(&mut self.fields, &self.models, cli, model_changed);
+    }
+
+    /// Keys for a Model or Effort field: `enter` opens the popup, `↑↓` move in it, typing
+    /// filters, `enter` chooses and `esc` closes it unchanged. `None` leaves the key to the form.
+    fn dropdown_key(&mut self, a: Action, org: &Org) -> Option<FormOutcome> {
+        let focus = self.focus;
+        let f = self.fields.get_mut(focus)?;
+        if f.kind != FieldKind::Dropdown || f.locked {
+            return None;
+        }
+        if !f.drop.open {
+            if a != Action::DialogEnter {
+                return None;
+            }
+            f.drop_open();
+            return Some(FormOutcome::Continue);
+        }
+        match a {
+            Action::Esc => f.drop_close(true),
+            Action::Up => f.drop_move(false),
+            Action::Down => f.drop_move(true),
+            Action::DialogEnter => {
+                f.drop_choose();
+                let model = f.id == FieldId::Model;
+                self.revalidate(org);
+                self.refresh_lists(model);
+            }
+            Action::Char(_)
+            | Action::Backspace
+            | Action::DeleteForward
+            | Action::Left
+            | Action::Right
+            | Action::Home
+            | Action::End => {
+                let changed = f.apply(a);
+                f.drop.cursor = 0;
+                if changed {
+                    self.revalidate(org);
+                    self.refresh_lists(false);
+                }
+            }
+            _ => {
+                f.drop_close(false);
+                return None;
+            }
+        }
+        Some(FormOutcome::Continue)
     }
 
     /// Pastes into the focused field.

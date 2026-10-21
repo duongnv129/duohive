@@ -6,7 +6,7 @@ use ratatui::style::{Color, Style};
 
 use super::{LIGHT, draw_box, fg, put};
 use crate::format::{one_line, pad_right, truncate_end, width};
-use crate::forms::{Chooser, Field, FieldId, FieldKind, Form};
+use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, VISIBLE_ROWS};
 use crate::theme::Palette;
 
 const MARGIN: u16 = 4;
@@ -19,6 +19,9 @@ pub(super) const HINT: &str = "tab next field · ctrl+s save · esc cancel";
 const CHOOSER_WIDTH: u16 = 40;
 pub(super) const CHOOSER_HINT: &str = "↑↓ choose · enter open form · esc";
 const INHERIT: &str = "inherit: ";
+const POPUP_HINT: &str = "type to filter · ↑↓ · enter choose · esc close";
+/// The popup is at least this wide inside its border.
+const POPUP_MIN: usize = 24;
 
 /// One line inside a form.
 enum Row<'a> {
@@ -71,6 +74,7 @@ pub(super) fn draw_form(buf: &mut Buffer, area: Rect, f: &Form, p: &Palette) -> 
     let x0 = r.x + 1;
     let right = r.right().saturating_sub(1);
     let mut cursor = None;
+    let mut popup: Option<(u16, u16, &Field)> = None;
     for (i, row) in rows.iter().enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
         if y >= r.bottom().saturating_sub(1) {
@@ -86,12 +90,15 @@ pub(super) fn draw_form(buf: &mut Buffer, area: Rect, f: &Form, p: &Palette) -> 
                 draw_stacked(buf, line, level, *prompt, *level_w, p);
             }
             Row::Fields(group) => {
-                if let Some(c) = draw_fields(buf, line, f, group, p) {
+                if let Some(c) = draw_fields(buf, line, f, group, p, &mut popup) {
                     cursor = Some(c);
                 }
             }
             Row::Buttons => draw_buttons(buf, line, f, p),
         }
+    }
+    if let Some((x, y, fld)) = popup {
+        draw_popup(buf, area, (x, y), fld, right, p);
     }
     cursor
 }
@@ -192,12 +199,13 @@ fn draw_stacked(
 }
 
 /// A line of fields: label, control, suffix; returns the cursor when one is focused.
-fn draw_fields(
+fn draw_fields<'a>(
     buf: &mut Buffer,
     line: Line,
-    f: &Form,
+    f: &'a Form,
     group: &[usize],
     p: &Palette,
+    popup: &mut Option<(u16, u16, &'a Field)>,
 ) -> Option<Position> {
     let mut x = line.x0;
     let mut cursor = None;
@@ -222,6 +230,9 @@ fn draw_fields(
         let focused = f.focus == i;
         if focused {
             line.put(cx.saturating_sub(1), FOCUS, fg(p.border_focus), buf);
+        }
+        if focused && fld.drop.open {
+            *popup = Some((cx, line.y, fld));
         }
         let (next, at) = draw_control(buf, line, cx, fld, focused, p);
         cursor = cursor.or(at);
@@ -278,7 +289,11 @@ fn draw_control(
         FieldKind::Count => text_w.max(1),
         _ => usize::from(fld.look.inner),
     };
-    let avail = inner.saturating_sub(width(&prefix));
+    let arrow = fld.kind == FieldKind::Dropdown;
+    // A dropdown keeps two cells for ` ▾` inside the brackets.
+    let avail = inner
+        .saturating_sub(width(&prefix))
+        .saturating_sub(if arrow { 2 } else { 0 });
     let x = line.put(x, &prefix, fg(p.fg), buf);
     let fill = if fld.kind == FieldKind::Prompt {
         " "
@@ -286,6 +301,9 @@ fn draw_control(
         "_"
     };
     let (shown, color, col) = match &fld.placeholder {
+        _ if arrow && fld.drop.loading && fld.edit.text().is_empty() => {
+            ("loading models…".to_owned(), p.fg_muted, 0)
+        }
         Some(ph) if fld.edit.text().is_empty() => (truncate_end(ph, avail), p.fg_muted, 0),
         // A count is short and shown whole; the cursor may sit on the space after it.
         _ if fld.kind == FieldKind::Count => (fld.edit.text().to_owned(), p.fg, fld.edit.cursor()),
@@ -303,11 +321,94 @@ fn draw_control(
         fg(p.fg_muted),
         buf,
     );
+    let x = if arrow {
+        let mark = if fld.drop.open { " ▴" } else { " ▾" };
+        line.put(x, mark, fg(p.fg_muted), buf)
+    } else {
+        x
+    };
     let cursor = (focused && !read_only).then(|| Position {
         x: text_x + u16::try_from(col).unwrap_or(0),
         y: line.y,
     });
     (line.put(x, " ]", bracket, buf), cursor)
+}
+
+/// The popup under a Model or Effort field (UI §4.4.1): at most six rows, `… N more` when
+/// the list goes on, and a key hint under it. It is clipped to the screen.
+fn draw_popup(
+    buf: &mut Buffer,
+    area: Rect,
+    (x, y): (u16, u16),
+    fld: &Field,
+    right: u16,
+    p: &Palette,
+) {
+    let rows = fld.drop_rows();
+    let first = (fld.drop.cursor + 1).saturating_sub(VISIBLE_ROWS);
+    let shown: Vec<_> = rows.iter().skip(first).take(VISIBLE_ROWS).collect();
+    let more = rows.len().saturating_sub(first + shown.len());
+    let longest = rows.iter().map(|r| width(&r.label())).max().unwrap_or(0);
+    let hint = POPUP_HINT;
+    let inner = longest.max(POPUP_MIN);
+    let w = u16::try_from(inner + 4).unwrap_or(u16::MAX).min(area.width);
+    let lines = shown.len() + usize::from(more > 0);
+    let h = u16::try_from(lines + 2).unwrap_or(u16::MAX);
+    let x = x.min(area.right().saturating_sub(w));
+    let top = y + 1;
+    if top + h + 1 > area.bottom() {
+        return;
+    }
+    let r = Rect {
+        x,
+        y: top,
+        width: w,
+        height: h,
+    };
+    let inside = Style::default().fg(p.fg).bg(p.bg_panel);
+    draw_box(buf, r, "", &LIGHT, fg(p.border_focus), inside);
+    for (i, row) in shown.iter().enumerate() {
+        let ry = r.y + 1 + u16::try_from(i).unwrap_or(0);
+        let focused = first + i == fld.drop.cursor;
+        let style = if focused {
+            p.selected().fg(p.fg)
+        } else {
+            inside
+        };
+        let text = format!("{}{}", if focused { FOCUS } else { " " }, row.label());
+        put(
+            buf,
+            r.x + 1,
+            ry,
+            &pad_right(&text, usize::from(w) - 2),
+            usize::from(w) - 2,
+            style,
+        );
+    }
+    if more > 0 {
+        let ry = r.y + 1 + u16::try_from(shown.len()).unwrap_or(0);
+        let text = format!(" … {more} more · ↓ scroll");
+        let inner_w = usize::from(w) - 2;
+        put(
+            buf,
+            r.x + 1,
+            ry,
+            &pad_right(&text, inner_w),
+            inner_w,
+            inside.fg(p.fg_muted),
+        );
+    }
+    // Under the box, over whatever the form has there.
+    let hint_w = usize::from(right.saturating_sub(r.x));
+    let hint_style = Style::default().fg(p.fg_muted).bg(p.bg_panel);
+    put(
+        buf,
+        r.x,
+        r.bottom(),
+        &pad_right(hint, hint_w),
+        hint_w,
+        hint_style,
+    );
 }
 
 /// `fix N errors to save` or the key hint, then `[ Save ]  [ Cancel ]` at the right.

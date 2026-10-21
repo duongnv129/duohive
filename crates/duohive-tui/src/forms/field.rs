@@ -14,9 +14,9 @@ pub enum FieldId {
     DuoCli,
     /// The working directory.
     Directory,
-    /// The model (free text, D14).
+    /// The model (text with a popup, UI §4.4.1).
     Model,
-    /// The reasoning effort (free text, D14).
+    /// The reasoning effort (text with a popup, UI §4.4.1).
     Effort,
     /// Extra CLI flags.
     Flags,
@@ -39,6 +39,8 @@ pub enum FieldKind {
     Prompt,
     /// Digits only.
     Count,
+    /// Text with a popup of the CLI's models or efforts (UI §4.4.1).
+    Dropdown,
     /// Shown, never edited, never focused.
     ReadOnly,
 }
@@ -95,6 +97,10 @@ pub struct Field {
     pub touched: bool,
     /// Placement.
     pub look: Look,
+    /// A dropdown's popup state.
+    pub drop: super::dropdown::Dropdown,
+    /// Shown but not focusable now (OpenCode's Effort before a model is known).
+    pub locked: bool,
 }
 
 impl Field {
@@ -113,14 +119,21 @@ impl Field {
             disabled: Vec::new(),
             touched: false,
             look,
+            drop: super::dropdown::Dropdown::default(),
+            locked: false,
         }
     }
 
     /// A text field holding `value`, showing `placeholder` while empty.
     pub fn text(id: FieldId, label: &str, value: Option<&str>, look: Look) -> Self {
+        // Model and Effort are text with a popup of the CLI's list (UI §4.4.1).
+        let kind = match id {
+            FieldId::Model | FieldId::Effort => FieldKind::Dropdown,
+            _ => FieldKind::Text,
+        };
         Self {
             edit: LineEdit::new(value.unwrap_or_default()),
-            ..Self::new(id, label, FieldKind::Text, look)
+            ..Self::new(id, label, kind, look)
         }
     }
 
@@ -179,14 +192,14 @@ impl Field {
 
     /// Whether tab stops here.
     pub fn focusable(&self) -> bool {
-        self.kind != FieldKind::ReadOnly
+        self.kind != FieldKind::ReadOnly && !self.locked
     }
 
     /// Whether it holds editable text.
     fn is_text(&self) -> bool {
         matches!(
             self.kind,
-            FieldKind::Text | FieldKind::Prompt | FieldKind::Count
+            FieldKind::Text | FieldKind::Prompt | FieldKind::Count | FieldKind::Dropdown
         )
     }
 
@@ -226,7 +239,7 @@ impl Field {
     pub fn paste(&mut self, text: &str) -> bool {
         let unified = text.replace("\r\n", "\n").replace('\r', "\n");
         let clean: String = match self.kind {
-            FieldKind::Text => unified
+            FieldKind::Text | FieldKind::Dropdown => unified
                 .chars()
                 .map(|c| if c == '\n' || c == '\t' { ' ' } else { c })
                 .filter(|c| !c.is_control())

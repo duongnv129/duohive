@@ -5,7 +5,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use duohive_core::adapter::CliPresence;
+use duohive_core::adapter::{CliPresence, ModelList};
 use duohive_core::card::{Card, CardId};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
@@ -184,6 +184,8 @@ pub struct UiModel {
     pub first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// The first-run wizard, while `first_run` is `Some`.
     pub wizard: Option<FirstRun>,
+    /// Each CLI's models and efforts once listed; absent while loading (TD §5.2).
+    pub models: BTreeMap<CliKind, Result<ModelList, String>>,
 }
 
 impl UiModel {
@@ -225,7 +227,14 @@ impl UiModel {
             cards: BTreeMap::new(),
             first_run: None,
             wizard: None,
+            models: BTreeMap::new(),
         }
+    }
+
+    /// Opens `form` with the CLIs' model lists in its Model and Effort popups.
+    pub fn open_form(&mut self, mut form: Form) {
+        form.set_models(&self.models);
+        self.dialog = Some(Dialog::Form(Box::new(form)));
     }
 
     /// Replaces the settings and rebuilds the key map from them (UI §4.11).
@@ -339,10 +348,19 @@ impl UiModel {
             // The wizard's org is saved: the main screen takes over (UI §4.3).
             Event::OrgCreated => (self.first_run, self.wizard) = (None, None),
             e @ (Event::OrgReplaced | Event::OrgReplaceFailed { .. }) => self.apply_replace(e),
+            Event::ModelsListed { cli, result } => self.models_listed(cli, result),
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
         }
         true
+    }
+
+    /// A CLI's lists arrived: kept, and handed to the open form's popups.
+    fn models_listed(&mut self, cli: CliKind, result: Result<ModelList, String>) {
+        self.models.insert(cli, result);
+        if let Some(Dialog::Form(f)) = &mut self.dialog {
+            f.set_models(&self.models);
+        }
     }
 
     /// The end of a replace: saved, or an agent would not stop (UI §4.8).

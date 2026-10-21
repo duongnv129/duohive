@@ -141,3 +141,20 @@ fn first_run_snapshot_from_setter() {
     let want: Option<Vec<(CliKind, CliPresence)>> = Some(all_found());
     assert_eq!(h.engine.snapshot().first_run, want);
 }
+
+#[test]
+fn models_listed_input_becomes_an_event() {
+    let mut h = Setup::default().build();
+    let list = crate::adapter::ModelList {
+        models: vec!["opus".to_owned()],
+        ..Default::default()
+    };
+    let events = h.input(Input::ModelsListed {
+        cli: CliKind::Claude,
+        result: Ok(list.clone()),
+    });
+    assert!(events.contains(&Event::ModelsListed {
+        cli: CliKind::Claude,
+        result: Ok(list)
+    }));
+}

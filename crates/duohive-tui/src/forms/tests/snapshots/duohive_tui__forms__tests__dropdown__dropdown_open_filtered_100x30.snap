@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/forms/tests/dropdown.rs
+expression: open_model_screen(many(117))
+---
+ DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                 ● 1              ┃│    ● working                                   │
+┃ │  ├─ ◇ Backend               ● 1              ┃│                                                │
+┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                │
+┃▌│  │  └─┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────────┐         │
+┃ │  └─ ◇ │                                                                              │         │
+┃ │     └─│  Name        [ billing-api_________ ]                                        │         │
+┃ └─ ◇ Gen│  CLI         [ inherit: Claude Code ▾ ]                                      │         │
+┃    ├─ sq│  Directory   [ ~/code/billing______________ ]  ✓ git repo                    │         │
+┃    ├─ sq│  Model      ▌[ inherit: sonnet_ ▴ ]         Effort  [ inherit: high___ ▾ ]   │         │
+┃    └─ sq│  Flags       ┌──────────────────────────┐____ ]                              │         │
+┃         │  Worktrees   │▌inherit: sonnet          │                                    │         │
+┃         │              │ prov/model-000           │                                    │         │
+┃         │  Prompt  (sta│ prov/model-001           │Backend)                            │         │
+┃         │  ┊ Org       │ prov/model-002           │ng.                                 │         │
+┃         │  ┊ Payments  │ prov/model-003           │                                    │         │
+┃         │  ┊ Backend   │ prov/model-004           │ke test before done.                │         │
+┃         │  [ Own: Owns │ … 112 more · ↓ scroll    │s and retries.        ]             │         │
+┃         │              └──────────────────────────┘                                    │         │
+┣━ Needs y│  tab next fietype to filter · ↑↓ · enter choose · esc close                  │         │
+┗━━━━━━━━━└──────────────────────────────────────────────────────────────────────────────┘─────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab next field · ctrl+s save · esc cancel

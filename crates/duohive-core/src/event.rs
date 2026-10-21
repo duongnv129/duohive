@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::adapter::CliPresence;
+use crate::adapter::{CliPresence, ModelList};
 use crate::alert::Alert;
 use crate::card::{Card, CardId, CardOutcome};
 use crate::chat::ChatEntry;
@@ -145,6 +145,13 @@ pub enum Event {
         agent: Option<AgentName>,
         /// Why, such as `squad-1 would not stop`.
         reason: String,
+    },
+    /// A CLI's models and efforts, or why they couldn't be listed (TD §5.2).
+    ModelsListed {
+        /// Which CLI.
+        cli: CliKind,
+        /// The list, or the reason.
+        result: Result<ModelList, String>,
     },
     /// A desktop alert to show.
     Alert(Alert),

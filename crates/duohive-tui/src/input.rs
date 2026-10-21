@@ -607,9 +607,9 @@ fn chooser_action(m: &mut UiModel, mut c: Chooser, a: Action) {
         Action::Up | Action::BackTab => c.step(false),
         Action::Down | Action::Tab => c.step(true),
         Action::DialogEnter => {
-            m.dialog = c
-                .open(&m.org, m.dirs.probe(), &m.home)
-                .map(|f| Dialog::Form(Box::new(f)));
+            if let Some(f) = c.open(&m.org, m.dirs.probe(), &m.home) {
+                m.open_form(f);
+            }
             return;
         }
         Action::Esc | Action::DialogNo => return,
@@ -643,7 +643,7 @@ fn edit_here(m: &mut UiModel) -> Vec<UiEffect> {
         NodeKey::Role(k) => Form::edit_role(&m.org, k, dirs, home),
         NodeKey::Team(t) => Form::edit_team(&m.org, t, dirs, home),
     };
-    m.dialog = Some(Dialog::Form(Box::new(form)));
+    m.open_form(form);
     Vec::new()
 }
 

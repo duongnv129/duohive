@@ -9,7 +9,7 @@ use super::{Action, UiEffect};
 use crate::focus::Pane;
 use crate::forms::form_for_card;
 use crate::keymap::ActionId;
-use crate::model::{Dialog, UiModel};
+use crate::model::UiModel;
 
 /// The footer when `e` has nothing to edit (P3-D7).
 const NOTHING_TO_EDIT: &str = "nothing to edit · y or n";
@@ -61,7 +61,7 @@ fn edit(m: &mut UiModel, id: CardId) -> Vec<UiEffect> {
         return Vec::new();
     };
     match form_for_card(card, m) {
-        Some(f) => m.dialog = Some(Dialog::Form(Box::new(f))),
+        Some(f) => m.open_form(f),
         None => m.footer_note = Some(NOTHING_TO_EDIT.to_owned()),
     }
     Vec::new()

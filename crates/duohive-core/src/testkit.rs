@@ -1,8 +1,8 @@
 //! Test-only fixtures and fakes shared across crates.
 
 use crate::adapter::{
-    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ScreenSignal,
-    ScreenState,
+    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ModelList,
+    ModelListError, ScreenSignal, ScreenState,
 };
 use crate::alert::Alert;
 use crate::card::{Card, CardId};
@@ -469,6 +469,10 @@ pub struct StubAdapter {
     pub before_paste: Vec<Key>,
     /// What `dialog_check()` returns.
     pub dialog: Option<DialogCheck>,
+    /// What `list_models()` returns.
+    pub models: Result<ModelList, ModelListError>,
+    /// How many times `list_models` ran; shared by clones.
+    pub list_calls: Arc<Mutex<u32>>,
 }
 
 impl StubAdapter {
@@ -493,7 +497,15 @@ impl StubAdapter {
             launch_error: None,
             before_paste: Vec::new(),
             dialog: None,
+            models: Err(ModelListError::Unsupported),
+            list_calls: Arc::new(Mutex::new(0)),
         }
+    }
+
+    /// Makes `list_models` return `result`.
+    pub fn with_models(mut self, result: Result<ModelList, ModelListError>) -> Self {
+        self.models = result;
+        self
     }
 
     /// Sets what `enrich_hook` does.
@@ -510,6 +522,10 @@ impl StubAdapter {
 }
 
 impl CliAdapter for StubAdapter {
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        *self.list_calls.lock().unwrap() += 1;
+        self.models.clone()
+    }
     fn kind(&self) -> CliKind {
         self.kind
     }

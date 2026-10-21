@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/forms/tests/dropdown.rs
+expression: "screen_text_at(ui, 80, 24)"
+---
+ DuoHive  ● 1 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ──────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────┐ │
+┃ │                                                                          │ │
+┃ │  Name        [ billing-api_________ ]                                    │ │
+┃▌│  CLI         [ inherit: Claude Code ▾ ]                                  │ │
+┃ │  Directory   [ ~/code/billing______________ ]  ✓ git repo                │ │
+┃ │  Model      ▌[ inherit: sonnet_ ▾ ]         Effort  [ inherit: high___ ▾ │ │
+┃ │              ✕ couldn't list claude's models · type a name or keep inheri│ │
+┃ │  Flags       [ ______________________________ ]                          │ │
+┃ │  Worktrees   [ inherit: off ▾ ]                                          │ │
+┃ │                                                                          │ │
+┃ │  Prompt  (stacks under: Org › Payments › Backend)                        │ │
+┃ │  ┊ Org       Ask before you delete anything.                             │ │
+┃ │  ┊ Payments  (none)                                                      │ │
+┃ │  ┊ Backend   API URLs use hyphens. Run make test before done.            │ │
+┣━│  [ Own: Owns the billing service; invoices and retries.        ]         │ │
+┗━│                                                                          │─┘
+┌─│  tab next field · ctrl+s save · esc cancel   [ Save ]  [ Cancel ]        │─┐
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab next field · ctrl+s save · esc cancel
