@@ -247,6 +247,9 @@ impl Engine {
         task: Option<String>,
         run: RunIn,
     ) -> Vec<Event> {
+        if self.replace.is_some() {
+            return reject(super::replace::REPLACING.to_owned());
+        }
         if self.cli.is_none() {
             self.queued_launches.push(match task {
                 None => Command::StartAgent { agent },

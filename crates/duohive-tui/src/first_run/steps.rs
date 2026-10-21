@@ -10,7 +10,7 @@ use duohive_core::templates::{EngineeringInput, ProductInput, SquadInput, Templa
 use duohive_core::validate::{DirProbe, DirStatus};
 
 use super::forms::TeamRow;
-use super::{FirstRun, Step, TemplateChoice, trimmed};
+use super::{Button, FirstRun, Step, TemplateChoice, trimmed};
 use crate::forms::LineEdit;
 use crate::input::Action;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -22,7 +22,9 @@ pub enum Outcome {
     Continue,
     /// Quit DuoHive.
     Quit,
-    /// Send this command and wait for `Event::OrgCreated`.
+    /// Leave the wizard without changing anything (replace mode, UI §4.3).
+    Cancel,
+    /// Send this command and wait for `Event::OrgCreated` or `Event::OrgReplaced`.
     Create(Box<Command>),
 }
 
@@ -67,8 +69,8 @@ pub fn key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Out
         return quit_answer(w, a);
     }
     match w.step {
-        Step::You => you_key(w, a),
-        Step::Template => template_key(w, a),
+        Step::You => you_key(w, a, dirs, home),
+        Step::Template => template_key(w, a, dirs, home),
         Step::Form => form_key(w, a, dirs, home),
     }
 }
@@ -84,8 +86,8 @@ fn quit_answer(w: &mut FirstRun, a: Action) -> Outcome {
     }
 }
 
-fn you_key(w: &mut FirstRun, a: Action) -> Outcome {
-    let (controls, buttons) = (w.controls(), w.buttons().len());
+fn you_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Outcome {
+    let controls = w.controls();
     match a {
         Action::Esc => w.ask_quit = true,
         Action::Tab => step_focus(w, true),
@@ -102,24 +104,19 @@ fn you_key(w: &mut FirstRun, a: Action) -> Outcome {
         Action::Right if w.focus == 0 => w.you.right(),
         Action::Home if w.focus == 0 => w.you.home(),
         Action::End if w.focus == 0 => w.you.end(),
-        Action::DialogEnter => match w.focus {
-            0 => w.focus = 1,
-            f if f == controls => {
-                w.step = Step::Template;
-                w.focus = 0;
-            }
-            f if f == controls + buttons - 1 => return Outcome::Quit,
-            _ => {}
-        },
+        Action::DialogEnter if w.focus == 0 => w.focus = 1,
+        Action::DialogEnter if w.focus >= controls => {
+            return button(w, w.focus - controls, dirs, home);
+        }
         _ => {}
     }
     Outcome::Continue
 }
 
-fn template_key(w: &mut FirstRun, a: Action) -> Outcome {
-    let (controls, buttons) = (w.controls(), w.buttons().len());
+fn template_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Outcome {
+    let controls = w.controls();
     match a {
-        Action::Esc => go(w, Step::You),
+        Action::Esc => return back(w),
         Action::Tab => step_focus(w, true),
         Action::BackTab => step_focus(w, false),
         Action::Up if w.focus == 0 => w.cursor = w.cursor.saturating_sub(1),
@@ -128,41 +125,77 @@ fn template_key(w: &mut FirstRun, a: Action) -> Outcome {
         }
         Action::Up => step_focus(w, false),
         Action::Down => step_focus(w, true),
-        Action::DialogEnter => match w.focus {
-            0 => go(w, Step::Form),
-            f if f == controls => go(w, Step::You),
-            f if f == controls + 1 => go(w, Step::Form),
-            f if f == controls + buttons - 1 => return Outcome::Quit,
-            _ => {}
-        },
+        Action::DialogEnter if w.focus < controls => go(w, Step::Form),
+        Action::DialogEnter => return button(w, w.focus - controls, dirs, home),
         _ => {}
     }
     Outcome::Continue
 }
 
 fn form_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Outcome {
-    let (controls, buttons) = (w.controls(), w.buttons().len());
+    let controls = w.controls();
     match a {
-        Action::Esc => go(w, Step::Template),
+        Action::Esc => return back(w),
         Action::Tab => step_focus(w, true),
         Action::BackTab => step_focus(w, false),
         Action::Up => step_focus(w, false),
         Action::Down => step_focus(w, true),
-        Action::DialogEnter if w.focus >= controls => match w.focus - controls {
-            0 => go(w, Step::Template),
-            1 if errors(w, dirs, home).is_empty() && form_error(w, dirs, home).is_none() => {
-                return w
-                    .create_command()
-                    .map_or(Outcome::Continue, |c| Outcome::Create(Box::new(c)));
-            }
-            f if f == buttons - 1 => return Outcome::Quit,
-            _ => {}
-        },
+        Action::DialogEnter if w.focus >= controls => {
+            return button(w, w.focus - controls, dirs, home);
+        }
         Action::DialogEnter => enter_control(w, dirs, home),
         Action::Char(' ') if is_toggle(w) => toggle(w),
         _ => edit_control(w, a),
     }
     Outcome::Continue
+}
+
+/// The focused button's action (UI §4.3).
+fn button(w: &mut FirstRun, i: usize, dirs: &dyn DirProbe, home: &Path) -> Outcome {
+    match w.actions().get(i).copied() {
+        Some(Button::Next) => {
+            go(w, next_step(w));
+            Outcome::Continue
+        }
+        Some(Button::Back) => back(w),
+        Some(Button::Create | Button::Replace) => create(w, dirs, home),
+        Some(Button::Quit) => Outcome::Quit,
+        Some(Button::Cancel) => Outcome::Cancel,
+        None => Outcome::Continue,
+    }
+}
+
+fn next_step(w: &FirstRun) -> Step {
+    match w.step {
+        Step::You | Step::Template => Step::Template,
+        Step::Form => Step::Form,
+    }
+}
+
+/// The Back button, and `esc`: the form goes to the template step, a first run's
+/// template step goes to step 1, and a replace's template step cancels.
+fn back(w: &mut FirstRun) -> Outcome {
+    match w.step {
+        Step::Form => {
+            go(w, Step::Template);
+            Outcome::Continue
+        }
+        Step::Template if w.replace => Outcome::Cancel,
+        Step::Template => {
+            go(w, Step::You);
+            Outcome::Continue
+        }
+        Step::You => Outcome::Continue,
+    }
+}
+
+/// The last button: send the command when every answer is valid.
+fn create(w: &FirstRun, dirs: &dyn DirProbe, home: &Path) -> Outcome {
+    if !errors(w, dirs, home).is_empty() || form_error(w, dirs, home).is_some() {
+        return Outcome::Continue;
+    }
+    w.command()
+        .map_or(Outcome::Continue, |c| Outcome::Create(Box::new(c)))
 }
 
 /// Enter on a field: toggles a choice, adds a row, else moves on (the last field to Create).

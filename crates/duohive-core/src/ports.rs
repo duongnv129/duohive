@@ -223,6 +223,9 @@ pub trait Store: Send {
     fn last_good_org(&mut self) -> Option<Org>;
     /// Saves the org; it becomes the last good org too (the engine saves only validated orgs).
     fn save_org(&mut self, org: &Org) -> Result<(), StoreError>;
+    /// Replaces the org (UI §4.8): the current `org.toml` is first copied to
+    /// `org.toml.<stamp>.bak`, then saved as [`Store::save_org`] does (P4-Q5).
+    fn replace_org(&mut self, org: &Org, now: Millis) -> Result<(), StoreError>;
     /// Records `org` as the last good org: one the engine accepted at start-up or on reload (D10).
     fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError>;
     /// Saves the settings.

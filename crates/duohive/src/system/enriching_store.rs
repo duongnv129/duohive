@@ -50,6 +50,10 @@ impl Store for EnrichingStore {
         self.inner.save_org(org)
     }
 
+    fn replace_org(&mut self, org: &Org, now: Millis) -> Result<(), StoreError> {
+        self.inner.replace_org(org, now)
+    }
+
     fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError> {
         self.inner.mark_last_good(org)
     }

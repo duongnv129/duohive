@@ -337,14 +337,24 @@ impl UiModel {
             }
             e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
             // The wizard's org is saved: the main screen takes over (UI §4.3).
-            Event::OrgCreated => {
-                self.first_run = None;
-                self.wizard = None;
-            }
+            Event::OrgCreated => (self.first_run, self.wizard) = (None, None),
+            e @ (Event::OrgReplaced | Event::OrgReplaceFailed { .. }) => self.apply_replace(e),
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
         }
         true
+    }
+
+    /// The end of a replace: saved, or an agent would not stop (UI §4.8).
+    fn apply_replace(&mut self, e: Event) {
+        self.wizard = None;
+        self.footer_note = match e {
+            Event::OrgReplaceFailed { agent: Some(a), .. } => {
+                Some(format!("{a} would not stop · org not replaced"))
+            }
+            Event::OrgReplaceFailed { reason, .. } => Some(format!("{reason} · org not replaced")),
+            _ => Some("org replaced".to_owned()),
+        };
     }
 
     /// A refusal while the wizard is up: Create org keeps it open with the reason

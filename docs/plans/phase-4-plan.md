@@ -347,7 +347,7 @@ Tick each box when the task is done. The steps inside each task above are ticked
 - [ ] 4.2 Tuning at 100 agents (repeat after 4.5)
 - [x] 4.6 Keymap registry, the `?` key map and the binding editor
 - [ ] 4.3 First-run setup and templates
-- [ ] 4.4 New org from template
+- [x] 4.4 New org from template
 - [ ] 4.5 Model and effort picker (spike S4 first)
 - [ ] 4.8 Move to…
 - [ ] 4.9 Filter and the accessibility re-check

@@ -26,11 +26,13 @@ pub enum SettingsRow {
     ReduceMotion,
     /// Edit the key bindings.
     Keys,
+    /// Replace the org from a template (UI §4.8).
+    Org,
 }
 
 impl SettingsRow {
     /// Every control, top to bottom.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Name,
         Self::Quiet,
         Self::NeedsYou,
@@ -39,6 +41,7 @@ impl SettingsRow {
         Self::LastReply,
         Self::ReduceMotion,
         Self::Keys,
+        Self::Org,
     ];
 
     fn index(self) -> usize {
@@ -88,7 +91,7 @@ pub fn toggled(s: &Settings, row: SettingsRow) -> Settings {
         SettingsRow::LastReply => out.show_last_reply = !s.show_last_reply,
         SettingsRow::ReduceMotion => out.reduce_motion = !s.reduce_motion,
         SettingsRow::Theme => out.theme = cycled(s.theme, true),
-        SettingsRow::Name | SettingsRow::Quiet | SettingsRow::Keys => {}
+        SettingsRow::Name | SettingsRow::Quiet | SettingsRow::Keys | SettingsRow::Org => {}
     }
     out
 }

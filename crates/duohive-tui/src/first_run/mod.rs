@@ -69,6 +69,23 @@ impl TemplateChoice {
     }
 }
 
+/// What a step's button does (UI §4.3, §4.8).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Button {
+    /// The previous step.
+    Back,
+    /// The next step.
+    Next,
+    /// Make the org (first run).
+    Create,
+    /// Replace the org (replace mode).
+    Replace,
+    /// Leave DuoHive.
+    Quit,
+    /// Leave the wizard without changing anything (replace mode).
+    Cancel,
+}
+
 /// The wizard's state.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FirstRun {
@@ -94,6 +111,8 @@ pub struct FirstRun {
     pub write_error: Option<String>,
     /// What CLI detection found.
     pub inventory: Vec<(CliKind, CliPresence)>,
+    /// Replacing the org from Settings (UI §4.3): steps 2 and 3 only.
+    pub replace: bool,
 }
 
 impl FirstRun {
@@ -113,7 +132,16 @@ impl FirstRun {
             ask_quit: false,
             write_error: None,
             inventory,
+            replace: false,
         }
+    }
+
+    /// The wizard in replace mode (UI §4.3): no step 1, since you and Duo are kept.
+    pub fn replace(inventory: Vec<(CliKind, CliPresence)>, your_name: Option<String>) -> Self {
+        let mut w = Self::new(inventory, your_name);
+        w.replace = true;
+        w.step = Step::Template;
+        w
     }
 
     /// The highlighted template.
@@ -124,11 +152,14 @@ impl FirstRun {
             .unwrap_or(TemplateChoice::AgentSquad)
     }
 
-    /// Whether the CLI is installed, and so pickable in a radio.
+    /// Whether the CLI is installed, and so pickable in a radio. A replace has no
+    /// inventory (detection ran at first run only), so both radios stay usable.
     pub fn available(&self, cli: CliKind) -> bool {
-        self.inventory
-            .iter()
-            .any(|(k, p)| *k == cli && matches!(p, CliPresence::Found { .. }))
+        self.inventory.is_empty()
+            || self
+                .inventory
+                .iter()
+                .any(|(k, p)| *k == cli && matches!(p, CliPresence::Found { .. }))
     }
 
     /// The version `cli` reported, when found.
@@ -164,16 +195,33 @@ impl FirstRun {
 
     /// The buttons, in focus order, for the current step.
     pub fn buttons(&self) -> &'static [&'static str] {
-        match self.step {
-            Step::You => &["Next →", "Quit"],
-            Step::Template => &["← Back", "Next →", "Quit"],
-            Step::Form => &["← Back", "Create org", "Quit"],
+        match (self.step, self.replace) {
+            (Step::You, _) => &["Next →", "Quit"],
+            (Step::Template, true) => &["Next →", "Cancel"],
+            (Step::Template, false) => &["← Back", "Next →", "Quit"],
+            (Step::Form, true) => &["← Back", "Replace org", "Cancel"],
+            (Step::Form, false) => &["← Back", "Create org", "Quit"],
         }
     }
 
-    /// The command Create org sends, when every answer is valid.
-    pub fn create_command(&self) -> Option<Command> {
+    /// What each button does, matching [`FirstRun::buttons`].
+    pub fn actions(&self) -> &'static [Button] {
+        match (self.step, self.replace) {
+            (Step::You, _) => &[Button::Next, Button::Quit],
+            (Step::Template, true) => &[Button::Next, Button::Cancel],
+            (Step::Template, false) => &[Button::Back, Button::Next, Button::Quit],
+            (Step::Form, true) => &[Button::Back, Button::Replace, Button::Cancel],
+            (Step::Form, false) => &[Button::Back, Button::Create, Button::Quit],
+        }
+    }
+
+    /// The command the last button sends, when every answer is valid: Create org on
+    /// a first run, Replace org in replace mode.
+    pub fn command(&self) -> Option<Command> {
         let template = build_input(self)?;
+        if self.replace {
+            return Some(Command::NewOrgFromTemplate { template });
+        }
         let your_name = trimmed(&self.you).map(ToOwned::to_owned);
         Some(Command::CreateOrg {
             template,

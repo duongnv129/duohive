@@ -137,6 +137,15 @@ pub enum Event {
     Reconnected,
     /// The first-run org was created and saved (UI §4.3); the wizard closes.
     OrgCreated,
+    /// The org was replaced from a template and saved (UI §4.8).
+    OrgReplaced,
+    /// A replace was refused or gave up; the old org still stands.
+    OrgReplaceFailed {
+        /// The agent that would not stop, when one did.
+        agent: Option<AgentName>,
+        /// Why, such as `squad-1 would not stop`.
+        reason: String,
+    },
     /// A desktop alert to show.
     Alert(Alert),
     /// Desktop alerts cannot be shown.

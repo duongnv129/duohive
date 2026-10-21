@@ -20,7 +20,7 @@ use crate::status::AgentState;
 use crate::validate::{FieldError, next_agent_names, validate};
 
 /// Why every edit is refused while `org.toml` doesn't parse.
-const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
+pub(super) const ORG_FILE_BROKEN: &str = "org.toml has an error · fix it first (o)";
 /// Why a rename of a running (or errored) agent, or one with worktrees, is refused.
 const RENAME_WHILE_STOPPED: &str = "rename only while stopped with no worktrees";
 
@@ -42,6 +42,9 @@ impl Engine {
         edit: &OrgEdit,
         out: &mut Vec<Event>,
     ) -> Result<(), String> {
+        if self.replace.is_some() {
+            return Err(super::replace::REPLACING.to_owned());
+        }
         if self.org_error.is_some() {
             return Err(ORG_FILE_BROKEN.to_owned());
         }

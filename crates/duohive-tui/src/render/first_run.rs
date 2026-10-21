@@ -110,10 +110,17 @@ fn frame(buf: &mut Buffer, area: Rect, rows: usize, title: &str, p: &Palette) ->
 }
 
 fn title(w: &FirstRun) -> String {
+    let (step, of) = match w.step {
+        Step::You => (1, 3),
+        Step::Template if w.replace => (1, 2),
+        Step::Template => (2, 3),
+        Step::Form if w.replace => (2, 2),
+        Step::Form => (3, 3),
+    };
     match w.step {
-        Step::You => "Welcome to DuoHive · step 1 of 3".to_owned(),
-        Step::Template => "Choose a starting org · step 2 of 3".to_owned(),
-        Step::Form => format!("Set up {} · step 3 of 3", w.template().name()),
+        Step::You => format!("Welcome to DuoHive · step {step} of {of}"),
+        Step::Template => format!("Choose a starting org · step {step} of {of}"),
+        Step::Form => format!("Set up {} · step {step} of {of}", w.template().name()),
     }
 }
 
@@ -172,7 +179,12 @@ fn template(line: &mut Line, w: &FirstRun, p: &Palette) -> Option<Position> {
         line.text(&text, if muted { p.fg_muted } else { p.fg });
         line.down();
     }
-    buttons(line, w, p, "↑↓ choose · enter · esc", true);
+    let hint = if w.replace {
+        "↑↓ choose · enter · esc cancel"
+    } else {
+        "↑↓ choose · enter · esc"
+    };
+    buttons(line, w, p, hint, true);
     None
 }
 
@@ -583,16 +595,19 @@ fn check(
 
 /// The step's buttons at the right, with a hint at the left.
 fn buttons(line: &mut Line, w: &FirstRun, p: &Palette, hint: &str, can_create: bool) {
+    use crate::first_run::Button;
     let labels: Vec<String> = w.buttons().iter().map(|b| format!("[ {b} ]")).collect();
     let total: usize = labels.iter().map(|l| width(l)).sum::<usize>() + 3 * (labels.len() - 1);
     let start = usize::from(line.width().saturating_sub(6)).saturating_sub(total);
     let start = u16::try_from(start).unwrap_or(line.width());
     line.put(2, hint, fg(p.fg_muted));
     let primary = w.controls();
+    let actions = w.actions();
     let mut x = start;
     for (i, label) in labels.iter().enumerate() {
         let focused = w.focus == primary + i;
-        let enabled = i != 1 || can_create;
+        let enabled =
+            !matches!(actions.get(i), Some(Button::Create | Button::Replace)) || can_create;
         let color = if !enabled {
             fg(p.fg_muted)
         } else if focused {

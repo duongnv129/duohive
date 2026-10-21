@@ -58,7 +58,8 @@ impl Engine {
     /// and the 10-minute worktree check.
     pub(super) fn on_tick(&mut self) -> Vec<Event> {
         let now = self.ports.clock.now();
-        let mut out = self.expire_exits();
+        let mut out = self.expire_replace(now);
+        out.extend(self.expire_exits());
         self.expire_waits(now, &mut out);
         if self.worktree_check_due <= now {
             self.worktree_check_due = now + WORKTREE_CHECK_EVERY;
@@ -113,6 +114,20 @@ impl Engine {
             self.report_status(agent, out);
             self.alert_after(agent, &before, out);
         }
+    }
+
+    /// UI §4.8: a replace whose stops never finish gives up at its deadline
+    /// without writing anything; the agents it waited on are named.
+    fn expire_replace(&mut self, now: Millis) -> Vec<Event> {
+        let Some(pending) = self.replace.take_if(|p| p.deadline <= now) else {
+            return Vec::new();
+        };
+        let agent = pending.waiting.iter().next().cloned();
+        let reason = match &agent {
+            Some(agent) => format!("{agent} would not stop"),
+            None => "a stop did not finish".to_owned(),
+        };
+        vec![Event::OrgReplaceFailed { agent, reason }]
     }
 
     /// D20: starting past the start timeout errors, whatever the quiet threshold.
@@ -244,6 +259,7 @@ impl Engine {
             .flatten()
             .chain(worktree_check)
             .chain(self.waits_due())
+            .chain(self.replace.as_ref().map(|p| p.deadline))
             .min()
     }
 }

@@ -213,6 +213,8 @@ pub(super) fn draw(
     draw_pieces(buf, r, (control_x, at(10)), &[keys], p);
 
     group(buf, 11, "Org");
+    let org = control(st, SettingsRow::Org, "[ New org from template… ]");
+    draw_pieces(buf, r, (control_x, at(11)), &[org], p);
     put(buf, label_x, at(12), ORG_NOTE, room, muted);
     if m.settings_error.is_some() {
         put(buf, label_x, at(13), BROKEN, room, fg(p.attention));

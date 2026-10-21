@@ -62,6 +62,8 @@ pub(crate) fn all_found() -> Vec<(CliKind, CliPresence)> {
 /// What to build a [`Harness`] from; tweak fields, then [`Setup::build`].
 pub(crate) struct Setup {
     pub org: Org,
+    /// `org.toml`'s error, when it doesn't parse.
+    pub org_error: Option<crate::ports::OrgFileError>,
     pub dirs: HashMap<PathBuf, DirStatus>,
     pub claude: StubAdapter,
     pub opencode: StubAdapter,
@@ -85,6 +87,7 @@ impl Default for Setup {
     fn default() -> Self {
         Self {
             org: test_org(),
+            org_error: None,
             dirs: HashMap::new(),
             claude: StubAdapter::new(CliKind::Claude),
             opencode: StubAdapter::new(CliKind::Opencode),
@@ -146,7 +149,15 @@ impl Setup {
                 .map(|a| Box::new(a) as Box<dyn crate::adapter::CliAdapter>)
                 .collect(),
         ));
-        let mut engine = Engine::new(self.org, None, self.settings, None, cfg, ports, adapters);
+        let mut engine = Engine::new(
+            self.org,
+            self.org_error.clone(),
+            self.settings,
+            None,
+            cfg,
+            ports,
+            adapters,
+        );
         if let Some(list) = self.first_run.clone() {
             engine.set_first_run(list);
         }

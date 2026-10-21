@@ -17,7 +17,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ │    Theme               [ auto ▾ ]                                        │ │
 ┃ │    Last reply under agents [x]  Reduce motion [ ]                        │ │
 ┃ │  Keys                  [ Edit key bindings → ]                           │ │
-┣━│  Org                                                                     │ │
+┣━│  Org                   [ New org from template… ]                        │ │
 ┃ │    org defaults and Duo: e on Duo (Edit org)                             │ │
 ┃ │                                                                          │ │
 ┗━│  changes save immediately · esc back                                     │─┘

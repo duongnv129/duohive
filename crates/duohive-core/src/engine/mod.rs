@@ -14,6 +14,7 @@ mod inbox;
 mod lifecycle;
 mod org_edit;
 mod reconnect;
+mod replace;
 mod rights;
 mod signals;
 mod timers;
@@ -24,6 +25,7 @@ pub use driver::run_core;
 use duo::{Read, Wait};
 pub use org_edit::preview_edit;
 use reconnect::{Held, Reconnect};
+use replace::PendingReplace;
 use rights::Caller;
 use signals::Exit;
 use tools::Parked;
@@ -234,6 +236,10 @@ pub struct Engine {
     dirs: Option<HashMap<PathBuf, DirStatus>>,
     /// No org exists yet: the detected CLIs, until `CreateOrg` (UI §4.3).
     first_run: Option<Vec<(CliKind, CliPresence)>>,
+    /// A replace waiting for the old tree's agents to stop (UI §4.8).
+    replace: Option<PendingReplace>,
+    /// The pending replace may be applied as soon as this dispatch returns.
+    replace_ready: bool,
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
     /// The Needs you list last reported in `NeedsYouChanged`.
@@ -305,6 +311,8 @@ impl Engine {
             cli: None,
             dirs: None,
             first_run: None,
+            replace: None,
+            replace_ready: false,
             queued_launches: Vec::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
@@ -349,6 +357,11 @@ impl Engine {
     /// the Needs you list changed.
     pub fn handle(&mut self, input: Input) -> Vec<Event> {
         let mut out = self.dispatch(input);
+        // Applying inside dispatch would let `sync_agents` drop an agent's
+        // runtime state while the exit path still uses it (P2-D20's ghost).
+        if std::mem::take(&mut self.replace_ready) {
+            self.apply_replace(&mut out);
+        }
         self.publish_worktrees(&mut out);
         self.publish_needs_you(&mut out);
         out
@@ -413,6 +426,11 @@ impl Engine {
     }
 
     fn on_command(&mut self, c: Command) -> Vec<Event> {
+        if self.replace.is_some()
+            && let Some(reason) = replace::replacing_refusal(&c)
+        {
+            return reject(reason.to_owned());
+        }
         match c {
             Command::StartAgent { agent } => self.start_agent(agent),
             Command::StopAgent { agent } => self.stop_agent(&agent),
@@ -454,6 +472,7 @@ impl Engine {
                 your_name,
                 duo_cli,
             } => self.create_org(&template, your_name, duo_cli),
+            Command::NewOrgFromTemplate { template } => self.start_replace(&template),
         }
     }
 
@@ -583,6 +602,17 @@ impl Engine {
             rt.token = None;
         }
         let status = rt.status.clone();
+        // UI §4.8: an agent that stopped (or errored) settles the replace's wait.
+        if !to.is_running() {
+            let mut done = false;
+            if let Some(pending) = self.replace.as_mut() {
+                pending.waiting.remove(agent);
+                done = pending.waiting.is_empty();
+            }
+            if done {
+                self.replace_ready = true;
+            }
+        }
         out.push(Event::AgentStatusChanged {
             agent: agent.clone(),
             status,

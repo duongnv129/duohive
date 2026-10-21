@@ -13,7 +13,8 @@ use duohive_core::names::NodeName;
 use duohive_core::org::{AgentDef, Fields, Org, Role, Team};
 use duohive_core::ports::OrgFileError;
 use duohive_core::testkit::{example_org, n};
-use duohive_store::{Paths, load_org, mark_last_good, save_org};
+use duohive_core::time::Millis;
+use duohive_store::{Paths, backup_stamp, load_org, mark_last_good, replace_org, save_org};
 
 fn fixture(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -177,4 +178,44 @@ fn mark_last_good_writes_only_last_good() {
     mark_last_good(&p, &full_org()).unwrap();
     assert_eq!(load_org(&p.org_last_good()).unwrap(), Some(full_org()));
     assert!(!p.org_toml().exists());
+}
+
+#[test]
+fn backup_name_is_timestamped_and_beside_org_toml() {
+    let (_tmp, p) = temp_paths();
+    save_org(&p, &example_org()).unwrap();
+    let now = Millis(1_000_000_000_000);
+    replace_org(&p, &full_org(), now).unwrap();
+    assert_eq!(load_org(&p.org_toml()).unwrap(), Some(full_org()));
+    let backup = p
+        .config_dir
+        .join(format!("org.toml.{}.bak", backup_stamp(now)));
+    assert_eq!(backup.parent(), p.org_toml().parent());
+    assert_eq!(load_org(&backup).unwrap(), Some(example_org()));
+}
+
+#[test]
+fn backup_stamp_formats_utc() {
+    assert_eq!(backup_stamp(Millis(0)), "19700101-000000");
+    assert_eq!(backup_stamp(Millis(1_000_000_000_000)), "20010909-014640");
+}
+
+#[test]
+fn timestamped_backup_kept() {
+    let (_tmp, p) = temp_paths();
+    save_org(&p, &example_org()).unwrap();
+    replace_org(&p, &full_org(), Millis(1_000_000_000_000)).unwrap();
+    replace_org(&p, &example_org(), Millis(1_000_086_400_000)).unwrap();
+    let first = p.config_dir.join("org.toml.20010909-014640.bak");
+    let second = p.config_dir.join("org.toml.20010910-014640.bak");
+    assert_eq!(load_org(&first).unwrap(), Some(example_org()));
+    assert_eq!(load_org(&second).unwrap(), Some(full_org()));
+}
+
+#[test]
+fn replace_org_with_no_file_saves_without_backup() {
+    let (_tmp, p) = temp_paths();
+    replace_org(&p, &full_org(), Millis(1_000_000_000_000)).unwrap();
+    assert_eq!(load_org(&p.org_toml()).unwrap(), Some(full_org()));
+    assert!(!p.config_dir.join("org.toml.20010909-014640.bak").exists());
 }

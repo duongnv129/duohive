@@ -31,6 +31,15 @@ pub(super) fn action(m: &mut UiModel, mut s: SettingsState, a: Action) -> Vec<Ui
         Action::DialogEnter if s.row == SettingsRow::Keys => {
             return super::keymap::open_editor(m);
         }
+        Action::DialogEnter if s.row == SettingsRow::Org => {
+            // No inventory: detection ran at first run only, so both CLIs stay pickable.
+            m.dialog = None;
+            m.wizard = Some(crate::first_run::FirstRun::replace(
+                Vec::new(),
+                m.settings.your_name.clone(),
+            ));
+            return Vec::new();
+        }
         Action::DialogEnter => next = Some(toggled(&m.settings, s.row)),
         Action::Left | Action::Right => next = stepped(m, s.row, a == Action::Right),
         _ => {}

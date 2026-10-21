@@ -151,8 +151,9 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
     }
-    // The wizard owns every key while it is up, so its fields can type `q` (UI §4.3).
-    if m.wizard.is_some() {
+    // The wizard owns every key while it is up, so its fields can type `q` (UI §4.3);
+    // a confirmation over it takes its own keys first.
+    if m.wizard.is_some() && !matches!(m.dialog, Some(Dialog::Confirm(_))) {
         return crate::first_run::map_key(k);
     }
     if m.typing() {
@@ -327,14 +328,48 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     out
 }
 
-/// The first-run wizard's keys (UI §4.3); Create org sends `Command::CreateOrg`.
+/// The first-run wizard's keys (UI §4.3); Create org sends `Command::CreateOrg`, and
+/// in replace mode a confirmation asks first (UI §4.8).
 fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
-    let Some(w) = m.wizard.as_mut() else {
+    let Some(outcome) = m.wizard.as_mut().map(|w| {
+        let outcome = crate::first_run::key(w, a, m.dirs.probe(), &m.home);
+        (outcome, w.replace, w.template().name())
+    }) else {
         return Vec::new();
     };
-    match crate::first_run::key(w, a, m.dirs.probe(), &m.home) {
+    let (outcome, replace, template) = outcome;
+    match outcome {
         crate::first_run::Outcome::Continue => Vec::new(),
         crate::first_run::Outcome::Quit => vec![UiEffect::Quit],
+        crate::first_run::Outcome::Cancel => {
+            m.wizard = None;
+            m.dialog = Some(Dialog::Settings(crate::forms::SettingsState {
+                row: crate::forms::SettingsRow::Org,
+                editing: None,
+            }));
+            Vec::new()
+        }
+        crate::first_run::Outcome::Create(command) if replace => {
+            let count = m.org.agents().len();
+            let confirm = Confirm {
+                title: "Replace your org?".to_owned(),
+                lines: vec![
+                    format!(
+                        "A new org from {template} replaces your teams, roles and agents \
+                         ({count} agents). Duo and the org defaults are kept."
+                    ),
+                    "Running agents in it are stopped first.".to_owned(),
+                    "Your current org.toml is kept as a backup.".to_owned(),
+                ],
+                yes_label: "Replace".to_owned(),
+                focus_yes: false,
+                on_yes: *command,
+                back: None,
+                back_list: None,
+            };
+            m.dialog = Some(Dialog::Confirm(Box::new(confirm)));
+            Vec::new()
+        }
         crate::first_run::Outcome::Create(command) => vec![UiEffect::Send(*command)],
     }
 }
@@ -346,7 +381,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     if a == Action::Quit {
         return vec![UiEffect::Quit];
     }
-    if m.wizard.is_some() {
+    if m.wizard.is_some() && !matches!(m.dialog, Some(Dialog::Confirm(_))) {
         return wizard_action(m, a);
     }
     match m.dialog.take() {

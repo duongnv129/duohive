@@ -222,6 +222,10 @@ pub struct FakeStoreState {
     pub fail_next_save: bool,
     /// Every org saved, oldest first.
     pub saved_orgs: Vec<Org>,
+    /// Every org replaced, oldest first.
+    pub replaced_orgs: Vec<Org>,
+    /// Makes the next `replace_org` fail, once.
+    pub fail_replace: bool,
     /// Every `mark_last_good` call that succeeded, oldest first.
     pub marked_last_good: Vec<Org>,
     /// Every settings value saved, oldest first.
@@ -251,6 +255,8 @@ impl Default for FakeStoreState {
             last_good: None,
             fail_next_save: false,
             saved_orgs: Vec::new(),
+            replaced_orgs: Vec::new(),
+            fail_replace: false,
             marked_last_good: Vec::new(),
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
@@ -293,6 +299,16 @@ impl Store for FakeStore {
         let mut st = self.state.lock().unwrap();
         Self::check_save(&mut st)?;
         st.saved_orgs.push(org.clone());
+        st.last_good = Some(org.clone());
+        st.org_result = Ok(Some(org.clone()));
+        Ok(())
+    }
+    fn replace_org(&mut self, org: &Org, _now: Millis) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        if std::mem::take(&mut st.fail_replace) {
+            return Err(StoreError("disk full".to_owned()));
+        }
+        st.replaced_orgs.push(org.clone());
         st.last_good = Some(org.clone());
         st.org_result = Ok(Some(org.clone()));
         Ok(())

@@ -98,9 +98,14 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     let p = &ctx.palette;
     let buf = frame.buffer_mut();
     buf.set_style(area, Style::default().fg(p.fg).bg(p.bg));
-    // No org yet: the wizard is the screen (UI §4.3).
+    // No org yet: the wizard is the screen (UI §4.3). A confirmation sits over it.
     if m.wizard.is_some() {
-        if let Some(at) = first_run::draw(buf, area, m, ctx) {
+        let at = first_run::draw(buf, area, m, ctx);
+        let cursor = match &m.dialog {
+            Some(d) => dialog::draw(buf, area, d, m, ctx.now, p),
+            None => at,
+        };
+        if let Some(at) = cursor {
             frame.set_cursor_position(at);
         }
         return;

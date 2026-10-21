@@ -119,6 +119,12 @@ pub enum Command {
         /// Duo's CLI, which `[org] cli` takes.
         duo_cli: CliKind,
     },
+    /// Replace the org with the one `template` builds (UI §4.8): every agent
+    /// the old tree has is stopped first, then the new org is written.
+    NewOrgFromTemplate {
+        /// The template and its answers.
+        template: TemplateInput,
+    },
 }
 
 /// Where a node moves (P3-D20).

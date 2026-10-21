@@ -1,0 +1,21 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Set up Agent Squad · step 2 of 2 ───────────────────────────────────┐    
+    │   ┌─ Replace your org? ──────────────────────────────────────────┐   │    
+    │  A│                                                              │   │    
+    │  D│  A new org from Agent Squad replaces your teams, roles and   │   │    
+    │  C│  agents (6 agents). Duo and the org defaults are kept.       │   │    
+    │  W│  Running agents in it are stopped first.                     │   │    
+    │  R│  Your current org.toml is kept as a backup.                  │   │    
+    │  Y│                                                              │   │    
+    │  t│                           [ y Replace ]   ▌[ n Cancel ]      │   │    
+    │   └──────────────────────────────────────────────────────────────┘   │    
+    └──────────────────────────────────────────────────────────────────────┘
