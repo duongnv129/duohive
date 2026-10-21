@@ -167,8 +167,8 @@ fn button(w: &mut FirstRun, i: usize, dirs: &dyn DirProbe, home: &Path) -> Outco
 
 fn next_step(w: &FirstRun) -> Step {
     match w.step {
-        Step::You | Step::Template => Step::Template,
-        Step::Form => Step::Form,
+        Step::You => Step::Template,
+        Step::Template | Step::Form => Step::Form,
     }
 }
 

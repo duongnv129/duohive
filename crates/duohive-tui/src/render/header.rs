@@ -72,15 +72,56 @@ fn located(file: &str, e: &OrgFileError) -> String {
     }
 }
 
-/// ` DuoHive   6 agents · ● 2 working · ◆ 2 need you`, or ` DuoHive  ● 2 · ◆ 2` when compact.
-pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
-    let p = &ctx.palette;
-    let working = m
-        .agent_names()
+/// Agents that are working and not quiet.
+fn working_count(m: &UiModel) -> usize {
+    m.agent_names()
         .into_iter()
         .map(|a| &m.view(a).status)
         .filter(|s| s.state == AgentState::Working && !s.quiet)
-        .count();
+        .count()
+}
+
+/// The filter a click at column `x` of the header sets: the working count or the need-you
+/// count (UI §4.1.1); finished is reached by `f` only.
+pub(crate) fn count_at(m: &UiModel, compact: bool, x: u16) -> Option<crate::filter::Filter> {
+    use crate::filter::Filter;
+    let working = working_count(m);
+    let need = m.needs_you.len();
+    let agents = m.org.agents().len();
+    let noun = if agents == 1 { "agent" } else { "agents" };
+    let pieces: Vec<(String, Option<Filter>)> = if compact {
+        vec![
+            (" DuoHive".to_owned(), None),
+            ("  ".to_owned(), None),
+            (format!("● {working}"), Some(Filter::Working)),
+            (" · ".to_owned(), None),
+            (format!("◆ {need}"), Some(Filter::NeedYou)),
+        ]
+    } else {
+        vec![
+            (" DuoHive".to_owned(), None),
+            (format!("   {agents} {noun}"), None),
+            (" · ".to_owned(), None),
+            (format!("● {working} working"), Some(Filter::Working)),
+            (" · ".to_owned(), None),
+            (format!("◆ {need} need you"), Some(Filter::NeedYou)),
+        ]
+    };
+    let mut at = 0usize;
+    for (text, filter) in pieces {
+        let end = at + width(&text);
+        if usize::from(x) >= at && usize::from(x) < end {
+            return filter;
+        }
+        at = end;
+    }
+    None
+}
+
+/// ` DuoHive   6 agents · ● 2 working · ◆ 2 need you`, or ` DuoHive  ● 2 · ◆ 2` when compact.
+pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, compact: bool) {
+    let p = &ctx.palette;
+    let working = working_count(m);
     let need = m.needs_you.len();
     let w = usize::from(r.width);
     let mut x = put(

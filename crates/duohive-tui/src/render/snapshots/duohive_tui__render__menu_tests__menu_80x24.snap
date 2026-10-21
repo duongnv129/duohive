@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/menu_tests.rs
+expression: text
+---
+ DuoHive  ● 0 · ◆ 0 · ? help                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ pay-qa · Claude ────────────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments                   ┃│   ○ stopped · space to give work             │
+┃   ▾ Backend                  ┃│                                              │
+┃     auth-service     ○   1d  ┃│                                              │
+┃     billing-api   ┌─ pay-qa ────────────┐                                    │
+┃   ▾ QA            │ Give work     space │                                    │
+┃▌    pay-qa        │ Start         s     │                                    │
+┃ ▾ Generalist      │ Edit          e     │                                    │
+┃     squad-1       │ New here…     n     │                                    │
+┃     squad-2       │ Move to…      m     │                                    │
+┃     squad-3       │ Delete        d     │                                    │
+┃                   │ Zoom          z     │                                    │
+┃                   │ Worktrees     w     │                                    │
+┃                   │ Hide replies  v     │                                    │
+┃                   └─────────────────────┘                                    │
+┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

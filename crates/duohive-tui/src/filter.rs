@@ -82,6 +82,12 @@ pub(crate) fn cycle(m: &mut UiModel) {
     keep_selection_visible(m);
 }
 
+/// Sets the filter (a header count was clicked). A selection it hides moves to the first match.
+pub(crate) fn set(m: &mut UiModel, f: Filter) {
+    m.filter = f;
+    keep_selection_visible(m);
+}
+
 /// `esc` in the org pane: clears the filter. `false` when there was none.
 pub(crate) fn clear(m: &mut UiModel) -> bool {
     let was = m.filter != Filter::Off;

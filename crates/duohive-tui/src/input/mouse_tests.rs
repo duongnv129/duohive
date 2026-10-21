@@ -1,5 +1,5 @@
-//! The mouse on the main screen (P2-D25): where the wheel goes, what it never does, and
-//! the chat history's scrolling.
+//! The mouse on the main screen (P2-D25, P4-D2): where the wheel goes, what it never does,
+//! and the chat history's scrolling.
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use duohive_core::command::Command;
@@ -20,17 +20,17 @@ use crate::render::{PaneAreas, chat_history_fit, pane_areas};
 const W: u16 = 120;
 const H: u16 = 36;
 
-fn model() -> UiModel {
+pub(super) fn model() -> UiModel {
     let mut m = spec_model();
     m.screen = Rect::new(0, 0, W, H);
     m
 }
 
-fn areas(m: &UiModel) -> PaneAreas {
+pub(super) fn areas(m: &UiModel) -> PaneAreas {
     pane_areas(m).unwrap()
 }
 
-fn mouse(kind: MouseEventKind, x: u16, y: u16) -> MouseEvent {
+pub(super) fn mouse(kind: MouseEventKind, x: u16, y: u16) -> MouseEvent {
     MouseEvent {
         kind,
         column: x,
@@ -39,7 +39,7 @@ fn mouse(kind: MouseEventKind, x: u16, y: u16) -> MouseEvent {
     }
 }
 
-fn wheel(up: bool, x: u16, y: u16) -> MouseEvent {
+pub(super) fn wheel(up: bool, x: u16, y: u16) -> MouseEvent {
     let kind = if up {
         MouseEventKind::ScrollUp
     } else {
@@ -48,7 +48,7 @@ fn wheel(up: bool, x: u16, y: u16) -> MouseEvent {
     mouse(kind, x, y)
 }
 
-fn middle(r: Rect) -> (u16, u16) {
+pub(super) fn middle(r: Rect) -> (u16, u16) {
     (r.x + r.width / 2, r.y + r.height / 2)
 }
 
@@ -121,19 +121,37 @@ fn wheel_does_not_move_focus() {
 }
 
 #[test]
-fn wheel_ignored_over_org_and_needs_you() {
+fn wheel_scrolls_org_and_needs_you_without_moving_selection() {
     let mut m = model();
-    let before = m.clone();
-    let a = areas(&m);
-    for r in [a.org, a.needs_you] {
-        let (x, y) = middle(r);
-        assert_eq!(on_mouse(&mut m, wheel(true, x, y)), []);
+    m.screen = Rect::new(0, 0, 100, 24);
+    // Enough Needs you items that the list overflows its rows.
+    for i in 0..6 {
+        let mut item = m.needs_you[0].clone();
+        item.agent = n(&format!("squad-{}", i % 3 + 1));
+        m.needs_you.push(item);
     }
-    assert_eq!(m, before);
+    let selected = m.selected.clone();
+    let pane = m.focus.pane;
+    let a = areas(&m);
+    let (x, y) = middle(a.org);
+    assert_eq!(on_mouse(&mut m, wheel(false, x, y)), []);
+    let Some((top, key)) = m.org_scroll.clone() else {
+        panic!("the wheel left no offset");
+    };
+    assert!(top > 0, "scrolled down");
+    assert_eq!(key, selected, "the offset belongs to the selection");
+    assert_eq!(on_mouse(&mut m, wheel(true, x, y)), []);
+    assert_eq!(m.org_scroll.as_ref().map(|s| s.0), Some(0));
+    let (x, y) = middle(a.needs_you);
+    assert_eq!(on_mouse(&mut m, wheel(false, x, y)), []);
+    assert_eq!(m.needs_scroll, 1);
+    assert_eq!(on_mouse(&mut m, wheel(true, x, y)), []);
+    assert_eq!(m.needs_scroll, 0);
+    assert_eq!((m.selected.clone(), m.focus.pane), (selected, pane));
 }
 
 #[test]
-fn mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small() {
+fn wheel_ignored_in_dialogs_confirmations_settings_worktrees() {
     let base = model();
     let (x, y) = middle(areas(&base).live);
     let click = mouse(
@@ -156,9 +174,39 @@ fn mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small() {
         assert_eq!(on_mouse(&mut m, click), []);
         assert_eq!(m, before);
     }
+}
+
+#[test]
+fn mouse_ignored_on_too_small_screen() {
     let mut small = model();
     small.screen = Rect::new(0, 0, 40, 10);
-    assert_eq!(on_mouse(&mut small, wheel(true, 5, 5)), []);
+    let before = small.clone();
+    for ev in [
+        wheel(true, 5, 5),
+        wheel(false, 5, 5),
+        press(5, 5),
+        mouse(MouseEventKind::Down(MouseButton::Right), 5, 5),
+    ] {
+        assert_eq!(on_mouse(&mut small, ev), []);
+    }
+    assert_eq!(small, before);
+}
+
+#[test]
+fn mouse_outside_screen_ignored() {
+    let mut m = model();
+    let before = m.clone();
+    for (x, y) in [(W, 5), (5, H), (W + 10, H + 10)] {
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Down(MouseButton::Right),
+            MouseEventKind::ScrollUp,
+            MouseEventKind::Drag(MouseButton::Left),
+        ] {
+            assert_eq!(on_mouse(&mut m, mouse(kind, x, y)), []);
+        }
+    }
+    assert_eq!(m, before);
 }
 
 fn stop_duo(m: &UiModel) -> duohive_core::command::Command {
@@ -266,12 +314,12 @@ fn chat_pgup_pgdn_page_with_focus() {
     assert_eq!(m.chat.scroll, None);
 }
 
-fn press(x: u16, y: u16) -> MouseEvent {
+pub(super) fn press(x: u16, y: u16) -> MouseEvent {
     mouse(MouseEventKind::Down(MouseButton::Left), x, y)
 }
 
 /// The screen cell where `text` is drawn inside `r`, found on the rendered frame.
-fn cell_of(m: &UiModel, r: Rect, text: &str) -> (u16, u16) {
+pub(super) fn cell_of(m: &UiModel, r: Rect, text: &str) -> (u16, u16) {
     let lines = render_lines(m, &ctx(), W, H);
     for y in r.y..r.bottom() {
         let line: String = lines[usize::from(y)]
@@ -461,18 +509,18 @@ fn click_ignored_while_zoomed() {
 }
 
 #[test]
-fn right_middle_click_and_drag_ignored() {
+fn middle_click_ignored() {
     let mut m = model();
     m.focus.pane = Pane::Chat;
     let before = m.clone();
     let (x, y) = cell_of(&m, areas(&m).org, "billing-api");
-    for kind in [
-        MouseEventKind::Down(MouseButton::Right),
-        MouseEventKind::Down(MouseButton::Middle),
-        MouseEventKind::Drag(MouseButton::Left),
-    ] {
-        assert_eq!(on_mouse(&mut m, mouse(kind, x, y)), []);
-    }
+    assert_eq!(
+        on_mouse(
+            &mut m,
+            mouse(MouseEventKind::Down(MouseButton::Middle), x, y)
+        ),
+        []
+    );
     assert_eq!(m, before);
 }
 

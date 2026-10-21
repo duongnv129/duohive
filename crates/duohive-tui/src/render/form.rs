@@ -7,6 +7,7 @@ use ratatui::style::{Color, Style};
 use super::{LIGHT, draw_box, fg, put};
 use crate::format::{one_line, pad_right, truncate_end, width};
 use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, VISIBLE_ROWS};
+use crate::input::Action;
 use crate::theme::Palette;
 
 const MARGIN: u16 = 4;
@@ -235,6 +236,7 @@ fn draw_fields<'a>(
             *popup = Some((cx, line.y, fld));
         }
         let (next, at) = draw_control(buf, line, cx, fld, focused, p);
+        record_field(f, i, fld, cx, next, line.y);
         cursor = cursor.or(at);
         cx = next;
         if let Some(s) = &fld.suffix {
@@ -249,6 +251,31 @@ fn draw_fields<'a>(
         x = cx;
     }
     cursor
+}
+
+/// A click on a field focuses it; on a choice it also steps it, on a dropdown it opens it.
+fn record_field(f: &Form, i: usize, fld: &Field, from: u16, to: u16, y: u16) {
+    if fld.locked || fld.kind == FieldKind::ReadOnly || to <= from {
+        return;
+    }
+    let mut keys = vec![Action::Tab; f.tabs_to(i)];
+    match fld.kind {
+        FieldKind::Choice(_) => keys.push(Action::Right),
+        FieldKind::Dropdown if !fld.drop.open => keys.push(Action::DialogEnter),
+        _ => {}
+    }
+    if fld.drop.open && f.focus == i {
+        return;
+    }
+    super::hits::record(
+        Rect {
+            x: from,
+            y,
+            width: to - from,
+            height: 1,
+        },
+        keys,
+    );
 }
 
 /// `[ value ▾ ]` or `[ text____ ]`; returns the next x and, for focused text, the cursor.
@@ -370,6 +397,17 @@ fn draw_popup(
     for (i, row) in shown.iter().enumerate() {
         let ry = r.y + 1 + u16::try_from(i).unwrap_or(0);
         let focused = first + i == fld.drop.cursor;
+        let delta =
+            isize::try_from(first + i).unwrap_or(0) - isize::try_from(fld.drop.cursor).unwrap_or(0);
+        super::hits::record(
+            Rect {
+                x: r.x + 1,
+                y: ry,
+                width: w - 2,
+                height: 1,
+            },
+            super::hits::row_keys(delta),
+        );
         let style = if focused {
             p.selected().fg(p.fg)
         } else {
@@ -446,6 +484,14 @@ fn draw_buttons(buf: &mut Buffer, line: Line, f: &Form, p: &Palette) {
     let can_save = errors == 0 && !f.saving;
     let x = line.put(start, &save, style(f.on_save(), can_save), buf);
     let cancel_x = x + 2;
+    let button = |from: u16, text: &str| Rect {
+        x: from,
+        y: line.y,
+        width: u16::try_from(width(text)).unwrap_or(0),
+        height: 1,
+    };
+    super::hits::record(button(start, &save), vec![Action::Save]);
+    super::hits::record(button(cancel_x, cancel), vec![Action::Esc]);
     line.put(cancel_x, cancel, style(f.on_cancel(), true), buf);
     if f.on_save() {
         line.put(start - 1, FOCUS, fg(p.border_focus), buf);
@@ -468,6 +514,16 @@ pub(super) fn draw_chooser(buf: &mut Buffer, area: Rect, c: &Chooser, p: &Palett
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
         let line = Line { x0, y, right };
         let focused = i == c.focus;
+        let delta = isize::try_from(i).unwrap_or(0) - isize::try_from(c.focus).unwrap_or(0);
+        super::hits::record(
+            Rect {
+                x: x0,
+                y,
+                width: r.width.saturating_sub(2),
+                height: 1,
+            },
+            super::hits::row_keys(delta),
+        );
         if focused {
             line.put(x0, FOCUS, fg(p.border_focus), buf);
         }

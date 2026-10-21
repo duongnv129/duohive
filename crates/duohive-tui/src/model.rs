@@ -186,6 +186,16 @@ pub struct UiModel {
     pub first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// The first-run wizard, while `first_run` is `Some`.
     pub wizard: Option<FirstRun>,
+    /// The right-click menu, while open (UI §4.4.2).
+    pub menu: Option<crate::input::Menu>,
+    /// A node being dragged (UI §4.4.2).
+    pub drag: Option<crate::input::Drag>,
+    /// The chat's top edge being dragged: the row it was pressed on and the extra rows then.
+    pub edge_drag: Option<(u16, i16)>,
+    /// The org tree's first row as the wheel left it; holds while that node stays selected.
+    pub org_scroll: Option<(usize, NodeKey)>,
+    /// The first Needs you item shown, as the wheel left it.
+    pub needs_scroll: usize,
     /// The tree filter by state (UI §4.1.1).
     pub filter: crate::filter::Filter,
     /// Each CLI's models and efforts once listed; absent while loading (TD §5.2).
@@ -231,6 +241,11 @@ impl UiModel {
             cards: BTreeMap::new(),
             first_run: None,
             wizard: None,
+            menu: None,
+            drag: None,
+            edge_drag: None,
+            org_scroll: None,
+            needs_scroll: 0,
             filter: crate::filter::Filter::default(),
             models: BTreeMap::new(),
         }

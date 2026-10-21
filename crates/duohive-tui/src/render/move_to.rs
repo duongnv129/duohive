@@ -66,6 +66,16 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, s: &MoveTo, p: &Palette) {
         } else {
             inside
         };
+        let delta = isize::try_from(i).unwrap_or(0) - isize::try_from(s.cursor).unwrap_or(0);
+        super::hits::record(
+            Rect {
+                x: r.x + 1,
+                y,
+                width: r.width - 2,
+                height: 1,
+            },
+            super::hits::row_keys(delta),
+        );
         put(
             buf,
             r.x + 1,

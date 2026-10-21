@@ -41,6 +41,8 @@ struct Piece {
     focused: bool,
     /// The terminal cursor's column inside `text`, while a box is open.
     cursor: Option<usize>,
+    /// Rows from the focused control, for a control: a click presses that many `↑↓`, then `enter`.
+    delta: Option<isize>,
 }
 
 /// Plain text.
@@ -49,6 +51,7 @@ fn plain(text: &str) -> Piece {
         text: text.to_owned(),
         focused: false,
         cursor: None,
+        delta: None,
     }
 }
 
@@ -56,10 +59,14 @@ fn plain(text: &str) -> Piece {
 fn control(st: &SettingsState, row: SettingsRow, text: &str) -> Piece {
     let focused = st.row == row;
     let marker = if focused { FOCUS } else { " " };
+    let at = |r: SettingsRow| {
+        isize::try_from(SettingsRow::ALL.iter().position(|x| *x == r).unwrap_or(0)).unwrap_or(0)
+    };
     Piece {
         text: format!("{marker}{text}"),
         focused,
         cursor: None,
+        delta: Some(at(row) - at(st.row)),
     }
 }
 
@@ -112,6 +119,7 @@ fn draw_pieces(
                 y,
             });
         }
+        let from = at;
         at = put(
             buf,
             at,
@@ -120,6 +128,17 @@ fn draw_pieces(
             right.saturating_sub(usize::from(at)),
             style,
         );
+        if let (Some(delta), true) = (piece.delta, at > from) {
+            super::hits::record(
+                Rect {
+                    x: from,
+                    y,
+                    width: at - from,
+                    height: 1,
+                },
+                super::hits::row_keys(delta),
+            );
+        }
     }
     cursor
 }

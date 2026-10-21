@@ -325,6 +325,21 @@ impl Form {
         FormOutcome::Continue
     }
 
+    /// How many `tab` presses take focus from where it is to stop `to` (a field, Save or Cancel).
+    pub fn tabs_to(&self, to: usize) -> usize {
+        let stops = self.fields.len() + 2;
+        let mut probe = self.clone();
+        (0..=stops)
+            .find(|_| {
+                if probe.focus == to {
+                    return true;
+                }
+                probe.step(true);
+                false
+            })
+            .unwrap_or(0)
+    }
+
     /// Whether the focused field edits `id`.
     fn focused_is(&self, id: FieldId) -> bool {
         self.fields.get(self.focus).is_some_and(|f| f.id == id)

@@ -13,6 +13,7 @@ use super::{LIGHT, RenderCtx, draw_box, fg, put};
 use crate::first_run::{FirstRun, Step, TemplateChoice, errors, form_error, trimmed};
 use crate::format::width;
 use crate::forms::LineEdit;
+use crate::input::Action;
 use crate::model::UiModel;
 use crate::theme::Palette;
 
@@ -71,6 +72,17 @@ impl Line<'_> {
     /// The content's width in cells.
     fn width(&self) -> u16 {
         self.right.saturating_sub(self.x0)
+    }
+
+    /// Notes that a click on `text` drawn at `dx` presses `keys`.
+    fn record(&self, dx: u16, text: &str, keys: Vec<Action>) {
+        let area = Rect {
+            x: self.x0 + dx,
+            y: self.y,
+            width: u16::try_from(width(text)).unwrap_or(0),
+            height: 1,
+        };
+        super::hits::record(area, keys);
     }
 
     fn text(&mut self, s: &str, color: Color) {
@@ -162,6 +174,20 @@ fn template(line: &mut Line, w: &FirstRun, p: &Palette) -> Option<Position> {
     line.down();
     for (i, choice) in TemplateChoice::ALL.iter().enumerate() {
         let selected = i == w.cursor;
+        // A click on a template selects it, as `↑↓` would.
+        let delta = isize::try_from(i).unwrap_or(0) - isize::try_from(w.cursor).unwrap_or(0);
+        let mut keys =
+            vec![if delta < 0 { Action::Up } else { Action::Down }; delta.unsigned_abs()];
+        keys.truncate(delta.unsigned_abs());
+        line.record(
+            0,
+            &format!(
+                "{:<width$}",
+                "",
+                width = usize::from(line.width().saturating_sub(2))
+            ),
+            keys,
+        );
         line.put(0, if selected { FOCUS } else { " " }, fg(p.border_focus));
         let style = if selected {
             p.selected().fg(p.fg)
@@ -617,6 +643,14 @@ fn buttons(line: &mut Line, w: &FirstRun, p: &Palette, hint: &str, can_create: b
         };
         if focused && enabled {
             line.put(x.saturating_sub(1), FOCUS, fg(p.border_focus));
+        }
+        if enabled {
+            // A click presses `tab` to the button, then `enter`.
+            let stops = primary + labels.len();
+            let tabs = (primary + i + stops - w.focus % stops) % stops;
+            let mut keys = vec![Action::Tab; tabs];
+            keys.push(Action::DialogEnter);
+            line.record(x, label, keys);
         }
         x = line.put(x, label, color) + 3;
     }

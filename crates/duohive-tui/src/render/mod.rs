@@ -10,7 +10,9 @@ mod form;
 mod give_work;
 mod header;
 mod help;
+mod hits;
 mod keys_editor;
+pub(crate) mod menu;
 mod move_to;
 mod needs_you;
 mod org_pane;
@@ -29,6 +31,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
+pub(crate) use hits::keys_at;
 pub use screens::{BlockingScreen, render_blocking};
 pub(crate) use worktrees::files_changed;
 
@@ -157,6 +160,37 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     if let Some(at) = cursor {
         frame.set_cursor_position(at);
     }
+    if let Some(menu) = &m.menu {
+        menu::draw(frame.buffer_mut(), area, menu, p);
+    }
+}
+
+/// One wheel tick over the org tree: it scrolls, the selection stays.
+pub(crate) fn org_wheel(m: &mut UiModel, up: bool, lines: usize) {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let Some(l) = layout_below(m.screen, rows, m.chat_rows_extra, typing) else {
+        return;
+    };
+    let l = l.with_needs_you(m.needs_you.len());
+    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    org_pane::wheel(&l, m, replies, up, lines);
+}
+
+/// One wheel tick over Needs you: the first item shown moves by one.
+pub(crate) fn needs_you_wheel(m: &mut UiModel, up: bool) {
+    if let Some(a) = pane_areas(m) {
+        needs_you::wheel(a.needs_you, m, up);
+    }
+}
+
+/// The filter a click on the header at `(x, y)` sets, if it hits a count.
+pub(crate) fn header_count_at(m: &UiModel, x: u16, y: u16) -> Option<crate::filter::Filter> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let row = m.screen.y + u16::try_from(banners).unwrap_or(u16::MAX);
+    let a = pane_areas(m)?;
+    (y == row && !a.zoomed).then(|| header::count_at(m, a.compact, x.saturating_sub(m.screen.x)))?
 }
 
 /// The most rows `ctrl+↑` can add to the chat at the model's screen size, counting the
@@ -453,6 +487,8 @@ mod give_work_tests;
 mod help_tests;
 #[cfg(test)]
 mod live_tests;
+#[cfg(test)]
+mod menu_tests;
 #[cfg(test)]
 mod move_tests;
 #[cfg(test)]

@@ -2,6 +2,8 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
+
+use crate::input::Action;
 use ratatui::style::Style;
 
 use super::{LIGHT, draw_box, fg, put};
@@ -112,6 +114,28 @@ fn draw_buttons(buf: &mut Buffer, r: Rect, c: &Confirm, p: &Palette) {
         (no, button(!c.focus_yes)),
     ];
     let room = usize::from(r.right().saturating_sub(1));
+    // A click on a button presses its key.
+    let cells = |s: &str| u16::try_from(width(s)).unwrap_or(0);
+    let yes_x = start + cells(FOCUS);
+    super::hits::record(
+        Rect {
+            x: yes_x,
+            y,
+            width: cells(&yes),
+            height: 1,
+        },
+        vec![Action::DialogYes],
+    );
+    let no_x = yes_x + cells(&yes) + cells(GAP) + cells(FOCUS);
+    super::hits::record(
+        Rect {
+            x: no_x,
+            y,
+            width: cells(no),
+            height: 1,
+        },
+        vec![Action::DialogNo],
+    );
     pieces.into_iter().fold(start, |x, (text, style)| {
         put(buf, x, y, text, room.saturating_sub(usize::from(x)), style)
     });

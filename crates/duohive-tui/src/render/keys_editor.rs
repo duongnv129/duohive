@@ -29,6 +29,18 @@ const FOOTER: &str = "enter rebind (press the new key) · backspace default · e
 /// The foot of a list with actions below it (UI §4.10).
 const MORE: &str = "↓ more";
 
+/// A click on row `i` presses `↑↓` to it, then `enter` (rebind).
+fn record_row(r: Rect, y: u16, i: usize, cursor: usize) {
+    let delta = isize::try_from(i).unwrap_or(0) - isize::try_from(cursor).unwrap_or(0);
+    let area = Rect {
+        x: r.x + 1,
+        y,
+        width: r.width - 2,
+        height: 1,
+    };
+    super::hits::record(area, super::hits::row_keys(delta));
+}
+
 /// Draws the editor centred over `area`.
 pub(super) fn draw(buf: &mut Buffer, area: Rect, st: &KeysState, m: &UiModel, p: &Palette) {
     let w = WIDTH.min(area.width.saturating_sub(MARGIN));
@@ -96,6 +108,7 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, st: &KeysState, m: &UiModel, p:
         } else {
             Style::default().fg(p.fg).bg(p.bg_panel)
         };
+        record_row(r, y, i, st.cursor);
         let label = format!("{marker} {:<width$}", action.label(), width = 23);
         put(buf, r.x + 1, y, &label, room, row);
         let text = if focused && st.capturing {

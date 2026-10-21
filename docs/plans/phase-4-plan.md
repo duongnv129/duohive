@@ -306,7 +306,7 @@ Test names are the ones the checklist and the Spec coverage table cite. Every ta
 - Consumes: `on_mouse`, `pane_areas`, `org_key_at`, `needs_you_item_at`, `Keymap`, `OrgEdit::Move`, `valid_targets` (4.8), `Filter` (4.9), the dialogs and wizard of 4.3–4.6.
 - Produces: `pub struct Menu { pub node: NodeKey, pub at: Position, pub rows: Vec<MenuRow> }`, `pub struct MenuRow { pub action: ActionId, pub label: String, pub key: String, pub disabled: Option<String> }`; `pub struct Drag { pub node: NodeKey, pub over: Option<DropTarget> }`; `UiModel.org_scroll` (a scroll offset apart from the selection).
 
-- [ ] **Step 1: Replace three phase 2 tests** in `input/mouse_tests.rs`, change `motion_events_dropped` (the test at `app/terminal.rs`, about line 336, which asserts `Moved` and `Drag` events map to `None`) to `drag_events_are_forwarded_and_moved_stays_dropped`, and write the new ones:
+- [x] **Step 1: Replace three phase 2 tests** in `input/mouse_tests.rs`, change `motion_events_dropped` (the test at `app/terminal.rs`, about line 336, which asserts `Moved` and `Drag` events map to `None`) to `drag_events_are_forwarded_and_moved_stays_dropped`, and write the new ones:
   - `wheel_ignored_in_dialogs_confirmations_settings_worktrees` and `mouse_ignored_on_too_small_screen` (wheel included) replace `mouse_ignored_in_dialogs_confirmations_settings_worktrees_and_too_small`;
   - `wheel_scrolls_org_and_needs_you_without_moving_selection` replaces `wheel_ignored_over_org_and_needs_you`;
   - `right_click_opens_menu_and_drag_moves_node` replaces `right_middle_click_and_drag_ignored` (middle-click stays ignored: `middle_click_ignored`);
@@ -314,10 +314,10 @@ Test names are the ones the checklist and the Spec coverage table cite. Every ta
   - New gestures: `right_click_menu_lists_every_action_with_its_key`, `menu_disabled_row_gives_the_reason`, `menu_stays_on_screen_at_the_edges`, `menu_closes_on_esc_click_elsewhere_and_action`, `team_role_duo_menus_differ` (Duo has Edit org; team and role have New here, Edit, Move to, Delete, and Give work for roles), `drag_highlights_valid_targets`, `invalid_drop_refused_with_reason` (footer text), `drop_opens_move_to_when_inherited_values_change`, `drag_chat_edge_resizes`, `header_count_click_sets_filter_for_two_states` (working and need you; finished by `f` only), `typing_mode_right_click_and_drag_ignored` (P4-Q4); `mouse_outside_screen_ignored` (events past the last row or column, or arriving during a resize, change nothing).
   - One click test per screen: `click_dialog_buttons`, `click_form_buttons`, `click_worktree_rows`, `click_settings_rows`, `click_move_to_rows`, `click_picker_rows` (the dropdown), `click_key_binding_rows`, `click_first_run_steps`, `click_replace_dialog_buttons`.
   - Accessibility and parity: `every_action_has_a_click_path` (each `ActionId` is reachable from the menu or a screen control), `no_color_menu_and_drag_readable`, `reduce_motion_menu_and_drag`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- mouse menu`
-- [ ] **Step 3: Implement** the menu (built from the node's valid actions through the keymap), the drag state machine in `drag.rs` (press on a row, `Drag(Left)` updates `over`, `Up(Left)` drops; the terminal now forwards `Drag` events only, because `Moved` fires on every pointer motion and is dropped on purpose so it cannot fill the input queue, `app/terminal.rs`), the org and Needs you scroll offsets, and the per-screen click handlers (each does what its key does, by sending the same `Action` the key would).
-- [ ] **Step 4: Run, see PASS.** `make check`; review snapshots against UI §4.4.2 and §5.
-- [ ] **Step 5: Commit.** `feat: mouse parity on every screen`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- mouse menu`
+- [x] **Step 3: Implement** the menu (built from the node's valid actions through the keymap), the drag state machine in `drag.rs` (press on a row, `Drag(Left)` updates `over`, `Up(Left)` drops; the terminal now forwards `Drag` events only, because `Moved` fires on every pointer motion and is dropped on purpose so it cannot fill the input queue, `app/terminal.rs`), the org and Needs you scroll offsets, and the per-screen click handlers (each does what its key does, by sending the same `Action` the key would).
+- [x] **Step 4: Run, see PASS.** `make check`; review snapshots against UI §4.4.2 and §5.
+- [x] **Step 5: Commit.** `feat: mouse parity on every screen`
 
 ### Task 4.10: Acceptance
 
@@ -351,7 +351,7 @@ Tick each box when the task is done. The steps inside each task above are ticked
 - [x] 4.5 Model and effort picker (spike S4 first)
 - [x] 4.8 Move to…
 - [ ] 4.9 Filter and the accessibility re-check
-- [ ] 4.7 Mouse parity on every screen (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
+- [x] 4.7 Mouse parity on every screen (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
 - [ ] 4.10 Acceptance
 
 ## Risks

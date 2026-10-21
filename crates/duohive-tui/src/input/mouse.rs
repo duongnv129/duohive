@@ -8,29 +8,138 @@ use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
-use super::{UiEffect, agent, agent_of, cards, panes};
+use super::{UiEffect, agent, agent_of, cards, drag, menu, panes};
 use crate::chat;
+use crate::filter::Filter;
 use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
-use crate::render::{PaneAreas, chat_card_at, needs_you_item_at, org_key_at, pane_areas};
+use crate::render::{
+    PaneAreas, chat_card_at, chat_extra_limit, header_count_at, needs_you_item_at, needs_you_wheel,
+    org_key_at, org_wheel, pane_areas,
+};
 
 /// Lines one wheel tick scrolls DuoHive's own views (the snapshot, the chat history).
 pub(crate) const WHEEL_LINES: u16 = 3;
 
-/// What a mouse event does. Nothing while a dialog is open or the screen is too small.
+/// What a mouse event does. Nothing outside the screen or on one too small for the panes;
+/// in a dialog or the first-run wizard only a left press, which does what its key does.
 pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
-    if m.dialog.is_some() {
+    let at = Position::new(ev.column, ev.row);
+    if !m.screen.contains(at) {
         return Vec::new();
+    }
+    if m.menu.is_some() {
+        return on_menu(m, ev, at);
+    }
+    if m.dialog.is_some() || m.wizard.is_some() {
+        return on_dialog(m, ev, at);
     }
     let Some(areas) = pane_areas(m) else {
         return Vec::new();
     };
-    let at = Position::new(ev.column, ev.row);
     match ev.kind {
         MouseEventKind::ScrollUp => on_wheel(m, &areas, at, true),
         MouseEventKind::ScrollDown => on_wheel(m, &areas, at, false),
-        MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => on_click(m, &areas, at),
+        MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => on_press(m, &areas, at),
+        MouseEventKind::Down(MouseButton::Right) if !areas.zoomed && !m.typing() => {
+            on_right_click(m, &areas, at)
+        }
+        MouseEventKind::Drag(MouseButton::Left) if !areas.zoomed && !m.typing() => {
+            on_drag(m, &areas, at);
+            Vec::new()
+        }
+        MouseEventKind::Up(MouseButton::Left) => {
+            m.edge_drag = None;
+            drag::drop_it(m)
+        }
         _ => Vec::new(),
+    }
+}
+
+/// A press with a menu open: a row runs, anywhere else closes it.
+fn on_menu(m: &mut UiModel, ev: MouseEvent, at: Position) -> Vec<UiEffect> {
+    let pressed = matches!(
+        ev.kind,
+        MouseEventKind::Down(MouseButton::Left | MouseButton::Right)
+    );
+    if !pressed {
+        return Vec::new();
+    }
+    let hit = m.menu.as_ref().and_then(|menu| {
+        let r = crate::render::menu::rect(m.screen, menu);
+        let inside = r.contains(at) && at.y > r.y && at.y + 1 < r.bottom();
+        inside.then(|| usize::from(at.y - r.y - 1))
+    });
+    match hit {
+        Some(row) => menu::choose(m, row),
+        None => {
+            m.menu = None;
+            Vec::new()
+        }
+    }
+}
+
+/// A left press in a dialog or the wizard: the keys the clicked button or row stands for.
+fn on_dialog(m: &mut UiModel, ev: MouseEvent, at: Position) -> Vec<UiEffect> {
+    if ev.kind != MouseEventKind::Down(MouseButton::Left) {
+        return Vec::new();
+    }
+    let Some(keys) = crate::render::keys_at(m, at) else {
+        return Vec::new();
+    };
+    keys.into_iter().flat_map(|k| super::update(m, k)).collect()
+}
+
+/// A left press on the main screen: a header count sets the filter, the chat's top edge
+/// starts a resize, a row selects and starts a drag.
+fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
+    if let Some(f) = header_count_at(m, at.x, at.y) {
+        crate::filter::set(m, if m.filter == f { Filter::Off } else { f });
+        return Vec::new();
+    }
+    if areas.chat.contains(at) && at.y == areas.chat.y {
+        m.edge_drag = Some((at.y, m.chat_rows_extra));
+    }
+    let key = areas
+        .org
+        .contains(at)
+        .then(|| org_key_at(m, at.y))
+        .flatten();
+    let out = on_click(m, areas, at);
+    if let Some(key) = key {
+        drag::start(m, key);
+    }
+    out
+}
+
+/// A right press on a row: select it and open its menu at the pointer.
+fn on_right_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
+    if !areas.org.contains(at) {
+        return Vec::new();
+    }
+    let Some(key) = org_key_at(m, at.y) else {
+        return Vec::new();
+    };
+    let out = select(m, key.clone());
+    m.menu = Some(menu::build(m, key, at));
+    out
+}
+
+/// The pointer moves with the left button held: resize the chat or carry a node.
+fn on_drag(m: &mut UiModel, areas: &PaneAreas, at: Position) {
+    if let Some((from, extra)) = m.edge_drag {
+        let moved = i16::try_from(from).unwrap_or(0) - i16::try_from(at.y).unwrap_or(0);
+        let limit = chat_extra_limit(m).max(0);
+        m.chat_rows_extra = (extra + moved).clamp(0, limit);
+        return;
+    }
+    if m.drag.is_some() {
+        let over = areas
+            .org
+            .contains(at)
+            .then(|| org_key_at(m, at.y))
+            .flatten();
+        drag::hover(m, over);
     }
 }
 
@@ -109,6 +218,10 @@ fn on_wheel(m: &mut UiModel, areas: &PaneAreas, at: Position, up: bool) -> Vec<U
     }
     if !areas.zoomed && areas.chat.contains(at) {
         chat::scroll(m, up, usize::from(WHEEL_LINES));
+    } else if !areas.zoomed && areas.org.contains(at) {
+        org_wheel(m, up, usize::from(WHEEL_LINES));
+    } else if !areas.zoomed && areas.needs_you.contains(at) {
+        needs_you_wheel(m, up);
     }
     Vec::new()
 }

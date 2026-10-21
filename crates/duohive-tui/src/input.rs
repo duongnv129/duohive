@@ -9,6 +9,10 @@ use duohive_core::org::{NodeKey, Org, Role, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::view::PaneInput;
 
+pub(crate) use drag::drop_valid;
+pub use drag::{Drag, DropTarget};
+pub use menu::{Menu, MenuRow};
+
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
@@ -150,6 +154,10 @@ pub enum UiEffect {
 pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
+    }
+    // An open right-click menu takes the keys first.
+    if m.menu.is_some() {
+        return Some(menu::map_key(k));
     }
     // The wizard owns every key while it is up, so its fields can type `q` (UI §4.3);
     // a confirmation over it takes its own keys first.
@@ -386,6 +394,9 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.give_sent = None;
     if a == Action::Quit {
         return vec![UiEffect::Quit];
+    }
+    if m.menu.is_some() {
+        return menu::action(m, a);
     }
     if m.wizard.is_some() && !matches!(m.dialog, Some(Dialog::Confirm(_))) {
         return wizard_action(m, a);
@@ -834,8 +845,10 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 
 mod agent;
 mod cards;
+mod drag;
 pub(crate) mod give_work;
 mod keymap;
+mod menu;
 pub(crate) mod mouse;
 mod move_to;
 mod panes;
@@ -853,11 +866,19 @@ mod filter_tests;
 #[cfg(test)]
 mod keymap_tests;
 #[cfg(test)]
-mod mouse_tests;
+mod menu_tests;
+#[cfg(test)]
+pub(super) mod mouse_tests;
 #[cfg(test)]
 mod move_tests;
 #[cfg(test)]
 pub(crate) use move_tests::spec_org as spec_move_org;
+#[cfg(test)]
+pub(crate) use move_tests::spec_org as move_spec_org;
+#[cfg(test)]
+pub(crate) fn open_menu_for(m: &mut UiModel, node: NodeKey, at: ratatui::layout::Position) {
+    m.menu = Some(menu::build(m, node, at));
+}
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]
