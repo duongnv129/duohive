@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/move_tests.rs
+expression: text
+---
+ DuoHive  ● 0 · ◆ 0                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · Claude · your manager agent ────────┐
+┃▌⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments                   ┃│    ◦ idle                                    │
+┃   ▾ Backend                  ┃│                                              │
+┃     auth-service     ○   1d  ┃│                                              │
+┃     bill┌─ Move pay-qa to… ────────────────────────────────────────┐         │
+┃   ▾ QA  │                                                          │         │
+┃     pay-│  Payments › Backend                                      │         │
+┃ ▾ Genera│  Payments › QA                                  current  │         │
+┃     squa│▌ Generalist                                              │         │
+┃     squa│                                                          │         │
+┃     squa│  Moving changes what pay-qa inherits:                    │         │
+┃         │    worktrees     off → on                                │         │
+┃         │    role prompt   QA → Generalist                         │         │
+┃         │                                                          │         │
+┃         │  ↑↓ choose · enter move · esc cancel                     │         │
+┣━ Needs y└──────────────────────────────────────────────────────────┘         │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

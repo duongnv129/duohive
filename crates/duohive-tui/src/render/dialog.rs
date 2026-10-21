@@ -35,6 +35,7 @@ pub(super) fn draw(
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
         Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, now, p),
         Dialog::Settings(s) => return super::settings::draw(buf, area, s, m, p),
+        Dialog::MoveTo(s) => super::move_to::draw(buf, area, s, p),
         Dialog::Worktrees(l) => super::worktrees::draw(buf, area, *l, m, now, p),
         Dialog::KeyMap(s) => super::help::draw(buf, area, *s, m, p),
         Dialog::Keys(s) => super::keys_editor::draw(buf, area, s, m, p),

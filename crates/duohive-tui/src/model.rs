@@ -25,7 +25,7 @@ use ratatui::layout::Rect;
 use crate::chat::{self, ChatLines};
 use crate::first_run::FirstRun;
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
+use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, SettingsState};
 use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
@@ -42,6 +42,8 @@ pub enum Dialog {
     GiveWork(Box<GiveWork>),
     /// DuoHive's worktrees (UI §4.9).
     Worktrees(WorktreeList),
+    /// Where a node can move to (UI §4.4.2).
+    MoveTo(Box<MoveTo>),
     /// Personal settings (UI §4.10).
     Settings(SettingsState),
     /// The key map (UI §4.11).

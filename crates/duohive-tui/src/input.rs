@@ -231,6 +231,12 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
+        Dialog::MoveTo(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        },
         Dialog::Settings(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
@@ -393,6 +399,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
+        Some(Dialog::MoveTo(p)) => return move_to::action(m, p, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
         Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
@@ -428,8 +435,8 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Action::Worktrees => return worktrees::open(m),
         Action::Settings => return settings::open(m),
         Action::KeyMap => return keymap::open(m),
+        Action::Move => return move_to::open(m),
         Action::Filter
-        | Action::Move
         | Action::CardApprove
         | Action::CardEdit
         | Action::CardReject
@@ -824,6 +831,7 @@ mod cards;
 pub(crate) mod give_work;
 mod keymap;
 pub(crate) mod mouse;
+mod move_to;
 mod panes;
 mod settings;
 mod worktrees;
@@ -838,6 +846,10 @@ mod chat_tests;
 mod keymap_tests;
 #[cfg(test)]
 mod mouse_tests;
+#[cfg(test)]
+mod move_tests;
+#[cfg(test)]
+pub(crate) use move_tests::spec_org as spec_move_org;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

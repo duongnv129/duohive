@@ -10,6 +10,7 @@ mod dropdown;
 mod field;
 mod give_work;
 mod line_edit;
+mod move_to;
 mod org;
 mod role;
 mod settings;
@@ -32,6 +33,7 @@ pub use dropdown::{DropRow, Dropdown, EFFORT_NEEDS_MODEL, Models, VISIBLE_ROWS};
 pub use field::{Field, FieldId, FieldKind, Look};
 pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
+pub use move_to::{InheritedChange, MoveOption, MoveTo, node_name, valid_targets};
 pub use settings::{
     SettingsRow, SettingsState, cycled, name_typed, quiet_stepped, quiet_typed, toggled,
 };

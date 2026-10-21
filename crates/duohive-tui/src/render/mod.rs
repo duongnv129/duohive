@@ -11,6 +11,7 @@ mod give_work;
 mod header;
 mod help;
 mod keys_editor;
+mod move_to;
 mod needs_you;
 mod org_pane;
 mod screens;
@@ -448,6 +449,8 @@ mod give_work_tests;
 mod help_tests;
 #[cfg(test)]
 mod live_tests;
+#[cfg(test)]
+mod move_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

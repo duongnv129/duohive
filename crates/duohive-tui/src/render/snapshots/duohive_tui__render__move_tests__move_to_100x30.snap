@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/render/move_tests.rs
+expression: text
+---
+ DuoHive   6 agents · ● 0 working · ◆ 0 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ ⬢ Duo · Claude · your manager agent ──────────┐
+┃▌⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                                  ┃│    ◦ idle                                      │
+┃ │  ├─ ◇ Backend                                ┃│                                                │
+┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                │
+┃ │  │  └─ billing-api          ○ stopped    1d  ┃│                                                │
+┃ │  └─ ◇ QA                                     ┃│                                                │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ └─ ◇ Generalist   ┌─ Move pay-qa to… ────────────────────────────────────────┐                   │
+┃    ├─ squad-1     │                                                          │                   │
+┃    ├─ squad-2     │  Payments › Backend                                      │                   │
+┃    └─ squad-3     │  Payments › QA                                  current  │                   │
+┃                   │▌ Generalist                                              │                   │
+┃                   │                                                          │                   │
+┃                   │  Moving changes what pay-qa inherits:                    │                   │
+┃                   │    worktrees     off → on                                │                   │
+┃                   │    role prompt   QA → Generalist                         │                   │
+┃                   │                                                          │                   │
+┃                   │  ↑↓ choose · enter move · esc cancel                     │                   │
+┃                   └──────────────────────────────────────────────────────────┘                   │
+┣━ Needs you (0) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help

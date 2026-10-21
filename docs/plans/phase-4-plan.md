@@ -276,11 +276,11 @@ Test names are the ones the checklist and the Spec coverage table cite. Every ta
 - Consumes: `OrgEdit::Move { node: NodeKey, to: MoveTarget }` (P3-D20), `MoveTarget::{Into(NodeKey), Before(NodeName), End}`, `inherit::resolve`, `Keymap` (`ActionId::Move`).
 - Produces: `pub struct MoveTo { node: NodeKey, targets: Vec<MoveOption>, cursor: usize }`; `pub struct MoveOption { pub label: String, pub to: MoveTarget, pub current: bool, pub changes: Vec<InheritedChange> }`; `pub struct InheritedChange { pub field: &'static str, pub from: String, pub to: String }`; `pub fn valid_targets(org: &Org, node: &NodeKey) -> Vec<MoveOption>`; `Dialog::MoveTo(MoveTo)`.
 
-- [ ] **Step 1: Write the failing tests** (`forms/move_to.rs` inline, `input/move_tests.rs`, `render/move_tests.rs`): `move_lists_inherited_changes` (`worktrees off → on`, `role prompt QA → Generalist` (taken from the prompt level names in `inherit.rs`, not from the stacked prompt string) for `pay-qa` into Generalist); `invalid_targets_absent` (an agent has no team as a target; a team has positions only); `move_sends_org_edit_move` (`enter` sends `Command::EditOrg(OrgEdit::Move { .. })`); `move_disabled_when_no_target` (`m` sets the footer `no other place to move <name>` and opens nothing); `move_refused_on_role_name_collision` (`<team> already has a role <role>`); `move_on_team_lists_positions` (`before <team>` rows and `at the end`); `current_target_marked_and_skipped`; `m_on_duo_does_nothing`; snapshot `move_to_100x30` and `move_to_80x24`.
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- move_to`
-- [ ] **Step 3: Implement `valid_targets`** over the org tree and `resolve` (a pure function), the dialog input (`↑↓`, `enter`, `esc`) and the render per UI §4.4.2.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: move to…`
+- [x] **Step 1: Write the failing tests** (`forms/move_to.rs` inline, `input/move_tests.rs`, `render/move_tests.rs`): `move_lists_inherited_changes` (`worktrees off → on`, `role prompt QA → Generalist` (taken from the prompt level names in `inherit.rs`, not from the stacked prompt string) for `pay-qa` into Generalist); `invalid_targets_absent` (an agent has no team as a target; a team has positions only); `move_sends_org_edit_move` (`enter` sends `Command::EditOrg(OrgEdit::Move { .. })`); `move_disabled_when_no_target` (`m` sets the footer `no other place to move <name>` and opens nothing); `move_refused_on_role_name_collision` (`<team> already has a role <role>`); `move_on_team_lists_positions` (`before <team>` rows and `at the end`); `current_target_marked_and_skipped`; `m_on_duo_does_nothing`; snapshot `move_to_100x30` and `move_to_80x24`.
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- move_to`
+- [x] **Step 3: Implement `valid_targets`** over the org tree and `resolve` (a pure function), the dialog input (`↑↓`, `enter`, `esc`) and the render per UI §4.4.2.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: move to…`
 
 ### Task 4.9: Filter and the accessibility re-check
 
@@ -349,7 +349,7 @@ Tick each box when the task is done. The steps inside each task above are ticked
 - [ ] 4.3 First-run setup and templates
 - [x] 4.4 New org from template
 - [x] 4.5 Model and effort picker (spike S4 first)
-- [ ] 4.8 Move to…
+- [x] 4.8 Move to…
 - [ ] 4.9 Filter and the accessibility re-check
 - [ ] 4.7 Mouse parity on every screen (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
 - [ ] 4.10 Acceptance
