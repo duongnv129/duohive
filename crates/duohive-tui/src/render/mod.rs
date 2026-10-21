@@ -436,6 +436,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
 }
 
 #[cfg(test)]
+mod a11y_tests;
+#[cfg(test)]
 mod auto_tests;
 #[cfg(test)]
 mod card_tests;
@@ -443,6 +445,8 @@ mod card_tests;
 mod chat_tests;
 #[cfg(test)]
 mod colour_tests;
+#[cfg(test)]
+mod filter_tests;
 #[cfg(test)]
 mod give_work_tests;
 #[cfg(test)]

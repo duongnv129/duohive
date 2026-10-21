@@ -428,6 +428,10 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             panes::restore_zoom(m);
             return Vec::new();
         }
+        // In the org pane `esc` clears a filter; from another pane it goes back there first.
+        Action::Esc if m.focus.pane == Pane::Org && crate::filter::clear(m) => {
+            return Vec::new();
+        }
         Action::Esc => {
             panes::back_to_org(m);
             return Vec::new();
@@ -436,11 +440,13 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Action::Settings => return settings::open(m),
         Action::KeyMap => return keymap::open(m),
         Action::Move => return move_to::open(m),
-        Action::Filter
-        | Action::CardApprove
-        | Action::CardEdit
-        | Action::CardReject
-        | Action::Capture(_) => return Vec::new(),
+        Action::Filter => {
+            crate::filter::cycle(m);
+            return agent::view_if_finished(m);
+        }
+        Action::CardApprove | Action::CardEdit | Action::CardReject | Action::Capture(_) => {
+            return Vec::new();
+        }
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);
@@ -842,6 +848,8 @@ mod agent_tests;
 mod card_tests;
 #[cfg(test)]
 mod chat_tests;
+#[cfg(test)]
+mod filter_tests;
 #[cfg(test)]
 mod keymap_tests;
 #[cfg(test)]

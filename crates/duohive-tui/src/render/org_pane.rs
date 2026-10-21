@@ -196,7 +196,7 @@ fn draw_row(
                 fg(p.error),
             );
         }
-        TreeRowKind::EmptyRole | TreeRowKind::EmptyOrg => {
+        TreeRowKind::EmptyRole | TreeRowKind::EmptyOrg | TreeRowKind::FilterEmpty => {
             put(
                 buf,
                 x,

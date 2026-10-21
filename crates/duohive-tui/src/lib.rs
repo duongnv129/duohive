@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod chat;
+pub mod filter;
 pub mod first_run;
 pub mod focus;
 pub mod format;

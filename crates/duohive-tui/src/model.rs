@@ -186,6 +186,8 @@ pub struct UiModel {
     pub first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// The first-run wizard, while `first_run` is `Some`.
     pub wizard: Option<FirstRun>,
+    /// The tree filter by state (UI §4.1.1).
+    pub filter: crate::filter::Filter,
     /// Each CLI's models and efforts once listed; absent while loading (TD §5.2).
     pub models: BTreeMap<CliKind, Result<ModelList, String>>,
 }
@@ -229,6 +231,7 @@ impl UiModel {
             cards: BTreeMap::new(),
             first_run: None,
             wizard: None,
+            filter: crate::filter::Filter::default(),
             models: BTreeMap::new(),
         }
     }

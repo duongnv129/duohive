@@ -290,13 +290,13 @@ Test names are the ones the checklist and the Spec coverage table cite. Every ta
 - Produces: `pub enum Filter { Off, NeedYou, Working, Finished }` with `next(self) -> Filter`, `matches(&self, &AgentView) -> bool` (`NeedYou` = waiting, quiet or errored; `Working` = working and not quiet; `Finished` = finished), `chip(&self, compact: bool) -> Option<String>` (`filtered: ◆ · esc clears`, `filter ◆` below 100 columns); `tree_rows` keeps its signature and reads `m.filter` (`UiModel.filter`); `ActionId::Filter` handler.
 - Consumes: `roll_up_counts`, `AgentView`, `Keymap`, the header counts (`needs_you.len()` includes card rows; the chip shows no count).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - Filter: `filter_keeps_matches_and_parents`; `filter_need_you_includes_quiet_and_errored`; `filter_never_hides_cards` (the Needs you list and the chat are unchanged); `filter_empty_result_message` (`no agent is <state> · esc clears the filter`); `filter_clears_hidden_selection_to_first_match`; `esc_in_org_pane_clears_filter`; `esc_elsewhere_keeps_filter`; `f_cycles_need_you_working_finished_off`; snapshots `filter_chip_100x30` (99 columns) and `filter_chip_80x24` (`DuoHive  ● 2 · ◆ 2   filter ◆  … ? help`).
   - Accessibility: `contrast_ratios_meet_4_5` (a new test over `Palette::dark()` and `light()` for every text/background pair in UI §6's table, computed from the RGB values; `auto` is excluded because it uses the terminal's colours); `state_never_colour_only` (in `mono()` every state's row still differs by glyph and word); `no_color_new_screens_readable` and `reduce_motion_new_screens` (render the first-run steps, replace dialog, dropdown, key map, key editor, Move to… and the filter chip with `NO_COLOR` and with `reduce_motion`: no panic, glyph and word present, no spinner); `every_action_has_key` (every `ActionId` has a default key and appears in the key map text).
-- [ ] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- filter a11y contrast`
-- [ ] **Step 3: Implement** `Filter` (filling in the `Action::Filter` handler registered in 4.6), the `tree_rows` filtering (matches plus their parents), the chip in the header, and the empty and hidden-selection rules; add whatever the accessibility tests find (a missing glyph, a failing ratio) as fixes in `theme.rs`/`render`.
-- [ ] **Step 4: Run, see PASS.** `make check`
-- [ ] **Step 5: Commit.** `feat: filter by state and accessibility re-check`
+- [x] **Step 2: Run, see FAIL.** `cargo test -p duohive-tui -- filter a11y contrast`
+- [x] **Step 3: Implement** `Filter` (filling in the `Action::Filter` handler registered in 4.6), the `tree_rows` filtering (matches plus their parents), the chip in the header, and the empty and hidden-selection rules; add whatever the accessibility tests find (a missing glyph, a failing ratio) as fixes in `theme.rs`/`render`.
+- [x] **Step 4: Run, see PASS.** `make check`
+- [x] **Step 5: Commit.** `feat: filter by state and accessibility re-check`
 
 ### Task 4.7: Mouse parity on every screen
 

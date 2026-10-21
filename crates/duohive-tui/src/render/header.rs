@@ -113,6 +113,10 @@ pub(super) fn draw_header(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCt
         let room = w.saturating_sub(usize::from(x - r.x));
         x = put(buf, x, r.y, &text, room, style);
     }
+    if let Some(chip) = m.filter.chip(compact) {
+        let room = w.saturating_sub(usize::from(x - r.x));
+        x = put(buf, x, r.y, &format!("   {chip}"), room, fg(p.attention));
+    }
     if !m.typing() && m.dialog.is_none() {
         let help = format!(" · {} help", m.keymap.key(ActionId::KeyMap).label());
         let room = w.saturating_sub(usize::from(x - r.x));
