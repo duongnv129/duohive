@@ -5,9 +5,15 @@ pub(crate) mod card;
 mod card_fields;
 pub(crate) mod chat_pane;
 mod dialog;
+mod first_run;
 mod form;
 mod give_work;
 mod header;
+mod help;
+mod hits;
+mod keys_editor;
+pub(crate) mod menu;
+mod move_to;
 mod needs_you;
 mod org_pane;
 mod screens;
@@ -25,6 +31,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
+pub(crate) use hits::keys_at;
 pub use screens::{BlockingScreen, render_blocking};
 pub(crate) use worktrees::files_changed;
 
@@ -95,6 +102,18 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     let p = &ctx.palette;
     let buf = frame.buffer_mut();
     buf.set_style(area, Style::default().fg(p.fg).bg(p.bg));
+    // No org yet: the wizard is the screen (UI §4.3). A confirmation sits over it.
+    if m.wizard.is_some() {
+        let at = first_run::draw(buf, area, m, ctx);
+        let cursor = match &m.dialog {
+            Some(d) => dialog::draw(buf, area, d, m, ctx.now, p),
+            None => at,
+        };
+        if let Some(at) = cursor {
+            frame.set_cursor_position(at);
+        }
+        return;
+    }
     let banners = header::banners(m, usize::from(area.width));
     let banner_rows = u16::try_from(banners.len()).unwrap_or(u16::MAX);
     let typing = m.focus.pane == Pane::Chat;
@@ -141,6 +160,37 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     if let Some(at) = cursor {
         frame.set_cursor_position(at);
     }
+    if let Some(menu) = &m.menu {
+        menu::draw(frame.buffer_mut(), area, menu, p);
+    }
+}
+
+/// One wheel tick over the org tree: it scrolls, the selection stays.
+pub(crate) fn org_wheel(m: &mut UiModel, up: bool, lines: usize) {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let rows = u16::try_from(banners).unwrap_or(u16::MAX);
+    let typing = m.focus.pane == Pane::Chat;
+    let Some(l) = layout_below(m.screen, rows, m.chat_rows_extra, typing) else {
+        return;
+    };
+    let l = l.with_needs_you(m.needs_you.len());
+    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    org_pane::wheel(&l, m, replies, up, lines);
+}
+
+/// One wheel tick over Needs you: the first item shown moves by one.
+pub(crate) fn needs_you_wheel(m: &mut UiModel, up: bool) {
+    if let Some(a) = pane_areas(m) {
+        needs_you::wheel(a.needs_you, m, up);
+    }
+}
+
+/// The filter a click on the header at `(x, y)` sets, if it hits a count.
+pub(crate) fn header_count_at(m: &UiModel, x: u16, y: u16) -> Option<crate::filter::Filter> {
+    let banners = header::banners(m, usize::from(m.screen.width)).len();
+    let row = m.screen.y + u16::try_from(banners).unwrap_or(u16::MAX);
+    let a = pane_areas(m)?;
+    (y == row && !a.zoomed).then(|| header::count_at(m, a.compact, x.saturating_sub(m.screen.x)))?
 }
 
 /// The most rows `ctrl+↑` can add to the chat at the model's screen size, counting the
@@ -215,7 +265,7 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
 pub(crate) fn chat_card_at(
     m: &UiModel,
     at: ratatui::layout::Position,
-) -> Option<(duohive_core::card::CardId, Option<char>)> {
+) -> Option<(duohive_core::card::CardId, Option<crate::keymap::ActionId>)> {
     let a = pane_areas(m)?;
     if !a.chat.contains(at) || a.zoomed {
         return None;
@@ -420,6 +470,8 @@ fn draw_box(buf: &mut Buffer, r: Rect, title: &str, l: &Lines, border: Style, in
 }
 
 #[cfg(test)]
+mod a11y_tests;
+#[cfg(test)]
 mod auto_tests;
 #[cfg(test)]
 mod card_tests;
@@ -428,9 +480,17 @@ mod chat_tests;
 #[cfg(test)]
 mod colour_tests;
 #[cfg(test)]
+mod filter_tests;
+#[cfg(test)]
 mod give_work_tests;
 #[cfg(test)]
+mod help_tests;
+#[cfg(test)]
 mod live_tests;
+#[cfg(test)]
+mod menu_tests;
+#[cfg(test)]
+mod move_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

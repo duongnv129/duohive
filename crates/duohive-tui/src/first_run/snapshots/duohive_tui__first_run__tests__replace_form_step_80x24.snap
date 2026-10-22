@@ -1,0 +1,22 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Set up Product Team · step 2 of 2 ──────────────────────────────────┐    
+    │                                                                      │    
+    │▌ Team name     [Product                     ]                        │    
+    │  CLI           (•) Claude Code   ( ) OpenCode                        │    
+    │  Backend dir   [~/code/app                  ] ✓ git repo             │    
+    │  Frontend dir  [                            ] ✕ required             │    
+    │  QA dir        [                            ] ✕ required             │    
+    │  Worktrees     [ ] own worktree per task                             │    
+    │                                                                      │    
+    │  Each role gets one agent and a starter prompt you can edit.         │    
+    │  tab · enter · esc    [ ← Back ]   [ Replace org ]   [ Cancel ]      │    
+    └──────────────────────────────────────────────────────────────────────┘

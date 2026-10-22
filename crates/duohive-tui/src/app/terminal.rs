@@ -214,7 +214,9 @@ fn to_input(ev: TermEvent) -> Option<InputEvent> {
         TermEvent::Resize(w, h) => Some(InputEvent::Resize(w, h)),
         TermEvent::Paste(text) => Some(InputEvent::Paste(text)),
         TermEvent::Mouse(m) => match m.kind {
-            MouseEventKind::Moved | MouseEventKind::Drag(_) => None,
+            // `Moved` fires on every pointer motion and would fill the queue; a drag only fires
+            // with a button held, which a node or chat-edge drag needs (UI §5).
+            MouseEventKind::Moved => None,
             _ => Some(InputEvent::Mouse(m)),
         },
         _ => None,
@@ -332,11 +334,14 @@ mod tests {
     }
 
     #[test]
-    fn motion_events_dropped() {
+    fn drag_events_are_forwarded_and_moved_stays_dropped() {
         assert_eq!(to_input(mouse(MouseEventKind::Moved)), None);
+        let TermEvent::Mouse(drag) = mouse(MouseEventKind::Drag(MouseButton::Left)) else {
+            unreachable!()
+        };
         assert_eq!(
-            to_input(mouse(MouseEventKind::Drag(MouseButton::Left))),
-            None
+            to_input(TermEvent::Mouse(drag)),
+            Some(InputEvent::Mouse(drag))
         );
         let TermEvent::Mouse(up) = mouse(MouseEventKind::ScrollUp) else {
             unreachable!()

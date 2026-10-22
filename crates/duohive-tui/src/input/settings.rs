@@ -28,6 +28,18 @@ pub(super) fn action(m: &mut UiModel, mut s: SettingsState, a: Action) -> Vec<Ui
         Action::DialogEnter if s.row.is_text() => {
             s.editing = Some(LineEdit::new(&current(m, s.row)));
         }
+        Action::DialogEnter if s.row == SettingsRow::Keys => {
+            return super::keymap::open_editor(m);
+        }
+        Action::DialogEnter if s.row == SettingsRow::Org => {
+            // No inventory: detection ran at first run only, so both CLIs stay pickable.
+            m.dialog = None;
+            m.wizard = Some(crate::first_run::FirstRun::replace(
+                Vec::new(),
+                m.settings.your_name.clone(),
+            ));
+            return Vec::new();
+        }
         Action::DialogEnter => next = Some(toggled(&m.settings, s.row)),
         Action::Left | Action::Right => next = stepped(m, s.row, a == Action::Right),
         _ => {}
@@ -94,7 +106,7 @@ fn edit(m: &mut UiModel, mut s: SettingsState, a: Action) -> Vec<UiEffect> {
 fn apply(m: &mut UiModel, next: Option<Settings>) -> Vec<UiEffect> {
     match next {
         Some(s) if s != m.settings => {
-            m.settings = s.clone();
+            m.set_settings(s.clone());
             vec![UiEffect::Send(Command::UpdateSettings(s))]
         }
         _ => Vec::new(),

@@ -109,6 +109,7 @@ fn worktree_on_disabled_for_non_git_dir() {
 fn clearing_a_field_restores_inherit() {
     let org = org();
     let mut f = edit_billing(&org, &stopped());
+    f.set_models(&claude_lists());
     f.focus_field(FieldId::Model);
     typed(&mut f, &org, "opus");
     let Some(OrgEdit::EditAgent { draft, .. }) = f.edit(&org) else {

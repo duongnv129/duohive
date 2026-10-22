@@ -24,6 +24,8 @@ pub enum Cli {
     Mcp,
     /// `duohive --help` (or `-h`): print [`USAGE`].
     Help,
+    /// `duohive --version` (or `-V`): print the package version.
+    Version,
 }
 
 /// What `--help` prints (`bench-agent` is internal and left out).
@@ -36,6 +38,7 @@ usage: duohive                 run DuoHive (your agents keep running in tmux aft
                                measure CPU, memory and hook latency with fake agents
                                (--view holds one live pane stream open throughout)
        duohive --help          show this
+       duohive --version       show the version
 ";
 
 /// Parses the arguments (without the program name); `[]` is the app.
@@ -43,6 +46,7 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
     match args {
         [] => Ok(Cli::App),
         [flag] if flag == "--help" || flag == "-h" => Ok(Cli::Help),
+        [flag] if flag == "--version" || flag == "-V" => Ok(Cli::Version),
         [cmd, agent, event] if cmd == "hook" => Ok(Cli::Hook {
             agent: agent.clone(),
             event: event.clone(),
@@ -94,10 +98,11 @@ fn count(n: u64) -> Result<u32, String> {
 }
 
 const BENCH_USAGE: &str = "usage: duohive bench-agent [--no-hooks] [--ignore-input] \
-                           [--mcp-script <path>] [--task <text>]";
+                           [--mcp-script <path>] [--stamp-file <path>] [--task <text>]";
 
-/// `[--no-hooks] [--ignore-input] [--mcp-script <path>] [--task <text>]` in any
-/// order; the task is taken verbatim, even when it starts with `-`.
+/// `[--no-hooks] [--ignore-input] [--mcp-script <path>] [--stamp-file <path>]
+/// [--task <text>]` in any order; the task is taken verbatim, even when it
+/// starts with `-`.
 fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
     let mut out = BenchAgentArgs {
         hooks: true,
@@ -113,6 +118,9 @@ fn parse_bench_agent(args: &[String]) -> Result<Cli, String> {
             }
             "--mcp-script" if out.mcp_script.is_none() => {
                 out.mcp_script = Some(rest.next().ok_or(BENCH_USAGE)?.into());
+            }
+            "--stamp-file" if out.stamp_file.is_none() => {
+                out.stamp_file = Some(rest.next().ok_or(BENCH_USAGE)?.into());
             }
             _ => return Err(BENCH_USAGE.to_owned()),
         }
@@ -149,6 +157,7 @@ mod tests {
                 ignore_input,
                 task: task.map(str::to_owned),
                 mcp_script: None,
+                stamp_file: None,
             }))
         };
         assert_eq!(
@@ -179,6 +188,7 @@ mod tests {
                 ignore_input: false,
                 task: Some("t".into()),
                 mcp_script: Some("/s.json".into()),
+                stamp_file: None,
             }))
         );
         assert!(parse_args(&s(["bench-agent", "--mcp-script"])).is_err());
@@ -245,6 +255,18 @@ mod tests {
         let err = parse_args(&s(["bench", "--turns", "1001"])).unwrap_err();
         assert!(err.starts_with("usage: duohive bench"), "{err}");
         assert!(parse_args(&s(["bench", "--frob"])).is_err());
+    }
+
+    #[test]
+    fn bench_defaults_are_the_gate_method() {
+        let Ok(Cli::Bench(args)) = parse_args(&s(["bench"])) else {
+            panic!("bench did not parse");
+        };
+        assert_eq!(args.idle_secs, 60);
+        assert_eq!(args.turns, 0);
+        assert_eq!(args.agents, 10);
+        // Only the default may be 0: the flag still refuses it.
+        assert!(parse_args(&s(["bench", "--turns", "0"])).is_err());
     }
 
     #[test]

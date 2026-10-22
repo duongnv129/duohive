@@ -1,0 +1,31 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                            ┌─ Set up Blank · step 3 of 3 ─────────────────────────────────────────┐                                            
+                                            │                                                                      │                                            
+                                            │  You and Duo only. Add teams, roles and agents later with n.         │                                            
+                                            │                                                                      │                                            
+                                            │  You can change all of this later.                                   │                                            
+                                            │  tab · enter · esc       [ ← Back ]  ▌[ Create org ]   [ Quit ]      │                                            
+                                            └──────────────────────────────────────────────────────────────────────┘

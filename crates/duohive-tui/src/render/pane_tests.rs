@@ -8,7 +8,7 @@ use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
 use crate::fixtures::{chat_entry, cols, ctx, mins, model_for, render_lines, spec_model, status};
-use crate::focus::{Pane, layout};
+use crate::focus::{AgentMode, Pane, layout};
 use crate::forms::LineEdit;
 use crate::model::UiModel;
 use duohive_core::chat::ChatKind;
@@ -168,9 +168,9 @@ fn footer_matches_focused_pane() {
     let want = [
         (
             Pane::Org,
-            " tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom",
+            " tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help",
         ),
-        (Pane::NeedsYou, " ↑↓ move · enter go to agent"),
+        (Pane::NeedsYou, " ↑↓ move · enter go to agent · ? help"),
         (
             Pane::Agent,
             " enter type · z zoom · PgUp/PgDn scroll · space give work",
@@ -188,13 +188,40 @@ fn footer_matches_focused_pane() {
         footer(Pane::Chat, 80, 24),
         " enter send · alt+enter new line · tab pane"
     );
-    for (w, h) in [(80, 24), (160, 48)] {
-        let mut m = spec_model();
-        let text = render_lines(&m, &ctx(), w, h).join("\n");
-        assert!(!text.contains("? help"));
-        m.focus.pane = Pane::Chat;
-        assert!(!render_lines(&m, &ctx(), w, h).join("\n").contains("? help"));
+}
+
+#[test]
+fn help_hint_in_header_and_org_needs_you_footers_80x24() {
+    let mut m = spec_model();
+    let lines = render_lines(&m, &ctx(), 80, 24);
+    assert!(lines[0].contains("? help"), "header: {}", lines[0]);
+
+    // The 80-wide footers drop the trailing hints; the full footers carry them.
+    let lines = render_lines(&m, &ctx(), 120, 36);
+    assert!(lines.last().unwrap().contains("? help"), "org footer");
+
+    m.focus.pane = Pane::NeedsYou;
+    assert!(
+        render_lines(&m, &ctx(), 120, 36)
+            .last()
+            .unwrap()
+            .contains("? help")
+    );
+
+    // The header hint stays in Selected mode; the pane footers may not carry it.
+    for pane in [Pane::Agent, Pane::Chat] {
+        m.focus.pane = pane;
+        let lines = render_lines(&m, &ctx(), 120, 36);
+        assert!(lines[0].contains("? help"), "{pane:?} header");
+        assert!(!lines.last().unwrap().contains("? help"), "{pane:?} footer");
     }
+
+    // Typing takes every key, `?` included: no hint then.
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = AgentMode::Typing;
+    let lines = render_lines(&m, &ctx(), 120, 36);
+    assert!(!lines[0].contains("? help"), "typing header");
+    assert!(!lines.last().unwrap().contains("? help"), "typing footer");
 }
 
 #[test]
@@ -238,6 +265,7 @@ fn reconnecting_state_in_agent_pane() {
             cards: Vec::new(),
             chat: Vec::new(),
             your_queued: Vec::new(),
+            first_run: None,
         }))
     };
     let mut m = UiModel::new(spec.org.clone());

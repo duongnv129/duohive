@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/help_tests.rs
+expression: "render_lines(&help_model(), &ctx(), 80, 24).join(\"\\n\")"
+---
+┌─ Keys · ? to close ──────────────────────────────────────────────────────────┐
+│Everywhere                                                                    │
+│  tab       next pane/field                                                   │
+│  shift+tab previous pane                                                     │
+│  ?         this help                                                         │
+│  ,         settings                                                          │
+│  w         worktrees                                                         │
+│  f         filter tree by state                                              │
+│  esc       back one level                                                    │
+│  q         quit (agents run on)                                              │
+│  ctrl+c    quit if not typing                                                │
+│  ctrl+↑↓   resize chat                                                       │
+│Mouse                                                                         │
+│  click     select / focus                                                    │
+│  right     node menu                                                         │
+│  wheel     scroll                                                            │
+│  drag      move node                                                         │
+│Org pane                                                                      │
+│  ↑↓        move                                                              │
+│  ←→        fold / unfold                                                     │
+│  enter     open agent pane                                                   │
+│  space     give work                                                         │
+│↓ more · PgUp/PgDn scroll                                                     │
+└──────────────────────────────────────────────────────────────────────────────┘

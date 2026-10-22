@@ -152,6 +152,7 @@ pub(super) fn snapshot(m: &UiModel) -> Event {
         cards: Vec::new(),
         chat: Vec::new(),
         your_queued: Vec::new(),
+        first_run: None,
     }))
 }
 

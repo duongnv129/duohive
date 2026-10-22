@@ -36,6 +36,7 @@ use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::ports::PaneView;
 use duohive_core::status::{AgentState, Status};
+use duohive_core::templates::TemplateInput;
 use duohive_core::testkit::{FakeNotifier, n};
 use duohive_core::view::{PaneChunk, PaneInput, PaneKey, PaneSize};
 use duohive_core::worktree::{RunIn, WorktreeRow};
@@ -387,6 +388,54 @@ async fn e2e_stop_is_stopped() {
         env.windows_of("e2e-1").is_empty()
     })
     .await;
+    h.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replace_org_end_to_end() {
+    let env = Env::new();
+    let old = org(
+        &["e2e-1", "e2e-2"],
+        CliKind::Claude,
+        CliKind::Claude,
+        &env.work,
+    );
+    save_org(&env.paths, &old).unwrap();
+    let before = std::fs::read_to_string(env.paths.org_toml()).unwrap();
+    let mut h = env.start().await;
+    let a = n("e2e-1");
+    start_agent(&mut h, &a).await;
+    assert_eq!(env.windows_of("e2e-1").len(), 1);
+
+    send(
+        &h,
+        Command::NewOrgFromTemplate {
+            template: TemplateInput::Blank,
+        },
+    )
+    .await;
+    events_until(&mut h, START, "org replaced", |e| {
+        matches!(e, Event::OrgReplaced)
+    })
+    .await;
+    eventually(Duration::from_secs(10), "every old window gone", || {
+        env.windows_of("e2e-1").is_empty() && env.windows_of("e2e-2").is_empty()
+    })
+    .await;
+
+    let after = std::fs::read_to_string(env.paths.org_toml()).unwrap();
+    assert!(!after.contains("e2e-1"), "{after}");
+    let backups: Vec<PathBuf> = std::fs::read_dir(&env.paths.config_dir)
+        .unwrap()
+        .filter_map(|e| Some(e.ok()?.path()))
+        .filter(|p| {
+            p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
+                n.starts_with("org.toml.") && n.ends_with(".bak") && n != "org.toml.bak"
+            })
+        })
+        .collect();
+    assert_eq!(backups.len(), 1, "{backups:?}");
+    assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), before);
     h.shutdown().await;
 }
 
@@ -1041,6 +1090,7 @@ async fn e2e_not_taken_reported() {
         exe: PathBuf::from(BIN),
         hooks: true,
         duo_script: None,
+        stamp_dir: None,
     }))]);
     let mut h = env.start_with(Arc::new(ignoring)).await;
     let a = n("e2e-1");

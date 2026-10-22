@@ -12,12 +12,20 @@
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 
 use duohive::args::USAGE;
-use duohive::system::{SystemOptions, start_system};
+use duohive::system::{SystemHandle, SystemOptions, start_system};
 use duohive_cli::fake::fake_adapters;
+use duohive_core::cli_kind::CliKind;
+use duohive_core::command::Command as CoreCommand;
+use duohive_core::event::Event;
 use duohive_core::ports::{NoGit, NoNotifier};
+use duohive_core::templates::TemplateInput;
 use duohive_store::Paths;
+
+/// How long a test waits for the engine to answer.
+const WAIT: Duration = Duration::from_secs(10);
 
 const BIN: &str = env!("CARGO_BIN_EXE_duohive");
 
@@ -78,6 +86,103 @@ fn missing_tmux_exits_1_with_a_message() {
     assert!(out.stdout.is_empty(), "{out:?}");
     let err = String::from_utf8(out.stderr).unwrap();
     assert!(err.contains("tmux 3.2 or newer is required"), "{err}");
+}
+
+/// The next event, or a failure after [`WAIT`].
+async fn next_event(h: &mut SystemHandle) -> Event {
+    tokio::time::timeout(WAIT, h.events.recv())
+        .await
+        .expect("an event within ten seconds")
+        .expect("the events channel stays open")
+}
+
+/// The windows on DuoHive's throwaway tmux server; none when it isn't running.
+fn windows(socket: &str) -> Vec<String> {
+    let out = Command::new("tmux")
+        .args([
+            "-f",
+            "/dev/null",
+            "-L",
+            socket,
+            "list-windows",
+            "-a",
+            "-F",
+            "#{window_name}",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn first_run_shows_wizard_and_create_org_starts_no_agent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = paths(tmp.path());
+    let server = KillServer(paths.tmux_socket.clone());
+    let options = || SystemOptions {
+        tap: None,
+        first_frame: None,
+        home: tmp.path().join("home"),
+        notifier: Some(Box::new(NoNotifier)),
+        git: Some(Box::new(NoGit)),
+        git_env: Vec::new(),
+    };
+    let mut first = start_system(&paths, Arc::new(fake_adapters(Path::new(BIN))), options())
+        .await
+        .unwrap();
+    let Event::Snapshot(snap) = next_event(&mut first).await else {
+        panic!("the first event is the start-up snapshot");
+    };
+    assert!(
+        snap.first_run.as_ref().is_some_and(|list| !list.is_empty()),
+        "no org yet: the wizard's inventory comes with the snapshot"
+    );
+    assert!(!paths.org_toml().exists(), "the first run writes no org");
+
+    first
+        .commands
+        .send(CoreCommand::CreateOrg {
+            template: TemplateInput::Blank,
+            your_name: Some("Duong".to_owned()),
+            duo_cli: CliKind::Claude,
+        })
+        .await
+        .unwrap();
+    let mut created = false;
+    for _ in 0..20 {
+        if let Event::OrgCreated = next_event(&mut first).await {
+            created = true;
+            break;
+        }
+    }
+    assert!(created, "Create org answers with OrgCreated");
+    assert!(
+        paths.org_toml().exists(),
+        "the wizard's answers are on disk"
+    );
+    // The start-up home window is the only one; no agent gets one.
+    let open: Vec<String> = windows(&paths.tmux_socket)
+        .into_iter()
+        .filter(|w| w != "duohive-home")
+        .collect();
+    assert!(open.is_empty(), "no agent starts, found {open:?}");
+    first.shutdown().await;
+
+    // The org exists now, so the next start is no first run.
+    let mut second = start_system(&paths, Arc::new(fake_adapters(Path::new(BIN))), options())
+        .await
+        .unwrap();
+    let Event::Snapshot(snap) = next_event(&mut second).await else {
+        panic!("the first event is the start-up snapshot");
+    };
+    assert!(snap.first_run.is_none(), "an org exists: no wizard");
+    second.shutdown().await;
+    drop(server);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

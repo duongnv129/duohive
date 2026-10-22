@@ -5,7 +5,9 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use duohive_core::adapter::{CliPresence, ModelList};
 use duohive_core::card::{Card, CardId};
+use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::{AgentView, Event, NeedsYouItem, RoleOutcome, Snapshot};
 use duohive_core::inbox::{MessageId, Sender};
@@ -21,8 +23,10 @@ use duohive_core::worktree::{RunIn, WorktreeRow};
 use ratatui::layout::Rect;
 
 use crate::chat::{self, ChatLines};
+use crate::first_run::FirstRun;
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit, SettingsState};
+use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, SettingsState};
+use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
 /// A dialog over the main screen.
@@ -38,8 +42,14 @@ pub enum Dialog {
     GiveWork(Box<GiveWork>),
     /// DuoHive's worktrees (UI §4.9).
     Worktrees(WorktreeList),
+    /// Where a node can move to (UI §4.4.2).
+    MoveTo(Box<MoveTo>),
     /// Personal settings (UI §4.10).
     Settings(SettingsState),
+    /// The key map (UI §4.11).
+    KeyMap(KeyMapState),
+    /// The key bindings editor (UI §4.10).
+    Keys(KeysState),
 }
 
 /// The worktree list's own state; its rows are `UiModel::worktrees`.
@@ -125,6 +135,10 @@ pub struct UiModel {
     pub reconnecting: u32,
     /// The settings in use; `v` changes and saves them.
     pub settings: Settings,
+    /// The key bindings in use, built from `settings.keys` (UI §4.11).
+    pub keymap: Keymap,
+    /// Settings entries the key map ignored, one line each (UI §4.10).
+    pub keys_notices: Vec<String>,
     /// The time ages are measured to when an action needs one (the stop dialog).
     pub now: Millis,
     /// `org.toml`, which `o` opens in `$EDITOR`.
@@ -168,6 +182,24 @@ pub struct UiModel {
     pub worktrees: Vec<WorktreeRow>,
     /// Pending approval cards (UI §4.6).
     pub cards: BTreeMap<CardId, Card>,
+    /// No org exists yet: the CLIs detection found (UI §4.3).
+    pub first_run: Option<Vec<(CliKind, CliPresence)>>,
+    /// The first-run wizard, while `first_run` is `Some`.
+    pub wizard: Option<FirstRun>,
+    /// The right-click menu, while open (UI §4.4.2).
+    pub menu: Option<crate::input::Menu>,
+    /// A node being dragged (UI §4.4.2).
+    pub drag: Option<crate::input::Drag>,
+    /// The chat's top edge being dragged: the row it was pressed on and the extra rows then.
+    pub edge_drag: Option<(u16, i16)>,
+    /// The org tree's first row as the wheel left it; holds while that node stays selected.
+    pub org_scroll: Option<(usize, NodeKey)>,
+    /// The first Needs you item shown, as the wheel left it.
+    pub needs_scroll: usize,
+    /// The tree filter by state (UI §4.1.1).
+    pub filter: crate::filter::Filter,
+    /// Each CLI's models and efforts once listed; absent while loading (TD §5.2).
+    pub models: BTreeMap<CliKind, Result<ModelList, String>>,
 }
 
 impl UiModel {
@@ -184,6 +216,8 @@ impl UiModel {
             dialog: None,
             reconnecting: 0,
             settings: Settings::default(),
+            keymap: Keymap::default(),
+            keys_notices: Vec::new(),
             now: Millis(0),
             org_toml: PathBuf::new(),
             dirs: SharedDirs(Arc::new(NoProbe)),
@@ -205,7 +239,30 @@ impl UiModel {
             give_later: None,
             worktrees: Vec::new(),
             cards: BTreeMap::new(),
+            first_run: None,
+            wizard: None,
+            menu: None,
+            drag: None,
+            edge_drag: None,
+            org_scroll: None,
+            needs_scroll: 0,
+            filter: crate::filter::Filter::default(),
+            models: BTreeMap::new(),
         }
+    }
+
+    /// Opens `form` with the CLIs' model lists in its Model and Effort popups.
+    pub fn open_form(&mut self, mut form: Form) {
+        form.set_models(&self.models);
+        self.dialog = Some(Dialog::Form(Box::new(form)));
+    }
+
+    /// Replaces the settings and rebuilds the key map from them (UI §4.11).
+    pub fn set_settings(&mut self, settings: Settings) {
+        let (keymap, notices) = Keymap::from_settings(&settings.keys);
+        self.settings = settings;
+        self.keymap = keymap;
+        self.keys_notices = notices;
     }
 
     /// Applies an engine event; `true` when the screen needs a redraw.
@@ -234,15 +291,20 @@ impl UiModel {
                 self.set_needs_you(items);
             }
             Event::OrgFileError(e) => self.org_error = e,
-            Event::CommandRejected { reason } => match &mut self.dialog {
-                Some(Dialog::Form(f)) if f.saving => f.reject(reason),
-                _ => match self.give_sent.clone() {
-                    Some((agent, task, run)) => {
-                        self.reopen_give_work(&agent, &task, Some(run), &reason, "");
-                    }
-                    None => self.footer_note = Some(reason),
-                },
-            },
+            Event::CommandRejected { reason } => {
+                if self.reject_wizard(&reason) {
+                    return true;
+                }
+                match &mut self.dialog {
+                    Some(Dialog::Form(f)) if f.saving => f.reject(reason),
+                    _ => match self.give_sent.clone() {
+                        Some((agent, task, run)) => {
+                            self.reopen_give_work(&agent, &task, Some(run), &reason, "");
+                        }
+                        None => self.footer_note = Some(reason),
+                    },
+                }
+            }
             Event::GiveWorkRefused {
                 agent,
                 state,
@@ -303,9 +365,43 @@ impl UiModel {
                 }
             }
             e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
+            // The wizard's org is saved: the main screen takes over (UI §4.3).
+            Event::OrgCreated => (self.first_run, self.wizard) = (None, None),
+            e @ (Event::OrgReplaced | Event::OrgReplaceFailed { .. }) => self.apply_replace(e),
+            Event::ModelsListed { cli, result } => self.models_listed(cli, result),
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
         }
+        true
+    }
+
+    /// A CLI's lists arrived: kept, and handed to the open form's popups.
+    fn models_listed(&mut self, cli: CliKind, result: Result<ModelList, String>) {
+        self.models.insert(cli, result);
+        if let Some(Dialog::Form(f)) = &mut self.dialog {
+            f.set_models(&self.models);
+        }
+    }
+
+    /// The end of a replace: saved, or an agent would not stop (UI §4.8).
+    fn apply_replace(&mut self, e: Event) {
+        self.wizard = None;
+        self.footer_note = match e {
+            Event::OrgReplaceFailed { agent: Some(a), .. } => {
+                Some(format!("{a} would not stop · org not replaced"))
+            }
+            Event::OrgReplaceFailed { reason, .. } => Some(format!("{reason} · org not replaced")),
+            _ => Some("org replaced".to_owned()),
+        };
+    }
+
+    /// A refusal while the wizard is up: Create org keeps it open with the reason
+    /// under its fields (UI §4.3).
+    fn reject_wizard(&mut self, reason: &str) -> bool {
+        let Some(w) = self.wizard.as_mut() else {
+            return false;
+        };
+        w.write_error = Some(reason.to_owned());
         true
     }
 
@@ -547,6 +643,16 @@ impl UiModel {
         self.chat.scroll = None;
         self.queued = s.your_queued.into_iter().collect();
         self.cards = s.cards.into_iter().map(|c| (c.id, c)).collect();
+        // No org yet: the wizard, once, so a later snapshot keeps what was typed.
+        self.first_run = s.first_run;
+        match &self.first_run {
+            Some(list) if self.wizard.is_none() => {
+                let name = self.settings.your_name.clone();
+                self.wizard = Some(FirstRun::new(list.clone(), name));
+            }
+            Some(_) => {}
+            None => self.wizard = None,
+        }
         if self
             .focus
             .card
@@ -798,6 +904,7 @@ mod tests {
             cards: Vec::new(),
             chat: Vec::new(),
             your_queued: Vec::new(),
+            first_run: None,
         };
         assert!(m.apply(Event::Snapshot(Box::new(snap))));
         assert_eq!(m.agents, spec.agents);

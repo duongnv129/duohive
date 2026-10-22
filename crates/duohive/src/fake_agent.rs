@@ -14,8 +14,11 @@
 //! never taken (P2-D11).
 //! Hooks run `duohive hook` in order on a helper thread, so a slow hook never
 //! stretches a turn; every payload carries `sent_at_ms`, the agent's clock.
+//! With `--stamp-file`, every printed prompt appends the clock to that file:
+//! the bench reads it as the screen-read path's `t0`.
 
 use std::collections::HashMap;
+use std::fs::OpenOptions;
 use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -53,6 +56,9 @@ pub struct BenchAgentArgs {
     pub task: Option<String>,
     /// A script of tool calls to make through `duohive mcp` (`--mcp-script`).
     pub mcp_script: Option<PathBuf>,
+    /// Append the time to this file whenever the prompt is printed
+    /// (`--stamp-file`): the screen-read path's `t0`.
+    pub stamp_file: Option<PathBuf>,
 }
 
 /// Runs the fake agent; `env` holds the process environment (`DUOHIVE_AGENT`
@@ -79,6 +85,7 @@ pub fn run_bench_agent(args: &BenchAgentArgs, env: &HashMap<String, String>) -> 
         ignore_input: args.ignore_input,
         asked: None,
         script,
+        stamp_file: args.stamp_file.clone(),
     };
     agent.hooks.fire("session-start", json!({}));
     show(PROMPT);
@@ -101,6 +108,8 @@ struct Agent {
     asked: Option<String>,
     /// The `--mcp-script`, if any.
     script: Option<Script>,
+    /// Where the prompt times are appended (`--stamp-file`).
+    stamp_file: Option<PathBuf>,
 }
 
 impl Agent {
@@ -187,11 +196,24 @@ impl Agent {
         self.end_turn(&format!("done: {text}"));
     }
 
-    /// The reply, `turn-end` with it, and the prompt.
+    /// The reply, `turn-end` with it, and the prompt: the prompt's time is the
+    /// screen-read path's `t0`.
     fn end_turn(&self, reply: &str) {
         show(&format!("{reply}\n"));
         self.hooks.fire("turn-end", json!({ "last_reply": reply }));
         show(PROMPT);
+        self.stamp();
+    }
+
+    /// Appends the wall clock to the stamp file, when there is one.
+    fn stamp(&self) {
+        let Some(path) = self.stamp_file.as_deref() else {
+            return;
+        };
+        let line = format!("{}\n", now_ms());
+        if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+            let _ = file.write_all(line.as_bytes());
+        }
     }
 }
 
@@ -270,4 +292,30 @@ fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fake_agent_stamps_turn_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stamp");
+        let before = now_ms();
+        let agent = Agent {
+            hooks: Hooks::off(),
+            ignore_input: false,
+            asked: None,
+            script: None,
+            stamp_file: Some(path.clone()),
+        };
+        agent.end_turn("done: x");
+        let text = std::fs::read_to_string(&path).unwrap();
+        let stamped: u64 = text.trim().parse().unwrap();
+        assert_eq!(text.lines().count(), 1, "{text}");
+        assert!(stamped >= before, "{stamped} < {before}");
+        agent.end_turn("done: y");
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), 2);
+    }
 }

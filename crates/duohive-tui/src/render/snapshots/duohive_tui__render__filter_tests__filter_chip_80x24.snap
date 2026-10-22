@@ -1,0 +1,28 @@
+---
+source: crates/duohive-tui/src/render/filter_tests.rs
+expression: text
+---
+ DuoHive  ● 2 · ◆ 2   filter ◆ · ? help                                         
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│    ● working                                 │
+┃   ▾ Backend          ● 1 ◆ 1 ┃│                                              │
+┃     billing-api      ◆   4m  ┃│                                              │
+┃ ▾ Generalist        ~● 1 ◷ 1 ┃│                                              │
+┃     squad-3          ◷   6m  ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┃                              ┃│                                              │
+┣━ Needs you (2) ━━━━━━━━━━━━━━┫│                                              │
+┃ ◷ squad-3            6m      ┃│                                              │
+┃ ◆ billing-api        4m      ┃│                                              │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
+│                                                                              │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+ tab pane · ↑↓ move · space give work

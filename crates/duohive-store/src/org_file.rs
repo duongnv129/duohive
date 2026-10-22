@@ -13,6 +13,7 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, DuoConfig, Fields, Org, OrgDefaults, Role, Team};
 use duohive_core::ports::{OrgFileError, StoreError};
+use duohive_core::time::Millis;
 use serde::de::{self, Deserializer};
 use serde::{Deserialize, Serialize};
 
@@ -330,6 +331,46 @@ pub fn save_org(paths: &Paths, org: &Org) -> Result<(), StoreError> {
             e.0
         ))
     })
+}
+
+/// Replaces the org (UI §4.8): the current `org.toml`, when there is one, is
+/// copied to `org.toml.<stamp>.bak` (P4-Q5) before [`save_org`] writes the new
+/// one. A missing `org.toml` leaves no backup.
+pub fn replace_org(paths: &Paths, org: &Org, now: Millis) -> Result<(), StoreError> {
+    let path = paths.org_toml();
+    match fs::read(&path) {
+        Ok(old) => {
+            let backup = sibling(&path, &format!(".{}.bak", backup_stamp(now)));
+            write_atomic(&backup, &old, None)?;
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => return Err(io_err("read", &path, &e)),
+    }
+    save_org(paths, org)
+}
+
+/// `now` as `YYYYMMDD-HHMMSS` in UTC, for a replacement's backup name.
+pub fn backup_stamp(now: Millis) -> String {
+    let secs = i64::try_from(now.0 / 1000).unwrap_or(i64::MAX);
+    let days = secs.div_euclid(86_400);
+    let time = secs.rem_euclid(86_400);
+    let (y, m, d) = civil_from_days(days);
+    let (hh, mm, ss) = (time / 3600, (time / 60) % 60, time % 60);
+    format!("{y:04}{m:02}{d:02}-{hh:02}{mm:02}{ss:02}")
+}
+
+/// The civil date `days` after 1970-01-01 (Howard Hinnant's algorithm).
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = u32::try_from(doy - (153 * mp + 2) / 5 + 1).unwrap_or(1);
+    let m = u32::try_from(if mp < 10 { mp + 3 } else { mp - 9 }).unwrap_or(1);
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (y, m, d)
 }
 
 /// Records `org` as the last good org, without touching `org.toml`.

@@ -15,11 +15,11 @@ mod observe;
 mod report;
 
 use std::path::Path;
-use std::process::Command as Process;
+use std::process::{Command as Process, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use duohive_cli::fake::fake_adapters;
+use duohive_cli::fake::fake_adapters_with_stamps;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
@@ -28,9 +28,11 @@ use duohive_core::names::{AgentName, NodeName};
 use duohive_core::org::{AgentDef, Fields, Org, Role};
 use duohive_core::ports::{NoGit, NoNotifier};
 use duohive_core::status::AgentState;
+use duohive_core::validate::{DirProbe, DirStatus};
 use duohive_core::worktree::RunIn;
 use duohive_store::{Paths, save_org};
 use duohive_tmux::{TmuxConfig, tmux_version as probe_tmux_version};
+use duohive_tui::app::{AppConfig, run_app_on};
 use duohive_tui::{QuitSignals, UiModel};
 use tokio::sync::mpsc;
 
@@ -43,6 +45,10 @@ pub use report::{BenchOutcome, BenchReport, Machine, Percentiles, ServerUse, Tar
 
 /// Every fifth agent plays OpenCode, whose fake has no hooks (screen-read path).
 const SCREEN_READ_EVERY: u32 = 5;
+/// A run whose 1-minute load is above this is discarded, not counted.
+const LOAD_CEILING: f64 = 2.0;
+/// Tests run on shared, busy machines: this disables the load gate for them.
+const IGNORE_LOAD_VAR: &str = "DUOHIVE_BENCH_IGNORE_LOAD";
 /// How long the agents may take to start, and to finish a turn or stop.
 const START_WAIT: Duration = Duration::from_secs(90);
 const TURN_WAIT: Duration = Duration::from_secs(60);
@@ -72,12 +78,27 @@ impl Default for BenchArgs {
     fn default() -> Self {
         Self {
             agents: 10,
-            idle_secs: 30,
-            turns: 3,
+            idle_secs: 60,
+            // Derived from the agent count by `turns_for`: only the default may be 0.
+            turns: 0,
             view: false,
             json: false,
         }
     }
+}
+
+/// How many turns a run needs so that both the hook and the screen-read sample
+/// sets reach 100: every fifth agent is read from the screen, so both kinds
+/// need `100 / (agents / SCREEN_READ_EVERY)` turns at the fewest. A request of
+/// 0 means "derive"; any other value is the caller's.
+pub fn turns_for(agents: u32, requested: u32) -> u32 {
+    if requested > 0 {
+        return requested;
+    }
+    let screen_read = (agents / SCREEN_READ_EVERY).max(1);
+    // The hook set needs `100 / agents` turns; the screen-read set, being
+    // smaller, needs more. Round up so both reach 100.
+    100_u32.div_ceil(agents).max(100_u32.div_ceil(screen_read))
 }
 
 /// The bench could not finish.
@@ -107,6 +128,12 @@ pub enum BenchError {
     /// `--view`: the live pane view could not attach or open.
     #[error("cannot open the live view: {0}")]
     View(String),
+    /// The machine was too busy to measure: the gate discards the run.
+    #[error("discarded: load {load:.2}")]
+    LoadTooHigh {
+        /// The 1-minute load average when the run began.
+        load: f64,
+    },
 }
 
 /// Runs the bench and returns what it measured.
@@ -131,10 +158,21 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
     let exe = std::env::current_exe()?;
     // Registered once, before anything starts: no signal falls between two waits.
     let mut interrupt = QuitSignals::install();
+    // The gate is a machine that is not otherwise busy: the bench's own agents
+    // are not up yet, so this is the honest reading.
+    if let Some([one, ..]) = measure::load_average()
+        && one > LOAD_CEILING
+        && std::env::var_os(IGNORE_LOAD_VAR).is_none()
+    {
+        env.kill_tmux();
+        return Err(BenchError::LoadTooHigh { load: one });
+    }
     let (tap_tx, tap) = mpsc::unbounded_channel();
+    let adapters = Arc::new(fake_adapters_with_stamps(&exe, &env.stamp_dir()));
+    let stamps = stamp_paths(&names, &env.stamp_dir());
     let start = start_system(
         &env.paths,
-        Arc::new(fake_adapters(&exe)),
+        adapters,
         SystemOptions {
             tap: Some(tap_tx),
             first_frame: None,
@@ -151,9 +189,9 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             return Err(BenchError::Interrupted);
         }
     };
-    let observer = Observer::new(org);
+    let observer = Observer::with_stamps(org, stamps);
     let mut run = Run {
-        handle,
+        handle: Some(handle),
         tap,
         observer,
         names,
@@ -162,7 +200,7 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
         live: None,
     };
     let result = tokio::select! {
-        result = run.measure(&a) => result,
+        result = run.measure(&a, &exe) => result,
         () = interrupt.recv() => Err(BenchError::Interrupted),
     };
     // Interrupted or not: stop the agents, the system and the bench's tmux server.
@@ -175,9 +213,19 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             .is_some_and(|pid| run.procs.clients.contains(&pid)),
         ..live.usage()
     });
+    // The reopen is timed after the first system has gone, with the agents'
+    // tmux sessions left behind: the state a user comes back to.
+    let reopen = if result.is_ok() {
+        run.live = None;
+        run.shutdown_system().await;
+        Some(measure_reopen(&env, &exe).await)
+    } else {
+        None
+    };
     run.finish().await;
     env.kill_tmux();
-    let m = result?;
+    let mut m = result?;
+    m.first_frame_ms = reopen.transpose()?;
     Ok(BenchOutcome {
         report: BenchReport {
             agents: a.agents,
@@ -185,7 +233,10 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
             platform: format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH),
             idle_cpu_pct: m.idle_cpu_pct,
             peak_rss_mb: measure::peak_rss_mb() + rss_client,
+            rss_end_mb: m.rss_end_mb,
             hook_to_screen_ms: m.hooks,
+            tilde_ms: m.tilde,
+            first_frame_ms: m.first_frame_ms,
         },
         machine: Machine {
             cpus: std::thread::available_parallelism().map_or(1, usize::from),
@@ -199,6 +250,8 @@ pub async fn run_bench_detailed(a: BenchArgs) -> Result<BenchOutcome, BenchError
         control_client,
         live_view,
         hook_samples: m.hook_samples,
+        helpers_rss_mb: m.helpers_rss_mb,
+        exec_ms: m.exec_ms,
         pid: std::process::id(),
     })
 }
@@ -209,6 +262,16 @@ struct Measured {
     hooks: Percentiles,
     hook_samples: usize,
     server_cpu_pct: Option<f64>,
+    /// DuoHive (this process plus its control clients) at the end of the window.
+    rss_end_mb: f64,
+    /// The screen-read freshness samples.
+    tilde: Percentiles,
+    /// The reopen's first frame, when it was timed.
+    first_frame_ms: Option<f64>,
+    /// The `duohive mcp` helpers' summed resident size.
+    helpers_rss_mb: Option<f64>,
+    /// `duohive --version`'s wall time.
+    exec_ms: Option<f64>,
 }
 
 /// DuoHive's tmux clients (the control client, plus the live view's with
@@ -336,7 +399,12 @@ impl BenchEnv {
             tmux_socket: format!("duohive-bench-{}", std::process::id()),
         };
         let workdir = tmp.path().join("work");
-        for dir in [&paths.config_dir, &paths.data_dir, &workdir] {
+        for dir in [
+            &paths.config_dir,
+            &paths.data_dir,
+            &workdir,
+            &tmp.path().join("stamps"),
+        ] {
             std::fs::create_dir_all(dir)?;
         }
         Ok(Self {
@@ -349,6 +417,11 @@ impl BenchEnv {
     /// The home the bench's system expands `~` to: its own work dir, never the user's.
     fn home(&self) -> std::path::PathBuf {
         self.workdir.clone()
+    }
+
+    /// Where the fakes append their prompt times.
+    fn stamp_dir(&self) -> std::path::PathBuf {
+        self._tmp.path().join("stamps")
     }
 
     fn kill_tmux(&self) {
@@ -384,7 +457,7 @@ fn give_work_command(agent: AgentName, task: String) -> Command {
 /// The system, its hook tap and the screen stand-in (plus, with `--view`, the
 /// live stream), driven together.
 struct Run {
-    handle: SystemHandle,
+    handle: Option<SystemHandle>,
     tap: mpsc::UnboundedReceiver<HookMessage>,
     observer: Observer,
     names: Vec<AgentName>,
@@ -394,8 +467,13 @@ struct Run {
 }
 
 impl Run {
-    /// Start, work, settle, then watch idle: returns idle CPU and the hook timings.
-    async fn measure(&mut self, a: &BenchArgs) -> Result<Measured, BenchError> {
+    /// Start, work, settle, then watch idle: returns every timing the report
+    /// prints.
+    async fn measure(
+        &mut self,
+        a: &BenchArgs,
+        exe: &std::path::Path,
+    ) -> Result<Measured, BenchError> {
         self.pump(Duration::from_secs(5), |m| !m.agents.is_empty())
             .await?
             .then_some(())
@@ -409,7 +487,9 @@ impl Run {
             self.open_view().await?;
         }
         self.procs.sample();
-        for turn in 1..=a.turns {
+        let mut helpers = self.spawn_helpers(a.agents);
+        let turns = turns_for(a.agents, a.turns);
+        for turn in 1..=turns {
             let task = format!("bench task {turn}");
             for agent in self.names.clone() {
                 let task = task.clone();
@@ -434,18 +514,54 @@ impl Run {
         let used = |before: Option<Duration>, after: Option<Duration>| {
             before.zip(after).map(|(b, a)| a.saturating_sub(b))
         };
-        // DuoHive = this process + its control client.
+        // DuoHive = this process + its control client(s).
         let own = used(cpu_before, cpu_after).unwrap_or_default();
         let client =
             used(client_before.map(|c| c.cpu), client_after.map(|c| c.cpu)).unwrap_or_default();
         let server = used(server_before.map(|c| c.cpu), server_after.map(|c| c.cpu));
-        let mut samples = self.observer.samples().to_vec();
+        // Memory is the end of the window, not the peak: the live view and the
+        // screen reads settle well before it.
+        let rss_end_mb = Self::rss_end_mb(client_after);
+        let (hooks, hook_samples) = self.observer.hook_percentiles();
+        let (tilde, _) = self.observer.tilde_percentiles();
         Ok(Measured {
             idle_cpu_pct: measure::cpu_percent(own + client, wall),
-            hooks: percentiles(&mut samples),
-            hook_samples: samples.len(),
+            hooks,
+            hook_samples,
             server_cpu_pct: server.map(|u| measure::cpu_percent(u, wall)),
+            rss_end_mb,
+            tilde,
+            first_frame_ms: None,
+            helpers_rss_mb: Some(helpers_rss(&mut helpers)),
+            exec_ms: measure::exec_once(exe),
         })
+    }
+
+    /// Spawns one idle `duohive mcp` per agent, beside the fakes: their total is
+    /// reported (the agents' own helpers are excluded from the memory target).
+    fn spawn_helpers(&self, agents: u32) -> Vec<std::process::Child> {
+        let Ok(exe) = std::env::current_exe() else {
+            return Vec::new();
+        };
+        (0..agents)
+            .filter_map(|_| {
+                Process::new(&exe)
+                    .arg("mcp")
+                    .env("DUOHIVE_TOKEN", "")
+                    .env("DUOHIVE_DATA_DIR", &self.paths.data_dir)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+                    .ok()
+            })
+            .collect()
+    }
+
+    /// This process's resident size plus its control clients'.
+    fn rss_end_mb(client: Option<measure::ProcStats>) -> f64 {
+        measure::current_rss_mb(std::process::id()).unwrap_or(0.0)
+            + client.map_or(0.0, |c| c.rss_mb)
     }
 
     /// Opens the one live stream, on the first agent, and waits for its first chunk.
@@ -473,6 +589,8 @@ impl Run {
 
     async fn send(&self, command: Command) -> Result<(), BenchError> {
         self.handle
+            .as_ref()
+            .ok_or(BenchError::EngineGone)?
             .commands
             .send(command)
             .await
@@ -504,7 +622,15 @@ impl Run {
                     .all(|n| m.view(n).status.state == AgentState::Stopped)
             })
             .await;
-        self.handle.shutdown().await;
+        self.shutdown_system().await;
+    }
+
+    /// Stops the system, leaving the agents' tmux sessions behind, as quitting
+    /// the app does: the state the reopen is measured from.
+    async fn shutdown_system(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            handle.shutdown().await;
+        }
     }
 
     /// Feeds events and hooks to the observer, drawing frames, until `done`
@@ -525,7 +651,12 @@ impl Run {
                 .next_frame_at()
                 .map(tokio::time::Instant::from_std);
             tokio::select! {
-                event = self.handle.events.recv() => {
+                event = self
+                    .handle
+                    .as_mut()
+                    .ok_or(BenchError::EngineGone)?
+                    .events
+                    .recv() => {
                     let event: Event = event.ok_or(BenchError::EngineGone)?;
                     self.observer.event(event);
                 }
@@ -544,6 +675,104 @@ impl Run {
             self.observer.draw_if_due();
         }
     }
+}
+
+/// The stamp file of every bench agent, for the screen-read timing.
+fn stamp_paths(
+    names: &[AgentName],
+    dir: &std::path::Path,
+) -> std::collections::HashMap<AgentName, std::path::PathBuf> {
+    names
+        .iter()
+        .map(|n| (n.clone(), dir.join(n.as_str())))
+        .collect()
+}
+
+/// The helpers' summed resident size in MB, then kills them: they are the bench's.
+fn helpers_rss(children: &mut [std::process::Child]) -> f64 {
+    let total: f64 = children
+        .iter()
+        .filter_map(|c| measure::current_rss_mb(c.id()))
+        .sum();
+    for child in children.iter_mut() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    total
+}
+
+/// The bench's directories all "exist": nothing on the reopen's screen depends
+/// on the disk probe.
+struct NoDirs;
+
+impl DirProbe for NoDirs {
+    fn probe(&self, _dir: &std::path::Path) -> DirStatus {
+        DirStatus::Found
+    }
+}
+
+/// How long the reopen's first frame took: stop the system leaving the agents in
+/// tmux, start it again on the same paths, and time from just before the second
+/// `start_system` to the first complete draw into a `TestBackend`.
+///
+/// The agents' tmux sessions outlive the first system, as they do when a user
+/// quits and comes back: that is the case the target names.
+async fn measure_reopen(env: &BenchEnv, exe: &std::path::Path) -> Result<f64, BenchError> {
+    let adapters = Arc::new(fake_adapters_with_stamps(exe, &env.stamp_dir()));
+    let (frame_tx, frame_rx) = tokio::sync::oneshot::channel::<()>();
+    let started = Instant::now();
+    let opened = start_system(
+        &env.paths,
+        adapters,
+        SystemOptions {
+            tap: None,
+            first_frame: None,
+            home: env.home(),
+            notifier: Some(Box::new(NoNotifier)),
+            git: Some(Box::new(NoGit)),
+            git_env: Vec::new(),
+        },
+    )
+    .await?;
+    let mut handle = opened;
+    let mut events = std::mem::replace(&mut handle.events, mpsc::unbounded_channel().1);
+    let commands = handle.commands.clone();
+    // The app quits on the first input: no terminal, so nothing types into it.
+    let (input_tx, input_rx) = mpsc::channel(1);
+    let _ = input_tx.clone();
+    let cfg = AppConfig {
+        pane_view: Arc::new(duohive_core::ports::NoPaneView),
+        org_toml: env.paths.org_toml(),
+        settings: handle.settings.clone(),
+        utc_offset_secs: 0,
+        no_color: true,
+        editor: None,
+        dirs: Arc::new(NoDirs),
+        home: env.home(),
+        halted: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        running: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+    };
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(160, 48))
+        .map_err(|e| BenchError::Io(std::io::Error::other(e.to_string())))?;
+    let app = run_app_on(
+        &mut terminal,
+        input_rx,
+        cfg,
+        &mut events,
+        commands.clone(),
+        Some(frame_tx),
+    );
+    tokio::select! {
+        _ = frame_rx => {}
+        result = app => {
+            result.map_err(|e| BenchError::View(e.to_string()))?;
+            return Err(BenchError::Timeout("the reopen's first frame"));
+        }
+    }
+    let elapsed = started.elapsed().as_secs_f64() * 1000.0;
+    drop(input_tx);
+    handle.shutdown().await;
+    Ok(elapsed)
 }
 
 /// Sleeps until `at`, or forever when there is no frame due.
@@ -576,6 +805,14 @@ mod tests {
     }
 
     #[test]
+    fn turns_default_reaches_100_samples() {
+        assert!(turns_for(10, 0) >= 50, "{}", turns_for(10, 0));
+        assert!(turns_for(100, 0) >= 5, "{}", turns_for(100, 0));
+        assert_eq!(turns_for(100, 7), 7);
+        assert_eq!(turns_for(10, 3), 3);
+    }
+
+    #[test]
     fn percentiles_of_known_samples() {
         let mut samples: Vec<f64> = (1..=100).rev().map(f64::from).collect();
         let p = percentiles(&mut samples);
@@ -592,18 +829,28 @@ mod tests {
             tmux: "3.7c".to_owned(),
             platform: "macos-aarch64".to_owned(),
             idle_cpu_pct: 0.4,
-            peak_rss_mb: 11.2,
+            peak_rss_mb: 14.2,
+            rss_end_mb: 11.2,
             hook_to_screen_ms: Percentiles {
                 p50: 12.0,
                 p95: 40.0,
                 max: 61.0,
             },
+            tilde_ms: Percentiles {
+                p50: 30.0,
+                p95: 60.0,
+                max: 90.0,
+            },
+            first_frame_ms: Some(80.0),
         };
         let expected = "\
 duohive bench · 10 agents · tmux 3.7c · macos-aarch64
 idle CPU        0.4 %    target < 1 %
-memory (peak)   11.2 MB  target < 20 MB
+memory          11.2 MB  target < 20 MB
+peak memory     14.2 MB (reported, not gated)
 hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
+screen-read (~) p50 30 ms · p95 60 ms · max 90 ms   target < 2000 ms (p95)
+first frame     80.0 ms   target < 100 ms
 ";
         assert_eq!(report.to_string(), expected);
     }
@@ -614,8 +861,15 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
             tmux: "3.7c".to_owned(),
             platform: "macos-aarch64".to_owned(),
             idle_cpu_pct: 0.4,
-            peak_rss_mb: 11.2,
+            peak_rss_mb: 14.2,
+            rss_end_mb: 11.2,
             hook_to_screen_ms: p,
+            tilde_ms: Percentiles {
+                p50: 30.0,
+                p95: 60.0,
+                max: 90.0,
+            },
+            first_frame_ms: Some(80.0),
         }
     }
 
@@ -667,6 +921,9 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
                 client_counted: true,
             }),
             hook_samples: 4,
+            // Whatever was not measured is said so.
+            helpers_rss_mb: None,
+            exec_ms: None,
             pid: 1,
         };
         let text = outcome.to_string();
@@ -698,6 +955,8 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
             control_client: true,
             live_view: None,
             hook_samples: 0,
+            helpers_rss_mb: None,
+            exec_ms: None,
             pid: 1,
         };
         let linux = outcome("linux-x86_64").to_string();
@@ -729,11 +988,18 @@ hook → screen   p50 12 ms · p95 40 ms · max 61 ms   target < 1000 ms
             platform: "linux-x86_64".to_owned(),
             idle_cpu_pct: 2.5,
             peak_rss_mb: 30.0,
+            rss_end_mb: 30.0,
             hook_to_screen_ms: Percentiles {
                 p50: 12.0,
                 p95: 1500.0,
                 max: 1600.0,
             },
+            tilde_ms: Percentiles {
+                p50: 30.0,
+                p95: 60.0,
+                max: 90.0,
+            },
+            first_frame_ms: Some(80.0),
         };
         let text = report.to_string();
         assert_eq!(text.matches("MISSED").count(), 3, "{text}");

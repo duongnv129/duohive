@@ -39,14 +39,32 @@ pub(super) fn item_at(r: Rect, m: &UiModel, y: u16) -> Option<usize> {
     if r.height < 2 || r.width < 2 || y <= r.y {
         return None;
     }
+    let (first, shown) = window(r, m);
+    let i = usize::from(y - r.y - 1);
+    (i < shown.min(m.needs_you.len() - first)).then_some(first + i)
+}
+
+/// The first item shown and how many fit: the wheel's offset, held inside the list.
+fn window(r: Rect, m: &UiModel) -> (usize, usize) {
     let rows = usize::from(r.height.saturating_sub(2));
     let shown = if m.needs_you.len() > rows {
         rows.saturating_sub(1)
     } else {
         rows
     };
-    let i = usize::from(y - r.y - 1);
-    (i < shown.min(m.needs_you.len())).then_some(i)
+    let first = m.needs_scroll.min(m.needs_you.len().saturating_sub(shown));
+    (first, shown)
+}
+
+/// One wheel tick over Needs you: the first item shown moves by one; the cursor stays.
+pub(super) fn wheel(r: Rect, m: &mut UiModel, up: bool) {
+    let (first, shown) = window(r, m);
+    let most = m.needs_you.len().saturating_sub(shown);
+    m.needs_scroll = if up {
+        first.saturating_sub(1)
+    } else {
+        (first + 1).min(most)
+    };
 }
 
 #[expect(
@@ -87,14 +105,10 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
     let content = usize::from(r.width.saturating_sub(4));
     let rows = usize::from(r.height.saturating_sub(2));
     let overflow = m.needs_you.len() > rows;
-    // When the items don't fit, the last row says how many are left out.
-    let shown = if overflow {
-        rows.saturating_sub(1)
-    } else {
-        rows
-    };
+    let (first, shown) = window(r, m);
+    // When the items don't fit, the last row says how many are left out below.
     if overflow {
-        let more = format!("… {} more", m.needs_you.len() - shown);
+        let more = format!("… {} more", m.needs_you.len() - first - shown);
         let y = r.y + 1 + u16::try_from(shown).unwrap_or(u16::MAX);
         let at = At {
             x: r.x + 2,
@@ -109,6 +123,7 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
         let longest = m
             .needs_you
             .iter()
+            .skip(first)
             .take(shown)
             .map(|i| width(i.agent.as_str()));
         longest
@@ -116,9 +131,9 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
             .unwrap_or(0)
             .clamp(WIDE_NAME_MIN, WIDE_NAME_MAX)
     };
-    for (i, item) in m.needs_you.iter().take(shown).enumerate() {
+    for (i, item) in m.needs_you.iter().skip(first).take(shown).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
-        if focused && i == m.focus.needs_you_cursor {
+        if focused && first + i == m.focus.needs_you_cursor {
             let bar = Rect {
                 x: r.x + 1,
                 y,

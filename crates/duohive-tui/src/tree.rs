@@ -2,10 +2,11 @@
 
 use duohive_core::event::AgentView;
 use duohive_core::names::NodeName;
-use duohive_core::org::{NodeKey, Role, RoleKey};
+use duohive_core::org::{AgentDef, NodeKey, Role, RoleKey, Team};
 use duohive_core::status::{AgentState, Status};
 use duohive_core::time::Millis;
 
+use crate::filter::Filter;
 use crate::format::{compact_cell, one_line, state_cell};
 use crate::model::UiModel;
 
@@ -46,6 +47,8 @@ pub enum TreeRowKind {
     EmptyRole,
     /// An org with no teams or roles (the message itself is in the agent pane).
     EmptyOrg,
+    /// The line when the filter keeps no agent.
+    FilterEmpty,
 }
 
 /// One line of the tree.
@@ -117,8 +120,32 @@ pub fn tree_rows(m: &UiModel, compact: bool, show_replies: bool, now: Millis) ->
     };
     c.duo();
     let org = &m.org;
-    let children = org.teams.len() + org.roles.len();
-    for (i, team) in org.teams.iter().enumerate() {
+    let filter = m.filter;
+    // A role is kept when the filter keeps one of its agents; a team when it keeps a role.
+    let keeps = |r: &&Role| {
+        filter == Filter::Off || r.agents.iter().any(|a| filter.matches(m.view(&a.name)))
+    };
+    let teams: Vec<(&Team, Vec<&Role>)> = org
+        .teams
+        .iter()
+        .map(|t| (t, t.roles.iter().filter(keeps).collect::<Vec<_>>()))
+        .filter(|(_, roles)| filter == Filter::Off || !roles.is_empty())
+        .collect();
+    let roots: Vec<&Role> = org.roles.iter().filter(keeps).collect();
+    if filter != Filter::Off
+        && teams.is_empty()
+        && roots.is_empty()
+        && !filter.matches(m.view(&org.duo.name))
+    {
+        let label = format!("no agent is {} · esc clears the filter", filter.word());
+        c.rows.push(TreeRow::detail(
+            TreeRowKind::FilterEmpty,
+            "  ".to_owned(),
+            label,
+        ));
+    }
+    let children = teams.len() + roots.len();
+    for (i, (team, roles)) in teams.iter().enumerate() {
         let last = i + 1 == children;
         let (prefix, cont) = c.branch("", last, "");
         let agents: Vec<&AgentView> = team.roles.iter().flat_map(|r| c.views(r)).collect();
@@ -132,20 +159,20 @@ pub fn tree_rows(m: &UiModel, compact: bool, show_replies: bool, now: Millis) ->
         if folded {
             continue;
         }
-        for (j, role) in team.roles.iter().enumerate() {
+        for (j, role) in roles.iter().enumerate() {
             let key = RoleKey {
                 team: Some(team.name.clone()),
                 role: role.name.clone(),
             };
-            c.role(role, key, &cont, j + 1 == team.roles.len(), "  ");
+            c.role(role, key, &cont, j + 1 == roles.len(), "  ");
         }
     }
-    for (i, role) in org.roles.iter().enumerate() {
+    for (i, role) in roots.iter().enumerate() {
         let key = RoleKey {
             team: None,
             role: role.name.clone(),
         };
-        c.role(role, key, "", org.teams.len() + i + 1 == children, "");
+        c.role(role, key, "", teams.len() + i + 1 == children, "");
     }
     c.rows
 }
@@ -222,13 +249,18 @@ impl Ctx<'_> {
         if folded {
             return;
         }
+        let shown: Vec<&AgentDef> = role
+            .agents
+            .iter()
+            .filter(|a| self.m.filter.matches(self.m.view(&a.name)))
+            .collect();
         if role.agents.is_empty() {
             let prefix = self.detail_prefix(parent, last, "    ");
             let row = TreeRow::detail(TreeRowKind::EmptyRole, prefix, EMPTY_ROLE.to_owned());
             self.rows.push(row);
         }
-        for (k, agent) in role.agents.iter().enumerate() {
-            let last = k + 1 == role.agents.len();
+        for (k, agent) in shown.iter().enumerate() {
+            let last = k + 1 == shown.len();
             let (prefix, _) = self.branch(&cont, last, "    ");
             let m = self.m;
             let view = m.view(&agent.name);

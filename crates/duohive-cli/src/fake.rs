@@ -4,8 +4,8 @@
 use std::path::{Path, PathBuf};
 
 use duohive_core::adapter::{
-    Adapters, CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal,
-    ScreenState,
+    Adapters, CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ModelList,
+    ModelListError, ScreenSignal, ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchSpec};
@@ -34,11 +34,32 @@ pub struct FakeCliAdapter {
     pub hooks: bool,
     /// The script Duo runs, if any.
     pub duo_script: Option<PathBuf>,
+    /// A directory the fakes stamp their prompt times into
+    /// (`--stamp-file <dir>/<agent>`), for the bench's screen-read timing.
+    pub stamp_dir: Option<PathBuf>,
 }
 
 /// Fake adapters for every kind: Claude Code with hooks, OpenCode without.
 pub fn fake_adapters(exe: &Path) -> Adapters {
     scripted_fake_adapters(exe, None)
+}
+
+/// [`fake_adapters`], with every fake appending its prompt times to
+/// `<dir>/<agent>`: the bench times the screen-read path from those stamps.
+pub fn fake_adapters_with_stamps(exe: &Path, dir: &Path) -> Adapters {
+    let fake = |kind, hooks| -> Box<dyn CliAdapter> {
+        Box::new(FakeCliAdapter {
+            kind,
+            exe: exe.to_path_buf(),
+            hooks,
+            duo_script: None,
+            stamp_dir: Some(dir.to_path_buf()),
+        })
+    };
+    Adapters::new(vec![
+        fake(CliKind::Claude, true),
+        fake(CliKind::Opencode, false),
+    ])
 }
 
 /// [`fake_adapters`], with Duo running `duo_script` on either kind.
@@ -49,6 +70,7 @@ pub fn scripted_fake_adapters(exe: &Path, duo_script: Option<&Path>) -> Adapters
             exe: exe.to_path_buf(),
             hooks,
             duo_script: duo_script.map(Path::to_path_buf),
+            stamp_dir: None,
         })
     };
     Adapters::new(vec![
@@ -96,6 +118,12 @@ impl CliAdapter for FakeCliAdapter {
             args.extend([
                 "--mcp-script".to_owned(),
                 utf8(script, "fake Duo script")?.to_owned(),
+            ]);
+        }
+        if let Some(dir) = &self.stamp_dir {
+            args.extend([
+                "--stamp-file".to_owned(),
+                utf8(&dir.join(spec.agent.name.as_str()), "fake stamp file")?.to_owned(),
             ]);
         }
         if let Some(task) = &spec.task {
@@ -159,6 +187,14 @@ impl CliAdapter for FakeCliAdapter {
         vec![Key::Enter]
     }
 
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        Ok(ModelList {
+            models: vec!["fake-small".to_owned(), "fake-large".to_owned()],
+            efforts: vec!["low".to_owned(), "high".to_owned()],
+            variants: Default::default(),
+        })
+    }
+
     fn startup_prompts(&self) -> bool {
         false
     }
@@ -190,6 +226,7 @@ mod tests {
             exe: "duohive".into(),
             hooks: false,
             duo_script: None,
+            stamp_dir: None,
         };
         // Trailing blank rows, as capture-pane gives.
         assert_eq!(
@@ -215,6 +252,7 @@ mod tests {
             exe: "duohive".into(),
             hooks: true,
             duo_script: None,
+            stamp_dir: None,
         };
         assert_eq!(
             a.detect(),
@@ -239,6 +277,7 @@ mod tests {
             exe: "/bin/duohive".into(),
             hooks: true,
             duo_script: None,
+            stamp_dir: None,
         };
         let cmd = a.launch(&spec(Some("it's -rf $(id)"))).unwrap();
         assert_eq!(cmd.program, "/bin/duohive");
@@ -262,6 +301,7 @@ mod tests {
             exe: "/bin/duohive".into(),
             hooks: true,
             duo_script: Some("/s/duo.json".into()),
+            stamp_dir: None,
         };
         let mut duo = spec(Some("hi"));
         duo.agent = resolve(&example_org(), &n("Duo")).unwrap();
@@ -283,6 +323,7 @@ mod tests {
             exe: "duohive".into(),
             hooks: true,
             duo_script: None,
+            stamp_dir: None,
         };
         let p = serde_json::json!({"last_reply": "done", "sent_at_ms": 1});
         assert_eq!(a.parse_hook("session-start", &p), Some(HookSignal::Ready));

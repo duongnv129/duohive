@@ -1,0 +1,33 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                            ┌─ DuoHive needs an agent CLI ─────────────────────────────────────────┐                                            
+                                            │                                                                      │                                            
+                                            │  Neither Claude Code nor OpenCode was found on your PATH.            │                                            
+                                            │                                                                      │                                            
+                                            │    Claude Code  claude.ai/code                                       │                                            
+                                            │    OpenCode     opencode.ai                                          │                                            
+                                            │                                                                      │                                            
+                                            │  Install at least one, then run duohive again.                       │                                            
+                                            │                                                                      │                                            
+                                            │                                                    [ q Quit ]        │                                            
+                                            └──────────────────────────────────────────────────────────────────────┘

@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/pane_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
- DuoHive  ● 2 · ◆ 2                                                             
+ DuoHive  ● 2 · ◆ 2 · ? help                                                    
 ┌─ Org ────────────────────────┐┌─ auth-service · Claude ──────────────────────┐
 │ ⬢ Duo                ◦   1m  ││                                              │
 │ ▾ Payments           ● 1 ◆ 1 ││    ● working                                 │
@@ -25,4 +25,4 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 │                                                                              │
 │ ❯                                                                            │
 └──────────────────────────────────────────────────────────────────────────────┘
- ↑↓ move · enter go to agent
+ ↑↓ move · enter go to agent · ? help

@@ -16,6 +16,7 @@ use crate::format::{
     age_of, chunk_cells, format_age, pad_right, status_glyph, status_word, truncate_end, width,
 };
 use crate::forms::card_editable;
+use crate::keymap::{ActionId, Keymap};
 use crate::model::UiModel;
 use crate::theme::Palette;
 
@@ -50,32 +51,37 @@ pub(crate) fn card_title(card: &Card, org: &Org) -> String {
 #[cfg(test)]
 pub(crate) fn card_lines(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
     let mut lines: Vec<String> = body(card, m, now).into_iter().map(|l| l.text).collect();
-    lines.push(button_row(card));
+    lines.push(button_row(card, &m.keymap));
     lines
 }
 
-/// The buttons, by key: `y`, then `e` where the card can be edited, then `n`.
-pub(crate) fn buttons(card: &Card) -> Vec<(char, &'static str)> {
-    let mut out = vec![('y', "Approve")];
+/// The buttons, by action: approve, then edit where the card can be edited, then reject.
+pub(crate) fn buttons(card: &Card) -> Vec<(ActionId, &'static str)> {
+    let mut out = vec![(ActionId::CardApprove, "Approve")];
     if card_editable(card) {
-        out.push(('e', "Edit"));
+        out.push((ActionId::CardEdit, "Edit"));
     }
-    out.push(('n', "Reject"));
+    out.push((ActionId::CardReject, "Reject"));
     out
 }
 
+/// The key that asks for `id`, as the card shows it.
+fn key_label(km: &Keymap, id: ActionId) -> String {
+    km.key(id).label()
+}
+
 /// `[k] Label`, one button's text.
-pub(crate) fn button_text(key: char, label: &str) -> String {
+pub(crate) fn button_text(key: &str, label: &str) -> String {
     format!("[{key}] {label}")
 }
 
 /// Which button covers `col`, counted from the first button's first cell.
-pub(crate) fn button_at(card: &Card, col: usize) -> Option<char> {
+pub(crate) fn button_at(km: &Keymap, card: &Card, col: usize) -> Option<ActionId> {
     let mut x = 0;
-    for (key, label) in buttons(card) {
-        let w = width(&button_text(key, label));
+    for (id, label) in buttons(card) {
+        let w = width(&button_text(&key_label(km, id), label));
         if (x..x + w).contains(&col) {
-            return Some(key);
+            return Some(id);
         }
         x += w + BUTTON_GAP.len();
     }
@@ -112,7 +118,7 @@ pub(crate) fn card_rows(
         (format!("{fill}{}", lines.top[1]), p.border),
     ]];
     let mut body = body(card, m, now);
-    body.push(BodyLine::plain(button_row(card)));
+    body.push(BodyLine::plain(button_row(card, &m.keymap)));
     for line in body {
         let (pieces, colour) = if line.marked {
             (wrap_hanging(&line.text, inner), p.attention)
@@ -181,10 +187,10 @@ fn wrap_words_whole(text: &str, cells: usize) -> Vec<String> {
         .collect()
 }
 
-fn button_row(card: &Card) -> String {
+fn button_row(card: &Card, km: &Keymap) -> String {
     buttons(card)
         .into_iter()
-        .map(|(k, l)| button_text(k, l))
+        .map(|(id, l)| button_text(&key_label(km, id), l))
         .collect::<Vec<_>>()
         .join(BUTTON_GAP)
 }

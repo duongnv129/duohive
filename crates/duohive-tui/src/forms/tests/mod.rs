@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use duohive_core::adapter::ModelList;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::{AgentDraft, Command, OrgEdit, RoleDraft, TeamDraft};
 use duohive_core::event::{AgentView, Event};
@@ -17,11 +18,12 @@ use duohive_core::validate::{DirProbe, DirStatus};
 use ratatui::buffer::Buffer;
 
 mod agent;
+mod dropdown;
 mod give_work;
 mod groups;
 mod keys;
 
-use super::{Chooser, FieldId, FieldKind, Form, FormOutcome, LineEdit};
+use super::{Chooser, FieldId, FieldKind, Form, FormOutcome, LineEdit, Models};
 use crate::fixtures::{ctx, mins, model_for, render_buffer, status, view};
 use crate::input::{Action, UiEffect, map_key, paste, update};
 use crate::model::{Dialog, SharedDirs, UiModel};
@@ -112,7 +114,20 @@ fn model() -> UiModel {
     m.home = home();
     m.agents.insert(n("billing-api"), running());
     m.selected = NodeKey::Agent(n("billing-api"));
+    m.models = claude_lists();
     m
+}
+
+/// Claude's lists as `claude --help` gives them (the Model popup's options).
+fn claude_lists() -> Models {
+    let list = ModelList {
+        models: ["sonnet", "opus", "haiku"].map(str::to_owned).to_vec(),
+        efforts: ["low", "medium", "high", "xhigh", "max"]
+            .map(str::to_owned)
+            .to_vec(),
+        variants: Default::default(),
+    };
+    Models::from([(CliKind::Claude, Ok(list))])
 }
 
 fn form(m: &UiModel) -> &Form {
@@ -148,8 +163,12 @@ fn box_rows(m: &UiModel, w: u16) -> Vec<String> {
 }
 
 fn screen_text(m: &UiModel) -> String {
-    let buf = render_buffer(m, &ctx(), 100, 30);
-    rows(&buf, 0, 100).join("\n")
+    screen_text_at(m, 100, 30)
+}
+
+fn screen_text_at(m: &UiModel, w: u16, h: u16) -> String {
+    let buf = render_buffer(m, &ctx(), w, h);
+    rows(&buf, 0, w).join("\n")
 }
 
 /// The mock-up starting `┌─ <title>` in UI §4.4.1, without its bottom border.

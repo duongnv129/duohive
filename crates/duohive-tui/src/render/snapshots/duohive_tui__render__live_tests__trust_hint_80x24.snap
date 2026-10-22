@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/live_tests.rs
 expression: "lines.join(\"\\n\")"
 ---
- DuoHive  ● 2 · ◆ 2                                                             
+ DuoHive  ● 2 · ◆ 2 · ? help                                                    
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude ───────────────────────┐
 ┃ ⬢ Duo                ◦   1m  ┃│  Quick safety check: Is this a project you c │
 ┃ ▾ Payments           ● 1 ◆ 1 ┃│ reated or one you trust?                     │

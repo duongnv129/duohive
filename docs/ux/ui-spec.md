@@ -374,17 +374,18 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 │  DuoHive runs your AI coding agents as a team.                       │
 │  Duo, your manager agent, helps you steer it.                        │
 │                                                                      │
-│  Your name     [ Duong_______________ ]                              │
-│  Duo runs on   (•) Claude Code  (-) OpenCode                         │
-│                found: claude 2.1 · opencode not found                │
+│▌ Your name     [Duong                       ]                        │
+│  Duo runs on   (•) Claude Code   (-) OpenCode                        │
+│  found: claude 2.1.0 · opencode not found                            │
 │                                                                      │
-│  enter next · esc quit (asks first)      [ Next → ]   [ Quit ]       │
+│  enter next · esc quit (asks first)       [ Next → ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
 **No CLI at all:** a blocking screen, like the tmux one (§4.12).
 
-**Blank** has no form on step 3: the step shows `You and Duo only. Add teams, roles and agents later with n.` and the buttons `[ ← Back ] [ Create org ] [ Quit ]`.
+**Blank** has no form on step 3: the step shows `You and Duo only. Add teams, roles and agents later with n.`, and its first control is `Create org` (there are no fields, so `enter` creates the org rather than going back).
 
 **What Create org writes:** `[org] cli` is Duo's CLI from step 1 and no other org default; `[duo]` is `Duo` on the same CLI. The template's CLI, directory and worktree choices go on the teams or the Generalist role it creates (TD §7). The app starts its agents only after Create org.
 
@@ -410,19 +411,18 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 ```
 ┌─ Choose a starting org · step 2 of 3 ────────────────────────────────┐
 │                                                                      │
-│▌ Agent Squad      a Generalist role; any free agent takes a task     │
-│  Product Team     Backend · Frontend · QA, one agent each            │
-│  Engineering Org  several teams, each Backend + QA                   │
-│  Blank            just you and Duo; build it yourself                │
+│▌Agent Squad      a Generalist role; any free agent takes a task      │
+│ Product Team     Backend · Frontend · QA, one agent each             │
+│ Engineering Org  several teams, each Backend + QA                    │
+│ Blank            just you and Duo; build it yourself                 │
 │                                                                      │
-│  ┄ Preview ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄     │
+│  ┄ Preview ┄                                                         │
 │  ⬢ Duo                                                               │
 │  └─ ◇ Generalist                                                     │
 │     ├─ squad-1                                                       │
 │     ├─ squad-2                                                       │
 │     └─ squad-3                                                       │
-│                                                                      │
-│                            [ ← Back ]   [ Next → ]   [ Quit ]        │
+│  ↑↓ choose · enter · esc     [ ← Back ]   [ Next → ]   [ Quit ]      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -433,32 +433,33 @@ Agent Squad (worktrees default to on; 1–100 agents):
 ```
 ┌─ Set up Agent Squad · step 3 of 3 ───────────────────────────────────┐
 │                                                                      │
-│  Agents        [ 3 ]  (1–100)                                        │
-│  Directory     [ ~/code/my-app____________________ ]  ✓ git repo     │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Worktrees     [x] new work runs in its own worktree                 │
-│  Role prompt   [ You are a careful engineer. Keep changes small; ]   │
-│                [ run the tests before you say you are done.     ]    │
-│                                                                      │
+│▌ Agents        [3                           ]                        │
+│  Directory     [~/code/app                  ] ✓ git repo             │
+│  CLI           (•) Claude Code   (-) OpenCode                        │
+│  Worktrees     [x] own worktree per task                             │
+│  Role prompt   [You are a careful engineer. ]                        │
 │  You can change all of this later.                                   │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+A focused field too long for its box scrolls to keep the cursor in view; an unfocused one shows the text's start. A squad size outside 1–100 shows `✕ agents must be 1–100` after the field.
 
 Product Team:
 
 ```
 ┌─ Set up Product Team · step 3 of 3 ──────────────────────────────────┐
 │                                                                      │
-│  Team name     [ Product_____________ ]                              │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Backend dir   [ ~/code/api_______________ ]  ✓ git repo             │
-│  Frontend dir  [ ~/code/web_______________ ]  ✓ git repo             │
-│  QA dir        [ ~/code/api_______________ ]  ✓ git repo             │
-│  Worktrees     [ ] new work runs in its own worktree                 │
+│▌ Team name     [Product                     ]                        │
+│  CLI           (•) Claude Code   (-) OpenCode                        │
+│  Backend dir   [~/code/app                  ] ✓ git repo             │
+│  Frontend dir  [                            ] ✕ required             │
+│  QA dir        [                            ] ✕ required             │
+│  Worktrees     [ ] own worktree per task                             │
 │                                                                      │
 │  Each role gets one agent and a starter prompt you can edit.         │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -467,18 +468,20 @@ Engineering Org (one "team name + repo" row per team):
 ```
 ┌─ Set up Engineering Org · step 3 of 3 ───────────────────────────────┐
 │                                                                      │
-│  CLI           (•) Claude Code  (-) OpenCode                         │
-│  Teams         name                 repo                             │
-│              [ Payments_______ ]  [ ~/code/payments____ ] ✓          │
-│              [ Growth_________ ]  [ ~/code/growth______ ] ✓          │
-│              [ _______________ ]  [ ___________________ ]            │
-│                [ + Add team ]   empty rows are ignored               │
-│  Worktrees     [ ] new work runs in its own worktree                 │
+│▌ CLI           (•) Claude Code   (-) OpenCode                        │
+│  name                 repo                                           │
+│  [Payments          ] [~/code/app              ] ✓ git repo          │
+│  [Web               ] [~/code/plain            ] ✓ found             │
+│    [ + Add team ]  empty rows are ignored                            │
+│  Worktrees     [ ] own worktree per task                             │
 │                                                                      │
 │  Each team gets Backend and QA roles with one agent each.            │
-│                          [ ← Back ]   [ Create org ]   [ Quit ]      │
+│  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
+
+Starting with no teams, the form shows one row; `+ Add team` appends another, and a row with both fields empty is ignored (so is its error).
 
 ### 4.4 Org editing
 
@@ -529,8 +532,9 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 
 - **List and filter:** typing filters the list by substring; `↑↓` move, `enter` chooses, `esc` closes without a change. The list shows at most 6 rows and scrolls (a `… N more` line). The first row is `inherit: <value>`; the last is `use "<typed>" as typed`, which sets a model that isn't listed (Claude Code's other models are typed, TD §5.2).
 - **Which list:** the CLI the form resolves to, including an inherited one (a role under a team on OpenCode lists OpenCode's models).
+- **Not installed:** a CLI that isn't installed reports `✕ couldn't list <cli>'s models`, so its fields stop saying `loading models…`.
 - **Loading, empty and failed:** while loading the field reads `loading models…` and typing still works; an empty or failed list shows only the `inherit` and `use "<typed>" as typed` rows, and a failure adds the `✕ couldn't list <cli>'s models · type a name or keep inherit` line.
-- **Effort:** the same popup, listing the chosen model's variants (OpenCode) or the `--effort` choices (Claude Code). On OpenCode with a model of `inherit`, the list is the inherited model's variants when that model is known; when none is (no model set anywhere up the tree), effort is disabled with `OpenCode sets effort per model · choose a model`. Changing the model clears an effort the new model doesn't offer.
+- **Effort:** the same popup, listing the chosen model's variants (OpenCode, when the CLI lists them; OpenCode 2.1.1 doesn't, so its Effort takes typed text) or the `--effort` choices (Claude Code). On OpenCode with a model of `inherit`, the list is the inherited model's variants when that model is known; when none is (no model set anywhere up the tree), effort is disabled with `OpenCode sets effort per model · choose a model`. Changing the model clears an effort the new model doesn't offer.
 - **Role form agent naming:** the New role form's `Agents` field names agents `<team>-<role>-N` (above); first-run templates use their own names (P4-Q6).
 
 **Form errors:** a duplicate name; worktrees on a directory that isn't a git repo (that radio is disabled, with the reason); the model list failing (while it loads, the field shows "loading models…").
@@ -896,7 +900,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 - **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
 - **Conflicts:** a key is unique within its context (the chat's card keys apply while a card is focused, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane and Chat; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the chat). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
-- **Storage:** `settings.toml` `[keys]` (TD §7). An unknown action id or a key that doesn't parse is ignored, and the default applies; the Keys screen shows one line above its footer, `ignored in settings.toml: <id> · using the default` (one line per entry, scrolling with the list).
+- **Storage:** `settings.toml` `[keys]` (TD §7). An unknown action id or a key that doesn't parse is ignored, and the default applies; the Keys screen shows one line above its footer, `ignored in settings.toml: <id> · using the default` (one line per entry, above the list's footer, with the list keeping room for them).
 
 ### 4.11 Key map
 

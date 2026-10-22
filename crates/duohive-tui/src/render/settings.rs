@@ -31,9 +31,9 @@ const TITLE: &str = "Settings · saved to settings.toml";
 const FOOTER: &str = "changes save immediately · esc back";
 const ORG_NOTE: &str = "org defaults and Duo: e on Duo (Edit org)";
 const BROKEN: &str = "settings.toml has an error · changes last until DuoHive quits";
-/// Border, blank, 3 headings and 5 control lines, the Org heading and its text, a note line,
-/// a blank, the footer, border.
-const HEIGHT: u16 = 15;
+/// Border, blank, 3 headings and 5 control lines, the Keys row, the Org heading and its
+/// text, a note line, a blank, the footer, border.
+const HEIGHT: u16 = 16;
 
 /// One control or piece of text on a line.
 struct Piece {
@@ -41,6 +41,8 @@ struct Piece {
     focused: bool,
     /// The terminal cursor's column inside `text`, while a box is open.
     cursor: Option<usize>,
+    /// Rows from the focused control, for a control: a click presses that many `↑↓`, then `enter`.
+    delta: Option<isize>,
 }
 
 /// Plain text.
@@ -49,6 +51,7 @@ fn plain(text: &str) -> Piece {
         text: text.to_owned(),
         focused: false,
         cursor: None,
+        delta: None,
     }
 }
 
@@ -56,10 +59,14 @@ fn plain(text: &str) -> Piece {
 fn control(st: &SettingsState, row: SettingsRow, text: &str) -> Piece {
     let focused = st.row == row;
     let marker = if focused { FOCUS } else { " " };
+    let at = |r: SettingsRow| {
+        isize::try_from(SettingsRow::ALL.iter().position(|x| *x == r).unwrap_or(0)).unwrap_or(0)
+    };
     Piece {
         text: format!("{marker}{text}"),
         focused,
         cursor: None,
+        delta: Some(at(row) - at(st.row)),
     }
 }
 
@@ -112,6 +119,7 @@ fn draw_pieces(
                 y,
             });
         }
+        let from = at;
         at = put(
             buf,
             at,
@@ -120,6 +128,17 @@ fn draw_pieces(
             right.saturating_sub(usize::from(at)),
             style,
         );
+        if let (Some(delta), true) = (piece.delta, at > from) {
+            super::hits::record(
+                Rect {
+                    x: from,
+                    y,
+                    width: at - from,
+                    height: 1,
+                },
+                super::hits::row_keys(delta),
+            );
+        }
     }
     cursor
 }
@@ -208,10 +227,16 @@ pub(super) fn draw(
         p,
     );
 
-    group(buf, 10, "Org");
-    put(buf, label_x, at(11), ORG_NOTE, room, muted);
+    let keys = control(st, SettingsRow::Keys, "[ Edit key bindings → ]");
+    put(buf, r.x + 1 + GROUP_X, at(10), "Keys", room, muted);
+    draw_pieces(buf, r, (control_x, at(10)), &[keys], p);
+
+    group(buf, 11, "Org");
+    let org = control(st, SettingsRow::Org, "[ New org from template… ]");
+    draw_pieces(buf, r, (control_x, at(11)), &[org], p);
+    put(buf, label_x, at(12), ORG_NOTE, room, muted);
     if m.settings_error.is_some() {
-        put(buf, label_x, at(12), BROKEN, room, fg(p.attention));
+        put(buf, label_x, at(13), BROKEN, room, fg(p.attention));
     }
     put(buf, r.x + 1 + GROUP_X, at(HEIGHT - 2), FOOTER, room, muted);
     cursor

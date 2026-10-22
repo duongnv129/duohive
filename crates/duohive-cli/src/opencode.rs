@@ -12,8 +12,8 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use duohive_core::adapter::{
-    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ScreenSignal,
-    ScreenState,
+    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ModelList,
+    ModelListError, ScreenSignal, ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
@@ -211,6 +211,15 @@ impl CliAdapter for OpencodeAdapter {
     }
 
     /// No trust or login prompt was seen (S2.8, S2.14).
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        let out = crate::detect::run_listing(
+            CliKind::Opencode.binary().as_ref(),
+            &["models"],
+            crate::detect::LISTING_TIMEOUT,
+        )?;
+        crate::models::parse_opencode_models(&out)
+    }
+
     fn startup_prompts(&self) -> bool {
         false
     }

@@ -4,9 +4,11 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::adapter::{CliPresence, ModelList};
 use crate::alert::Alert;
 use crate::card::{Card, CardId, CardOutcome};
 use crate::chat::ChatEntry;
+use crate::cli_kind::CliKind;
 use crate::inbox::{MessageId, Sender};
 use crate::names::AgentName;
 use crate::org::Org;
@@ -76,6 +78,8 @@ pub struct Snapshot {
     pub chat: Vec<ChatEntry>,
     /// Your messages not yet delivered.
     pub your_queued: Vec<MessageId>,
+    /// No org exists yet: the detected CLIs, for the first-run wizard (UI §4.3).
+    pub first_run: Option<Vec<(CliKind, CliPresence)>>,
 }
 
 /// A change the engine reports.
@@ -131,6 +135,24 @@ pub enum Event {
     },
     /// The start-up inventory has been applied.
     Reconnected,
+    /// The first-run org was created and saved (UI §4.3); the wizard closes.
+    OrgCreated,
+    /// The org was replaced from a template and saved (UI §4.8).
+    OrgReplaced,
+    /// A replace was refused or gave up; the old org still stands.
+    OrgReplaceFailed {
+        /// The agent that would not stop, when one did.
+        agent: Option<AgentName>,
+        /// Why, such as `squad-1 would not stop`.
+        reason: String,
+    },
+    /// A CLI's models and efforts, or why they couldn't be listed (TD §5.2).
+    ModelsListed {
+        /// Which CLI.
+        cli: CliKind,
+        /// The list, or the reason.
+        result: Result<ModelList, String>,
+    },
     /// A desktop alert to show.
     Alert(Alert),
     /// Desktop alerts cannot be shown.
@@ -383,6 +405,12 @@ mod tests {
             cards: Vec::new(),
             chat: Vec::new(),
             your_queued: Vec::new(),
+            first_run: Some(vec![(
+                crate::cli_kind::CliKind::Claude,
+                CliPresence::Found {
+                    version: "2.1.0".into(),
+                },
+            )]),
         };
         let a: AgentName = n("a");
         vec![

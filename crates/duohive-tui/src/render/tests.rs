@@ -35,7 +35,7 @@ fn org_pane_matches_spec_4_1() {
     // Last replies show only at ≥ 120×36 (UI §3).
     let lines = render_lines(&spec_model(), &ctx(), 120, 36);
     assert!(
-        lines[0].starts_with(" DuoHive   6 agents · ● 2 working · ◆ 2 need you  "),
+        lines[0].starts_with(" DuoHive   6 agents · ● 2 working · ◆ 2 need you · ? help  "),
         "{}",
         lines[0]
     );

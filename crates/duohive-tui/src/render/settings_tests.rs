@@ -39,11 +39,12 @@ fn settings_matches_the_spec() {
         "Last reply under agents [x]",
         "Reduce motion [ ]",
         "org defaults and Duo: e on Duo (Edit org)",
+        "Keys",
+        "[ Edit key bindings → ]",
         "changes save immediately · esc back",
     ] {
         assert!(text.contains(want), "missing {want:?} in\n{text}");
     }
-    assert!(!text.contains("Keys"));
 }
 
 #[test]

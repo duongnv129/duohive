@@ -73,3 +73,21 @@ jobs:
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features --locked
+
+  bench:
+    # Informational: shared runners are far too busy for the gate's numbers to
+    # mean anything. It proves the bench runs and reports, never that it passes.
+    name: bench (informational, not a gate)
+    runs-on: macos-14
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p duohive
+      - name: A 10-agent run, reported but not judged
+        env:
+          DUOHIVE_BENCH_IGNORE_LOAD: "1"
+        run: ./target/release/duohive bench --agents 10 --idle-secs 10 --view

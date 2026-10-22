@@ -2,7 +2,7 @@
 source: crates/duohive-tui/src/render/pane_tests.rs
 expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ---
- DuoHive   6 agents · ● 2 working · ◆ 4 need you                                                                                                                
+ DuoHive   6 agents · ● 2 working · ◆ 4 need you · ? help                                                                                                       
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ────────────────────────────────────────────────────────────────────────────────────┐
 ┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
 ┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                                                                               │
@@ -49,4 +49,4 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 │                                                                                                                                                              │
 │ ❯                                                                                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom
+ tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help

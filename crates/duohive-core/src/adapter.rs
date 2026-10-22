@@ -1,12 +1,40 @@
 //! The adapter port: what each agent CLI contributes (TD §5).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
 use crate::cli_kind::CliKind;
 use crate::launch::{Key, LaunchCommand, LaunchSpec};
 use crate::status::WaitingOn;
+
+/// The models and efforts a CLI offers, read from the CLI itself (TD §5.2).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelList {
+    /// Model ids or aliases, in the CLI's order.
+    pub models: Vec<String>,
+    /// Effort levels that apply to any model; empty when the CLI sets them per model.
+    pub efforts: Vec<String>,
+    /// Effort levels per model, for a CLI that lists them (OpenCode's variants).
+    pub variants: BTreeMap<String, Vec<String>>,
+}
+
+/// Why a model list could not be read.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum ModelListError {
+    /// This adapter lists nothing.
+    #[error("this CLI does not list models")]
+    Unsupported,
+    /// The CLI did not answer in time.
+    #[error("timed out")]
+    Timeout,
+    /// The output was not in the expected shape.
+    #[error("unexpected output: {0}")]
+    Parse(String),
+    /// The CLI could not be run.
+    #[error("{0}")]
+    Io(String),
+}
 
 /// Whether a screen shows a dialog that would swallow a paste or take its
 /// `Enter` (TD §5.5).
@@ -148,6 +176,10 @@ pub trait CliAdapter: Send + Sync {
     }
     /// Sn.8 lists a start-up prompt (trust, login, update notice): D2, Task 13.
     fn startup_prompts(&self) -> bool;
+    /// Asks the CLI for its models and efforts. Blocking; called off the core task.
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        Err(ModelListError::Unsupported)
+    }
     /// Adds to a hook payload before parsing (may read files). Called by the hook listener, never the engine.
     fn enrich_hook(&self, _event: &str, _payload: &mut serde_json::Value) {}
 }

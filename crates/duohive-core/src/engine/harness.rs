@@ -62,6 +62,8 @@ pub(crate) fn all_found() -> Vec<(CliKind, CliPresence)> {
 /// What to build a [`Harness`] from; tweak fields, then [`Setup::build`].
 pub(crate) struct Setup {
     pub org: Org,
+    /// `org.toml`'s error, when it doesn't parse.
+    pub org_error: Option<crate::ports::OrgFileError>,
     pub dirs: HashMap<PathBuf, DirStatus>,
     pub claude: StubAdapter,
     pub opencode: StubAdapter,
@@ -69,6 +71,8 @@ pub(crate) struct Setup {
     pub without_adapter: Option<CliKind>,
     /// Sent right after `Engine::new`; `None` sends nothing (D30).
     pub inventory: Option<Vec<(CliKind, CliPresence)>>,
+    /// Makes the engine a first run with this inventory (UI §4.3).
+    pub first_run: Option<Vec<(CliKind, CliPresence)>>,
     /// The engine's settings.
     pub settings: Settings,
     /// When the clock starts.
@@ -83,11 +87,13 @@ impl Default for Setup {
     fn default() -> Self {
         Self {
             org: test_org(),
+            org_error: None,
             dirs: HashMap::new(),
             claude: StubAdapter::new(CliKind::Claude),
             opencode: StubAdapter::new(CliKind::Opencode),
             without_adapter: None,
             inventory: Some(all_found()),
+            first_run: None,
             settings: Settings::default(),
             start: T0,
             notifier_available: true,
@@ -143,7 +149,18 @@ impl Setup {
                 .map(|a| Box::new(a) as Box<dyn crate::adapter::CliAdapter>)
                 .collect(),
         ));
-        let engine = Engine::new(self.org, None, self.settings, None, cfg, ports, adapters);
+        let mut engine = Engine::new(
+            self.org,
+            self.org_error.clone(),
+            self.settings,
+            None,
+            cfg,
+            ports,
+            adapters,
+        );
+        if let Some(list) = self.first_run.clone() {
+            engine.set_first_run(list);
+        }
         let mut h = Harness {
             engine,
             call_log: runtime.calls,

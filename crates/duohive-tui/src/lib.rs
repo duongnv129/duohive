@@ -2,10 +2,13 @@
 
 pub mod app;
 pub mod chat;
+pub mod filter;
+pub mod first_run;
 pub mod focus;
 pub mod format;
 pub mod forms;
 pub mod input;
+pub mod keymap;
 pub mod keys_out;
 mod live;
 pub mod model;

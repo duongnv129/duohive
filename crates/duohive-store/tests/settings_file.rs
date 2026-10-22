@@ -46,3 +46,14 @@ fn save_leaves_no_temp_file() {
         .collect();
     assert_eq!(names, ["settings.toml"]);
 }
+
+#[test]
+fn keys_round_trip() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("settings.toml");
+    let mut s = Settings::default();
+    s.keys.insert("nope".into(), "x".into());
+    s.keys.insert("zoom".into(), "ctrl+g".into());
+    save_settings(&path, &s).unwrap();
+    assert_eq!(load_settings(&path).unwrap(), s);
+}

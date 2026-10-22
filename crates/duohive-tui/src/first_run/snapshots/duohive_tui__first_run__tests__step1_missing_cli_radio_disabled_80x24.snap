@@ -1,0 +1,22 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Welcome to DuoHive · step 1 of 3 ───────────────────────────────────┐    
+    │                                                                      │    
+    │  DuoHive runs your AI coding agents as a team.                       │    
+    │  Duo, your manager agent, helps you steer it.                        │    
+    │                                                                      │    
+    │▌ Your name     [Duong                       ]                        │    
+    │  Duo runs on   (•) Claude Code   (-) OpenCode                        │    
+    │  found: claude 2.1.0 · opencode not found                            │    
+    │                                                                      │    
+    │  enter next · esc quit (asks first)       [ Next → ]   [ Quit ]      │    
+    │                                                                      │    
+    └──────────────────────────────────────────────────────────────────────┘

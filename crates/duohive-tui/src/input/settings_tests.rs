@@ -238,3 +238,24 @@ fn esc_goes_back_and_never_quits() {
     press(&mut m, code(KeyCode::Enter));
     assert_eq!(map_key(&m, key('q')), Some(Action::Char('q')));
 }
+
+#[test]
+fn settings_has_a_keys_row_that_opens_the_editor() {
+    let mut m = open();
+    go_to(&mut m, SettingsRow::Keys);
+    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
+    assert!(matches!(m.dialog, Some(Dialog::Keys(_))));
+}
+
+#[test]
+fn settings_org_row_opens_replace_wizard() {
+    let mut m = open();
+    go_to(&mut m, SettingsRow::Org);
+    assert_eq!(press(&mut m, code(KeyCode::Enter)), []);
+    assert!(m.dialog.is_none(), "the wizard takes the screen");
+    let w = m.wizard.as_ref().expect("a replace wizard");
+    assert!(w.replace);
+    assert_eq!(w.step, crate::first_run::Step::Template);
+    assert!(w.available(duohive_core::cli_kind::CliKind::Claude));
+    assert!(w.available(duohive_core::cli_kind::CliKind::Opencode));
+}

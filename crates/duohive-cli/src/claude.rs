@@ -1,7 +1,8 @@
 //! The Claude Code adapter (spike S1, Claude Code 2.1.288).
 
 use duohive_core::adapter::{
-    CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ScreenSignal, ScreenState,
+    CliAdapter, CliPresence, HookCoverage, HookSignal, LaunchError, ModelList, ModelListError,
+    ScreenSignal, ScreenState,
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
@@ -192,6 +193,15 @@ impl CliAdapter for ClaudeAdapter {
     }
 
     /// The workspace-trust dialog (S1.8).
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        let out = crate::detect::run_listing(
+            CliKind::Claude.binary().as_ref(),
+            &["--help"],
+            crate::detect::LISTING_TIMEOUT,
+        )?;
+        crate::models::parse_claude_help(&out)
+    }
+
     fn startup_prompts(&self) -> bool {
         true
     }

@@ -7,7 +7,7 @@ CARGO_LLVM_COV_VERSION := 0.9.1
 TYPOS_BIN := $(CARGO_HOME)/bin/typos
 PREFIX ?= $(HOME)/.local
 
-.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean release deps install uninstall
+.PHONY: help fmt fmt-check lint test deny typos check cov doc tools clean release deps install uninstall bench-gate
 
 help: ## List the available targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -50,6 +50,9 @@ tools: ## Install cargo-deny, typos and cargo-llvm-cov
 
 release: ## Build the release binary (target/release/duohive)
 	cargo build --release --locked -p duohive
+
+bench-gate: release ## Run the PRD gate: three counted runs at 10 and 100 agents
+	DUOHIVE_BIN=target/release/duohive ./scripts/bench-gate.sh
 
 deps: ## Install what duohive needs to build and run: tmux 3.2+ and Rust
 	./install.sh --deps-only

@@ -9,10 +9,15 @@ use duohive_core::org::{NodeKey, Org, Role, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::view::PaneInput;
 
+pub(crate) use drag::drop_valid;
+pub use drag::{Drag, DropTarget};
+pub use menu::{Menu, MenuRow};
+
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
+use crate::keymap::{ActionId, Context, Keymap};
 use crate::model::{Confirm, Dialog, UiModel};
 use crate::tree::tree_rows;
 
@@ -98,6 +103,20 @@ pub enum Action {
     Worktrees,
     /// `,`: Settings.
     Settings,
+    /// `?`: the key map (UI §4.11).
+    KeyMap,
+    /// `f`: filter the tree by state (UI §4.1.4).
+    Filter,
+    /// `m`: move the selection (UI §4.8).
+    Move,
+    /// `y` on a focused card.
+    CardApprove,
+    /// `e` on a focused card.
+    CardEdit,
+    /// `n` on a focused card.
+    CardReject,
+    /// The key a binding capture took (UI §4.10).
+    Capture(KeyEvent),
 }
 
 /// What the app loop does after an action.
@@ -136,6 +155,15 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.kind == KeyEventKind::Release {
         return None;
     }
+    // An open right-click menu takes the keys first.
+    if m.menu.is_some() {
+        return Some(menu::map_key(k));
+    }
+    // The wizard owns every key while it is up, so its fields can type `q` (UI §4.3);
+    // a confirmation over it takes its own keys first.
+    if m.wizard.is_some() && !matches!(m.dialog, Some(Dialog::Confirm(_))) {
+        return crate::first_run::map_key(k);
+    }
     if m.typing() {
         return Some(agent::typing_key(k));
     }
@@ -153,6 +181,9 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if matches!(&m.dialog, Some(Dialog::Settings(s)) if s.editing.is_some()) {
         return form_key(k);
     }
+    if matches!(&m.dialog, Some(Dialog::Keys(s)) if s.capturing) {
+        return Some(Action::Capture(k));
+    }
     let ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
     if m.dialog.is_none() {
         match (ctrl, k.code) {
@@ -160,8 +191,13 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             (true, KeyCode::Down) => return Some(Action::ChatShrink),
             _ => {}
         }
-        // The chat input always takes typed text (UI §5).
+        // The chat input always takes typed text (UI §5), card keys aside.
         if m.focus.pane == Pane::Chat {
+            if m.focus.card.is_some()
+                && let Some(id) = m.keymap.card_action(&k)
+            {
+                return Some(mapped(id));
+            }
             return chat_key(k);
         }
     }
@@ -182,20 +218,34 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         return common;
     }
     match &m.dialog {
-        Some(Dialog::Confirm(_)) => match k.code {
+        Some(d) => dialog_key(d, k),
+        None => panes::pane_key(&m.keymap, m.focus.pane, &k),
+    }
+}
+
+/// The keys of an open dialog (forms and Give work took theirs earlier).
+fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
+    match d {
+        Dialog::Confirm(_) => match k.code {
             KeyCode::Char('y') => Some(Action::DialogYes),
             KeyCode::Char('n') => Some(Action::DialogNo),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Worktrees(_)) => match k.code {
+        Dialog::Worktrees(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Char('d') => Some(Action::Delete),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Settings(_)) => match k.code {
+        Dialog::MoveTo(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            _ => None,
+        },
+        Dialog::Settings(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Left => Some(Action::Left),
@@ -203,29 +253,58 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             KeyCode::Enter | KeyCode::Char(' ') => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Chooser(_)) => match k.code {
+        Dialog::Chooser(_) => match k.code {
             KeyCode::Up => Some(Action::Up),
             KeyCode::Down => Some(Action::Down),
             KeyCode::Enter => Some(Action::DialogEnter),
             _ => None,
         },
-        Some(Dialog::Form(_) | Dialog::GiveWork(_)) | None => panes::pane_key(m.focus.pane, k.code),
+        Dialog::KeyMap(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::PageUp => Some(Action::PageUp),
+            KeyCode::PageDown => Some(Action::PageDown),
+            KeyCode::Char('?') => Some(Action::Esc),
+            _ => None,
+        },
+        Dialog::Keys(_) => match k.code {
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::PageUp => Some(Action::PageUp),
+            KeyCode::PageDown => Some(Action::PageDown),
+            KeyCode::Enter => Some(Action::DialogEnter),
+            KeyCode::Backspace => Some(Action::Backspace),
+            _ => None,
+        },
+        // Forms and Give work took their keys above, before `common`.
+        Dialog::Form(_) | Dialog::GiveWork(_) => None,
     }
 }
 
-fn tree_key(code: KeyCode) -> Option<Action> {
-    match code {
-        KeyCode::Up => Some(Action::Up),
-        KeyCode::Down => Some(Action::Down),
-        KeyCode::Char('s') => Some(Action::StartStop),
-        KeyCode::Char('n') => Some(Action::New),
-        KeyCode::Char('e') => Some(Action::Edit),
-        KeyCode::Char('d') => Some(Action::Delete),
-        KeyCode::Char('v') => Some(Action::ToggleReplies),
-        KeyCode::Char('o') => Some(Action::OpenOrgFile),
-        KeyCode::Char('z') => Some(Action::Zoom),
-        KeyCode::Char(' ') => Some(Action::GiveWork),
-        _ => None,
+/// The action a bound key asks for in `context`.
+fn bind_action(km: &Keymap, context: Context, k: KeyEvent) -> Option<Action> {
+    km.action_for(context, &k).map(mapped)
+}
+
+/// The action a bound id names.
+fn mapped(id: ActionId) -> Action {
+    match id {
+        ActionId::GiveWork => Action::GiveWork,
+        ActionId::StartStop => Action::StartStop,
+        ActionId::New => Action::New,
+        ActionId::Edit => Action::Edit,
+        ActionId::Move => Action::Move,
+        ActionId::Delete => Action::Delete,
+        ActionId::Zoom => Action::Zoom,
+        ActionId::LastReply => Action::ToggleReplies,
+        ActionId::OpenOrg => Action::OpenOrgFile,
+        ActionId::Settings => Action::Settings,
+        ActionId::Worktrees => Action::Worktrees,
+        ActionId::Filter => Action::Filter,
+        ActionId::KeyMap => Action::KeyMap,
+        ActionId::CardApprove => Action::CardApprove,
+        ActionId::CardEdit => Action::CardEdit,
+        ActionId::CardReject => Action::CardReject,
     }
 }
 
@@ -263,12 +342,64 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     out
 }
 
+/// The first-run wizard's keys (UI §4.3); Create org sends `Command::CreateOrg`, and
+/// in replace mode a confirmation asks first (UI §4.8).
+fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    let Some(outcome) = m.wizard.as_mut().map(|w| {
+        let outcome = crate::first_run::key(w, a, m.dirs.probe(), &m.home);
+        (outcome, w.replace, w.template().name())
+    }) else {
+        return Vec::new();
+    };
+    let (outcome, replace, template) = outcome;
+    match outcome {
+        crate::first_run::Outcome::Continue => Vec::new(),
+        crate::first_run::Outcome::Quit => vec![UiEffect::Quit],
+        crate::first_run::Outcome::Cancel => {
+            m.wizard = None;
+            m.dialog = Some(Dialog::Settings(crate::forms::SettingsState {
+                row: crate::forms::SettingsRow::Org,
+                editing: None,
+            }));
+            Vec::new()
+        }
+        crate::first_run::Outcome::Create(command) if replace => {
+            let count = m.org.agents().len();
+            let confirm = Confirm {
+                title: "Replace your org?".to_owned(),
+                lines: vec![
+                    format!(
+                        "A new org from {template} replaces your teams, roles and agents \
+                         ({count} agents). Duo and the org defaults are kept."
+                    ),
+                    "Running agents in it are stopped first.".to_owned(),
+                    "Your current org.toml is kept as a backup.".to_owned(),
+                ],
+                yes_label: "Replace".to_owned(),
+                focus_yes: false,
+                on_yes: *command,
+                back: None,
+                back_list: None,
+            };
+            m.dialog = Some(Dialog::Confirm(Box::new(confirm)));
+            Vec::new()
+        }
+        crate::first_run::Outcome::Create(command) => vec![UiEffect::Send(*command)],
+    }
+}
+
 fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.footer_note = None;
     // A refusal arrives before any further input; later ones aren't about the last send.
     m.give_sent = None;
     if a == Action::Quit {
         return vec![UiEffect::Quit];
+    }
+    if m.menu.is_some() {
+        return menu::action(m, a);
+    }
+    if m.wizard.is_some() && !matches!(m.dialog, Some(Dialog::Confirm(_))) {
+        return wizard_action(m, a);
     }
     match m.dialog.take() {
         Some(Dialog::Confirm(c)) => return confirm_action(m, c, a),
@@ -279,7 +410,10 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
+        Some(Dialog::MoveTo(p)) => return move_to::action(m, p, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
+        Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
+        Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
         None => {}
     }
     if m.focus.pane == Pane::Chat
@@ -305,12 +439,25 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             panes::restore_zoom(m);
             return Vec::new();
         }
+        // In the org pane `esc` clears a filter; from another pane it goes back there first.
+        Action::Esc if m.focus.pane == Pane::Org && crate::filter::clear(m) => {
+            return Vec::new();
+        }
         Action::Esc => {
             panes::back_to_org(m);
             return Vec::new();
         }
         Action::Worktrees => return worktrees::open(m),
         Action::Settings => return settings::open(m),
+        Action::KeyMap => return keymap::open(m),
+        Action::Move => return move_to::open(m),
+        Action::Filter => {
+            crate::filter::cycle(m);
+            return agent::view_if_finished(m);
+        }
+        Action::CardApprove | Action::CardEdit | Action::CardReject | Action::Capture(_) => {
+            return Vec::new();
+        }
         Action::Zoom => {
             panes::toggle_zoom(m);
             return agent::view_if_finished(m);
@@ -383,6 +530,10 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 /// Pasted text goes to the agent while typing (as a bracketed paste), to the open form's
 /// focused field, or to the focused chat input; elsewhere it is dropped.
 pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
+    if let Some(w) = m.wizard.as_mut() {
+        crate::first_run::paste(w, text);
+        return Vec::new();
+    }
     if m.typing() {
         // Scrolled back while typing: the paste returns to live, as any key (P2-D25).
         m.scrolled = false;
@@ -480,9 +631,9 @@ fn chooser_action(m: &mut UiModel, mut c: Chooser, a: Action) {
         Action::Up | Action::BackTab => c.step(false),
         Action::Down | Action::Tab => c.step(true),
         Action::DialogEnter => {
-            m.dialog = c
-                .open(&m.org, m.dirs.probe(), &m.home)
-                .map(|f| Dialog::Form(Box::new(f)));
+            if let Some(f) = c.open(&m.org, m.dirs.probe(), &m.home) {
+                m.open_form(f);
+            }
             return;
         }
         Action::Esc | Action::DialogNo => return,
@@ -516,7 +667,7 @@ fn edit_here(m: &mut UiModel) -> Vec<UiEffect> {
         NodeKey::Role(k) => Form::edit_role(&m.org, k, dirs, home),
         NodeKey::Team(t) => Form::edit_team(&m.org, t, dirs, home),
     };
-    m.dialog = Some(Dialog::Form(Box::new(form)));
+    m.open_form(form);
     Vec::new()
 }
 
@@ -694,8 +845,12 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 
 mod agent;
 mod cards;
+mod drag;
 pub(crate) mod give_work;
+mod keymap;
+mod menu;
 pub(crate) mod mouse;
+mod move_to;
 mod panes;
 mod settings;
 mod worktrees;
@@ -707,7 +862,23 @@ mod card_tests;
 #[cfg(test)]
 mod chat_tests;
 #[cfg(test)]
-mod mouse_tests;
+mod filter_tests;
+#[cfg(test)]
+mod keymap_tests;
+#[cfg(test)]
+mod menu_tests;
+#[cfg(test)]
+pub(super) mod mouse_tests;
+#[cfg(test)]
+mod move_tests;
+#[cfg(test)]
+pub(crate) use move_tests::spec_org as spec_move_org;
+#[cfg(test)]
+pub(crate) use move_tests::spec_org as move_spec_org;
+#[cfg(test)]
+pub(crate) fn open_menu_for(m: &mut UiModel, node: NodeKey, at: ratatui::layout::Position) {
+    m.menu = Some(menu::build(m, node, at));
+}
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

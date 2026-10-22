@@ -163,6 +163,10 @@ impl Store for SqliteStore {
         org_file::save_org(&self.paths, org)
     }
 
+    fn replace_org(&mut self, org: &Org, now: Millis) -> Result<(), StoreError> {
+        org_file::replace_org(&self.paths, org, now)
+    }
+
     fn mark_last_good(&mut self, org: &Org) -> Result<(), StoreError> {
         org_file::mark_last_good(&self.paths, org)
     }

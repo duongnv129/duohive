@@ -13,7 +13,7 @@ expression: screen_text(&m)
 ┃ │     └─│              rename only while stopped with no worktrees                     │         │
 ┃ └─ ◇ Gen│  CLI        ▌[ inherit: Claude Code ▾ ]                                      │         │
 ┃    ├─ sq│  Directory   [ ~/code/billing______________ ]  ✓ git repo                    │         │
-┃    ├─ sq│  Model       [ inherit: sonnet___ ]         Effort  [ inherit: high_____ ]   │         │
+┃    ├─ sq│  Model       [ inherit: sonnet_ ▾ ]         Effort  [ inherit: high___ ▾ ]   │         │
 ┃    └─ sq│  Flags       [ ______________________________ ]                              │         │
 ┃         │  Worktrees   [ inherit: off ▾ ]                                              │         │
 ┃         │                                                                              │         │

@@ -3,10 +3,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::card::{CardChange, CardId};
+use crate::cli_kind::CliKind;
 use crate::launch::Token;
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
 use crate::settings::Settings;
+use crate::templates::TemplateInput;
 use crate::tool::{CallId, ToolCall};
 use crate::worktree::{RunIn, TaskId};
 
@@ -106,6 +108,22 @@ pub enum Command {
     Typing {
         /// The agent, or `None` when typing ends.
         agent: Option<AgentName>,
+    },
+    /// Create the org the first-run wizard built (UI §4.3): accepted only while
+    /// no org exists.
+    CreateOrg {
+        /// The template and its answers.
+        template: TemplateInput,
+        /// Your name, for `settings.toml`.
+        your_name: Option<String>,
+        /// Duo's CLI, which `[org] cli` takes.
+        duo_cli: CliKind,
+    },
+    /// Replace the org with the one `template` builds (UI §4.8): every agent
+    /// the old tree has is stopped first, then the new org is written.
+    NewOrgFromTemplate {
+        /// The template and its answers.
+        template: TemplateInput,
     },
 }
 

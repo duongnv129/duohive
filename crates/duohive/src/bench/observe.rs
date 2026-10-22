@@ -1,8 +1,13 @@
 //! The bench's stand-in for the TUI: applies every engine event to a
 //! `UiModel`, draws it into a `TestBackend` at most 30 times a second, and
 //! times each tapped hook against the first frame that shows its state.
+//!
+//! It times the screen-read path too: for the agents a fake CLI plays without
+//! hooks, the fake stamps the moment it printed its prompt into a file, and
+//! the frame that first shows that agent at rest closes the interval.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use duohive_core::event::Event;
@@ -70,6 +75,10 @@ pub struct Observer {
     shown: HashMap<AgentName, (AgentState, f64)>,
     pending: Vec<Pending>,
     samples: Vec<f64>,
+    /// The stamp file each no-hook agent appends its prompt time to.
+    stamps: HashMap<AgentName, PathBuf>,
+    /// Screen-read samples: turn-end stamp to the end of the frame at rest.
+    tilde: Vec<f64>,
 }
 
 impl Observer {
@@ -91,6 +100,16 @@ impl Observer {
             shown: HashMap::new(),
             pending: Vec::new(),
             samples: Vec::new(),
+            stamps: HashMap::new(),
+            tilde: Vec::new(),
+        }
+    }
+
+    /// An observer that also times the screen-read path for `stamps`.
+    pub fn with_stamps(org: Org, stamps: HashMap<AgentName, PathBuf>) -> Self {
+        Self {
+            stamps,
+            ..Self::new(org)
         }
     }
 
@@ -160,8 +179,22 @@ impl Observer {
         for (agent, view) in &self.model.agents {
             let state = view.status.state;
             if self.shown.get(agent).is_none_or(|(old, _)| *old != state) {
+                let first_shown_at_rest = state.is_at_rest()
+                    && self
+                        .shown
+                        .get(agent)
+                        .is_none_or(|(old, _)| !old.is_at_rest());
+                let stamp_path = self.stamps.get(agent).cloned();
                 self.shown.insert(agent.clone(), (state, wall));
                 changed.push((agent.clone(), state));
+                // The agent printed its prompt at `t0`; this frame shows it at
+                // rest. The interval is the screen-read path's latency.
+                if let (true, Some(path)) = (first_shown_at_rest, stamp_path)
+                    && let Some(t0) = read_stamp(&path)
+                    && wall >= t0
+                {
+                    self.tilde.push(wall - t0);
+                }
             }
         }
         self.resolve(&changed, wall);
@@ -195,8 +228,25 @@ impl Observer {
         &self.model
     }
 
-    /// Hook-to-screen samples so far, in ms.
-    pub fn samples(&self) -> &[f64] {
-        &self.samples
+    /// The hook samples as percentiles, and how many there were.
+    pub fn hook_percentiles(&self) -> (super::Percentiles, usize) {
+        let mut samples = self.samples.clone();
+        let p = super::percentiles(&mut samples);
+        (p, self.samples.len())
     }
+
+    /// The screen-read samples as percentiles, and how many there were.
+    pub fn tilde_percentiles(&self) -> (super::Percentiles, usize) {
+        let mut samples = self.tilde.clone();
+        let p = super::percentiles(&mut samples);
+        (p, self.tilde.len())
+    }
+}
+
+/// The last stamp in `path`, or `None` when it is missing or holds no number.
+fn read_stamp(path: &std::path::Path) -> Option<f64> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines()
+        .rev()
+        .find_map(|l| l.trim().parse::<f64>().ok())
 }

@@ -53,9 +53,22 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
     let content = usize::from(r.width - 4);
     let rows = wrap_problems(tree_rows(m, compact, replies, ctx.now), content);
     let right = if compact { COMPACT_RIGHT } else { WIDE_RIGHT };
-    let skip = scroll(&rows, &m.selected, usize::from(tree_h));
+    let skip = top_row(&rows, m, usize::from(tree_h));
     for (i, row) in rows.iter().skip(skip).take(usize::from(tree_h)).enumerate() {
         let y = r.y + 1 + u16::try_from(i).unwrap_or(u16::MAX);
+        if let (Some(d), Some(key)) = (&m.drag, &row.key) {
+            // A valid target while dragging: marked in the bar column too, not by colour alone.
+            if crate::input::drop_valid(m, &d.node, key) {
+                let bar = Rect {
+                    x: r.x + 1,
+                    y,
+                    width: r.width - 2,
+                    height: 1,
+                };
+                buf.set_style(bar, p.selected());
+                put(buf, r.x + 1, y, "▹", 1, fg(p.border_focus));
+            }
+        }
         if row.key.as_ref() == Some(&m.selected) {
             let bar = Rect {
                 x: r.x + 1,
@@ -90,7 +103,7 @@ pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<N
     }
     let content = usize::from(r.width - 4);
     let rows = wrap_problems(tree_rows(m, l.compact, replies, m.now), content);
-    let skip = scroll(&rows, &m.selected, tree_h);
+    let skip = top_row(&rows, m, tree_h);
     rows.iter()
         .take(skip + row + 1)
         .skip(skip)
@@ -116,6 +129,34 @@ fn wrap_problems(rows: Vec<TreeRow>, content: usize) -> Vec<TreeRow> {
                 .collect()
         })
         .collect()
+}
+
+/// The first row to show: where the wheel left the tree while the same node stays selected,
+/// else the one that keeps the selection on screen.
+fn top_row(rows: &[TreeRow], m: &UiModel, height: usize) -> usize {
+    match &m.org_scroll {
+        Some((top, key)) if *key == m.selected => (*top).min(rows.len().saturating_sub(height)),
+        _ => scroll(rows, &m.selected, height),
+    }
+}
+
+/// The tree after one wheel tick: the top row moves by `lines`, the selection stays.
+pub(super) fn wheel(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
+    let r = l.org;
+    if r.width < 6 || r.height < 2 {
+        return;
+    }
+    let height = usize::from(r.height - 1);
+    let content = usize::from(r.width - 4);
+    let rows = wrap_problems(tree_rows(m, l.compact, replies, m.now), content);
+    let top = top_row(&rows, m, height);
+    let most = rows.len().saturating_sub(height);
+    let next = if up {
+        top.saturating_sub(lines)
+    } else {
+        (top + lines).min(most)
+    };
+    m.org_scroll = Some((next, m.selected.clone()));
 }
 
 /// The first row to show, so the selected row and all its detail lines stay on screen.
@@ -196,7 +237,7 @@ fn draw_row(
                 fg(p.error),
             );
         }
-        TreeRowKind::EmptyRole | TreeRowKind::EmptyOrg => {
+        TreeRowKind::EmptyRole | TreeRowKind::EmptyOrg | TreeRowKind::FilterEmpty => {
             put(
                 buf,
                 x,

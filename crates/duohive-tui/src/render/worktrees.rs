@@ -195,6 +195,16 @@ pub(super) fn draw(
             Style::default().fg(p.fg).bg(p.bg_panel)
         };
         put(buf, x, y, &" ".repeat(room), room, base);
+        let delta = isize::try_from(i).unwrap_or(0) - isize::try_from(cursor).unwrap_or(0);
+        super::hits::record(
+            Rect {
+                x,
+                y,
+                width: w - 2,
+                height: 1,
+            },
+            super::hits::row_keys(delta),
+        );
         let marker = if selected { FOCUS } else { " " };
         put(buf, x, y, marker, 1, base.fg(p.border_focus));
         let first_cols = format!(

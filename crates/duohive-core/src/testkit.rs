@@ -1,8 +1,8 @@
 //! Test-only fixtures and fakes shared across crates.
 
 use crate::adapter::{
-    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ScreenSignal,
-    ScreenState,
+    CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ModelList,
+    ModelListError, ScreenSignal, ScreenState,
 };
 use crate::alert::Alert;
 use crate::card::{Card, CardId};
@@ -222,6 +222,10 @@ pub struct FakeStoreState {
     pub fail_next_save: bool,
     /// Every org saved, oldest first.
     pub saved_orgs: Vec<Org>,
+    /// Every org replaced, oldest first.
+    pub replaced_orgs: Vec<Org>,
+    /// Makes the next `replace_org` fail, once.
+    pub fail_replace: bool,
     /// Every `mark_last_good` call that succeeded, oldest first.
     pub marked_last_good: Vec<Org>,
     /// Every settings value saved, oldest first.
@@ -251,6 +255,8 @@ impl Default for FakeStoreState {
             last_good: None,
             fail_next_save: false,
             saved_orgs: Vec::new(),
+            replaced_orgs: Vec::new(),
+            fail_replace: false,
             marked_last_good: Vec::new(),
             saved_settings: Vec::new(),
             sessions: BTreeMap::new(),
@@ -293,6 +299,16 @@ impl Store for FakeStore {
         let mut st = self.state.lock().unwrap();
         Self::check_save(&mut st)?;
         st.saved_orgs.push(org.clone());
+        st.last_good = Some(org.clone());
+        st.org_result = Ok(Some(org.clone()));
+        Ok(())
+    }
+    fn replace_org(&mut self, org: &Org, _now: Millis) -> Result<(), StoreError> {
+        let mut st = self.state.lock().unwrap();
+        if std::mem::take(&mut st.fail_replace) {
+            return Err(StoreError("disk full".to_owned()));
+        }
+        st.replaced_orgs.push(org.clone());
         st.last_good = Some(org.clone());
         st.org_result = Ok(Some(org.clone()));
         Ok(())
@@ -453,6 +469,10 @@ pub struct StubAdapter {
     pub before_paste: Vec<Key>,
     /// What `dialog_check()` returns.
     pub dialog: Option<DialogCheck>,
+    /// What `list_models()` returns.
+    pub models: Result<ModelList, ModelListError>,
+    /// How many times `list_models` ran; shared by clones.
+    pub list_calls: Arc<Mutex<u32>>,
 }
 
 impl StubAdapter {
@@ -477,7 +497,15 @@ impl StubAdapter {
             launch_error: None,
             before_paste: Vec::new(),
             dialog: None,
+            models: Err(ModelListError::Unsupported),
+            list_calls: Arc::new(Mutex::new(0)),
         }
+    }
+
+    /// Makes `list_models` return `result`.
+    pub fn with_models(mut self, result: Result<ModelList, ModelListError>) -> Self {
+        self.models = result;
+        self
     }
 
     /// Sets what `enrich_hook` does.
@@ -494,6 +522,10 @@ impl StubAdapter {
 }
 
 impl CliAdapter for StubAdapter {
+    fn list_models(&self) -> Result<ModelList, ModelListError> {
+        *self.list_calls.lock().unwrap() += 1;
+        self.models.clone()
+    }
     fn kind(&self) -> CliKind {
         self.kind
     }

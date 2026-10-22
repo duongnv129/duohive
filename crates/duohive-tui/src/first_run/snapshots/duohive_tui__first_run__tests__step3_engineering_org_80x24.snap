@@ -1,0 +1,22 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Set up Engineering Org · step 3 of 3 ───────────────────────────────┐    
+    │                                                                      │    
+    │▌ CLI           (•) Claude Code   (-) OpenCode                        │    
+    │  name                 repo                                           │    
+    │  [Payments          ] [~/code/app              ] ✓ git repo          │    
+    │  [Web               ] [~/code/plain            ] ✓ found             │    
+    │    [ + Add team ]  empty rows are ignored                            │    
+    │  Worktrees     [ ] own worktree per task                             │    
+    │                                                                      │    
+    │  Each team gets Backend and QA roles with one agent each.            │    
+    │  tab · enter · esc       [ ← Back ]   [ Create org ]   [ Quit ]      │    
+    │                                                                      │    
+    └──────────────────────────────────────────────────────────────────────┘

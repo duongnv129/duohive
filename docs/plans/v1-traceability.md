@@ -225,7 +225,7 @@ Interim behaviour that a later phase removes. Rows marked removed were taken out
 | D7 / P2-D3: empty-org and empty-role copy without "ask Duo" | phase 1 | 3.9, removed |
 | P2-D3: role summary without `space give work to this role` | 2.5 | 3.11, removed |
 | D14: free-text model and effort | phase 1 | 4.5 |
-| D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3 |
+| D28: no full-screen "no agent CLI" message; a first run starts a blank Claude Code org | phase 1 | 4.3, removed |
 | P2-D8: chat pane sends to Duo as Give work | 2.5 | 3.9, removed |
 | P2-D10: no Give work to a role; no Send as message instead | 2.15 | 3.11, removed |
 | P2-D25: clicks ignored in dialogs, confirmations, Settings and Worktrees | 2.21 | 4.7 (P4-D2) |

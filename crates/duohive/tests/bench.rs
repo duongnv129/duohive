@@ -11,9 +11,17 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_duohive");
 
+/// The bench on this machine: the load gate would discard every run on a busy
+/// CI host, so the tests turn it off.
+fn bench_cmd() -> Command {
+    let mut cmd = Command::new(BIN);
+    cmd.env("DUOHIVE_BENCH_IGNORE_LOAD", "1");
+    cmd
+}
+
 #[test]
 fn bench_runs_two_agents() {
-    let out = Command::new(BIN)
+    let out = bench_cmd()
         .args([
             "bench",
             "--agents",
@@ -79,7 +87,7 @@ fn bench_socket_answers(pid: u32) -> bool {
 #[test]
 fn sigterm_cleans_up_the_bench() {
     use std::time::{Duration, Instant};
-    let mut child = Command::new(BIN)
+    let mut child = bench_cmd()
         .args([
             "bench",
             "--agents",
@@ -114,7 +122,7 @@ fn sigterm_cleans_up_the_bench() {
 /// times hook → screen, and the view's tmux client counts as DuoHive.
 #[test]
 fn bench_with_live_view() {
-    let out = Command::new(BIN)
+    let out = bench_cmd()
         .args([
             "bench",
             "--agents",
@@ -158,7 +166,7 @@ fn bench_with_live_view() {
 
 #[test]
 fn bench_without_view_has_no_live_view() {
-    let out = Command::new(BIN)
+    let out = bench_cmd()
         .args([
             "bench",
             "--agents",
@@ -179,4 +187,60 @@ fn bench_without_view_has_no_live_view() {
     );
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert!(json["live_view"].is_null(), "{json}");
+}
+
+/// Phase 4: the reopen is timed from just before the second start to its first
+/// complete draw, and `duohive --version` is timed beside it.
+#[test]
+fn first_frame_measured_on_reopen() {
+    let out = bench_cmd()
+        .args([
+            "bench",
+            "--agents",
+            "2",
+            "--idle-secs",
+            "2",
+            "--turns",
+            "1",
+            "--json",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(json["first_frame_ms"].as_f64().unwrap() > 0.0, "{json}");
+    assert!(json["exec_ms"].as_f64().unwrap() > 0.0, "{json}");
+    assert_eq!(json["targets"]["first_frame"]["pass"], true, "{json}");
+}
+
+/// Phase 4: every fifth agent's fake fires no hooks, so the `~` freshness is
+/// read from its stamp file, not from a hook.
+#[test]
+fn tilde_freshness_measured() {
+    let out = bench_cmd()
+        .args([
+            "bench",
+            "--agents",
+            "5",
+            "--idle-secs",
+            "1",
+            "--turns",
+            "1",
+            "--json",
+        ])
+        .env_remove("TMUX")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert!(json["tilde_ms"]["max"].as_f64().unwrap() > 0.0, "{json}");
 }
