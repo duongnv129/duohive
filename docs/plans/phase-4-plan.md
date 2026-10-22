@@ -1,6 +1,6 @@
 # DuoHive Phase 4 Implementation Plan — Scale and polish
 
-**Status:** In progress · tasks 4.1 and 4.3–4.9 built (2026-10-20 to 2026-10-22); 4.2 (tuning) and 4.10 (acceptance) open · outline written 2026-10-05, specs revised 2026-10-19 after a dual-reviewer check, expanded into this task-by-task plan 2026-10-20. Depends on phase 3 (Agent Squad needs task to a role). The defaults in Constraints (the measurement method, the 3–4 week estimate, one binding per action with context-scoped conflicts, the gate run with the view on) are the author's to confirm; they are the first item in the TODO checklist.
+**Status:** Built, acceptance open · tasks 4.1 and 4.3–4.9 built (2026-10-20 to 2026-10-22); the items under [Open items](#open-items-carried-to-the-end-of-the-phase) are not done · outline written 2026-10-05, specs revised 2026-10-19 after a dual-reviewer check, expanded into this task-by-task plan 2026-10-20. Depends on phase 3 (Agent Squad needs task to a role). The defaults in Constraints (the measurement method, the 3–4 week estimate, one binding per action with context-scoped conflicts, the gate run with the view on) are the author's to confirm; they are the first item in the TODO checklist.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 Sources: [PRD](../product/prd.md) (Success Metrics; capability rows for templates, model and effort, key and mouse; Setup templates; UX principles) · [UI/UX spec](../ux/ui-spec.md) §4.1.1, §4.3, §4.4.1 (model fields), §4.4.2 (menu, move, drag), §4.8 (replace org), §4.10, §4.11, §5, §6 · [Technical design](../design/technical-design.md) §4.3, §5.2 (model lists), §7, §8, §10 · [Roadmap](v1-roadmap.md) row 4 · [Traceability](v1-traceability.md).
@@ -353,6 +353,18 @@ Tick each box when the task is done. The steps inside each task above are ticked
 - [x] 4.9 Filter and the accessibility re-check
 - [x] 4.7 Mouse parity on every screen (after 4.3, 4.4, 4.5, 4.6, 4.8 and 4.9)
 - [ ] 4.10 Acceptance
+
+## Open items carried to the end of the phase
+
+Decided 2026-10-22: the build is complete, and what could not be done in the build sessions is kept here and finished at the end of the phase, before `Status: Done`. None of them is a code task.
+
+- [ ] **4.10 step 1, gate run.** `make release && make bench-gate` with the 1-minute load at most 2, three counted runs at 10 and 100 agents, recorded in `bench-results.md` "Phase 4 acceptance". Attempted 2026-10-22: the machine's baseline load was about 3, and every attempt was discarded for load (the gate exited 3). The figures in "Phase 4" were taken with the load gate off and are a first reading only.
+- [ ] **4.2 tuning, steps 1–4.** Only if the gate run misses. Two targets have little headroom in the first reading: `~` p95 1983.65 ms against 2000 ms at 10 agents, and 10-agent memory 18.08 MB against 20 MB. The second pass for the model-list start-up cost (after 4.5) goes with the gate run.
+- [ ] **4.10 step 2, one-hour run** with real Claude Code and OpenCode agents.
+- [ ] **4.10 step 3, walk the screens** in iTerm2 at 80×24 and 160×48.
+- [ ] **Before 4.1 items.** The author confirms the defaults, the starter prompts (P4-Q1) and the bench profile (P4-Q2); the code already uses them.
+- [ ] **P4-Q7.** Re-check OpenCode's effort list on a build that lists variants.
+- [ ] **Sign-off.** On the above: TD §12 row 4, roadmap row 4 `done <date>`, PRD row 4, the READMEs and this header to `Done`, then `docs: phase 4 acceptance and status`.
 
 ## Risks
 

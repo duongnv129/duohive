@@ -336,3 +336,9 @@ Every target passed. Two are close enough to treat as at risk in Task 4.2:
 - **10-agent memory** is 18.08 MB against 20 MB, while the 100-agent run reports 12.81 MB: the 10-agent window's end caught more of the control client's growth than the 100-agent one. Re-measure on a quiet machine before drawing a conclusion.
 
 The informational runs without `--view` were made but their verdict line printed `unknown`: the script's `sed` used a GNU-only `\|` alternation, fixed after this run. The counts are unaffected; the no-view figures are cosmetic and will be in the next gate output.
+
+## Phase 4 acceptance
+
+**Not yet recorded.** The gate (`make bench-gate`) was attempted on 2026-10-22 on the Apple M4 development machine. The 1-minute load average stayed between 2.4 and 3.2 (Time Machine, window server, a browser, other sessions and a live DuoHive instance), so every attempt at 10 agents was discarded for load three times and the script exited 3, as designed. Nothing was run with the load gate off. The release binary measured 6,715,312 B on the same day.
+
+Open item: run `make release && make bench-gate` with the load at most 2 and record the three counted runs at 10 and 100 agents here, with the no-view figures beside them. See [phase-4-plan](phase-4-plan.md#open-items-carried-to-the-end-of-the-phase).
