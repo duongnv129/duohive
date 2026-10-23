@@ -110,12 +110,6 @@ fn each_change_sends_update() {
     assert!(s.reduce_motion);
     assert_eq!(m.settings, s);
 
-    go_to(&mut m, SettingsRow::Mouse);
-    assert!(m.settings.mouse, "on by default");
-    let s = sent(&press(&mut m, code(KeyCode::Enter)));
-    assert!(!s.mouse);
-    assert_eq!(m.settings, s);
-
     go_to(&mut m, SettingsRow::Theme);
     let s = sent(&press(&mut m, code(KeyCode::Right)));
     assert_eq!(s.theme, Theme::Dark);

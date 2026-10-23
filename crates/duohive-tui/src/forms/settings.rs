@@ -24,8 +24,6 @@ pub enum SettingsRow {
     LastReply,
     /// Reduce motion.
     ReduceMotion,
-    /// DuoHive handles the mouse; off lets the terminal select text with a plain drag.
-    Mouse,
     /// Edit the key bindings.
     Keys,
     /// Replace the org from a template (UI §4.8).
@@ -34,7 +32,7 @@ pub enum SettingsRow {
 
 impl SettingsRow {
     /// Every control, top to bottom.
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 9] = [
         Self::Name,
         Self::Quiet,
         Self::NeedsYou,
@@ -42,7 +40,6 @@ impl SettingsRow {
         Self::Theme,
         Self::LastReply,
         Self::ReduceMotion,
-        Self::Mouse,
         Self::Keys,
         Self::Org,
     ];
@@ -93,7 +90,6 @@ pub fn toggled(s: &Settings, row: SettingsRow) -> Settings {
         SettingsRow::Finished => out.alerts.finished = !s.alerts.finished,
         SettingsRow::LastReply => out.show_last_reply = !s.show_last_reply,
         SettingsRow::ReduceMotion => out.reduce_motion = !s.reduce_motion,
-        SettingsRow::Mouse => out.mouse = !s.mouse,
         SettingsRow::Theme => out.theme = cycled(s.theme, true),
         SettingsRow::Name | SettingsRow::Quiet | SettingsRow::Keys | SettingsRow::Org => {}
     }

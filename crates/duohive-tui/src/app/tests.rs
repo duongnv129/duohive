@@ -394,8 +394,6 @@ async fn keys_send_commands_and_redraw() {
 struct FakeHost {
     runs: Mutex<Vec<(String, Vec<String>)>>,
     code: i32,
-    /// Every `set_mouse` call, in order.
-    mouse: Mutex<Vec<bool>>,
     /// Every text put on the clipboard, in order.
     copied: Mutex<Vec<String>>,
 }
@@ -410,10 +408,6 @@ impl TerminalHost for FakeHost {
         self.runs.lock().unwrap().push((program, args));
         // A wait status: the exit code sits in the second byte.
         Ok(ExitStatus::from_raw(self.code << 8))
-    }
-
-    fn set_mouse(&self, on: bool) {
-        self.mouse.lock().unwrap().push(on);
     }
 
     fn copy(&self, text: &str) {
@@ -476,46 +470,6 @@ async fn dragging_across_the_agent_pane_copies_what_it_shows() {
     let (result, ()) = tokio::join!(app, driver);
     result.unwrap();
     assert_eq!(*host.copied.lock().unwrap(), ["◦ idle"]);
-}
-
-fn special(code: KeyCode) -> InputEvent {
-    InputEvent::Key(KeyEvent::new(code, KeyModifiers::NONE))
-}
-
-#[tokio::test(start_paused = true)]
-async fn mouse_capture_follows_the_setting() {
-    let (mut h, mut p) = harness();
-    h.events.send(snapshot(&idle_model())).unwrap();
-    let host = Arc::new(FakeHost::default());
-    let mut signals = QuitSignals::none();
-    let app = run_loop(
-        &mut p.terminal,
-        p.input,
-        cfg(true),
-        &mut p.events,
-        p.commands,
-        Some(p.first_frame),
-        Arc::clone(&host) as Arc<dyn TerminalHost>,
-        &mut signals,
-    );
-    let driver = async {
-        (&mut h.first_frame).await.unwrap();
-        // Settings: Name, Quiet, Needs you, Finished, Theme, Last reply, Reduce motion, Mouse.
-        h.input.send(key(',')).await.unwrap();
-        for _ in 0..7 {
-            h.input.send(special(KeyCode::Down)).await.unwrap();
-        }
-        h.input.send(special(KeyCode::Enter)).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        h.input.send(special(KeyCode::Enter)).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        h.input.send(special(KeyCode::Esc)).await.unwrap();
-        h.input.send(key('q')).await.unwrap();
-    };
-    let (result, ()) = tokio::join!(app, driver);
-    result.unwrap();
-    // Off, then on again: one call per change, none at start-up (the setting began on).
-    assert_eq!(*host.mouse.lock().unwrap(), [false, true]);
 }
 
 #[tokio::test(start_paused = true)]

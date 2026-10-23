@@ -5,9 +5,10 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
  DuoHive  ● 2 · ◆ 2                                                             
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────────────┐
 ┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ▾ Payments           ● 1 ◆ 1 ┃│    ● working                                 │
 ┃ ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐ │
-┃ │                                                                          │ │
-┃▌│  You                                                                     │ │
+┃▌│                                                                          │ │
+┃ │  You                                                                     │ │
 ┃ │    Your name          ▌[ Duong ]                                         │ │
 ┃ │  Attention                                                               │ │
 ┃ │    Quiet after         [ 5 ] minutes                                     │ │
@@ -15,7 +16,6 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ │  Look                                                                    │ │
 ┃ │    Theme               [ auto ▾ ]                                        │ │
 ┃ │    Last reply under agents [x]  Reduce motion [ ]                        │ │
-┃ │  Mouse                 [x]  on · drag selects text                       │ │
 ┃ │  Keys                  [ Edit key bindings → ]                           │ │
 ┣━│  Org                   [ New org from template… ]                        │ │
 ┃ │    org defaults and Duo: e on Duo (Edit org)                             │ │

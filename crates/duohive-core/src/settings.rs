@@ -53,9 +53,6 @@ pub struct Settings {
     pub show_last_reply: bool,
     /// Reduce motion.
     pub reduce_motion: bool,
-    /// DuoHive handles the mouse (click, wheel, menu, drag, and selecting text with a
-    /// plain drag). Off hands the mouse back to the terminal.
-    pub mouse: bool,
     /// Key overrides.
     pub keys: BTreeMap<String, String>,
 }
@@ -69,7 +66,6 @@ impl Default for Settings {
             alerts: AlertSettings::default(),
             show_last_reply: true,
             reduce_motion: false,
-            mouse: true,
             keys: BTreeMap::new(),
         }
     }
@@ -95,10 +91,6 @@ mod tests {
         assert_eq!(s.theme, Theme::Auto);
         assert!(s.alerts.needs_you && s.alerts.finished);
         assert!(!s.reduce_motion && s.keys.is_empty() && s.your_name.is_none());
-        assert!(
-            s.mouse,
-            "the mouse features are on unless the user turns them off"
-        );
     }
 
     #[test]
@@ -122,15 +114,5 @@ mod tests {
     fn unknown_keys_are_rejected() {
         assert!(toml::from_str::<Settings>("quiet_after_mins = 3").is_err());
         assert!(toml::from_str::<Settings>("[alerts]\nnot_a_key = true").is_err());
-    }
-
-    #[test]
-    fn mouse_reads_from_toml_and_defaults_on() {
-        let off: Settings = toml::from_str("mouse = false\n").unwrap();
-        assert!(!off.mouse);
-        let old: Settings = toml::from_str("reduce_motion = true\n").unwrap();
-        assert!(old.mouse, "a settings.toml from before the key existed");
-        let text = toml::to_string(&off).unwrap();
-        assert!(text.contains("mouse = false"), "{text}");
     }
 }

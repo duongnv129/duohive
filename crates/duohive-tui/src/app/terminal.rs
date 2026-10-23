@@ -68,8 +68,7 @@ pub async fn run_app(
     };
     // Pasted text arrives whole, so a newline in it never reads as enter (forms); the
     // wheel and clicks arrive as mouse events (P2-D25).
-    MOUSE_ON.store(cfg.settings.mouse, Ordering::SeqCst);
-    let _ = input_modes_on(&mut stdout(), cfg.settings.mouse);
+    let _ = input_modes_on(&mut stdout());
     restore_paste_on_panic(Arc::clone(&cfg.halted));
     let (input_tx, input_rx) = mpsc::channel(INPUT_QUEUE);
     let (gate_tx, gate_rx) = std_mpsc::channel();
@@ -224,18 +223,9 @@ fn to_input(ev: TermEvent) -> Option<InputEvent> {
     }
 }
 
-/// Whether mouse reporting should be on: the Mouse setting, kept here so a hand-over to the
-/// editor puts it back as it was.
-static MOUSE_ON: AtomicBool = AtomicBool::new(false);
-
-/// Turns on bracketed paste, and mouse reporting when `mouse` (the Mouse setting; off
-/// leaves text selection to the terminal).
-fn input_modes_on(w: &mut impl Write, mouse: bool) -> io::Result<()> {
-    execute!(w, EnableBracketedPaste)?;
-    if mouse {
-        execute!(w, EnableMouseCapture)?;
-    }
-    Ok(())
+/// Turns on bracketed paste and mouse reporting.
+fn input_modes_on(w: &mut impl Write) -> io::Result<()> {
+    execute!(w, EnableBracketedPaste, EnableMouseCapture)
 }
 
 /// Turns paste and the mouse off, drops the input the terminal already sent (mouse
@@ -318,15 +308,6 @@ impl TerminalHost for CrosstermHost {
     fn copy(&self, text: &str) {
         copy_to_clipboard(&mut stdout(), text);
     }
-
-    fn set_mouse(&self, on: bool) {
-        MOUSE_ON.store(on, Ordering::SeqCst);
-        let _ = if on {
-            execute!(stdout(), EnableMouseCapture)
-        } else {
-            execute!(stdout(), DisableMouseCapture)
-        };
-    }
 }
 
 /// Puts `text` on the clipboard: through the terminal (OSC 52, which iTerm2 honours once
@@ -387,7 +368,7 @@ fn suspend() -> io::Result<()> {
 
 fn resume() -> io::Result<()> {
     execute!(stdout(), EnterAlternateScreen)?;
-    input_modes_on(&mut stdout(), MOUSE_ON.load(Ordering::SeqCst))?;
+    input_modes_on(&mut stdout())?;
     execute!(stdout(), Hide)?;
     enable_raw_mode()
 }
@@ -468,21 +449,9 @@ mod tests {
     }
 
     #[test]
-    fn mouse_stays_off_at_start_when_the_setting_is_off() {
-        let mut off = Vec::new();
-        input_modes_on(&mut off, false).unwrap();
-        let off = String::from_utf8(off).unwrap();
-        assert!(off.contains("\x1b[?2004h"), "paste stays on: {off:?}");
-        assert!(
-            !off.contains("\x1b[?1000h") && !off.contains("\x1b[?1002h"),
-            "the terminal keeps the mouse: {off:?}"
-        );
-    }
-
-    #[test]
     fn mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor() {
         let mut on = Vec::new();
-        input_modes_on(&mut on, true).unwrap();
+        input_modes_on(&mut on).unwrap();
         let on = String::from_utf8(on).unwrap();
         assert!(
             on.contains("\x1b[?2004h") && on.contains("\x1b[?1000h"),

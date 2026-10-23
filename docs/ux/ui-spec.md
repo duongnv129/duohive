@@ -857,7 +857,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 
 ### 4.10 Settings
 
-`,` opens Settings. **Mouse** is on by default: the click, wheel, menu and drag features of §5, and selecting text with a plain drag. Off hands the mouse back to the terminal (its own selection, its own wheel). Settings are personal and saved to `settings.toml` as you change them. Org-level defaults and Duo live in the org (Edit org, §4.4.1). "New org from template…" replaces the org's teams, roles and agents after a confirmation (§4.8), keeps Duo and the org defaults, and keeps a backup.
+`,` opens Settings. Settings are personal and saved to `settings.toml` as you change them. Org-level defaults and Duo live in the org (Edit org, §4.4.1). "New org from template…" replaces the org's teams, roles and agents after a confirmation (§4.8), keeps Duo and the org defaults, and keeps a backup.
 
 ```
 ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐
@@ -870,7 +870,6 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  Look                                                                    │
 │    Theme                [ auto ▾ ]                                       │
 │    Last reply under agents [x]     Reduce motion [ ]                     │
-│  Mouse                  [x]  on · drag selects text                      │
 │  Keys                   [ Edit key bindings → ]                          │
 │  Org                    [ New org from template… ]                       │
 │    org defaults and Duo: e on Duo (Edit org)                             │
@@ -979,7 +978,7 @@ Below 100 columns it becomes one scrolling column:
 | | `PgUp` / `PgDn` | Scroll the chat history |
 | Dialogs and forms | `enter`, `esc`, `ctrl+s` | Act on the focused button, cancel, save |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
-| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. Settings → Mouse off hands the mouse to the terminal |
+| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
 
 ### 4.12 Errors and empty states
 
@@ -1082,7 +1081,7 @@ Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plan
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
 | Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
-| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. All of this needs Settings → Mouse on; off hands the mouse to the terminal |
+| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of starting, working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
 | Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |
