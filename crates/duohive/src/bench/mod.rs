@@ -47,9 +47,9 @@ pub use report::{BenchOutcome, BenchReport, Machine, Percentiles, ServerUse, Tar
 /// Every fifth agent plays OpenCode, whose fake has no hooks (screen-read path).
 const SCREEN_READ_EVERY: u32 = 5;
 /// A run whose 1-minute load is above this is discarded, not counted.
-const LOAD_CEILING: f64 = 2.0;
+pub(crate) const LOAD_CEILING: f64 = 2.0;
 /// Tests run on shared, busy machines: this disables the load gate for them.
-const IGNORE_LOAD_VAR: &str = "DUOHIVE_BENCH_IGNORE_LOAD";
+pub(crate) const IGNORE_LOAD_VAR: &str = "DUOHIVE_BENCH_IGNORE_LOAD";
 /// How long the agents may take to start, and to finish a turn or stop.
 const START_WAIT: Duration = Duration::from_secs(90);
 const TURN_WAIT: Duration = Duration::from_secs(60);

@@ -4,12 +4,15 @@
 //! machine load is retried twice. This is the one implementation of what
 //! `scripts/bench-gate.sh` used to do.
 
+use std::io::Write;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 use super::report::{BenchReport, Percentiles, targets_pass};
+use super::{IGNORE_LOAD_VAR, LOAD_CEILING, measure};
 
 /// The agent counts the gate measures.
 pub const GATE_TIERS: [u32; 2] = [10, 100];
@@ -17,6 +20,15 @@ pub const GATE_TIERS: [u32; 2] = [10, 100];
 pub const COUNTED_RUNS: usize = 3;
 /// How many times a run discarded for load is tried again.
 pub const LOAD_RETRIES: usize = 2;
+/// The gate waits for the 1-minute load average to fall to this before it starts
+/// a run: below the bench's own ceiling, so the load the run itself adds while it
+/// starts (and a `cargo build` just before it) does not push it over.
+pub const SETTLE_TARGET: f64 = LOAD_CEILING * 0.85;
+/// How long the gate waits for the machine to quiet before one run; after that it
+/// starts the run anyway and the bench discards it if the machine is still busy.
+pub const SETTLE_MAX: Duration = Duration::from_secs(10 * 60);
+/// How often the load is read while waiting.
+pub const SETTLE_POLL: Duration = Duration::from_secs(5);
 /// The binary-size limit (PRD Success Metrics; MB is 10,000,000 bytes).
 pub const MAX_BINARY_BYTES: u64 = 10_000_000;
 
@@ -259,9 +271,59 @@ pub fn run_gate(
     Ok(tiers)
 }
 
+/// Waits until the load is at most `target`, reading it every `poll` for up to
+/// `max_wait`. Returns whether it got there; an unreadable load counts as quiet.
+/// The reading and the pause are injected so the wait can be tested.
+pub fn settle(
+    read_load: &mut dyn FnMut() -> Option<f64>,
+    pause: &mut dyn FnMut(Duration),
+    target: f64,
+    max_wait: Duration,
+    poll: Duration,
+) -> bool {
+    let polls = (max_wait.as_secs() / poll.as_secs().max(1)).max(1);
+    for _ in 0..polls {
+        match read_load() {
+            None => return true,
+            Some(l) if l <= target => return true,
+            Some(_) => pause(poll),
+        }
+    }
+    read_load().is_none_or(|l| l <= target)
+}
+
+/// The real wait before a run: skipped when the bench's load check is off, and
+/// said on stderr when it has to wait.
+fn settle_before_run() {
+    if std::env::var_os(IGNORE_LOAD_VAR).is_some() {
+        return;
+    }
+    let mut first = true;
+    let mut read = || measure::load_average().map(|l| l[0]);
+    let mut pause = |d: Duration| {
+        if first {
+            first = false;
+            let load = measure::load_average().map_or(0.0, |l| l[0]);
+            let _ = writeln!(
+                std::io::stderr(),
+                "duohive bench --gate: waiting for the machine to quiet (load {load:.2}, need {SETTLE_TARGET:.2})"
+            );
+        }
+        std::thread::sleep(d);
+    };
+    settle(
+        &mut read,
+        &mut pause,
+        SETTLE_TARGET,
+        SETTLE_MAX,
+        SETTLE_POLL,
+    );
+}
+
 /// Runs one bench as a child process of `exe` (every run is a fresh process:
 /// the bench installs its own signal handlers and temp state).
 pub fn run_child(exe: &Path, agents: u32, view: bool) -> RunResult {
+    settle_before_run();
     let mut cmd = Command::new(exe);
     cmd.args(["bench", "--agents", &agents.to_string()]);
     if view {
@@ -378,6 +440,70 @@ mod tests {
         assert!((w.rss_end_mb - 19.0).abs() < 1e-9);
         assert!((w.tilde_ms.p95 - 950.0).abs() < 1e-9);
         assert_eq!(w.first_frame_ms, Some(70.0));
+    }
+
+    /// A load source that answers from `loads`, then repeats the last one.
+    fn loads(loads: &[f64]) -> impl FnMut() -> Option<f64> + '_ {
+        let mut i = 0;
+        move || {
+            let l = loads.get(i).or(loads.last()).copied();
+            i += 1;
+            l
+        }
+    }
+
+    #[test]
+    fn settle_returns_at_once_when_quiet() {
+        let mut pauses = 0;
+        let ok = settle(
+            &mut loads(&[1.0]),
+            &mut |_| pauses += 1,
+            1.7,
+            Duration::from_secs(60),
+            Duration::from_secs(5),
+        );
+        assert!(ok);
+        assert_eq!(pauses, 0);
+    }
+
+    #[test]
+    fn settle_waits_until_load_drops() {
+        let mut pauses = 0;
+        let ok = settle(
+            &mut loads(&[3.0, 2.5, 1.6]),
+            &mut |_| pauses += 1,
+            1.7,
+            Duration::from_secs(60),
+            Duration::from_secs(5),
+        );
+        assert!(ok);
+        assert_eq!(pauses, 2);
+    }
+
+    #[test]
+    fn settle_gives_up_after_the_max_wait() {
+        let mut pauses = 0;
+        let ok = settle(
+            &mut loads(&[3.0]),
+            &mut |_| pauses += 1,
+            1.7,
+            Duration::from_secs(20),
+            Duration::from_secs(5),
+        );
+        assert!(!ok);
+        assert_eq!(pauses, 4, "one pause per poll in the window");
+    }
+
+    #[test]
+    fn settle_treats_an_unreadable_load_as_quiet() {
+        let mut none = || None;
+        assert!(settle(
+            &mut none,
+            &mut |_| {},
+            1.7,
+            Duration::from_secs(20),
+            Duration::from_secs(5)
+        ));
     }
 
     #[test]
