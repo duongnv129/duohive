@@ -16,6 +16,10 @@ Phases 0–4 built; the first release is v1.0.0 (see [the release runbook](docs/
 - `duohive bench --gate`: the release gate, three counted runs each at 10 and 100 agents with the worst value per target deciding. `scripts/bench-gate.sh` and `make bench-gate` run it.
 - Release tooling: `scripts/set-version.sh`, `scripts/check-release-version.sh`, the release runbook, and (in a follow-up change) a tag-triggered release workflow: build, attest, GitHub Release, crates.io and Homebrew tap behind a protected environment.
 
+### Changed
+
+- Mouse handling is off by default, so a plain drag selects text through the terminal. `Settings → Mouse` turns on clicks, the wheel, the menu and drag (then `⌥`-drag selects text).
+
 ### Earlier
 
 Phase 0 and Phase 1 done (2026-10-04).

@@ -33,7 +33,7 @@ const ORG_NOTE: &str = "org defaults and Duo: e on Duo (Edit org)";
 const BROKEN: &str = "settings.toml has an error · changes last until DuoHive quits";
 /// Border, blank, 3 headings and 5 control lines, the Keys row, the Org heading and its
 /// text, a note line, a blank, the footer, border.
-const HEIGHT: u16 = 16;
+const HEIGHT: u16 = 17;
 
 /// One control or piece of text on a line.
 struct Piece {
@@ -227,16 +227,25 @@ pub(super) fn draw(
         p,
     );
 
-    let keys = control(st, SettingsRow::Keys, "[ Edit key bindings → ]");
-    put(buf, r.x + 1 + GROUP_X, at(10), "Keys", room, muted);
-    draw_pieces(buf, r, (control_x, at(10)), &[keys], p);
+    let mouse = control(st, SettingsRow::Mouse, check(s.mouse));
+    let mouse_note = if s.mouse {
+        "  on · ⌥-drag selects text"
+    } else {
+        "  off · drag selects text"
+    };
+    put(buf, r.x + 1 + GROUP_X, at(10), "Mouse", room, muted);
+    draw_pieces(buf, r, (control_x, at(10)), &[mouse, plain(mouse_note)], p);
 
-    group(buf, 11, "Org");
+    let keys = control(st, SettingsRow::Keys, "[ Edit key bindings → ]");
+    put(buf, r.x + 1 + GROUP_X, at(11), "Keys", room, muted);
+    draw_pieces(buf, r, (control_x, at(11)), &[keys], p);
+
+    group(buf, 12, "Org");
     let org = control(st, SettingsRow::Org, "[ New org from template… ]");
-    draw_pieces(buf, r, (control_x, at(11)), &[org], p);
-    put(buf, label_x, at(12), ORG_NOTE, room, muted);
+    draw_pieces(buf, r, (control_x, at(12)), &[org], p);
+    put(buf, label_x, at(13), ORG_NOTE, room, muted);
     if m.settings_error.is_some() {
-        put(buf, label_x, at(13), BROKEN, room, fg(p.attention));
+        put(buf, label_x, at(14), BROKEN, room, fg(p.attention));
     }
     put(buf, r.x + 1 + GROUP_X, at(HEIGHT - 2), FOOTER, room, muted);
     cursor

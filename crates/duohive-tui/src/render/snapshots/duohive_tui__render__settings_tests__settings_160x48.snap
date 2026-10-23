@@ -17,7 +17,6 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
 ┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
 ┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
 ┃                                         ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐                                         │
 ┃                                         │                                                                          │                                         │
 ┃                                         │  You                                                                     │                                         │
@@ -28,6 +27,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃                                         │  Look                                                                    │                                         │
 ┃                                         │    Theme               [ auto ▾ ]                                        │                                         │
 ┃                                         │    Last reply under agents [x]  Reduce motion [ ]                        │                                         │
+┃                                         │  Mouse                 [ ]  off · drag selects text                      │                                         │
 ┃                                         │  Keys                  [ Edit key bindings → ]                           │                                         │
 ┃                                         │  Org                   [ New org from template… ]                        │                                         │
 ┃                                         │    org defaults and Duo: e on Duo (Edit org)                             │                                         │

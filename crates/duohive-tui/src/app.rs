@@ -129,6 +129,10 @@ pub enum TuiError {
 pub trait TerminalHost: Send + Sync {
     /// Runs `cmd` with the terminal handed over, and restores the terminal afterwards.
     fn hand_over(&self, cmd: Process) -> io::Result<ExitStatus>;
+
+    /// Turns the terminal's mouse reporting on or off, when the user changes the Mouse
+    /// setting. A host with no real terminal has nothing to switch.
+    fn set_mouse(&self, _on: bool) {}
 }
 
 /// For a backend that isn't a real terminal: there is nothing to hand over, so no editor runs.
@@ -397,7 +401,12 @@ pub(crate) async fn run_loop<B: Backend>(
         spinner_next: None,
     };
     let mut live = Live::new(Arc::clone(&cfg.pane_view), cfg.no_color);
+    let mut mouse_on = m.settings.mouse;
     loop {
+        if m.settings.mouse != mouse_on {
+            mouse_on = m.settings.mouse;
+            host.set_mouse(mouse_on);
+        }
         clock.dirty |= sync_live(&mut live, &mut m, &commands).await?;
         let wake = clock.next_wake(&m);
         let open_at = live.open_at();

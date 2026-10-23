@@ -71,6 +71,7 @@ duohive --help
 ```
 
 - Each agent runs in its own window on DuoHive's tmux server. `q` quits DuoHive and leaves your agents running; the next `duohive` reconnects to them. On quit, DuoHive says how many are still running and how to list them (`tmux -L duohive ls`).
+- The mouse is off by default, so a plain drag selects and copies text as in any terminal program. Turn on `Settings → Mouse` for clicks, the wheel, the right-click menu and drag to move a node; with it on, select text with `⌥`-drag in iTerm2 (the terminal's bypass key).
 - To watch an agent, select it: the agent pane shows its terminal live. `enter` in the agent pane types into it (`ctrl+q` stops), `z` zooms and `space` gives it work. You don't need `tmux attach`.
 - One DuoHive runs per data directory (`~/.local/share/duohive`, or `$XDG_DATA_HOME/duohive`): a second one there is refused. Two DuoHives with different data directories still share the `tmux -L duohive` server, so don't run them side by side.
 
