@@ -11,7 +11,7 @@ author: an agent never tags, publishes, registers a name or posts an announcemen
 1. Phase 4 reads `Status: Done` and the name checks (phase 5 Task 5.5b) are clear.
 2. Create the tap repository `duongnv129/homebrew-tap` (P5-Q5) and a fine-grained token that can push to it.
 3. In the repository settings create the environment `release` with a required reviewer, and add the secrets `CARGO_REGISTRY_TOKEN` (crates.io) and `TAP_TOKEN` (the tap token).
-4. Protect the release path. Anyone with write access can push a tag, so: add a tag ruleset for `v*` (only you may create them), restrict the `release` environment's deployment branches and tags to `v*`, and turn on "prevent self-review" if a second account exists. The `verify` job refuses a tag whose commit is not on `main`.
+4. Protect the release path. Done 2026-10-23: the tag ruleset `release tags` (only repository admins create, move or delete `v*` tags) and the `main` ruleset (pull requests, one owner approval with an admin bypass, squash only, seven required checks). Still to do: restrict the `release` environment's deployment branches and tags to `v*`, and turn on "prevent self-review" if a second account exists. The `verify` job refuses a tag whose commit is not on `main`.
 5. Install `dist` (cargo-dist 0.30.0, the version in `dist-workspace.toml`) and run `dist plan` once. `dist-workspace.toml` and `.github/workflows/release.yml` have not been run by an agent; fix what `dist plan` and a first workflow run report.
 
 ## A release

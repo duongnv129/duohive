@@ -163,7 +163,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 
 ## Human steps, the author runs in this order
 
-1. Finish phase 4's open items and its sign-off (the Entry gate). Decide when the repository goes public (P5-Q1): it is private today.
+1. Finish phase 4's open items and its sign-off (the Entry gate). The repository is public (P5-Q1 answered); `main` is protected: pull requests only, one owner approval with an admin bypass, squash merge, and seven required checks (`lint`, `deny`, `typos` and the four `test` jobs). Tags `v*` are creatable only by admins.
 2. Decide P5-D1–P5-D11 and P5-Q1–P5-Q6 (or accept the defaults).
 3. Task 5.5b: legal searches; register the domain; claim the organisation and the crate names.
 4. Create the tap repository and the `release` environment; add the secrets `CARGO_REGISTRY_TOKEN` and `TAP_TOKEN`; set a required reviewer.
@@ -186,7 +186,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 - [x] 5.3a Packaging, release workflow and runbook (A) — `dist` and `actionlint` not run here; first `dist plan` is the author's. **`release.yml` and the new `ci.yml` jobs (`workflows`, `package`) are not in this change**: the push token lacked the `workflow` scope, so they follow in a separate pull request from the branch `feat/phase-5-gate`
 - [ ] 5.3b Release candidate (H)
 - [x] 5.4 README, CONTRIBUTING, SECURITY, CHANGELOG (A) — screenshot slot left for the author
-- [x] 5.5a Name checks: lookups (A) — found the repository is private (P5-Q1)
+- [x] 5.5a Name checks: lookups (A) — found the repository was private (P5-Q1, since answered: public)
 - [ ] 5.5b Name checks: registration and legal (H)
 - [ ] 5.6 Time to first team (H)
 - [ ] 5.7 30-day daily use (C)
@@ -210,7 +210,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 
 | # | Question | Default if not decided |
 |---|---|---|
-| P5-Q1 | The repository is **private today** (`gh repo view` on 2026-10-23: `PRIVATE`; the outline said it was already public). "DuoHive is public" therefore needs the repository made public as well as the v1.0.0 release on every channel and an announcement | Yes: make the repository public (an H step before the rc, because the release workflow's attestations, the README links and `brew`/`cargo install` source links need it), then tag, channels and an announcement post (the author's) |
+| P5-Q1 | Answered 2026-10-23: the repository **is public now** (it was private when the plan was written). "DuoHive is public" still needs the v1.0.0 release on every channel and an announcement | Tag, channels and an announcement post (the author's) |
 | P5-Q2 | Publish all seven crates, or ship only the binary crate with the others vendored? | Publish all seven at the same version (P5-D6) |
 | P5-Q3 | When does the 30-day clock start? | The day `v1.0.0` is tagged; earlier days count if the log shows it (P5-D11) |
 | P5-Q4 | Release targets | P5-D4: macOS arm64 and x86_64, Linux x86_64; Linux aarch64 is v1.1 |

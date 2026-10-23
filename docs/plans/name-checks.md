@@ -12,7 +12,7 @@ Task 5.5a of the [phase 5 plan](phase-5-plan.md): read-only lookups an agent can
 | `duongnv129/homebrew-tap` (the tap, P5-Q5) | `api.github.com/repos/…` | 404: does not exist (or is private to someone else) |
 | `duohive.dev` | RDAP via `rdap.org` | 404 "not found": appears unregistered; no NS records |
 | `duohive.ai` | RDAP via `rdap.org` | 404 "not found": appears unregistered |
-| `duongnv129/duohive` | `gh repo view` | **private** (P5-Q1: the plan assumed public) |
+| `duongnv129/duohive` | `gh repo view` | private when checked (P5-Q1); made public by the author on 2026-10-23 |
 
 An RDAP "not found" is not a reservation: a registrar can still refuse a premium or reserved name, and a name can be taken between this check and a purchase.
 
