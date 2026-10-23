@@ -9,7 +9,7 @@ DuoHive is an open-source terminal app (TUI, written in Rust) that manages **Cla
 [![License: Apache-2.0](https://img.shields.io/github/license/duongnv129/duohive)](LICENSE)
 ![Platforms: macOS and Linux](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-blue)
 
-> **Alpha.** DuoHive works from source and as a macOS binary, but it is early: features and file formats can still change, and the 100-agent benchmark acceptance is not finished. See the [roadmap](docs/plans/v1-roadmap.md).
+> **Alpha.** DuoHive works from source and as a binary for macOS and Linux, but it is early: features and file formats can still change, and the 100-agent benchmark acceptance is not finished. See the [roadmap](docs/plans/v1-roadmap.md).
 
 ```text
  DuoHive   6 agents · ● 2 working · ◆ 2 need you                                  ? help
@@ -61,7 +61,7 @@ On first run it checks for tmux and for Claude Code or OpenCode, then offers a t
 
 | How | Command |
 |---|---|
-| **Alpha binary** (macOS, Apple silicon) | Download `duohive-<version>-aarch64-apple-darwin.tar.gz` from [Releases](https://github.com/duongnv129/duohive/releases), unpack it and put `duohive` on your `PATH`. If macOS blocks it: `xattr -d com.apple.quarantine duohive` |
+| **Binary** (macOS Apple silicon or Intel, Linux x86_64 or ARM64) | Download `duohive-<version>-<target>.tar.gz` from [Releases](https://github.com/duongnv129/duohive/releases) (`aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu` or `aarch64-unknown-linux-gnu`), check it against its `.sha256`, unpack it and put `duohive` on your `PATH`. If macOS blocks it: `xattr -d com.apple.quarantine duohive` |
 | **From source** (macOS, Linux) | `make install` |
 
 <details>
