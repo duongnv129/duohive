@@ -339,6 +339,29 @@ The informational runs without `--view` were made but their verdict line printed
 
 ## Phase 4 acceptance
 
-**Not yet recorded.** The gate (`make bench-gate`) was attempted on 2026-10-22 on the Apple M4 development machine. The 1-minute load average stayed between 2.4 and 3.2 (Time Machine, window server, a browser, other sessions and a live DuoHive instance), so every attempt at 10 agents was discarded for load three times and the script exited 3, as designed. Nothing was run with the load gate off. The release binary measured 6,715,312 B on the same day.
+### From the CI history (2026-10-23): 10 agents, hosted macOS arm64 runners
 
-Open item: run `make release && make bench-gate` with the load at most 2 and record the three counted runs at 10 and 100 agents here, with the no-view figures beside them. See [phase-4-plan](phase-4-plan.md#open-items-carried-to-the-end-of-the-phase).
+The local gate could not run under the method (the development machine's load stayed above 2). The CI `bench` job, which runs on a hosted `macos-14` (Apple silicon) runner on every push and pull request, already holds the bench's own report for each run. Every successful run since the tmux install fix (six runs) is below. This is the 10-agent smoke run of `.github/workflows/ci.yml` (`duohive bench --agents 10 --idle-secs 10 --view`).
+
+| Run (UTC) | Commit | Idle CPU | Memory | Hook → screen (max) | `~` p95 | First frame | Runner load at start (1/5/15 min) |
+|---|---|---|---|---|---|---|---|
+| 2026-10-23 16:14 | 88a8842 (push, main) | 0.0 % | 15.5 MB | 92 ms | 972 ms | 71.2 ms | 29.15 20.18 8.97 |
+| 2026-10-23 16:08 | 2b68434 (pull_request, docs/readme-seo) | 0.0 % | 15.5 MB | 61 ms | 1943 ms | 82.1 ms | 31.03 21.91 9.74 |
+| 2026-10-23 16:07 | 2b68434 (push, docs/readme-seo) | 0.0 % | 15.3 MB | 194 ms | 1980 ms | 75.8 ms | 22.64 18.58 8.59 |
+| 2026-10-23 16:04 | cdfcc94 (push, main) | 0.0 % | 15.4 MB | 105 ms | 1972 ms | 137.6 ms | 20.40 13.69 6.31 |
+| 2026-10-23 15:45 | 3ab1644 (pull_request, fix/ci-flaky-tests) | 0.0 % | 15.2 MB | 143 ms | 1958 ms | 69.6 ms | 16.16 15.01 7.02 |
+| 2026-10-23 15:45 | 3ab1644 (push, fix/ci-flaky-tests) | 0.0 % | 15.4 MB | 115 ms | 1975 ms | 95.8 ms | 28.89 22.90 10.60 |
+| **Target (10 agents)** | | < 1 % | < 20 MB | < 1000 ms | < 2000 ms | < 100 ms | at most 2 (method) |
+
+What it shows:
+
+- **Idle CPU, memory and hook latency pass in all six runs with a wide margin** (0.0 %, 15.2–15.5 MB, 61–194 ms), on runners whose load was 16–31.
+- **`~` freshness passes every time but has almost no headroom**: p95 is 1.94–1.98 s in five of six runs against the 2 s limit, the same figure as the local first reading (1983.65 ms). It is the screen read waiting for the settle mechanism (TD §4.1), so it sits at that floor on any machine. A change that speeds settle-read detection is the first Task 4.2 candidate.
+- **First frame passed in five runs (69.6–95.8 ms) and missed once (137.6 ms)**, on the most loaded runner. It is the figure most sensitive to machine load.
+
+What it does not show, so Task 4.10 step 1 is **not** closed by it:
+
+- **Only 10 agents.** There is no 100-agent run in the history, so the 100-agent targets are unmeasured here (the local first reading, taken with the load check off, is in "Phase 4" above).
+- **Not the method.** The idle window is 10 s, not 30 s of settling plus 60 s; each row is one run, not the worst of three; the runners are shared VMs with the load check off, not a plugged-in M-series machine at load 2 or less (TD §10).
+
+Open item: a full gate report (10 and 100 agents, three counted runs each) from the same runner, as a `bench-gate` job that writes its table to the job summary. It is written (`ci/bench-gate-report`) and waits for a push that can change workflow files. See [phase-4-plan](phase-4-plan.md#open-items-carried-to-the-end-of-the-phase).
