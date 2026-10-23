@@ -12,6 +12,7 @@
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use duohive::args::USAGE;
@@ -29,12 +30,19 @@ const WAIT: Duration = Duration::from_secs(10);
 
 const BIN: &str = env!("CARGO_BIN_EXE_duohive");
 
-/// Temp config, data and home dirs and a throwaway tmux socket name.
+/// Makes every `paths` call's tmux socket name different within this process.
+static NEXT_SOCKET: AtomicUsize = AtomicUsize::new(0);
+
+/// Temp config, data and home dirs and a throwaway tmux socket name, unique per call.
 fn paths(tmp: &Path) -> Paths {
     let paths = Paths {
         config_dir: tmp.join("config"),
         data_dir: tmp.join("data"),
-        tmux_socket: format!("duohive-test-app-{}", std::process::id()),
+        tmux_socket: format!(
+            "duohive-test-app-{}-{}",
+            std::process::id(),
+            NEXT_SOCKET.fetch_add(1, Ordering::SeqCst)
+        ),
     };
     std::fs::create_dir_all(&paths.config_dir).unwrap();
     std::fs::create_dir_all(tmp.join("home")).unwrap();
@@ -66,6 +74,16 @@ fn run_app(tmp: &Path, paths: &Paths, path: &str) -> Output {
         .stdin(Stdio::null())
         .output()
         .unwrap()
+}
+
+/// Tests in one binary run in parallel. A socket shared between them lets one test's
+/// `KillServer` kill the server another is still using ("no server running").
+#[test]
+fn each_test_gets_its_own_tmux_socket() {
+    let tmp = tempfile::tempdir().unwrap();
+    let a = paths(tmp.path());
+    let b = paths(tmp.path());
+    assert_ne!(a.tmux_socket, b.tmux_socket);
 }
 
 #[test]
