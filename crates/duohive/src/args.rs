@@ -20,6 +20,11 @@ pub enum Cli {
     BenchAgent(BenchAgentArgs),
     /// `duohive bench [--agents N] [--idle-secs N] [--turns N] [--view] [--json]`.
     Bench(BenchArgs),
+    /// `duohive bench --gate [--json]`: the release gate (TD §10).
+    Gate {
+        /// Print JSON instead of text.
+        json: bool,
+    },
     /// `duohive mcp`: serve MCP on stdin/stdout for the agent whose `DUOHIVE_TOKEN` it has.
     Mcp,
     /// `duohive --help` (or `-h`): print [`USAGE`].
@@ -37,6 +42,10 @@ usage: duohive                 run DuoHive (your agents keep running in tmux aft
        duohive bench [--agents 1-1000] [--idle-secs N] [--turns 1-1000] [--view] [--json]
                                measure CPU, memory and hook latency with fake agents
                                (--view holds one live pane stream open throughout)
+       duohive bench --gate [--json]
+                               the release gate: three runs each at 10 and 100 agents,
+                               the worst value per target decides (exit 0 pass, 1 miss,
+                               3 discarded for load)
        duohive --help          show this
        duohive --version       show the version
 ";
@@ -55,9 +64,25 @@ pub fn parse_args(args: &[String]) -> Result<Cli, String> {
         [cmd] if cmd == "mcp" => Ok(Cli::Mcp),
         [cmd, ..] if cmd == "mcp" => Err("usage: duohive mcp".to_owned()),
         [cmd, rest @ ..] if cmd == "bench-agent" => parse_bench_agent(rest),
-        [cmd, rest @ ..] if cmd == "bench" => parse_bench(rest).map(Cli::Bench),
+        [cmd, rest @ ..] if cmd == "bench" => parse_bench_or_gate(rest),
         [other, ..] => Err(format!("unknown command \"{other}\"")),
     }
+}
+
+/// `bench --gate [--json]` alone, or the plain bench's flags.
+fn parse_bench_or_gate(args: &[String]) -> Result<Cli, String> {
+    if !args.iter().any(|a| a == "--gate") {
+        return parse_bench(args).map(Cli::Bench);
+    }
+    let mut json = false;
+    for arg in args {
+        match arg.as_str() {
+            "--gate" => {}
+            "--json" => json = true,
+            _ => return Err("--gate takes no other bench option except --json".to_owned()),
+        }
+    }
+    Ok(Cli::Gate { json })
 }
 
 const BENCH_RUN_USAGE: &str =
@@ -203,6 +228,28 @@ mod tests {
             .is_err()
         );
         assert!(parse_args(&s(["bench-agent", "--frob"])).is_err());
+    }
+
+    #[test]
+    fn args_parse_gate() {
+        assert_eq!(
+            parse_args(&s(["bench", "--gate"])),
+            Ok(Cli::Gate { json: false })
+        );
+        assert_eq!(
+            parse_args(&s(["bench", "--gate", "--json"])),
+            Ok(Cli::Gate { json: true })
+        );
+    }
+
+    #[test]
+    fn gate_rejects_other_bench_options() {
+        for extra in [["--agents", "5"], ["--idle-secs", "5"], ["--turns", "5"]] {
+            let args = s(["bench", "--gate", extra[0], extra[1]]);
+            let err = parse_args(&args).err().unwrap_or_default();
+            assert!(err.contains("--gate takes no other bench option"), "{err}");
+        }
+        assert!(parse_args(&s(["bench", "--gate", "--view"])).is_err());
     }
 
     #[test]

@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+description = "Run your AI coding agents as a team: a terminal app that manages standing Claude Code and OpenCode agents as an org chart"
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 publish.workspace = true
 
 [lints]

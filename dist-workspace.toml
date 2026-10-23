@@ -1,0 +1,25 @@
+# cargo-dist configuration (TD §11, P5-D4/P5-D5). Not yet run: `dist` is not
+# installed on the development machine, so this file has not been checked by
+# `dist plan`. The release workflow (.github/workflows/release.yml) is written by
+# hand and `allow-dirty = ["ci"]` stops `dist` from regenerating or rejecting
+# it; `dist` builds the archives and the Homebrew formula.
+[workspace]
+members = ["cargo:."]
+
+[dist]
+cargo-dist-version = "0.30.0"
+ci = "github"
+installers = ["shell", "homebrew"]
+# macOS arm64 gates; the other two are built and smoke-tested (P5-D4).
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# The tap is a separate repository the author creates (P5-Q5).
+tap = "duongnv129/homebrew-tap"
+publish-jobs = ["homebrew"]
+checksum = "sha256"
+github-attestations = true
+pr-run-mode = "skip"
+install-path = "CARGO_HOME"
+allow-dirty = ["ci"]
+# tmux 3.2 or newer is a runtime dependency (install.sh `tmux_min`).
+[dist.dependencies.homebrew]
+tmux = "*"

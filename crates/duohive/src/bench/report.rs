@@ -242,7 +242,7 @@ fn target_json(value: f64, target: f64, pass: bool) -> Value {
 }
 
 /// Whether every gated target passed: the worst of them decides.
-fn targets_pass(r: &BenchReport) -> bool {
+pub(super) fn targets_pass(r: &BenchReport) -> bool {
     let t = Targets::for_agents(r.agents);
     let first_frame = r.first_frame_ms.unwrap_or(f64::MAX);
     r.idle_cpu_pct < t.cpu_pct
@@ -350,10 +350,11 @@ fn describe_view(v: &LiveViewUse) -> String {
     )
 }
 
-impl BenchOutcome {
-    /// The run as JSON (`--json`).
+impl BenchReport {
+    /// The measurements and the verdict as JSON: the part of `--json` the
+    /// release gate reads back with [`BenchReport::from_json`].
     pub fn to_json(&self) -> Value {
-        let r = &self.report;
+        let r = self;
         let h = &r.hook_to_screen_ms;
         let t = Targets::for_agents(r.agents);
         json!({
@@ -366,8 +367,6 @@ impl BenchOutcome {
             "hook_to_screen_ms": { "p50": h.p50, "p95": h.p95, "max": h.max },
             "tilde_ms": { "p50": r.tilde_ms.p50, "p95": r.tilde_ms.p95, "max": r.tilde_ms.max },
             "first_frame_ms": r.first_frame_ms,
-            "helpers_rss_mb": self.helpers_rss_mb,
-            "exec_ms": self.exec_ms,
             "targets": {
                 "idle_cpu": target_json(r.idle_cpu_pct, t.cpu_pct, r.idle_cpu_pct < t.cpu_pct),
                 "memory": target_json(r.rss_end_mb, t.rss_mb, r.rss_end_mb < t.rss_mb),
@@ -388,6 +387,61 @@ impl BenchOutcome {
                 ),
             },
             "all_pass": targets_pass(r),
+        })
+    }
+
+    /// The inverse of [`BenchReport::to_json`]: reads a `--json` run back.
+    /// A missing or mistyped field is an error that names it; a null
+    /// `first_frame_ms` is `None` (the reopen was not timed).
+    pub fn from_json(v: &Value) -> Result<Self, String> {
+        fn num(v: &Value, key: &str) -> Result<f64, String> {
+            v.get(key)
+                .and_then(Value::as_f64)
+                .ok_or_else(|| format!("missing or non-numeric field \"{key}\""))
+        }
+        fn text(v: &Value, key: &str) -> Result<String, String> {
+            v.get(key)
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| format!("missing or non-text field \"{key}\""))
+        }
+        fn pcts(v: &Value, key: &str) -> Result<Percentiles, String> {
+            let o = v
+                .get(key)
+                .ok_or_else(|| format!("missing field \"{key}\""))?;
+            Ok(Percentiles {
+                p50: num(o, "p50")?,
+                p95: num(o, "p95")?,
+                max: num(o, "max")?,
+            })
+        }
+        let agents = v
+            .get("agents")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| "missing or invalid field \"agents\"".to_owned())?;
+        Ok(Self {
+            agents,
+            tmux: text(v, "tmux")?,
+            platform: text(v, "platform")?,
+            idle_cpu_pct: num(v, "idle_cpu_pct")?,
+            peak_rss_mb: num(v, "peak_rss_mb")?,
+            rss_end_mb: num(v, "rss_end_mb")?,
+            hook_to_screen_ms: pcts(v, "hook_to_screen_ms")?,
+            tilde_ms: pcts(v, "tilde_ms")?,
+            first_frame_ms: v.get("first_frame_ms").and_then(Value::as_f64),
+        })
+    }
+}
+
+impl BenchOutcome {
+    /// The run as JSON (`--json`).
+    pub fn to_json(&self) -> Value {
+        let r = &self.report;
+        let mut out = r.to_json();
+        let extra = json!({
+            "helpers_rss_mb": self.helpers_rss_mb,
+            "exec_ms": self.exec_ms,
             "machine": {
                 "cpus": self.machine.cpus,
                 "load_start": self.machine.load_start,
@@ -408,7 +462,11 @@ impl BenchOutcome {
             })),
             "tmux_server": self.tmux_server.map(|s| json!({ "cpu_pct": s.cpu_pct, "rss_mb": s.rss_mb })),
             "pid": self.pid,
-        })
+        });
+        if let (Some(base), Some(add)) = (out.as_object_mut(), extra.as_object()) {
+            base.extend(add.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        out
     }
 }
 
@@ -549,5 +607,33 @@ mod tests {
         assert_eq!(json["all_pass"], true, "{json}");
         assert_eq!(json["helpers_rss_mb"], 7.5, "{json}");
         assert_eq!(json["exec_ms"], 4.0, "{json}");
+    }
+
+    #[test]
+    fn from_json_round_trips_to_json() {
+        let r = report(Percentiles {
+            p50: 10.0,
+            p95: 20.0,
+            max: 30.0,
+        });
+        assert_eq!(BenchReport::from_json(&r.to_json()), Ok(r));
+    }
+
+    #[test]
+    fn from_json_accepts_a_null_first_frame() {
+        let mut r = report(Percentiles::default());
+        r.first_frame_ms = None;
+        let back = BenchReport::from_json(&r.to_json());
+        assert_eq!(back.map(|b| b.first_frame_ms), Ok(None));
+    }
+
+    #[test]
+    fn from_json_names_a_missing_field() {
+        let mut v = report(Percentiles::default()).to_json();
+        if let Some(o) = v.as_object_mut() {
+            o.remove("rss_end_mb");
+        }
+        let err = BenchReport::from_json(&v).err().unwrap_or_default();
+        assert!(err.contains("rss_end_mb"), "{err}");
     }
 }

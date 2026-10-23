@@ -494,6 +494,8 @@ mod move_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]
+mod prelaunch_tests;
+#[cfg(test)]
 mod screen_tests;
 #[cfg(test)]
 mod settings_tests;

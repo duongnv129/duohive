@@ -5,6 +5,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::process::ExitCode;
 
 use duohive::args::{Cli, USAGE, parse_args};
+use duohive::bench::gate::{GateReport, git_dirty, git_head, run_child, run_gate};
 use duohive::bench::{BenchArgs, BenchError, run_bench_detailed};
 use duohive::fake_agent::run_bench_agent;
 use duohive::hook_cmd::run_hook;
@@ -36,6 +37,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Cli::Bench(args)) => bench(args),
+        Ok(Cli::Gate { json }) => gate(json),
         Err(e) => {
             let _ = writeln!(std::io::stderr(), "duohive: {e}");
             ExitCode::from(2)
@@ -88,6 +90,41 @@ fn bench(args: BenchArgs) -> ExitCode {
                 let _ = writeln!(std::io::stderr(), "duohive bench: {e}");
             }
             ExitCode::from(bench_failure_code(&e))
+        }
+    }
+}
+
+/// Runs the release gate (`bench --gate`): exit 0 pass, 1 miss, 3 discarded
+/// for load, 130 interrupted.
+fn gate(json: bool) -> ExitCode {
+    let exe = match std::env::current_exe() {
+        Ok(e) => e,
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "duohive bench --gate: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut runner = |agents, view| run_child(&exe, agents, view);
+    match run_gate(&mut runner) {
+        Ok(tiers) => {
+            let report = GateReport {
+                tiers,
+                version: env!("CARGO_PKG_VERSION").to_owned(),
+                git_sha: git_head(),
+                git_dirty: git_dirty(),
+                binary_bytes: std::fs::metadata(&exe).ok().map(|m| m.len()),
+            };
+            let text = if json {
+                format!("{}\n", report.to_json())
+            } else {
+                report.text()
+            };
+            let _ = std::io::stdout().write_all(text.as_bytes());
+            ExitCode::from(report.exit_code())
+        }
+        Err(e) => {
+            let _ = writeln!(std::io::stderr(), "duohive bench --gate: {e}");
+            ExitCode::from(e.exit_code())
         }
     }
 }

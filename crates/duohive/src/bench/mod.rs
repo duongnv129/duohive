@@ -9,6 +9,7 @@
 //! (P2-D4, Review Focus 3): its tmux client counts as DuoHive, and the other
 //! panes must stay silent on it.
 
+pub mod gate;
 mod live_view;
 mod measure;
 mod observe;

@@ -16,6 +16,10 @@ Thank you for helping. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Run `make tools` once to install the pinned dev tools, then `make check` before every commit. It runs the same commands as CI: format check, clippy, tests, `cargo deny` and `typos`.
 - Use conventional commit types: `feat`, `fix`, `docs`, `test`, `chore`, `ci`, `refactor`, `perf`.
 
+## Releases
+
+The maintainer cuts releases; contributors do not tag or publish. The steps, the release gate (`make bench-gate`, which runs `duohive bench --gate`) and the rollback are in [docs/release-runbook.md](docs/release-runbook.md).
+
 ## Where the truth lives
 
 Three docs, read in this order of precedence (see [docs/README.md](docs/README.md)):
