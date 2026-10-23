@@ -25,6 +25,10 @@ author: an agent never tags, publishes, registers a name or posts an announcemen
 
 `scripts/check-release-version.sh` refuses a tag that differs from the Cargo version, a missing or failed gate file, a gate run that was not on macOS arm64, an oversize binary, and a gate run on code that has since changed outside `docs/`.
 
+## Binaries for every release tag
+
+`.github/workflows/release-binaries.yml` runs when a `v*` tag is pushed, or by hand (Actions → Release binaries → Run workflow, with an existing tag). It builds `duohive` on macOS Apple silicon, macOS Intel, Linux x86_64 and Linux ARM64 (Ubuntu 22.04 runners, so the Linux binaries also run on older distributions), checks that `duohive --version` equals the tag and that the binary is under 10,000,000 B, and attaches `duohive-<version>-<target>.tar.gz`, its `.sha256` and a build attestation to the tag's GitHub release. A tag with a suffix such as `-alpha.1` becomes a pre-release. It publishes nothing to crates.io or Homebrew. To add Linux binaries to a release that already exists, run it by hand for that tag.
+
 ## If a publish job fails half way
 
 `publish-crates` publishes the seven crates in dependency order (`duohive-core`, `-cli`, `-store`, `-tmux`, `-tui`, `-mcp`, then `duohive`) and skips a crate whose version is already on crates.io, so re-running the failed job finishes the set. A crate version cannot be republished once it is on crates.io: fix forward with the next patch version.
