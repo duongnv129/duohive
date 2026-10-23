@@ -246,6 +246,27 @@ mod tests {
         );
     }
 
+    /// On Linux, running a file that some process still has open for writing fails with ETXTBSY
+    /// ("text file busy"): a CLI being updated as DuoHive starts, or, in these tests, a
+    /// script just written while another test thread forks. The probe waits it out.
+    #[test]
+    fn probe_waits_out_a_binary_that_is_still_being_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let exe = script(dir.path(), "echo '2.1.288 (Claude Code)'");
+        let writer = std::fs::OpenOptions::new().write(true).open(&exe).unwrap();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            drop(writer);
+        });
+        assert_eq!(
+            probe(CliKind::Claude, exe.as_os_str(), LOADED_TIMEOUT),
+            CliPresence::Found {
+                version: "2.1.288".into()
+            }
+        );
+        release.join().unwrap();
+    }
+
     #[test]
     fn probe_gives_up_at_the_timeout() {
         let dir = tempfile::tempdir().unwrap();
