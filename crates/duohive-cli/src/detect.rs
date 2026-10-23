@@ -1,9 +1,9 @@
 //! Finding an installed CLI: `<binary> --version` with a time limit (Sn.1).
 
 use std::ffi::OsStr;
-use std::io::Read;
+use std::io::{ErrorKind, Read};
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -12,6 +12,27 @@ use duohive_core::cli_kind::CliKind;
 
 /// How long a model listing may take (TD §5.2).
 pub const LISTING_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// How many times a start is retried while the binary is busy, and the pause between tries
+/// (about 2 s in all).
+const BUSY_RETRIES: u32 = 40;
+const BUSY_PAUSE: Duration = Duration::from_millis(50);
+
+/// Starts `cmd`, waiting out "text file busy" (ETXTBSY): Linux refuses to run a file some
+/// process still has open for writing, as when a CLI is being updated while DuoHive starts.
+/// That is not a missing CLI, so it is retried for a moment; any other error is returned.
+fn spawn_waiting_out_busy(cmd: &mut Command) -> std::io::Result<Child> {
+    let mut tries = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.kind() == ErrorKind::ExecutableFileBusy && tries < BUSY_RETRIES => {
+                tries += 1;
+                std::thread::sleep(BUSY_PAUSE);
+            }
+            other => return other,
+        }
+    }
+}
 
 /// How long `--version` may take before DuoHive stops waiting.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -41,15 +62,15 @@ pub fn parse_cli_version(kind: CliKind, out: &str) -> Option<String> {
 }
 
 pub(crate) fn probe(kind: CliKind, program: &OsStr, timeout: Duration) -> CliPresence {
-    let Ok(mut child) = Command::new(program)
-        .arg("--version")
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        // Its own process group, so a timeout can stop everything it started.
-        .process_group(0)
-        .spawn()
-    else {
+    let Ok(mut child) = spawn_waiting_out_busy(
+        Command::new(program)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            // Its own process group, so a timeout can stop everything it started.
+            .process_group(0),
+    ) else {
         return CliPresence::Missing;
     };
     // Read on a helper thread so that a child (or a grandchild holding its
@@ -88,14 +109,15 @@ pub(crate) fn run_listing(
     args: &[&str],
     timeout: Duration,
 ) -> Result<String, ModelListError> {
-    let mut child = Command::new(program)
-        .args(args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .process_group(0)
-        .spawn()
-        .map_err(|e| ModelListError::Io(e.to_string()))?;
+    let mut child = spawn_waiting_out_busy(
+        Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .process_group(0),
+    )
+    .map_err(|e| ModelListError::Io(e.to_string()))?;
     let (tx, rx) = mpsc::channel();
     if let Some(mut stdout) = child.stdout.take() {
         std::thread::spawn(move || {
