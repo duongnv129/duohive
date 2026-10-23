@@ -3,7 +3,7 @@
 
 use std::io::{self, Write, stdout};
 use std::mem::ManuallyDrop;
-use std::process::{Command as Process, ExitStatus};
+use std::process::{Command as Process, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, Mutex};
@@ -304,6 +304,61 @@ impl TerminalHost for CrosstermHost {
         self.tell(Gate::Resume);
         back.and(ran)
     }
+
+    fn copy(&self, text: &str) {
+        copy_to_clipboard(&mut stdout(), text);
+    }
+}
+
+/// Puts `text` on the clipboard: through the terminal (OSC 52, which iTerm2 honours once
+/// "Applications in terminal may access clipboard" is on) and through the system's own
+/// tool (`pbcopy`, `wl-copy` or `xclip`), whichever works. Failures are silent: a copy
+/// that does not land must not break the screen.
+fn copy_to_clipboard(w: &mut impl Write, text: &str) {
+    let _ = write!(w, "\x1b]52;c;{}\x07", base64(text.as_bytes()));
+    let _ = w.flush();
+    let tools: [(&str, &[&str]); 3] = [
+        ("pbcopy", &[]),
+        ("wl-copy", &[]),
+        ("xclip", &["-selection", "clipboard"]),
+    ];
+    for (tool, args) in tools {
+        let spawned = Process::new(tool)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let Ok(mut child) = spawned else { continue };
+        if let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
+        if child.wait().is_ok_and(|s| s.success()) {
+            return;
+        }
+    }
+}
+
+/// Standard base64 with padding (OSC 52's payload).
+fn base64(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for (i, shift) in [18, 12, 6, 0].into_iter().enumerate() {
+            if i <= chunk.len() {
+                out.push(char::from(TABLE[((n >> shift) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
 }
 
 fn suspend() -> io::Result<()> {
@@ -376,6 +431,21 @@ mod tests {
             "{out:?}"
         );
         assert_eq!(*steps.borrow(), ["drain", "raw off"]);
+    }
+
+    #[test]
+    fn base64_matches_the_standard_vectors() {
+        for (plain, coded) in [
+            ("", ""),
+            ("a", "YQ=="),
+            ("ab", "YWI="),
+            ("abc", "YWJj"),
+            ("abcd", "YWJjZA=="),
+            ("abcde", "YWJjZGU="),
+            ("abcdef", "YWJjZGVm"),
+        ] {
+            assert_eq!(base64(plain.as_bytes()), coded, "{plain:?}");
+        }
     }
 
     #[test]

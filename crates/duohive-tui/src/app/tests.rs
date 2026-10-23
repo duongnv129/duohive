@@ -394,6 +394,8 @@ async fn keys_send_commands_and_redraw() {
 struct FakeHost {
     runs: Mutex<Vec<(String, Vec<String>)>>,
     code: i32,
+    /// Every text put on the clipboard, in order.
+    copied: Mutex<Vec<String>>,
 }
 
 impl TerminalHost for FakeHost {
@@ -407,6 +409,67 @@ impl TerminalHost for FakeHost {
         // A wait status: the exit code sits in the second byte.
         Ok(ExitStatus::from_raw(self.code << 8))
     }
+
+    fn copy(&self, text: &str) {
+        self.copied.lock().unwrap().push(text.to_owned());
+    }
+}
+
+fn mouse_event(kind: crossterm::event::MouseEventKind, column: u16, row: u16) -> InputEvent {
+    InputEvent::Mouse(crossterm::event::MouseEvent {
+        kind,
+        column,
+        row,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+#[tokio::test(start_paused = true)]
+async fn dragging_across_the_agent_pane_copies_what_it_shows() {
+    use crossterm::event::{MouseButton, MouseEventKind};
+    let (mut h, mut p) = harness();
+    h.events.send(snapshot(&idle_model())).unwrap();
+    let host = Arc::new(FakeHost::default());
+    let mut signals = QuitSignals::none();
+    // Where the agent pane is on the harness's 100x30 screen.
+    let mut probe = idle_model();
+    probe.screen = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let agent = crate::render::pane_areas(&probe).unwrap().agent;
+    let app = run_loop(
+        &mut p.terminal,
+        p.input,
+        cfg(true),
+        &mut p.events,
+        p.commands,
+        Some(p.first_frame),
+        Arc::clone(&host) as Arc<dyn TerminalHost>,
+        &mut signals,
+    );
+    let driver = async {
+        (&mut h.first_frame).await.unwrap();
+        // The pane's third row reads `    ◦ idle`.
+        let row = agent.y + 2;
+        let down = MouseEventKind::Down(MouseButton::Left);
+        let drag = MouseEventKind::Drag(MouseButton::Left);
+        let up = MouseEventKind::Up(MouseButton::Left);
+        h.input
+            .send(mouse_event(down, agent.x + 5, row))
+            .await
+            .unwrap();
+        h.input
+            .send(mouse_event(drag, agent.x + 12, row))
+            .await
+            .unwrap();
+        h.input
+            .send(mouse_event(up, agent.x + 12, row))
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        h.input.send(key('q')).await.unwrap();
+    };
+    let (result, ()) = tokio::join!(app, driver);
+    result.unwrap();
+    assert_eq!(*host.copied.lock().unwrap(), ["◦ idle"]);
 }
 
 #[tokio::test(start_paused = true)]

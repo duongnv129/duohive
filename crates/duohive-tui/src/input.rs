@@ -12,6 +12,8 @@ use duohive_core::view::PaneInput;
 pub(crate) use drag::drop_valid;
 pub use drag::{Drag, DropTarget};
 pub use menu::{Menu, MenuRow};
+pub use select::TextSel;
+pub(crate) use select::{paint as paint_selection, text as selected_text};
 
 use crate::chat::{chat_action, chat_key};
 use crate::focus::Pane;
@@ -130,6 +132,8 @@ pub enum UiEffect {
     OpenEditor(PathBuf),
     /// Send input to the live stream the agent pane shows.
     Pane(PaneInput),
+    /// Copy the selected text (UI §5): the loop reads it from the frame it just drew.
+    CopySelection,
     /// Scroll the agent pane's scrollback (P2-D12).
     Scroll {
         /// `PgUp`; else `PgDn`.
@@ -335,6 +339,7 @@ fn form_key(k: KeyEvent) -> Option<Action> {
 /// Applies an action to the model; pure. Any key clears the footer note. A card keeps
 /// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    m.selection = None;
     let out = apply(m, a);
     if m.focus.pane != Pane::Chat {
         m.focus.card = None;
@@ -852,6 +857,7 @@ mod menu;
 pub(crate) mod mouse;
 mod move_to;
 mod panes;
+mod select;
 mod settings;
 mod worktrees;
 
@@ -881,6 +887,8 @@ pub(crate) fn open_menu_for(m: &mut UiModel, node: NodeKey, at: ratatui::layout:
 }
 #[cfg(test)]
 mod pane_tests;
+#[cfg(test)]
+mod select_tests;
 #[cfg(test)]
 mod settings_tests;
 #[cfg(test)]

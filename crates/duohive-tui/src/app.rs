@@ -32,7 +32,7 @@ pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
 use crate::input::mouse::on_mouse;
-use crate::input::{UiEffect, map_key, paste, update};
+use crate::input::{UiEffect, map_key, paste, selected_text, update};
 use crate::live::{Live, next_chunk, next_scrollback};
 use crate::model::{SharedDirs, UiModel};
 use crate::render::{RenderCtx, chat_extra_limit, render_live};
@@ -129,6 +129,10 @@ pub enum TuiError {
 pub trait TerminalHost: Send + Sync {
     /// Runs `cmd` with the terminal handed over, and restores the terminal afterwards.
     fn hand_over(&self, cmd: Process) -> io::Result<ExitStatus>;
+
+    /// Puts `text` on the system clipboard (a selection copied with the mouse). A host with
+    /// no real terminal has nowhere to put it.
+    fn copy(&self, _text: &str) {}
 }
 
 /// For a backend that isn't a real terminal: there is nothing to hand over, so no editor runs.
@@ -421,9 +425,16 @@ pub(crate) async fn run_loop<B: Backend>(
                 InputEvent::Mouse(ev) => {
                     let before = m.clone();
                     for effect in on_mouse(&mut m, ev) {
-                        if let UiEffect::Wheel { up, col, row } = effect {
-                            live.wheel(up, col, row, &mut m);
-                            clock.dirty = true;
+                        match effect {
+                            UiEffect::Wheel { up, col, row } => {
+                                live.wheel(up, col, row, &mut m);
+                                clock.dirty = true;
+                            }
+                            UiEffect::CopySelection => {
+                                copy_selection(terminal, &mut m, &cfg, &live, clock.spinner, &host)?;
+                                clock.dirty = true;
+                            }
+                            _ => {}
                         }
                     }
                     clock.dirty |= m != before;
@@ -461,6 +472,7 @@ pub(crate) async fn run_loop<B: Backend>(
                                 live.wheel(up, col, row, &mut m);
                                 clock.dirty = true;
                             }
+                            UiEffect::CopySelection => {}
                             UiEffect::OpenEditor(path) => {
                                 let editor = cfg.editor.as_deref();
                                 let cmd = editor_command(editor, &path);
@@ -568,6 +580,25 @@ fn after_editor(ran: io::Result<ExitStatus>, editor: Option<&str>) -> Result<(),
     }
 }
 
+/// Copies the selected text: draws the screen as it is now and reads the text from that
+/// frame, so the copy is what the user sees. Says how much was copied.
+fn copy_selection<B: Backend>(
+    terminal: &mut Terminal<B>,
+    m: &mut UiModel,
+    cfg: &AppConfig,
+    live: &Live,
+    spinner: usize,
+    host: &Arc<dyn TerminalHost>,
+) -> Result<(), TuiError> {
+    let frame = draw_frame(terminal, m, cfg, live, spinner, true)?;
+    let text = frame.map(|b| selected_text(&b, m)).unwrap_or_default();
+    if !text.is_empty() {
+        host.copy(&text);
+        m.footer_note = Some(format!("copied {} characters", text.chars().count()));
+    }
+    Ok(())
+}
+
 fn draw<B: Backend>(
     terminal: &mut Terminal<B>,
     m: &UiModel,
@@ -575,6 +606,18 @@ fn draw<B: Backend>(
     live: &Live,
     spinner: usize,
 ) -> Result<(), TuiError> {
+    draw_frame(terminal, m, cfg, live, spinner, false).map(|_| ())
+}
+
+/// Draws a frame; with `keep`, returns a copy of what was drawn.
+fn draw_frame<B: Backend>(
+    terminal: &mut Terminal<B>,
+    m: &UiModel,
+    cfg: &AppConfig,
+    live: &Live,
+    spinner: usize,
+    keep: bool,
+) -> Result<Option<ratatui::buffer::Buffer>, TuiError> {
     if cfg.halted.load(Ordering::SeqCst) {
         return Err(TuiError::Halted);
     }
@@ -587,7 +630,7 @@ fn draw<B: Backend>(
     };
     terminal
         .draw(|f| render_live(f, m, &ctx, live.screen()))
-        .map(|_| ())
+        .map(|done| keep.then(|| done.buffer.clone()))
         .map_err(|e| TuiError::Terminal(e.to_string()))
 }
 

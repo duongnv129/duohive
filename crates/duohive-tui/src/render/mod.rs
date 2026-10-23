@@ -94,6 +94,7 @@ pub fn render(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx) {
 /// Draws the main screen; the agent pane shows `live` when it belongs to the selection.
 pub fn render_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveScreen<'_>>) {
     draw_live(frame, m, ctx, live);
+    crate::input::paint_selection(frame.buffer_mut(), m);
     crate::theme::finish(frame.buffer_mut());
 }
 
