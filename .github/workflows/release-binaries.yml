@@ -1,0 +1,117 @@
+name: Release binaries
+
+# When a version tag is pushed (or by hand for a tag that already exists), builds duohive on each
+# platform and attaches the archives and their checksums to that tag's GitHub release, creating
+# a pre-release when the tag has a suffix such as -alpha.1. It publishes nothing else: no
+# crates.io and no Homebrew. Only repository admins can create `v*` tags (tag ruleset).
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing tag to build, for example v0.1.0-alpha.1"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          # Ubuntu 22.04 (glibc 2.35), so the binaries also run on older distributions.
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: The tag looks like a version
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
+            || { echo "'$TAG' is not a version tag like v1.2.3 or v1.2.3-alpha.1" >&2; exit 1; }
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+      # No build cache in this job: it signs attestations, and a cache restored from another
+      # ref could change what gets signed.
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Build
+        run: cargo build --release --locked -p duohive
+      - name: The binary matches the tag and is under 10,000,000 B
+        shell: bash
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          got="$(./target/release/duohive --version)"
+          [ "$got" = "duohive $want" ] || { echo "the binary says '$got' but the tag is $TAG" >&2; exit 1; }
+          bytes="$(wc -c < target/release/duohive | tr -d ' ')"
+          echo "duohive $want for ${{ matrix.target }}: $bytes B"
+          [ "$bytes" -lt 10000000 ] || { echo "the binary is not under 10,000,000 B" >&2; exit 1; }
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="duohive-${TAG#v}-${{ matrix.target }}"
+          mkdir "$name"
+          cp target/release/duohive LICENSE README.md "$name"/
+          tar -czf "$name.tar.gz" "$name"
+          if command -v sha256sum >/dev/null; then sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          else shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"; fi
+          cat "$name.tar.gz.sha256"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: duohive-*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: duohive-*.tar.gz*
+          if-no-files-found: error
+
+  publish:
+    name: attach to the GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          pattern: dist-*
+          merge-multiple: true
+      - name: Create the release, or add to the existing one
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -l assets
+          flag=""
+          case "$TAG" in *-*) flag="--prerelease" ;; esac
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" assets/* $flag --verify-tag --generate-notes --title "$TAG" --repo "$GITHUB_REPOSITORY"
+          fi
