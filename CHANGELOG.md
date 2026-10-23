@@ -6,7 +6,9 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
-Phases 0–4 built; the first release is v1.0.0 (see [the release runbook](docs/release-runbook.md)).
+## [0.1.0-alpha.1] - 2026-10-24
+
+The first pre-release: a macOS (Apple silicon) binary and the source on GitHub. It is alpha: features and file formats can still change, and the 100-agent benchmark acceptance is not finished. Phases 0–4 are built (see [the roadmap](docs/plans/v1-roadmap.md)); crates.io, Homebrew and the v1.0.0 release come later ([release runbook](docs/release-runbook.md)).
 
 ### Added since phase 1
 

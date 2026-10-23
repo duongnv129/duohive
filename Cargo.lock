@@ -350,7 +350,7 @@ dependencies = [
 
 [[package]]
 name = "duohive"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "duohive-cli",
  "duohive-core",
@@ -375,7 +375,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-cli"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "duohive-core",
  "insta",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-core"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-mcp"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "duohive-core",
  "serde",
@@ -411,7 +411,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-store"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "duohive-core",
  "rusqlite",
@@ -425,7 +425,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-tmux"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "duohive-core",
  "libc",
@@ -437,7 +437,7 @@ dependencies = [
 
 [[package]]
 name = "duohive-tui"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 dependencies = [
  "crossterm",
  "duohive-core",
