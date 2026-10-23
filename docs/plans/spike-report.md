@@ -1,6 +1,6 @@
-# DuoHive v1 Phase 0–2: Spike Report
+# DuoHive v1 Phase 0–4: Spike Report
 
-Findings from the phase 0–1 spikes (plan Tasks 3–5) and phase 2's spike S3 (phase-2 plan Task 2.1). Each section records what was measured, the
+Findings from the phase 0–1 spikes (plan Tasks 3–5) phase 2's spike S3 (phase-2 plan Task 2.1) and phase 4's spike S4 (phase-4 plan Task 4.5). Each section records what was measured, the
 log that shows it, and the decision taken. The spike code is throwaway and lives in `spikes/`.
 Its large raw logs (`spikes/*/out/`) are not committed, so the key lines are quoted here. The small evidence files the report cites (`out/summary.txt` and the `close-*`, `flags-*` and `selected-*` outputs) are committed.
 
@@ -835,3 +835,13 @@ So Claude Code trusts a worktree through the repository it belongs to: an observ
 - **§3.1, Adapters row:** "tmux runtime and pane view".
 - **§4.1, source 2:** the live view of the selected pane takes its own path, a second control client (§4.3, spike S3).
 - **§4.3, "No pane streams in phases 0–1":** becomes "One pane stream, the viewed one", with S3.8's path and its measured cost.
+
+## S4 OpenCode model and effort listing
+
+Task 4.5, step 1. The plan assumed OpenCode 2.0's `opencode models --verbose` gives each model's variants (its efforts).
+
+- **Machine:** OpenCode 2.1.1 was the only build installed; the pinned 2.0 was not available.
+- **Finding:** `opencode models --verbose` is rejected (`Unrecognized flag: --verbose`). Plain `opencode models` lists 381 `provider/model` ids, one per line, with no variants.
+- **Fixtures:** `crates/duohive-cli/tests/fixtures/models/opencode-models.txt` (plain list) and `claude-help.txt` (`claude --help`, from which the aliases and `--effort` choices are read).
+- **Decision:** `parse_opencode_models` returns models with empty `efforts`; OpenCode's Effort field takes typed text, and an existing `model#effort` value still launches. TD §5.2 and UI §4.4.1 say so.
+- **Open (P4-Q7):** re-check on a build that lists variants; until then there is no effort dropdown for OpenCode.

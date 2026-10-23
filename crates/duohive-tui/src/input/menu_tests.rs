@@ -225,6 +225,25 @@ fn drop_without_inherited_change_moves_at_once() {
 }
 
 #[test]
+fn drop_opens_move_to_when_inherited_values_change() {
+    let mut m = spec_model_on_screen();
+    let (x, y) = cell_of(&m, areas(&m).org, "pay-qa");
+    on_mouse(&mut m, press(x, y));
+    let (gx, gy) = cell_of(&m, areas(&m).org, "Generalist");
+    on_mouse(&mut m, drag_to(gx, gy));
+    assert_eq!(on_mouse(&mut m, release(gx, gy)), []);
+    let Some(Dialog::MoveTo(picker)) = &m.dialog else {
+        panic!("no Move to dialog: {:?}", m.dialog);
+    };
+    assert!(
+        picker.options[picker.cursor]
+            .changes
+            .iter()
+            .any(|c| c.field == "worktrees")
+    );
+}
+
+#[test]
 fn drag_chat_edge_resizes() {
     let mut m = model();
     let chat = areas(&m).chat;
