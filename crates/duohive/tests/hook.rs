@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -283,10 +283,28 @@ fn hook_survives_silent_open_stdin() {
     drop(served.core);
 }
 
-/// Fills `listener`'s backlog: connects until one would block or is refused.
+/// The most connections `fill_backlog` makes. A `listen(0)` queue takes one or two on Linux
+/// and up to about 200 on macOS (BSD ignores a backlog of 0); more means the queue was not
+/// small, and the test says so instead of passing by luck.
+const BACKLOG_CAP: usize = 512;
+
+/// A listener that never accepts and queues at most a connection or two (`listen(0)`).
+/// `UnixListener::bind` leaves the size to the kernel (128 on macOS, 4096 on Linux), which
+/// is more than a loop of any fixed length can be trusted to fill.
+fn never_accepting_listener(sock: &Path) -> UnixListener {
+    let socket = socket2::Socket::new(socket2::Domain::UNIX, socket2::Type::STREAM, None).unwrap();
+    socket
+        .bind(&socket2::SockAddr::unix(sock).unwrap())
+        .unwrap();
+    socket.listen(0).unwrap();
+    socket.into()
+}
+
+/// Fills `listener`'s backlog: connects until one would block or is refused. Panics when
+/// it stops for any other reason, or never fills the queue.
 fn fill_backlog(sock: &Path) -> Vec<UnixStream> {
     let mut held = Vec::new();
-    for _ in 0..4096 {
+    for _ in 0..BACKLOG_CAP {
         let (tx, rx) = std_mpsc::channel();
         let path = sock.to_path_buf();
         std::thread::spawn(move || {
@@ -294,10 +312,23 @@ fn fill_backlog(sock: &Path) -> Vec<UnixStream> {
         });
         match rx.recv_timeout(Duration::from_millis(100)) {
             Ok(Ok(stream)) => held.push(stream),
-            Ok(Err(_)) | Err(_) => break, // refused at once, or blocked: the backlog is full
+            // Refused at once (macOS, BSD), or would block: the backlog is full.
+            Ok(Err(e))
+                if matches!(
+                    e.kind(),
+                    ErrorKind::ConnectionRefused | ErrorKind::WouldBlock
+                ) =>
+            {
+                return held;
+            }
+            Ok(Err(e)) => panic!(
+                "cannot fill the backlog after {} connections: {e}",
+                held.len()
+            ),
+            Err(_) => return held, // blocked (Linux): the backlog is full
         }
     }
-    held
+    panic!("the backlog took {BACKLOG_CAP} connections without filling");
 }
 
 #[test]
@@ -306,7 +337,7 @@ fn hook_survives_an_unreachable_socket() {
     let data = tmp.path().to_path_buf();
     let sock = data.join("run.sock");
     init_db(&data);
-    let _never_accepts = UnixListener::bind(&sock).unwrap();
+    let _never_accepts = never_accepting_listener(&sock);
     let _held = fill_backlog(&sock);
     let (out, took) = run_bin(hook_cmd(&data, Some("tok-4")), Some(b"{\"b\":2}"));
     assert_quiet_success(&out, took, "unreachable socket");

@@ -28,6 +28,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "io-util", "io-std", "sync", "rt", "rt-multi-thread", "macros", "time", "signal"] }
 tempfile = { workspace = true }
+socket2 = { workspace = true }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
