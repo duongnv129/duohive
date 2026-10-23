@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-DuoHive is pre-1.0. Only the latest release receives security fixes.
+DuoHive is pre-1.0 and has no release yet. From v1.0.0 on, only the latest release receives security fixes.
 
 ## Reporting a vulnerability
 

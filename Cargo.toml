@@ -9,12 +9,21 @@ strip = true
 lto = "thin"
 codegen-units = 1
 
+[profile.dist]
+# The cargo-dist build. No overrides: it must be the same size as the release
+# build the gate measures (P5-D3).
+inherits = "release"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
 publish = false
+repository = "https://github.com/duongnv129/duohive"
+readme = "README.md"
+keywords = ["tmux", "ai", "agents", "tui", "claude"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
 duohive-core = { path = "crates/duohive-core", version = "0.1.0" }

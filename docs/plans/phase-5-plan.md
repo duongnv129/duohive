@@ -1,6 +1,6 @@
 # DuoHive Phase 5 Implementation Plan — Open-source launch
 
-**Status:** Ready (verified by a third review round, both reviewers PASS, 2026-10-23) · outline written 2026-10-05, reviewed against the PRD, UI/UX spec, technical design and the repository by two independent reviewers on 2026-10-23 (both FAIL on the outline; every finding is resolved below), expanded into this task-by-task plan 2026-10-23. Depends on phase 4, which is **built with acceptance open** (see [Entry gate](#entry-gate)).
+**Status:** Agent tasks built 2026-10-23 (5.1, 5.2, 5.3a, 5.4, 5.5a); human tasks open (5.3b, 5.5b, 5.6–5.9) · plan verified by a third review round, both reviewers PASS, 2026-10-23 · outline written 2026-10-05, reviewed against the PRD, UI/UX spec, technical design and the repository by two independent reviewers on 2026-10-23 (both FAIL on the outline; every finding is resolved below), expanded into this task-by-task plan 2026-10-23. Depends on phase 4, which is **built with acceptance open** (see [Entry gate](#entry-gate)).
 
 Sources: [PRD](../product/prd.md) (Delivery Phases row 5, Success Metrics, Key Hypothesis, Decisions Log: Distribution, Branding, Name) · [UI/UX spec](../ux/ui-spec.md) §1, §4.3, §4.12, §5, §6, §8 · [Technical design](../design/technical-design.md) §10–§12 · [Roadmap](v1-roadmap.md) row 5 · [Traceability](v1-traceability.md) · [Phase 4 plan](phase-4-plan.md).
 
@@ -163,7 +163,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 
 ## Human steps, the author runs in this order
 
-1. Finish phase 4's open items and its sign-off (the Entry gate).
+1. Finish phase 4's open items and its sign-off (the Entry gate). Decide when the repository goes public (P5-Q1): it is private today.
 2. Decide P5-D1–P5-D11 and P5-Q1–P5-Q6 (or accept the defaults).
 3. Task 5.5b: legal searches; register the domain; claim the organisation and the crate names.
 4. Create the tap repository and the `release` environment; add the secrets `CARGO_REGISTRY_TOKEN` and `TAP_TOKEN`; set a required reviewer.
@@ -181,12 +181,12 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 - [ ] Phase 4 acceptance is done and signed off (Entry gate; blocks 5.3b and 5.8 only)
 
 **Tasks**
-- [ ] 5.1 Pre-launch UX check (A)
-- [ ] 5.2 Release gate in the binary (A)
-- [ ] 5.3a Packaging, release workflow and runbook (A)
+- [x] 5.1 Pre-launch UX check (A) — matrix test; the author's walk is listed in `ux-check-prelaunch.md`
+- [x] 5.2 Release gate in the binary (A)
+- [x] 5.3a Packaging, release workflow and runbook (A) — `dist` and `actionlint` not run here; first `dist plan` is the author's. **`release.yml` and the new `ci.yml` jobs (`workflows`, `package`) are not in this change**: the push token lacked the `workflow` scope, so they follow in a separate pull request from the branch `feat/phase-5-gate`
 - [ ] 5.3b Release candidate (H)
-- [ ] 5.4 README, CONTRIBUTING, SECURITY, CHANGELOG (A)
-- [ ] 5.5a Name checks: lookups (A)
+- [x] 5.4 README, CONTRIBUTING, SECURITY, CHANGELOG (A) — screenshot slot left for the author
+- [x] 5.5a Name checks: lookups (A) — found the repository is private (P5-Q1)
 - [ ] 5.5b Name checks: registration and legal (H)
 - [ ] 5.6 Time to first team (H)
 - [ ] 5.7 30-day daily use (C)
@@ -210,7 +210,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 
 | # | Question | Default if not decided |
 |---|---|---|
-| P5-Q1 | The repository is already public. Does "DuoHive is public" mean the v1.0.0 release on every channel plus an announcement? | Yes: tag, channels and an announcement post (the author's) |
+| P5-Q1 | The repository is **private today** (`gh repo view` on 2026-10-23: `PRIVATE`; the outline said it was already public). "DuoHive is public" therefore needs the repository made public as well as the v1.0.0 release on every channel and an announcement | Yes: make the repository public (an H step before the rc, because the release workflow's attestations, the README links and `brew`/`cargo install` source links need it), then tag, channels and an announcement post (the author's) |
 | P5-Q2 | Publish all seven crates, or ship only the binary crate with the others vendored? | Publish all seven at the same version (P5-D6) |
 | P5-Q3 | When does the 30-day clock start? | The day `v1.0.0` is tagged; earlier days count if the log shows it (P5-D11) |
 | P5-Q4 | Release targets | P5-D4: macOS arm64 and x86_64, Linux x86_64; Linux aarch64 is v1.1 |
