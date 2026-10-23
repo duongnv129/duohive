@@ -70,7 +70,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | UX principles: phase 1–2 screens | 2 | 2.20 |
 | UX principles: phase 3–4 screens | 5 | 5.1 |
 | Friction log during phase 2 | 2 | 2.19 |
-| User flow "install to a working team": step 1 (install) | 5 | 5.3, 5.4 |
+| User flow "install to a working team": step 1 (install) | 5 | 5.3a, 5.3b, 5.4 |
 | User flow "install to a working team": step 2 (first run) | 4 | 4.3 |
 | User flow "install to a working team": steps 3–4 | 2 | 2.15, 2.6, 2.10 |
 | User flow "install to a working team": step 5 | 3 | 3.12 |
@@ -81,7 +81,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Success metrics: idle CPU, memory, status freshness, start-up | 4 | 4.1, 4.2, 4.10 |
 | Success metric: binary size, measured | 4 | 4.1 |
 | Success metric: binary size, gated | 5 | 5.2 |
-| Name checks, install channels, README, CONTRIBUTING | 5 | 5.3–5.5 |
+| Name checks, install channels, README, CONTRIBUTING | 5 | 5.3a–5.5b |
 | Interviews with 3–5 leads (not blocking) | 5 | 5.7 (optional) |
 
 ## UI/UX spec
@@ -212,7 +212,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §10 Benchmark: release gate | 5 | 5.2 |
 | §11 CI | 0 | T2 |
 | §11 Dependencies: Ratatui and crossterm pinned, MSRV declared | 0 | T1 |
-| §11 Release: `cargo-dist`, Homebrew, crate | 5 | 5.3 |
+| §11 Release: `cargo-dist`, Homebrew, crate | 5 | 5.3a, 5.3b |
 | §12 Delivery mapping | 5 | 5.9 (final check); kept in step by each phase's closing task: 2.20, 3.12, 4.10 |
 
 ## Phase-scoped adaptations
