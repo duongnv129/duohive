@@ -18,7 +18,7 @@ Phases 0–4 built; the first release is v1.0.0 (see [the release runbook](docs/
 
 ### Changed
 
-- Mouse handling is off by default, so a plain drag selects text through the terminal. `Settings → Mouse` turns on clicks, the wheel, the menu and drag (then `⌥`-drag selects text).
+- A plain drag in the agent pane, the chat or Needs you selects text and copies it on release (no `⌥` needed); dragging an org row still moves it. `Settings → Mouse` off hands the mouse back to the terminal.
 
 ### Earlier
 

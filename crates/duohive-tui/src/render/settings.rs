@@ -229,9 +229,9 @@ pub(super) fn draw(
 
     let mouse = control(st, SettingsRow::Mouse, check(s.mouse));
     let mouse_note = if s.mouse {
-        "  on · ⌥-drag selects text"
+        "  on · drag selects text"
     } else {
-        "  off · drag selects text"
+        "  off · the terminal handles the mouse"
     };
     put(buf, r.x + 1 + GROUP_X, at(10), "Mouse", room, muted);
     draw_pieces(buf, r, (control_x, at(10)), &[mouse, plain(mouse_note)], p);

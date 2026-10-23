@@ -8,7 +8,7 @@ use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
-use super::{UiEffect, agent, agent_of, cards, drag, menu, panes};
+use super::{UiEffect, agent, agent_of, cards, drag, menu, panes, select};
 use crate::chat;
 use crate::filter::Filter;
 use crate::focus::{AgentMode, Pane};
@@ -37,10 +37,27 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
     let Some(areas) = pane_areas(m) else {
         return Vec::new();
     };
+    if matches!(ev.kind, MouseEventKind::Drag(MouseButton::Left))
+        && m.selection.is_some()
+        && m.drag.is_none()
+        && m.edge_drag.is_none()
+    {
+        select::extend(m, at);
+        return Vec::new();
+    }
     match ev.kind {
         MouseEventKind::ScrollUp => on_wheel(m, &areas, at, true),
         MouseEventKind::ScrollDown => on_wheel(m, &areas, at, false),
-        MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => on_press(m, &areas, at),
+        MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => {
+            m.selection = None;
+            on_press(m, &areas, at)
+        }
+        // Zoomed, a press does nothing else; text in the agent pane can still be selected.
+        MouseEventKind::Down(MouseButton::Left) => {
+            m.selection = None;
+            select::start(m, &areas, at);
+            Vec::new()
+        }
         MouseEventKind::Down(MouseButton::Right) if !areas.zoomed && !m.typing() => {
             on_right_click(m, &areas, at)
         }
@@ -50,7 +67,12 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
         }
         MouseEventKind::Up(MouseButton::Left) => {
             m.edge_drag = None;
-            drag::drop_it(m)
+            let dropped = drag::drop_it(m);
+            if dropped.is_empty() && m.selection.is_some() {
+                select::finish(m)
+            } else {
+                dropped
+            }
         }
         _ => Vec::new(),
     }
@@ -108,6 +130,8 @@ fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     let out = on_click(m, areas, at);
     if let Some(key) = key {
         drag::start(m, key);
+    } else if m.edge_drag.is_none() {
+        select::start(m, areas, at);
     }
     out
 }

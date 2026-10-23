@@ -188,6 +188,8 @@ pub struct UiModel {
     pub wizard: Option<FirstRun>,
     /// The right-click menu, while open (UI §4.4.2).
     pub menu: Option<crate::input::Menu>,
+    /// Text being selected with the mouse (UI §5).
+    pub selection: Option<crate::input::TextSel>,
     /// A node being dragged (UI §4.4.2).
     pub drag: Option<crate::input::Drag>,
     /// The chat's top edge being dragged: the row it was pressed on and the extra rows then.
@@ -242,6 +244,7 @@ impl UiModel {
             first_run: None,
             wizard: None,
             menu: None,
+            selection: None,
             drag: None,
             edge_drag: None,
             org_scroll: None,

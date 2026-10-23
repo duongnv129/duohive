@@ -111,9 +111,9 @@ fn each_change_sends_update() {
     assert_eq!(m.settings, s);
 
     go_to(&mut m, SettingsRow::Mouse);
-    assert!(!m.settings.mouse, "off by default");
+    assert!(m.settings.mouse, "on by default");
     let s = sent(&press(&mut m, code(KeyCode::Enter)));
-    assert!(s.mouse);
+    assert!(!s.mouse);
     assert_eq!(m.settings, s);
 
     go_to(&mut m, SettingsRow::Theme);
