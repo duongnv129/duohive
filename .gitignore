@@ -7,3 +7,6 @@ spikes/**/out/*
 !spikes/**/out/close-*.txt
 !spikes/**/out/flags-*.txt
 !spikes/**/out/selected-*.txt
+
+# Local agent working notes; never committed.
+.superpowers/
