@@ -83,6 +83,9 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
+      # The bench starts a real tmux server; the macOS runner image has none.
+      - name: Install tmux
+        run: brew install tmux
       - name: Install the toolchain from rust-toolchain.toml
         run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2

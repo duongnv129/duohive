@@ -364,6 +364,40 @@ async fn next_hook(tap: &mut mpsc::UnboundedReceiver<HookMessage>) -> HookMessag
         .expect("tap closed")
 }
 
+/// The next `n` hooks, in the order they were sent. The listener serves each connection on
+/// its own task, so hooks can reach the tap out of order (the engine copes: `sent_at_ms` marks
+/// a late one stale); `HookMessage::sent_at_ms` is stamped when `duohive hook` starts, and the
+/// agent waits for each hook process, so it is strictly increasing.
+async fn next_hooks(tap: &mut mpsc::UnboundedReceiver<HookMessage>, n: usize) -> Vec<HookMessage> {
+    let mut batch = Vec::with_capacity(n);
+    for _ in 0..n {
+        batch.push(next_hook(tap).await);
+    }
+    batch.sort_by_key(|m| m.sent_at_ms);
+    batch
+}
+
+fn events(batch: &[HookMessage]) -> Vec<&str> {
+    batch.iter().map(|m| m.event.as_str()).collect()
+}
+
+#[tokio::test]
+async fn next_hooks_puts_a_batch_in_send_order() {
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    for (event, at) in [("turn-end", 30), ("session-start", 10), ("busy", 20)] {
+        tx.send(HookMessage {
+            sent_at_ms: at,
+            token: "t".to_owned(),
+            agent: "a".to_owned(),
+            event: event.to_owned(),
+            payload: serde_json::Value::Null,
+        })
+        .unwrap();
+    }
+    let batch = next_hooks(&mut rx, 3).await;
+    assert_eq!(events(&batch), ["session-start", "busy", "turn-end"]);
+}
+
 fn sent_at(m: &HookMessage) -> u64 {
     m.payload["sent_at_ms"].as_u64().expect("sent_at_ms")
 }
@@ -373,14 +407,9 @@ async fn first_turn_ms(task: &str) -> u64 {
     let tmp = tempfile::tempdir().unwrap();
     let (mut tap, _core) = tap_listener(&tmp.path().join("data"));
     let _child = bench_agent(tmp.path(), task);
-    let events: Vec<HookMessage> = vec![
-        next_hook(&mut tap).await,
-        next_hook(&mut tap).await,
-        next_hook(&mut tap).await,
-    ];
-    let names: Vec<&str> = events.iter().map(|m| m.event.as_str()).collect();
-    assert_eq!(names, ["session-start", "busy", "turn-end"]);
-    sent_at(&events[2]) - sent_at(&events[1])
+    let batch = next_hooks(&mut tap, 3).await;
+    assert_eq!(events(&batch), ["session-start", "busy", "turn-end"]);
+    sent_at(&batch[2]) - sent_at(&batch[1])
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -396,14 +425,12 @@ async fn bench_agent_runs_its_task_first() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut tap, _core) = tap_listener(&tmp.path().join("data"));
     let mut child = bench_agent(tmp.path(), "a task");
-    let start = next_hook(&mut tap).await;
-    assert_eq!(start.event, "session-start");
+    let first = next_hooks(&mut tap, 3).await;
+    assert_eq!(events(&first), ["session-start", "busy", "turn-end"]);
+    let (start, end) = (&first[0], &first[2]);
     assert_eq!(start.agent, "bench-1");
     assert_eq!(start.token, "tok-bench");
     assert!(start.payload["sent_at_ms"].is_u64());
-    assert_eq!(next_hook(&mut tap).await.event, "busy");
-    let end = next_hook(&mut tap).await;
-    assert_eq!(end.event, "turn-end");
     assert!(
         end.payload["last_reply"]
             .as_str()
@@ -412,8 +439,8 @@ async fn bench_agent_runs_its_task_first() {
 
     let mut stdin = child.0.stdin.take().unwrap();
     stdin.write_all(b"next\n").unwrap();
-    assert_eq!(next_hook(&mut tap).await.event, "busy");
-    assert_eq!(next_hook(&mut tap).await.event, "turn-end");
+    let second = next_hooks(&mut tap, 2).await;
+    assert_eq!(events(&second), ["busy", "turn-end"]);
     // A stop sends Escape before the quit keys; the ESC byte is not a turn.
     stdin.write_all(b"\x1b/exit\n").unwrap();
     assert_eq!(next_hook(&mut tap).await.event, "session-end");
@@ -498,8 +525,8 @@ async fn bench_agent_task_is_handled_like_a_line() {
     let tmp = tempfile::tempdir().unwrap();
     let (mut tap, _core) = tap_listener(&tmp.path().join("data"));
     let child = bench_agent(tmp.path(), "  /exit  ");
-    assert_eq!(next_hook(&mut tap).await.event, "session-start");
-    assert_eq!(next_hook(&mut tap).await.event, "session-end");
+    let batch = next_hooks(&mut tap, 2).await;
+    assert_eq!(events(&batch), ["session-start", "session-end"]);
     let status = tokio::task::spawn_blocking(move || {
         let mut child = child;
         child.0.wait()
