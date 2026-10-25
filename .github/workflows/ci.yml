@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  # Run the benchmark report by hand: Actions -> CI -> Run workflow.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -94,3 +96,36 @@ jobs:
         env:
           DUOHIVE_BENCH_IGNORE_LOAD: "1"
         run: ./target/release/duohive bench --agents 10 --idle-secs 10 --view
+
+  bench-gate:
+    # The full gate (`duohive bench --gate`: three counted runs at 10 and at 100 agents, the
+    # worst value per target deciding) on a hosted Apple-silicon runner, published as a report.
+    # A shared VM is not the plugged-in M-series machine of TD section 10, so the load check is
+    # off and a miss does not fail the workflow: this is the benchmark report, not the release
+    # gate. It runs on pushes to main and by hand, not on every pull request.
+    name: bench report (macOS arm64, full gate)
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: macos-14
+    timeout-minutes: 90
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tmux
+        run: brew install tmux
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --locked -p duohive
+      - name: The full gate
+        env:
+          DUOHIVE_BENCH_IGNORE_LOAD: "1"
+        run: ./target/release/duohive bench --gate --json > bench-gate.json || echo "gate exit code $?"
+      - name: Publish the report
+        if: always()
+        run: python3 .github/scripts/bench-report.py bench-gate.json >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bench-gate-report
+          path: bench-gate.json
+          if-no-files-found: warn
