@@ -81,7 +81,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Success metrics: idle CPU, memory, status freshness, start-up | 4 | 4.1, 4.2, 4.10 |
 | Success metric: binary size, measured | 4 | 4.1 |
 | Success metric: binary size, gated | 5 | 5.2 |
-| Name checks, install channels, README, CONTRIBUTING | 5 | 5.3a–5.5b |
+| Name checks, install channels, README, CONTRIBUTING | 5 | 5.3a–5.5a |
 | Interviews with 3–5 leads (not blocking) | 5 | 5.7 (optional) |
 
 ## UI/UX spec

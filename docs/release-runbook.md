@@ -4,11 +4,11 @@ How DuoHive is released, and how a bad release is undone. The release is run by 
 author: an agent never tags, publishes, registers a name or posts an announcement
 ([phase 5 plan](plans/phase-5-plan.md), "Who does what").
 
-> **Status:** the release workflow (`.github/workflows/release.yml`) and the `actionlint` and `package` jobs in `ci.yml` are not on `main` yet. They were written and reviewed, but pushing workflow files needs a token with the `workflow` scope. Until they land, steps 4 and 5 of "A release" below describe the intended pipeline.
+> **Status:** what runs today is `.github/workflows/release-binaries.yml` (see "Binaries for every release tag" below): pushing a `v*` tag builds and attaches the macOS and Linux binaries to a GitHub release, and it has made `v0.1.0-alpha.1` and `v0.1.0-alpha.2`. The steps for crates.io, the Homebrew tap, the `release` environment and the committed gate file (steps 4 and 5 of "A release") describe the planned pipeline for the release candidate and v1.0.0: those publish jobs are not built yet (see the [status board](plans/status.md)).
 
 ## One-time setup (the author)
 
-1. Phase 4 reads `Status: Done` and the name checks (phase 5 Task 5.5b) are clear.
+1. Phase 4 reads `Status: Done`. (The name-check task 5.5b was removed by the author, P5-D12.)
 2. Create the tap repository `duongnv129/homebrew-tap` (P5-Q5) and a fine-grained token that can push to it.
 3. In the repository settings create the environment `release` with a required reviewer, and add the secrets `CARGO_REGISTRY_TOKEN` (crates.io) and `TAP_TOKEN` (the tap token).
 4. Protect the release path. Done 2026-10-23: the tag ruleset `release tags` (only repository admins create, move or delete `v*` tags) and the `main` ruleset (pull requests, one owner approval with an admin bypass, squash only, seven required checks). Still to do: restrict the `release` environment's deployment branches and tags to `v*`, and turn on "prevent self-review" if a second account exists. The `verify` job refuses a tag whose commit is not on `main`.
@@ -28,6 +28,8 @@ author: an agent never tags, publishes, registers a name or posts an announcemen
 ## Binaries for every release tag
 
 `.github/workflows/release-binaries.yml` runs when a `v*` tag is pushed, or by hand (Actions → Release binaries → Run workflow, with an existing tag). It builds `duohive` on macOS Apple silicon, macOS Intel, Linux x86_64 and Linux ARM64 (Ubuntu 22.04 runners, so the Linux binaries also run on older distributions), checks that `duohive --version` equals the tag and that the binary is under 10,000,000 B, and attaches `duohive-<version>-<target>.tar.gz`, its `.sha256` and a build attestation to the tag's GitHub release. A tag with a suffix such as `-alpha.1` becomes a pre-release. It publishes nothing to crates.io or Homebrew. To add Linux binaries to a release that already exists, run it by hand for that tag.
+
+**Verifying a release.** `.github/workflows/verify-release.yml` runs by itself after `Release binaries` succeeds, and by hand for any tag (Actions → Verify release → Run workflow). On a runner of each of the four platforms it downloads that platform's archive from the release, checks the checksum and the build attestation, checks that `duohive --version` equals the tag and that `--help` runs, and does a short real run with tmux. It changes nothing. If any job is red, do not announce the release. This is the only place the Linux and Intel Mac binaries are run on their own platforms.
 
 ## If a publish job fails half way
 
