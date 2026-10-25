@@ -31,12 +31,12 @@ These need a person: a decision, an account, real users or time. Nothing in CI/C
 | `bench` | A 10-agent smoke run | **Done (CI)** |
 | `bench-gate` | The full gate at 10 and 100 agents; the table is in the job summary | **Done (CI)**; runs on pushes to `main` and by hand |
 | `release-binaries` | On a `v*` tag: builds macOS (Apple silicon, Intel) and Linux (x86_64, ARM64); the version equals the tag; each binary is under 10,000,000 B; checksums and build attestations; attaches them to the release | **Done (CI)**: `v0.1.0-alpha.1` by hand, `v0.1.0-alpha.2` by tag push |
-| `docs` | Relative links in the core docs resolve, `CHANGELOG.md` has an entry for the version, the README lists every release target | **Added**, awaiting its first green run |
-| `workflows (actionlint)` | Every workflow file is valid | **Added**, awaiting its first green run |
-| `package (every crate packs)` | Each crate lists its package files; the core builds from its own tarball | **Added**, awaiting its first green run |
-| `install from source` (Linux, macOS) | The README's source install on a clean runner: install, `duohive` and `dh` run and agree, uninstall removes only what it installed | **Added**, awaiting its first green run |
-| `verify-release` | After a release is built, on each of the four platforms: download the archive, check the checksum and the attestation, the version equals the tag, `--help` runs, and a short real run with tmux works | **Added**, awaiting its first run; it is the first test of the Linux and Intel Mac binaries on their own platforms |
-| `security` (`advisories`, `secret scan`, `CodeQL`, `dependency review`) | Weekly and on every PR and push to `main`: new advisories on our dependencies, secrets in the full history (gitleaks), CodeQL for Rust, risky dependency changes in a PR | **Added**, awaiting its first run |
+| `docs` | Relative links in the core docs resolve, `CHANGELOG.md` has an entry for the version, the README lists every release target | **Done (CI)**, green on PR #46 (2026-10-25) |
+| `workflows (actionlint)` | Every workflow file is valid | **Done (CI)**, green on PR #46 (2026-10-25) |
+| `package (every crate packs)` | Each crate lists its package files; the core builds from its own tarball | **Done (CI)**, green on PR #46 (2026-10-25) |
+| `install from source` (Linux, macOS) | The README's source install on a clean runner: install, `duohive` and `dh` run and agree, uninstall removes only what it installed | **Done (CI)**, green on PR #46 (2026-10-25) |
+| `verify-release` | After a release is built, on each of the four platforms: download the archive, check the checksum and the attestation, the version equals the tag, `--help` runs, and a short real run with tmux works | **Done (CI)**, run 40170893320 passed on all four platforms for `v0.1.0-alpha.2` (2026-10-25); the Linux and Intel Mac binaries run on their own platforms |
+| `security` (`advisories`, `secret scan`, `CodeQL`, `dependency review`) | Weekly and on every PR and push to `main`: new advisories on our dependencies, secrets in the full history (gitleaks), CodeQL for Rust, risky dependency changes in a PR | **Done (CI)**, green on PR #46 (2026-10-25); the weekly run starts Monday |
 | `publish` (crates.io, Homebrew tap) | After `Release binaries` for a release candidate or stable tag: publishes the seven crates in order and updates the tap. Skips itself while `CARGO_REGISTRY_TOKEN`, `TAP_TOKEN` or `publish = true` is missing; alpha and beta tags are never published | **Added**, awaiting the author's setup (item 3 above) and the first rc |
 
 ## Phases
@@ -80,7 +80,7 @@ Phases 0 to 3 have no open task boxes.
 | 5.2 Release gate in the binary (`duohive bench --gate`) | **Done (CI)** | Runs in CI on pushes to `main` and by hand |
 | 5.3a Packaging config, set-version and release-check scripts, runbook | **Done** | |
 | GitHub release binaries for macOS (Apple silicon, Intel) and Linux (x86_64, ARM64), with checksums and attestations | **Done (CI)** | `release-binaries.yml`; verified per platform by `verify-release` once it has run |
-| `actionlint` and `cargo package` CI jobs | **Added** | See the CI table; they were written earlier on `feat/phase-5-gate` and are now in `ci.yml` |
+| `actionlint` and `cargo package` CI jobs | **Done (CI)** | See the CI table; they were written earlier on `feat/phase-5-gate` and are now in `ci.yml` |
 | crates.io publish job (seven crates, in order) | **Open: agent** | Needs the author's items 3 and 4 |
 | Homebrew tap formula and publish job | **Open: agent** | Needs the tap repository and `TAP_TOKEN` |
 | 5.3b Release candidate and v1.0.0 through crates.io and Homebrew | **Open: author** | The GitHub alpha pre-releases are done |
