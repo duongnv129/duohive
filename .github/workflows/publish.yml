@@ -1,0 +1,164 @@
+name: Publish
+
+# After "Release binaries" succeeds for a release candidate or a stable tag, publishes the seven
+# crates to crates.io and updates the Homebrew tap. Alpha and beta tags are never published here.
+# Each job waits for the `release` environment's reviewer and skips itself, with a notice, while
+# its secret or the workspace `publish = true` switch is missing, so the workflow is safe to merge
+# before the author sets those up (docs/release-runbook.md, "One-time setup").
+on:
+  workflow_run:
+    workflows: ["Release binaries"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "An existing release tag, for example v1.0.0-rc.1"
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAP_REPO: duongnv129/homebrew-tap
+
+jobs:
+  plan:
+    name: plan
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      publishable: ${{ steps.tag.outputs.publishable }}
+    steps:
+      - name: Find the tag and decide whether it is publishable
+        id: tag
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$RUN_TAG}"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+            echo "::notice::'$tag' is not a version tag: nothing to publish"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if printf '%s' "$tag" | grep -Eq -- '-(alpha|beta)'; then
+            echo "::notice::$tag is an alpha or beta tag: GitHub release only, nothing is published"
+            echo "publishable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publishable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish-crates:
+    name: publish crates
+    needs: plan
+    if: needs.plan.outputs.publishable == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    environment: release
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.plan.outputs.tag }}
+      - name: Check the tag, the version and the publish switch
+        id: gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^version *= *"\(.*\)"/\1/p' Cargo.toml | head -1)"
+          [ "v$version" = "$TAG" ] || { echo "::error::tag $TAG differs from the Cargo version $version"; exit 1; }
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not set: skipping crates.io"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if grep -Eq '^publish *= *false' Cargo.toml; then
+            echo "::notice::workspace publish is false: skipping crates.io"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "go=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install the toolchain from rust-toolchain.toml
+        if: steps.gate.outputs.go == 'true'
+        run: rustup toolchain install
+      - name: Publish in dependency order, skipping versions already on crates.io
+        if: steps.gate.outputs.go == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.gate.outputs.version }}
+        run: |
+          set -euo pipefail
+          for crate in duohive-core duohive-cli duohive-store duohive-tmux duohive-tui duohive-mcp duohive; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' "https://crates.io/api/v1/crates/$crate/$VERSION")"
+            if [ "$code" = "200" ]; then
+              echo "$crate $VERSION is already on crates.io"
+              continue
+            fi
+            cargo publish --locked -p "$crate"
+          done
+
+  publish-tap:
+    name: update Homebrew tap
+    needs: [plan, publish-crates]
+    if: needs.plan.outputs.publishable == 'true' && !contains(needs.plan.outputs.tag, '-rc')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: release
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      TAP_TOKEN: ${{ secrets.TAP_TOKEN }}
+    steps:
+      - name: Write the formula and push it to the tap
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::notice::TAP_TOKEN is not set: skipping the Homebrew tap"
+            exit 0
+          fi
+          version="${TAG#v}"
+          curl -fsSL -o src.tar.gz "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          sha="$(sha256sum src.tar.gz | cut -d' ' -f1)"
+          git clone --depth 1 "https://x-access-token:${TAP_TOKEN}@github.com/${TAP_REPO}.git" tap
+          mkdir -p tap/Formula
+          cat > tap/Formula/duohive.rb <<EOF
+          class Duohive < Formula
+            desc "Terminal app that manages standing AI coding agents as an org chart"
+            homepage "https://github.com/${GITHUB_REPOSITORY}"
+            url "https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+            sha256 "${sha}"
+            license "Apache-2.0"
+
+            depends_on "rust" => :build
+            depends_on "tmux"
+
+            def install
+              system "cargo", "install", *std_cargo_args(path: "crates/duohive")
+              bin.install_symlink bin/"duohive" => "dh"
+            end
+
+            test do
+              assert_match "duohive ${version}", shell_output("#{bin}/duohive --version")
+            end
+          end
+          EOF
+          cd tap
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR_ID}+${GITHUB_ACTOR}@users.noreply.github.com"
+          git add Formula/duohive.rb
+          if git diff --cached --quiet; then
+            echo "formula already up to date"
+            exit 0
+          fi
+          git commit -m "duohive ${version}"
+          git push origin HEAD

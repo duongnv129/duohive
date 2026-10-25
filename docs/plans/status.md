@@ -17,7 +17,7 @@ These need a person: a decision, an account, real users or time. Nothing in CI/C
 ## Open tasks for an agent (not manual)
 
 1. Phase 4 sign-off docs (4.10-4): after the author's item 1.
-2. The crates.io and Homebrew publish jobs: after the author's item 3 (the crate names are claimed by the first publish; the name-check task 5.5b was removed, P5-D12).
+2. Run the `publish` workflow on the first release candidate once the author's item 3 is done (the crate names are claimed by the first publish; the name-check task 5.5b was removed, P5-D12). The workflow is written; it has not run.
 3. Make the new CI jobs required checks: after they run green on `main`.
 4. Phase 5 close-out docs (5.9): after the 30 days.
 5. Watch `plugin_replays_recorded_events` (the OpenCode plugin replay, about 40 s): it failed once under load locally and has not failed in CI.
@@ -36,6 +36,8 @@ These need a person: a decision, an account, real users or time. Nothing in CI/C
 | `package (every crate packs)` | Each crate lists its package files; the core builds from its own tarball | **Added**, awaiting its first green run |
 | `install from source` (Linux, macOS) | The README's source install on a clean runner: install, `duohive` and `dh` run and agree, uninstall removes only what it installed | **Added**, awaiting its first green run |
 | `verify-release` | After a release is built, on each of the four platforms: download the archive, check the checksum and the attestation, the version equals the tag, `--help` runs, and a short real run with tmux works | **Added**, awaiting its first run; it is the first test of the Linux and Intel Mac binaries on their own platforms |
+| `security` (`advisories`, `secret scan`, `CodeQL`, `dependency review`) | Weekly and on every PR and push to `main`: new advisories on our dependencies, secrets in the full history (gitleaks), CodeQL for Rust, risky dependency changes in a PR | **Added**, awaiting its first run |
+| `publish` (crates.io, Homebrew tap) | After `Release binaries` for a release candidate or stable tag: publishes the seven crates in order and updates the tap. Skips itself while `CARGO_REGISTRY_TOKEN`, `TAP_TOKEN` or `publish = true` is missing; alpha and beta tags are never published | **Added**, awaiting the author's setup (item 3 above) and the first rc |
 
 ## Phases
 
