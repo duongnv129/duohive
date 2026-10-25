@@ -108,6 +108,9 @@ pub struct GateReport {
     /// Whether the checkout had uncommitted changes (`None` outside a checkout):
     /// a dirty gate run does not vouch for the committed code.
     pub git_dirty: Option<bool>,
+    /// Why the gate stopped before every tier was measured, when it did: the tiers that
+    /// finished are still here, and the run is never a pass.
+    pub error: Option<GateError>,
 }
 
 impl GateReport {
@@ -124,7 +127,9 @@ impl GateReport {
 
     /// Whether every target passed in every tier's worst run.
     pub fn all_pass(&self) -> bool {
-        !self.tiers.is_empty() && self.tiers.iter().all(|t| targets_pass(&t.worst))
+        self.error.is_none()
+            && !self.tiers.is_empty()
+            && self.tiers.iter().all(|t| targets_pass(&t.worst))
     }
 
     /// Whether the binary is under the size limit; an unknown size is a miss.
@@ -134,6 +139,9 @@ impl GateReport {
 
     /// 0 when the gate passes, or fails on a platform that does not gate; else 1.
     pub fn exit_code(&self) -> u8 {
+        if let Some(e) = &self.error {
+            return e.exit_code();
+        }
         u8::from(self.gating() && !(self.all_pass() && self.size_ok()))
     }
 
@@ -145,6 +153,7 @@ impl GateReport {
             "version": self.version,
             "git_sha": self.git_sha,
             "git_dirty": self.git_dirty,
+            "error": self.error.as_ref().map(ToString::to_string),
             "platform": self.platform(),
             "profile": "release",
             "binary_bytes": self.binary_bytes,
@@ -182,7 +191,11 @@ impl GateReport {
             "binary {size} (limit {MAX_BINARY_BYTES} B){}\n",
             if self.size_ok() { "" } else { "  MISSED" }
         ));
+        if let Some(e) = &self.error {
+            out.push_str(&format!("gate stopped early: {e}\n"));
+        }
         let verdict = match (self.all_pass() && self.size_ok(), self.gating()) {
+            _ if self.error.is_some() => "gate: INCOMPLETE",
             (true, _) => "gate: PASS",
             (false, true) => "gate: FAIL",
             (false, false) => "gate: reported only (this platform does not gate)",
@@ -241,34 +254,58 @@ fn run_with_retries(
     }
 }
 
-/// Runs the gate through `runner(agents, view)`.
-pub fn run_gate(
+/// What the gate got through: the tiers it finished, and why it stopped if it did.
+#[derive(Debug, PartialEq)]
+pub struct GateRun {
+    /// The finished tiers, in order.
+    pub tiers: Vec<TierReport>,
+    /// The error that ended the gate early.
+    pub error: Option<GateError>,
+}
+
+/// One tier: its counted runs, then the run without the view.
+fn run_tier(
     runner: &mut dyn FnMut(u32, bool) -> RunResult,
-) -> Result<Vec<TierReport>, GateError> {
+    agents: u32,
+) -> Result<TierReport, GateError> {
+    let mut runs = Vec::new();
+    for _ in 0..COUNTED_RUNS {
+        runs.push(run_with_retries(runner, agents, true)?);
+    }
+    let worst = worst_of(&runs).ok_or_else(|| GateError::Failed {
+        agents,
+        why: "no counted run".to_owned(),
+    })?;
+    // Information only: a discard or failure here is not the gate's.
+    let without_view = match run_with_retries(runner, agents, false) {
+        Ok(r) => Some(r),
+        Err(GateError::Interrupted) => return Err(GateError::Interrupted),
+        Err(_) => None,
+    };
+    Ok(TierReport {
+        agents,
+        runs,
+        worst,
+        without_view,
+    })
+}
+
+/// Runs the gate through `runner(agents, view)`. A tier that fails ends the gate, but the
+/// tiers measured before it are kept: a late failure must not throw away finished work.
+pub fn run_gate(runner: &mut dyn FnMut(u32, bool) -> RunResult) -> GateRun {
     let mut tiers = Vec::new();
     for agents in GATE_TIERS {
-        let mut runs = Vec::new();
-        for _ in 0..COUNTED_RUNS {
-            runs.push(run_with_retries(runner, agents, true)?);
+        match run_tier(runner, agents) {
+            Ok(tier) => tiers.push(tier),
+            Err(error) => {
+                return GateRun {
+                    tiers,
+                    error: Some(error),
+                };
+            }
         }
-        let worst = worst_of(&runs).ok_or_else(|| GateError::Failed {
-            agents,
-            why: "no counted run".to_owned(),
-        })?;
-        // Information only: a discard or failure here is not the gate's.
-        let without_view = match run_with_retries(runner, agents, false) {
-            Ok(r) => Some(r),
-            Err(GateError::Interrupted) => return Err(GateError::Interrupted),
-            Err(_) => None,
-        };
-        tiers.push(TierReport {
-            agents,
-            runs,
-            worst,
-            without_view,
-        });
     }
-    Ok(tiers)
+    GateRun { tiers, error: None }
 }
 
 /// Waits until the load is at most `target`, reading it every `poll` for up to
@@ -424,6 +461,7 @@ mod tests {
             git_sha: Some("abc123".to_owned()),
             binary_bytes: bytes,
             git_dirty: Some(false),
+            error: None,
         }
     }
 
@@ -597,8 +635,8 @@ mod tests {
     #[test]
     fn counted_runs_use_the_view() {
         let mut log = Vec::new();
-        let tiers = run_gate(&mut scripted(Vec::new(), &mut log));
-        assert_eq!(tiers.map(|t| t.len()), Ok(2));
+        let run = run_gate(&mut scripted(Vec::new(), &mut log));
+        assert_eq!((run.tiers.len(), run.error), (2, None));
         let expect: Vec<(u32, bool)> = [10, 100]
             .into_iter()
             .flat_map(|n| [(n, true), (n, true), (n, true), (n, false)])
@@ -610,8 +648,8 @@ mod tests {
     fn discarded_run_is_retried_twice() {
         let mut log = Vec::new();
         let replies = vec![RunResult::Discarded, RunResult::Discarded];
-        let tiers = run_gate(&mut scripted(replies, &mut log));
-        assert!(tiers.is_ok());
+        let run = run_gate(&mut scripted(replies, &mut log));
+        assert_eq!(run.error, None);
         // Two discards, then the third try of the first counted run succeeds.
         assert_eq!(log.iter().take(3).collect::<Vec<_>>(), [&(10, true); 3]);
     }
@@ -620,7 +658,7 @@ mod tests {
     fn three_discards_end_with_exit_three() {
         let mut log = Vec::new();
         let replies = vec![RunResult::Discarded; 3];
-        let err = run_gate(&mut scripted(replies, &mut log)).err();
+        let err = run_gate(&mut scripted(replies, &mut log)).error;
         assert_eq!(
             err,
             Some(GateError::Discarded {
@@ -635,7 +673,7 @@ mod tests {
     fn other_failure_ends_with_exit_one_and_its_stderr() {
         let mut log = Vec::new();
         let replies = vec![RunResult::Failed("bench exited 1: tmux missing".to_owned())];
-        let err = run_gate(&mut scripted(replies, &mut log)).err();
+        let err = run_gate(&mut scripted(replies, &mut log)).error;
         let msg = err.as_ref().map(ToString::to_string).unwrap_or_default();
         assert!(msg.contains("tmux missing"), "{msg}");
         assert_eq!(err.map(|e| e.exit_code()), Some(1));
@@ -644,7 +682,7 @@ mod tests {
     #[test]
     fn interrupted_run_ends_with_exit_130() {
         let mut log = Vec::new();
-        let err = run_gate(&mut scripted(vec![RunResult::Interrupted], &mut log)).err();
+        let err = run_gate(&mut scripted(vec![RunResult::Interrupted], &mut log)).error;
         assert_eq!(err, Some(GateError::Interrupted));
         assert_eq!(err.map(|e| e.exit_code()), Some(130));
     }
@@ -660,7 +698,7 @@ mod tests {
             RunResult::Report(good(10)),
             RunResult::Report(bad),
         ];
-        let tiers = run_gate(&mut scripted(replies, &mut log)).unwrap_or_default();
+        let tiers = run_gate(&mut scripted(replies, &mut log)).tiers;
         let first = tiers.first();
         assert!(first.is_some_and(|t| targets_pass(&t.worst)));
         assert!(
@@ -677,8 +715,66 @@ mod tests {
             git_sha: None,
             binary_bytes: Some(6_000_000),
             git_dirty: None,
+            error: None,
         };
         assert_eq!(g.exit_code(), 0);
+    }
+
+    /// 3 good counted runs and the view-less run for the first tier, then a failure in the second.
+    fn fails_at_100() -> (GateRun, Vec<(u32, bool)>) {
+        let mut log = Vec::new();
+        let mut replies: Vec<RunResult> = (0..4).map(|_| RunResult::Report(good(10))).collect();
+        replies.push(RunResult::Failed(
+            "bench exited 1: timed out waiting for every agent to finish a turn".to_owned(),
+        ));
+        let run = run_gate(&mut scripted(replies, &mut log));
+        (run, log)
+    }
+
+    #[test]
+    fn a_failure_in_the_second_tier_keeps_the_first() {
+        let (run, _) = fails_at_100();
+        assert_eq!(run.tiers.len(), 1, "the 10-agent tier is kept");
+        assert_eq!(run.tiers[0].agents, 10);
+        let msg = run
+            .error
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        assert!(
+            msg.contains("agents 100") && msg.contains("finish a turn"),
+            "{msg}"
+        );
+    }
+
+    #[test]
+    fn an_incomplete_gate_is_never_a_pass_and_says_so() {
+        let (run, _) = fails_at_100();
+        let g = GateReport {
+            tiers: run.tiers,
+            version: "1.0.0".to_owned(),
+            git_sha: None,
+            binary_bytes: Some(6_000_000),
+            git_dirty: None,
+            error: run.error,
+        };
+        assert!(!g.all_pass());
+        assert_eq!(g.exit_code(), 1);
+        let v = g.to_json();
+        assert_eq!(v["all_pass"], false);
+        assert_eq!(v["tiers"].as_array().map(Vec::len), Some(1));
+        assert!(
+            v["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("agents 100")),
+            "{v}"
+        );
+        let text = g.text();
+        assert!(
+            text.contains("gate stopped early") && text.contains("INCOMPLETE"),
+            "{text}"
+        );
+        assert!(!text.contains("gate: PASS"));
     }
 
     #[test]

@@ -41,9 +41,12 @@ def main(path):
         print("The gate ended without a verdict (no result file). See the job log: exit 3 means every")
         print("attempt was discarded for machine load.")
         return
-    verdict = "PASS" if gate.get("all_pass") else "FAIL"
+    error = gate.get("error")
+    verdict = "INCOMPLETE" if error else ("PASS" if gate.get("all_pass") else "FAIL")
     print(f"**{verdict}** · version `{gate.get('version')}` · commit `{str(gate.get('git_sha'))[:7]}` · "
           f"platform `{gate.get('platform')}` · binary {gate.get('binary_bytes')} B (limit 10000000 B)\n")
+    if error:
+        print(f"> **The gate stopped early:** {error}. The tiers below finished before it stopped.\n")
     print("> A shared hosted runner is not the plugged-in M-series machine of TD §10: the load check is "
           "off here, so treat this as a report. The release gate is run on the release machine.\n")
     for tier in gate.get("tiers", []):

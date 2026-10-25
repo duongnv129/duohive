@@ -54,6 +54,13 @@ pub(crate) const IGNORE_LOAD_VAR: &str = "DUOHIVE_BENCH_IGNORE_LOAD";
 const START_WAIT: Duration = Duration::from_secs(90);
 const TURN_WAIT: Duration = Duration::from_secs(60);
 const STOP_WAIT: Duration = Duration::from_secs(30);
+
+/// `base` made longer for a run with many agents: two more seconds for each agent beyond ten.
+/// These waits are the bench's patience, not a target: 100 agents spawning hook processes on a
+/// small machine need longer than 10 do, and a bench that gives up measures nothing.
+pub(crate) fn patience(base: Duration, agents: usize) -> Duration {
+    base + Duration::from_secs(2 * u64::try_from(agents.saturating_sub(10)).unwrap_or(0))
+}
 /// Quiet time between "all at rest" and the idle measurement, so the last
 /// screen reads and frames are over.
 const SETTLE: Duration = Duration::from_secs(2);
@@ -482,8 +489,12 @@ impl Run {
         for agent in self.names.clone() {
             self.send(Command::StartAgent { agent }).await?;
         }
-        self.wait_all("every agent to start", START_WAIT, at_rest)
-            .await?;
+        self.wait_all(
+            "every agent to start",
+            patience(START_WAIT, self.names.len()),
+            at_rest,
+        )
+        .await?;
         if a.view {
             self.open_view().await?;
         }
@@ -497,7 +508,8 @@ impl Run {
                 self.send(give_work_command(agent, task)).await?;
             }
             let reply = format!("done: {task}");
-            self.wait_all("every agent to finish a turn", TURN_WAIT, move |m, n| {
+            let turn_wait = patience(TURN_WAIT, self.names.len());
+            self.wait_all("every agent to finish a turn", turn_wait, move |m, n| {
                 at_rest(m, n) && m.view(n).last_reply.as_deref() == Some(reply.as_str())
             })
             .await?;
@@ -617,7 +629,7 @@ impl Run {
         }
         let names = self.names.clone();
         let _ = self
-            .pump(STOP_WAIT, |m| {
+            .pump(patience(STOP_WAIT, names.len()), |m| {
                 names
                     .iter()
                     .all(|n| m.view(n).status.state == AgentState::Stopped)
@@ -790,6 +802,15 @@ fn at_rest(m: &UiModel, name: &AgentName) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn waits_grow_with_the_agent_count() {
+        let base = Duration::from_secs(60);
+        assert_eq!(patience(base, 1), base);
+        assert_eq!(patience(base, 10), base);
+        assert_eq!(patience(base, 100), Duration::from_secs(60 + 180));
+        assert!(patience(base, 101) > patience(base, 100));
+    }
+
     use super::*;
 
     #[test]
