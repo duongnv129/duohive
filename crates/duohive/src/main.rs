@@ -105,28 +105,26 @@ fn gate(json: bool) -> ExitCode {
         }
     };
     let mut runner = |agents, view| run_child(&exe, agents, view);
-    match run_gate(&mut runner) {
-        Ok(tiers) => {
-            let report = GateReport {
-                tiers,
-                version: env!("CARGO_PKG_VERSION").to_owned(),
-                git_sha: git_head(),
-                git_dirty: git_dirty(),
-                binary_bytes: std::fs::metadata(&exe).ok().map(|m| m.len()),
-            };
-            let text = if json {
-                format!("{}\n", report.to_json())
-            } else {
-                report.text()
-            };
-            let _ = std::io::stdout().write_all(text.as_bytes());
-            ExitCode::from(report.exit_code())
-        }
-        Err(e) => {
-            let _ = writeln!(std::io::stderr(), "duohive bench --gate: {e}");
-            ExitCode::from(e.exit_code())
-        }
+    let run = run_gate(&mut runner);
+    // Whatever finished is reported, also when a later tier failed.
+    let report = GateReport {
+        tiers: run.tiers,
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        git_sha: git_head(),
+        git_dirty: git_dirty(),
+        binary_bytes: std::fs::metadata(&exe).ok().map(|m| m.len()),
+        error: run.error,
+    };
+    let text = if json {
+        format!("{}\n", report.to_json())
+    } else {
+        report.text()
+    };
+    let _ = std::io::stdout().write_all(text.as_bytes());
+    if let Some(e) = &report.error {
+        let _ = writeln!(std::io::stderr(), "duohive bench --gate: {e}");
     }
+    ExitCode::from(report.exit_code())
 }
 
 /// 130 when interrupted; 3 for a run the gate discards (busy machine); else 1.
