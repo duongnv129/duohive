@@ -119,13 +119,14 @@ jobs:
       - name: The full gate
         env:
           DUOHIVE_BENCH_IGNORE_LOAD: "1"
-        run: ./target/release/duohive bench --gate --json > bench-gate.json || echo "gate exit code $?"
+        # The result goes outside the checkout, so the gate sees a clean tree (git_dirty).
+        run: ./target/release/duohive bench --gate --json > "$RUNNER_TEMP/bench-gate.json" || echo "gate exit code $?"
       - name: Publish the report
         if: always()
-        run: python3 .github/scripts/bench-report.py bench-gate.json >> "$GITHUB_STEP_SUMMARY"
+        run: python3 .github/scripts/bench-report.py "$RUNNER_TEMP/bench-gate.json" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: bench-gate-report
-          path: bench-gate.json
+          path: ${{ runner.temp }}/bench-gate.json
           if-no-files-found: warn

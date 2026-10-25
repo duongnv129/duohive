@@ -364,4 +364,37 @@ What it does not show, so Task 4.10 step 1 is **not** closed by it:
 - **Only 10 agents.** There is no 100-agent run in the history, so the 100-agent targets are unmeasured here (the local first reading, taken with the load check off, is in "Phase 4" above).
 - **Not the method.** The idle window is 10 s, not 30 s of settling plus 60 s; each row is one run, not the worst of three; the runners are shared VMs with the load check off, not a plugged-in M-series machine at load 2 or less (TD §10).
 
-Open item: a full gate report (10 and 100 agents, three counted runs each) from the same runner, as a `bench-gate` job that writes its table to the job summary. It is written (`ci/bench-gate-report`) and waits for a push that can change workflow files. See [phase-4-plan](phase-4-plan.md#open-items-carried-to-the-end-of-the-phase).
+### Full gate on the GitHub runner (2026-10-25): 10 and 100 agents
+
+The `bench-gate` job of `.github/workflows/ci.yml` ran `duohive bench --gate` (three counted runs with the live view at 10 and at 100 agents, the worst value per target deciding, then one run of each without it) on a hosted `macos-14` Apple-silicon runner: [run 40161967618](https://github.com/duongnv129/duohive/actions/runs/40161967618), commit `de54b9f`, binary 6,715,952 B (limit 10,000,000 B). The full method's idle window was used (30 s of settling, 60 s idle); the runner is a shared 3-CPU VM with the load check off. The first attempt ([run 40159717076](https://github.com/duongnv129/duohive/actions/runs/40159717076)) finished 10 agents, then timed out at 100 because the bench's fixed 60 s turn wait is too short for 100 agents on 3 CPUs; that wait now grows with the agent count (PR #43), and the gate keeps finished tiers when a later one fails.
+
+**10 agents** (worst of three; the runs are listed beside it)
+
+| Target | Worst | Run 1 | Run 2 | Run 3 | Limit | |
+|---|---|---|---|---|---|---|
+| Idle CPU | 0.07 % | 0.02 | 0.07 | 0.03 | < 1 % | pass |
+| Memory (end of window) | 15.44 MB | 15.42 | 15.44 | 15.44 | < 20 MB | pass |
+| Hook to screen (max) | 78 ms | 78 | 52 | 52 | < 1000 ms | pass |
+| Screen-read `~` (p95) | 1942 ms | 1942 | 1936 | 1931 | < 2000 ms | pass |
+| First frame on reopen | 167.7 ms | 75.5 | 167.7 | 145.2 | < 100 ms | **MISSED** |
+
+**100 agents**
+
+| Target | Worst | Run 1 | Run 2 | Run 3 | Limit | |
+|---|---|---|---|---|---|---|
+| Idle CPU | 0.05 % | 0.05 | 0.05 | 0.05 | < 3 % | pass |
+| Memory (end of window) | 15.94 MB | 15.92 | 15.80 | 15.94 | < 60 MB | pass |
+| Hook to screen (max) | 60 ms | 55 | 60 | 56 | < 2000 ms | pass |
+| Screen-read `~` (p95) | 1811 ms | 1811 | 1737 | 1730 | < 2000 ms | pass |
+| First frame on reopen | 131.1 ms | 131.1 | 70.1 | 53.7 | < 300 ms | pass |
+
+Without the live view (information only): 10 agents 0.03 % CPU and 11.5 MB; 100 agents 0.04 % CPU and 12.2 MB.
+
+What it shows:
+
+- **At 100 agents every target passes in all three runs, with a wide margin** (CPU 0.05 % of 3 %, memory 15.9 MB of 60 MB, hook 60 ms of 2000 ms, `~` p95 1.73–1.81 s of 2 s, first frame 54–131 ms of 300 ms). This is the first 100-agent measurement under the full method's windows, and the 100-agent targets are met on this runner.
+- **At 10 agents four targets pass; first frame missed in two of three runs** (167.7 and 145.2 ms against 100 ms; run 1 was 75.5 ms). First frame was 70–170 ms on this runner across all the CI runs (the six smoke runs above: 69.6–137.6 ms), while the local first readings on the M4 were 44.7 ms and 58.9 ms (load check off). The first tier also runs straight after the build on a cold runner. This looks like the speed of a shared 3-CPU VM, not a regression, but that is not proven: the 100-agent tier's first frame (54–131 ms) is not slower than the 10-agent tier's.
+- **`~` freshness is again close to its limit at 10 agents** (1.93–1.94 s of 2 s) and lower at 100 (1.73–1.81 s); see P4-Q8 in the Phase 4 plan.
+- **`git_dirty` is `true` in this result**, because the job wrote `bench-gate.json` inside the checkout and git counts that untracked file. The result file is written outside the checkout from now on, so a release gate file can say `false`.
+
+What this does not close: Task 4.10 step 1 asks for the plugged-in M-series machine at load 2 or less (TD §10). The 10-agent first-frame miss and the thin `~` margin have to be re-measured there, and a release gate file (`docs/release-gates/<version>.json`) still comes from that machine.
