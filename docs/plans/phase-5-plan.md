@@ -1,6 +1,6 @@
 # DuoHive Phase 5 Implementation Plan — Open-source launch
 
-**Status:** Agent tasks built 2026-10-23 (5.1, 5.2, 5.3a, 5.4, 5.5a); human tasks open (5.3b, 5.5b, 5.6–5.9) · plan verified by a third review round, both reviewers PASS, 2026-10-23 · outline written 2026-10-05, reviewed against the PRD, UI/UX spec, technical design and the repository by two independent reviewers on 2026-10-23 (both FAIL on the outline; every finding is resolved below), expanded into this task-by-task plan 2026-10-23. Depends on phase 4, which is **built with acceptance open** (see [Entry gate](#entry-gate)).
+**Status:** Agent tasks built 2026-10-23 (5.1, 5.2, 5.3a, 5.4, 5.5a); alpha releases published through CI (`v0.1.0-alpha.1`, `v0.1.0-alpha.2`); the author's launch steps are open (5.3b release candidate and v1.0.0, 5.6–5.9; 5.5b removed by the author, P5-D12); every item is in the [status board](status.md) · plan verified by a third review round, both reviewers PASS, 2026-10-23 · outline written 2026-10-05, reviewed against the PRD, UI/UX spec, technical design and the repository by two independent reviewers on 2026-10-23 (both FAIL on the outline; every finding is resolved below), expanded into this task-by-task plan 2026-10-23. Depends on phase 4, which is **built, with its benchmark done in CI and the author's acceptance open** (see [Entry gate](#entry-gate)).
 
 Sources: [PRD](../product/prd.md) (Delivery Phases row 5, Success Metrics, Key Hypothesis, Decisions Log: Distribution, Branding, Name) · [UI/UX spec](../ux/ui-spec.md) §1, §4.3, §4.12, §5, §6, §8 · [Technical design](../design/technical-design.md) §10–§12 · [Roadmap](v1-roadmap.md) row 5 · [Traceability](v1-traceability.md) · [Phase 4 plan](phase-4-plan.md).
 
@@ -47,6 +47,7 @@ Phase 4 is *built*; these items are open (phase-4-plan "Open items carried to th
 | P5-D9 | macOS Gatekeeper | v1 binaries are **not notarised** (no paid Apple developer account assumed). The README gives the one-line quarantine removal for tarball installs, and says that `brew` and `cargo install` are not affected. Signing is a v1.1 item if the author has a certificate |
 | P5-D10 | Rollback | A bad release is answered by a patch release (`1.0.1`), `cargo yank` of the bad version, deleting the GitHub Release and reverting the tap formula commit. Written as a runbook in `docs/release-runbook.md` (5.3a) |
 | P5-D11 | The 30-day clock | Starts the day `v1.0.0` is tagged; earlier days count if the log shows DuoHive was already the only tool (P5-Q3 default) |
+| P5-D12 | Task 5.5b (trademark searches, domain, GitHub organisation, crate-name claims) | Removed by the author on 2026-10-25 ("I don't mind it right now"). The 5.5a lookups stay as a record. Nothing waits on a name result; a conflict found later is handled then (PRD Branding allows a rename) |
 
 ## Spec coverage
 
@@ -62,7 +63,7 @@ Phase 4 is *built*; these items are open (phase-4-plan "Open items carried to th
 | CI release gate | PRD Delivery Phases row 5 | 5.2, 5.3a |
 | README finished for launch; CONTRIBUTING, SECURITY, CHANGELOG; "docs" | Roadmap row 5; PRD row 5; TD §12 row 5 | 5.4 |
 | PRD user flow "install to a working team" step 1 (needs tmux and one agent CLI) | PRD User flow | 5.4 |
-| Name checks: USPTO and WIPO, classes 9 and 42; `duohive.dev` or `duohive.ai`; GitHub org; the `duohive` crate | PRD Delivery Phases row 5; Decisions Log: Name | 5.5a, 5.5b |
+| Name checks: USPTO and WIPO, classes 9 and 42; GitHub org; the `duohive` crate | PRD Delivery Phases row 5; Decisions Log: Name | 5.5a (lookups only; 5.5b removed, P5-D12) |
 | Time to first team < 10 min, README only, 3 first-time users | PRD Success Metrics; Key Hypothesis | 5.6 |
 | 30 consecutive days of daily use | PRD Success Metrics (primary); Key Hypothesis | 5.7 |
 | Interviews with 3–5 leads (worth doing, not blocking) | PRD Evidence; Open Questions | 5.7 (optional) |
@@ -122,7 +123,7 @@ Phase 4 is *built*; these items are open (phase-4-plan "Open items carried to th
 
 ### Task 5.3b: Release candidate (H)
 
-The author, after the [Entry gate](#entry-gate) and 5.5b: runs `scripts/set-version.sh 1.0.0-rc.1`, sets `publish` to `true` in `[workspace.package]`, runs the gate on the release machine and commits `docs/release-gates/1.0.0-rc.1.json`, opens the release PR, tags `v1.0.0-rc.1` on the merged commit, and approves the `release` environment. The rc goes to crates.io as a pre-release version, a GitHub pre-release and the tap. Checks: `brew install --build-from-source` on a clean macOS user, `cargo install duohive --version 1.0.0-rc.1`, and `duohive --version` equal to the tag.
+The author, after the [Entry gate](#entry-gate): runs `scripts/set-version.sh 1.0.0-rc.1`, sets `publish` to `true` in `[workspace.package]`, runs the gate on the release machine and commits `docs/release-gates/1.0.0-rc.1.json`, opens the release PR, tags `v1.0.0-rc.1` on the merged commit, and approves the `release` environment. The rc goes to crates.io as a pre-release version, a GitHub pre-release and the tap. Checks: `brew install --build-from-source` on a clean macOS user, `cargo install duohive --version 1.0.0-rc.1`, and `duohive --version` equal to the tag.
 
 ### Task 5.4: README, CONTRIBUTING, SECURITY, CHANGELOG (A)
 
@@ -137,13 +138,9 @@ The author, after the [Entry gate](#entry-gate) and 5.5b: runs `scripts/set-vers
 
 **Files:** `docs/plans/name-checks.md`.
 
-- [x] **Step 1: Read-only availability lookups,** each recorded with its date and the command or URL: the `duohive` and `duohive-*` names on crates.io (the public API, no login), the GitHub user or organisation `duohive`, DNS and RDAP for `duohive.dev` and `duohive.ai`. No registration, no claim, no purchase.
-- [x] **Step 2: Write the results and the open items** (USPTO and WIPO searches in classes 9 and 42 need a person's judgement and are 5.5b).
+- [x] **Step 1: Read-only availability lookups,** each recorded with its date and the command or URL: the `duohive` and `duohive-*` names on crates.io (the public API, no login), the GitHub user or organisation `duohive` (the DNS and domain lookups were removed, P5-D12). No registration, no claim, no purchase.
+- [x] **Step 2: Write the results and the open items** (USPTO and WIPO searches in classes 9 and 42 need a person's judgement; the author removed that work, P5-D12).
 - [x] **Step 3: Commit** `docs: name check lookups`.
-
-### Task 5.5b: Name checks, registration and legal (H)
-
-USPTO and WIPO searches in classes 9 and 42; register `duohive.dev` or `duohive.ai`; claim the GitHub organisation and the crate names. The launch waits on a clear result; a conflict is decided with the author before 5.3b publishes anything (PRD Branding allows a rename at launch).
 
 ### Task 5.6: Time to first team (H)
 
@@ -165,14 +162,13 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 
 1. Finish phase 4's open items and its sign-off (the Entry gate). The repository is public (P5-Q1 answered); `main` is protected: pull requests only, one owner approval with an admin bypass, squash merge, and seven required checks (`lint`, `deny`, `typos` and the four `test` jobs). Tags `v*` are creatable only by admins.
 2. Decide P5-D1–P5-D11 and P5-Q1–P5-Q6 (or accept the defaults).
-3. Task 5.5b: legal searches; register the domain; claim the organisation and the crate names.
-4. Create the tap repository and the `release` environment; add the secrets `CARGO_REGISTRY_TOKEN` and `TAP_TOKEN`; set a required reviewer.
-5. Run the release gate on the release machine; commit `docs/release-gates/<version>.json`.
-6. Task 5.3b (rc), then 5.6; then 5.8 (tag), then 5.7 and 5.9.
+3. Create the tap repository and the `release` environment; add the secrets `CARGO_REGISTRY_TOKEN` and `TAP_TOKEN`; set a required reviewer.
+4. Run the release gate on the release machine; commit `docs/release-gates/<version>.json`. (The full gate now also runs in CI on a hosted runner; whether the committed file must still come from the M-series machine is P5-D1 and P4-Q9.)
+5. Task 5.3b (rc), then 5.6; then 5.8 (tag), then 5.7 and 5.9.
 
 ## Order
 
-5.1, 5.2, 5.4 and 5.5a are independent. 5.3a needs 5.2 (the workflow calls `check-release-version.sh`). 5.3b needs the Entry gate, 5.3a and 5.5b. 5.6 needs 5.3b and 5.4. 5.8 needs 5.1–5.6. 5.7 starts at the tag; 5.9 closes the phase.
+5.1, 5.2, 5.4 and 5.5a are independent. 5.3a needs 5.2 (the workflow calls `check-release-version.sh`). 5.3b needs the Entry gate and 5.3a. 5.6 needs 5.3b and 5.4. 5.8 needs 5.1–5.6. 5.7 starts at the tag; 5.9 closes the phase.
 
 ## TODO checklist
 
@@ -181,13 +177,13 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 - [ ] Phase 4 acceptance is done and signed off (Entry gate; blocks 5.3b and 5.8 only)
 
 **Tasks**
-- [x] 5.1 Pre-launch UX check (A) — matrix test; the author's walk is listed in `ux-check-prelaunch.md`
-- [x] 5.2 Release gate in the binary (A)
-- [x] 5.3a Packaging, release workflow and runbook (A) — `dist` and `actionlint` not run here; first `dist plan` is the author's. **`release.yml` and the new `ci.yml` jobs (`workflows`, `package`) are not in this change**: the push token lacked the `workflow` scope, so they follow in a separate pull request from the branch `feat/phase-5-gate`
-- [ ] 5.3b Release candidate (H)
+- [x] 5.1 Pre-launch UX check (A) — **Done (CI)**: the matrix test runs in the test jobs; the author's walk is listed in `ux-check-prelaunch.md`
+- [x] 5.2 Release gate in the binary (A) — **Done (CI)**: `duohive bench --gate` also runs as the `bench-gate` job on pushes to `main` and by hand
+- [x] 5.3a Packaging, release workflow and runbook (A) — packaging config, `set-version.sh`, `check-release-version.sh` and the runbook are merged. **Done (CI)**: the GitHub release is built by `release-binaries.yml` (macOS Apple silicon and Intel, Linux x86_64 and ARM64, with checksums and build attestations), used for `v0.1.0-alpha.1` (by hand) and `v0.1.0-alpha.2` (by tag push alone). The planned `release.yml` was not built as written: its crates.io and Homebrew publish jobs are open, and `dist-workspace.toml` is used by no workflow. The `actionlint`, `cargo package`, `docs` and install-from-source CI jobs are added to `ci.yml`, and `verify-release.yml` checks every published release on each platform (checksum, attestation, version, a short real run)
+- [ ] 5.3b Release candidate (H) — the GitHub alpha pre-releases are done through CI; the release candidate and v1.0.0 through crates.io and Homebrew need the author (names, tap, secrets)
 - [x] 5.4 README, CONTRIBUTING, SECURITY, CHANGELOG (A) — screenshot slot left for the author
 - [x] 5.5a Name checks: lookups (A) — found the repository was private (P5-Q1, since answered: public)
-- [ ] 5.5b Name checks: registration and legal (H)
+- [x] 5.5b Name checks: registration and legal (H) — **removed by the author 2026-10-25** (P5-D12)
 - [ ] 5.6 Time to first team (H)
 - [ ] 5.7 30-day daily use (C)
 - [ ] 5.8 Launch (H)
@@ -199,7 +195,7 @@ Mark roadmap row 5 and the PRD Delivery Phases row done; flip the PRD status fro
 |---|---|
 | The release gate fails at 100 agents on Apple M-series | Phase 4 tuned this; the gate shows which target failed. Fix before tagging (phase 4 Task 4.2); never lower a target without a PRD change |
 | The size is over 10,000,000 B in the `dist` profile | P5-D3 checks the unpacked arm64 binary in the workflow; fall back to `opt-level = "s"` as phase 4's Step 5 allows, and record it |
-| A name check finds a conflict | Decide with the author before 5.3b publishes (PRD Branding: Duocrew and DuoHQ were considered). A rename invalidates 5.3a's metadata and 5.4's README, which is why 5.5b comes first |
+| A name conflict appears after launch (5.5b was removed, P5-D12) | Decide with the author then (PRD Branding: Duocrew and DuoHQ were considered). A rename touches 5.3a's metadata and 5.4's README |
 | Publishing seven crates for `cargo install duohive` | P5-D6 order; a partial publish is finished by re-running the job; a bad version is yanked (runbook) |
 | A first-time user stalls on tmux or CLI install | UI §4.12 and §4.3 first-run screens give the steps; the README covers both; 5.1 checks the screens |
 | Unsigned binaries are blocked by Gatekeeper | P5-D9: README line; `brew` and `cargo install` unaffected |

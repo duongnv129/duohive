@@ -76,6 +76,81 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features --locked
 
+  docs:
+    # The README, the docs index and the changelog stay true: relative links resolve, the version
+    # has a changelog entry, and the README lists every release target the workflow builds.
+    name: docs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - run: sh scripts/check-docs.sh
+
+  workflows:
+    name: workflows (actionlint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.7 -color
+
+  package:
+    # `cargo package` works while `publish = false`; `cargo publish --dry-run` does not. The core
+    # is built from its own tarball; the others only list their files, because they depend on
+    # crates that are not on crates.io yet.
+    name: package (every crate packs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Every crate lists its package files
+        run: |
+          set -eu
+          for crate in duohive-core duohive-cli duohive-store duohive-tmux duohive-tui duohive-mcp duohive; do
+            cargo package --list --locked -p "$crate" --allow-dirty > /dev/null
+          done
+      - name: The core packs and builds from its own tarball
+        run: cargo package --locked -p duohive-core --allow-dirty
+
+  install:
+    # The README's "From source" path on clean runners: build, install to a private prefix, run the
+    # commands, uninstall. tmux comes from the package manager; the installer only checks it here.
+    name: install from source (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install tmux
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
+          tmux -V
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: ./install.sh to a private prefix
+        run: sh ./install.sh --no-deps --prefix "$RUNNER_TEMP/dh"
+      - name: The installed commands run and agree
+        run: |
+          set -eu
+          bin="$RUNNER_TEMP/dh/bin"
+          "$bin/duohive" --version
+          "$bin/dh" --version
+          [ "$("$bin/dh" --version)" = "$("$bin/duohive" --version)" ]
+          "$bin/duohive" --help > /dev/null
+      - name: Uninstall removes only what it installed
+        run: |
+          set -eu
+          sh ./install.sh --no-deps --uninstall --prefix "$RUNNER_TEMP/dh"
+          [ ! -e "$RUNNER_TEMP/dh/bin/duohive" ]
+          [ ! -e "$RUNNER_TEMP/dh/bin/dh" ]
+
   bench:
     # Informational: shared runners are far too busy for the gate's numbers to
     # mean anything. It proves the bench runs and reports, never that it passes.

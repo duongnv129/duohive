@@ -1,0 +1,98 @@
+name: Verify release
+
+# After the "Release binaries" workflow finishes (or by hand for a tag), downloads each platform's
+# archive from the GitHub release on a runner of that platform and checks that it is the file that
+# was published and that it runs: checksum, build attestation, version, --help, and a short real
+# benchmark with tmux. It changes nothing; a failure means the release should not be announced.
+on:
+  workflow_run:
+    workflows: ["Release binaries"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to verify, for example v0.1.0-alpha.2 (default: the latest release)"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.target }})
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-22.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-22.04-arm
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Find the tag to verify
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-}"
+          if [ -z "$tag" ] && printf '%s' "${RUN_BRANCH:-}" | grep -Eq '^v[0-9]'; then tag="$RUN_BRANCH"; fi
+          if [ -z "$tag" ]; then tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"; fi
+          printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
+            || { echo "'$tag' is not a version tag" >&2; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "verifying $tag for ${{ matrix.target }}"
+      - name: Download this platform's archive and its checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dl \
+            --pattern "duohive-*-${{ matrix.target }}.tar.gz" \
+            --pattern "duohive-*-${{ matrix.target }}.tar.gz.sha256"
+          ls -l dl
+      - name: The checksum matches
+        shell: bash
+        working-directory: dl
+        run: |
+          set -euo pipefail
+          if command -v sha256sum >/dev/null; then sha256sum -c ./*.sha256; else shasum -a 256 -c ./*.sha256; fi
+      - name: The build attestation verifies
+        shell: bash
+        working-directory: dl
+        run: gh attestation verify ./duohive-*-${{ matrix.target }}.tar.gz --repo "$GITHUB_REPOSITORY"
+      - name: Unpack; the version matches the tag; --help runs
+        shell: bash
+        working-directory: dl
+        run: |
+          set -euo pipefail
+          tar -xzf ./duohive-*-${{ matrix.target }}.tar.gz
+          bin="$PWD/$(ls -d duohive-*-${{ matrix.target }})/duohive"
+          got="$("$bin" --version)"
+          [ "$got" = "duohive ${TAG#v}" ] || { echo "the binary says '$got' but the tag is $TAG" >&2; exit 1; }
+          "$bin" --help > /dev/null
+          echo "BIN=$bin" >> "$GITHUB_ENV"
+      - name: Install tmux
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = macOS ]; then brew install tmux; else sudo apt-get update && sudo apt-get install -y tmux; fi
+          tmux -V
+      - name: A short real run (3 agents on tmux, hooks, live view)
+        shell: bash
+        env:
+          DUOHIVE_BENCH_IGNORE_LOAD: "1"
+        run: |
+          set -euo pipefail
+          "$BIN" bench --agents 3 --idle-secs 5 --turns 2 | tee bench.out
+          grep -q "hook → screen" bench.out
