@@ -15,7 +15,7 @@ codegen-units = 1
 inherits = "release"
 
 [workspace.package]
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 edition = "2024"
 rust-version = "1.99"
 license = "Apache-2.0"
@@ -26,12 +26,12 @@ keywords = ["tmux", "ai", "agents", "tui", "claude"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace.dependencies]
-duohive-core = { path = "crates/duohive-core", version = "0.1.0-alpha.1" }
-duohive-tmux = { path = "crates/duohive-tmux", version = "0.1.0-alpha.1" }
-duohive-cli = { path = "crates/duohive-cli", version = "0.1.0-alpha.1" }
-duohive-store = { path = "crates/duohive-store", version = "0.1.0-alpha.1" }
-duohive-tui = { path = "crates/duohive-tui", version = "0.1.0-alpha.1" }
-duohive-mcp = { path = "crates/duohive-mcp", version = "0.1.0-alpha.1" }
+duohive-core = { path = "crates/duohive-core", version = "0.1.0-alpha.2" }
+duohive-tmux = { path = "crates/duohive-tmux", version = "0.1.0-alpha.2" }
+duohive-cli = { path = "crates/duohive-cli", version = "0.1.0-alpha.2" }
+duohive-store = { path = "crates/duohive-store", version = "0.1.0-alpha.2" }
+duohive-tui = { path = "crates/duohive-tui", version = "0.1.0-alpha.2" }
+duohive-mcp = { path = "crates/duohive-mcp", version = "0.1.0-alpha.2" }
 
 tokio = "1.53"
 ratatui = { version = "=0.30.2", default-features = false, features = ["crossterm", "layout-cache", "underline-color"] }
