@@ -845,3 +845,43 @@ Task 4.5, step 1. The plan assumed OpenCode 2.0's `opencode models --verbose` gi
 - **Fixtures:** `crates/duohive-cli/tests/fixtures/models/opencode-models.txt` (plain list) and `claude-help.txt` (`claude --help`, from which the aliases and `--effort` choices are read).
 - **Decision:** `parse_opencode_models` returns models with empty `efforts`; OpenCode's Effort field takes typed text, and an existing `model#effort` value still launches. TD §5.2 and UI §4.4.1 say so.
 - **Open (P4-Q7):** re-check on a build that lists variants; until then there is no effort dropdown for OpenCode.
+
+## R1 Claude Code `--resume`
+
+Task R.1 of the v1.1 plan. Claude Code **2.1.316** (the installed build; DuoHive's adapter lists `2.1`). Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r1.q12J8s/` (`proj`: a git repo on branch `feature-x` with one commit; `wt`: a `git worktree` of it on branch `wt-branch`; `we ird_é.dir`: a plain non-git directory). Hooks: a per-launch `--settings` file whose `SessionStart` and `Stop` commands append the payload to a file. `-p` calls used `--model haiku`; one interactive check used a throwaway tmux socket (`tmux -L duohive-r1-spike`). Nothing under `~/.claude` was edited by hand. The spike's sessions are in `~/.claude/projects/-private-tmp-duohive-r1-q12J8s-{proj,wt,we-ird---dir}/` (left in place). The one interactive launch had to answer Claude Code's trust dialog for the throwaway `proj` directory ("Yes, I trust this folder"), which Claude Code records in its own state; `-p` never shows that dialog.
+
+### R1.1 `--resume` with the per-launch flags
+
+| # | Command (in `proj`) | Result |
+|---|---|---|
+| 1 | `claude -p "Reply with just: ONE" --model haiku --settings $D/settings.json --append-system-prompt "You are tester." --mcp-config $D/mcp.json --output-format json </dev/null` | New session `81dd1d5a-cb77-4275-bf08-34e237ce08da`. `SessionStart` hook ran, `"source":"startup"`. |
+| 2 | Same flags plus `--resume 81dd1d5a-…`, prompt "What exact text did I ask you to reply with in my first message?" | Accepted every flag. Answer: "You asked me to reply with just: ONE" (the old conversation is loaded). `init` and `result` `session_id` are `81dd1d5a-…`, the original id. The hooks file took a second `SessionStart` with `"source":"resume"` and the same `session_id`, and a `Stop`. No new `.jsonl`: the original file was appended to (623 511 to 645 065 bytes). |
+| 3 | tmux, `claude --resume 81dd1d5a-… --settings … --append-system-prompt 'You are tester.' --mcp-config … --model=haiku` (DuoHive's `--model=m` form) | The pane shows the old turns ("Reply with just: ONE", "ONE", and the question and answer from run 2) above an empty prompt, and a `SessionStart` with `"source":"resume"` and the original id. |
+
+Not run: `--effort=e` and the `mcp__duohive__*` permission entry were not combined with `--resume`; they go through the same option parser as the flags above, and an empty `mcpServers` config was used, so MCP tool loading on resume is untested here. `--resume` together with `-- <task>` was also not run; R.9 sends no task on resume anyway.
+
+**`SessionStart` payload** (both `startup` and `resume`): `session_id`, `transcript_path` (`/Users/<user>/.claude/projects/<folder>/<session_id>.jsonl`), `cwd`, `hook_event_name`, `source` (`"startup"` or `"resume"`). `Stop` carries the same `session_id` and `transcript_path`.
+
+**Verdict:** `session_id` is present, and after `--resume <id>` it is the original id (the same file is continued). So the in-use rule of TD §5.6 holds: the id recorded from the first hook payload of a launch is the resumed session's. `source` tells a resume from a fresh start.
+
+### R1.2 Session files: the reader rules
+
+- **Folder:** `~/.claude/projects/<folder>/`, with `<folder>` = the session's working directory after symlinks are resolved (`/tmp/…` became `/private/tmp/…`), then every character that is not `[A-Za-z0-9]` replaced by `-`, one `-` per character: `/private/tmp/duohive-r1.q12J8s/proj` is `-private-tmp-duohive-r1-q12J8s-proj`; `/…/we ird_é.dir` is `-private-tmp-duohive-r1-q12J8s-we-ird---dir` (space, `_`, `é` and `.` each give one `-`). The leading `/` gives the leading `-`. Not tested: directories whose encoded name is very long (Claude Code is believed to truncate such names and add a hash). Safer rule for the reader: derive the folder as above, and take a session's directory from the `cwd` field of its records rather than from the folder name.
+- **Glob:** `<folder>/*.jsonl`; the file stem is the session id (a UUID). The folder also holds a `memory/` directory (skip it). A `-p` run writes its file too.
+- **Format:** JSON Lines, one object per line, each with a `type`. Types seen: `user`, `assistant`, `attachment`, `system`, `queue-operation`, `last-prompt`, `mode`, `custom-title`, `agent-name`, `api-request*`, `atis-latch`, `cost-state`. Files are large (620 KB for a one-word reply, mostly `attachment` and `api-request` records), so read line by line and parse only the types needed.
+- **Session id:** `sessionId` on nearly every record; equals the file stem and the hook's `session_id`.
+- **Directory:** `cwd` on `user`, `assistant`, `attachment` and `system` records (not on `queue-operation`, `last-prompt`, `custom-title` or `mode`). It is the resolved path (`/private/tmp/…`); for a worktree session it is the worktree path.
+- **Branch:** `gitBranch` on the same records, taken when the record was written: `feature-x` in `proj`, `wt-branch` in `wt`. In a directory that is not a git repository it is the string `HEAD`, not absent. Use the last record's value; treat `HEAD` as "no branch".
+- **Last written:** the file's mtime (the resume updated it). Per-record `timestamp` (ISO 8601, UTC) also exists on `user`, `assistant`, `attachment` and `system` records.
+- **Size:** the file's byte length.
+- **Title:** a `custom-title` record `{"type":"custom-title","customTitle":"My Title","sessionId":…}`, written when the session is named (`-n "My Title"`, or `/rename`); an `agent-name` record `{"type":"agent-name","agentName":"My Title",…}` carries the same text. Several copies can be present (3 `custom-title` lines in a one-turn session), so take the last. No other title record appeared in these `-p` sessions; an automatic title for an interactive session was **not** observed and is unverified. The reader must accept a missing title.
+- **First-prompt fallback:** the first `type:"user"` record's `message.content` (a string in these sessions; handle an array of blocks by taking the first text block). `{"type":"last-prompt","lastPrompt":"…"}` records hold the most recent prompt, not the first. The reader should skip meta prompts (starting with `<system-reminder>` or `<command-`); none occurred in these runs.
+- **Worktree storage:** a session run from the worktree directory is stored under the worktree's own folder (`-private-tmp-duohive-r1-q12J8s-wt`, with `cwd` the worktree path and `gitBranch: wt-branch`), not under the main checkout's folder. The catalog must list each worktree path as its own directory, as TD §5.6 already plans (`dirs`).
+- **Version:** each record carries `"version":"2.1.316"`, so the reader can check the version per file.
+
+### R1.3 Decision
+
+- **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the first prompt (UI §4.13 already does this); branch, size and last-written are always available.
+- **Contradicts spec:** nothing outright. Corrections for R.9 and the reader: (1) the folder name is made from the *resolved* directory (`/tmp` is `/private/tmp` on macOS), so canonicalise the directory first; (2) outside a git repository `gitBranch` is `HEAD`, not missing; (3) there are two title records (`custom-title`, `agent-name`) and the title is often absent.
+- **For R.6:** the first `SessionStart` of a launch carries the id to record; on a resume it has `source:"resume"` and the id equals the one launched with, so the V11-D4 fallback (newest file in the directory) is needed only for a fresh launch, if at all.
+- **For R.9:** the launch is the §5.1 command with `--resume <id>` added and no `-- <task>`.
