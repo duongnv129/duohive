@@ -107,4 +107,4 @@ Phases 0 to 3 have no open task boxes.
 
 ## Later (v1.1)
 
-Resume an old session (needs an OpenCode spike first); Codex as a third CLI and alert clicks that select the agent are candidates, not agreed. See [v1.1-roadmap](v1.1-roadmap.md).
+Resume an old session (designed in TD §5.6; needs three spikes first: Claude Code `--resume` with the per-launch flags, OpenCode session list and `--session`, and the OpenCode plugin's session id); Codex as a third CLI and alert clicks that select the agent are candidates, not agreed. See [v1.1-roadmap](v1.1-roadmap.md).

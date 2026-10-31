@@ -55,7 +55,7 @@ Dependencies point inward only:
 | Layer | Holds | Must not know about |
 |---|---|---|
 | **Core** | Org model and inheritance, agent lifecycle, status engine, inbox, Duo's actions and chat, approval cards, worktree rules, task-to-role picking | tmux, terminals, SQL, the TUI, MCP |
-| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Ids`, `DirProbe`, `Notifier`, `Git`, `PaneView` | Any implementation |
+| **Ports** (traits in core) | `Runtime`, `CliAdapter`, `Store`, `Clock`, `Ids`, `DirProbe`, `Notifier`, `Git`, `PaneView`; v1.1 adds `SessionCatalog` (§5.6) | Any implementation |
 | **Adapters** | tmux runtime and pane view, the two CLI adapters (Claude Code, OpenCode), SQLite and TOML store, system clock, desktop notifier (`osascript` on macOS, `notify-send` on Linux), git via the `git` binary | The TUI |
 | **Interfaces** | TUI; MCP endpoint | Each other |
 
@@ -87,7 +87,7 @@ Commands and events are plain serialisable enums. When the core moves into a bac
 |---|---|
 | `duohive-core` | Domain, ports, engine. No I/O |
 | `duohive-tmux` | `Runtime` over tmux (control mode, windows, no-output silencing, activity polling); `PaneView` over a second control client (the viewed pane's stream, §4.3) |
-| `duohive-cli` | `CliAdapter` for Claude Code and OpenCode |
+| `duohive-cli` | `CliAdapter` for Claude Code and OpenCode; v1.1: `SessionCatalog` (§5.6) |
 | `duohive-store` | `Store` over SQLite, `org.toml` and `settings.toml` |
 | `duohive-tui` | Ratatui views, input, layout |
 | `duohive-mcp` | MCP endpoint and the `duohive mcp` helper |
@@ -233,6 +233,22 @@ A fresh launch:
 - **Failed launch or crash:** the agent becomes `errored`, with the reason (from the launch error, or the exit status kept by tmux's `remain-on-exit`; a CLI killed by a signal has no exit status and shows "exited unexpectedly") on its row. It stays in Needs you until the user gives it work (a fresh launch) or stops it.
 - **Failed turn (P2-D24):** a CLI that reports a turn failed (OpenCode's `session.execution.failed`: an invalid key, a model outside the plan) makes the agent `errored` with `turn failed: <message> (<status>)` on its row, in Needs you, with an alert. The CLI session is still up, so its window stays recorded: `s` kills it and the agent is stopped, and Give work kills it before the fresh launch. Until then, hooks and screen reads from that session move nothing (its later hooks after a stop or relaunch carry a token no longer current), its pane's own exit is ignored, and a worktree it runs in stays in use.
 
+### 5.6 Resume an old session (v1.1, planned)
+
+The design for the PRD's *Resume an old session*. Not built in v1; the details below are confirmed or corrected by three spikes before the v1.1 plan is written ([v1.1 roadmap](../plans/v1.1-roadmap.md)).
+
+- **Spikes first:**
+  - **R1, Claude Code:** `claude --resume <id>` together with DuoHive's per-launch `--settings`, `--append-system-prompt` and `--mcp-config`; whether the `SessionStart` hook payload carries a `session_id` at all, and whether it is the original id or a new one after a resume (the in-use rule depends on both); which session-file fields give the title, branch and size; how a directory maps to its folder under `~/.claude/projects/`.
+  - **R2, OpenCode:** whether `opencode session list --format json` carries each session's directory, title, branch, size and last-written time (the 5-minute warning needs the last); whether `--session <id>` resumes it from that directory under `--standalone` and `OPENCODE_CONFIG`.
+  - **R3, OpenCode plugin:** whether the plugin can report its session id in the hook payload.
+- **Listing is I/O, so it sits outside the core.** The core owns the types and a port, `SessionCatalog::list(cli, dirs) -> Result<Vec<SessionInfo>, CatalogError>`, where the core builds `dirs` from the agent's resolved directory and the path of each worktree row the agent still keeps (§5.3); `duohive-cli` implements it (reading Claude Code's session files, running `opencode session list`). It only reads: nothing under `~/.claude` or the user's OpenCode configuration is written (AGENTS.md). `SessionInfo` holds the id, title (or first prompt), last-written time, branch, size, directory and, for a kept worktree, its task id. `CatalogError::Unreadable(reason)` covers an untested session format and a failing `opencode session list`.
+- **Commands and events:** `ListSessions { agent }` is answered by `SessionsListed { agent, sessions }` or `SessionsUnreadable { agent, reason }`; `ResumeSession { agent, session_id }` goes through the launch path below and then the usual status events. Refusals: `<agent> is running · stop it first (s)` and `<agent> is using this session` (both in UI §4.13); and, as for any start, the existing `<agent> is getting a worktree ready` (P2-D20, §5.3).
+- **Recording the CLI session id:** `sessions.cli_session_id` (nullable, a new migration) is set from the first hook payload of a launch (Claude Code's `SessionStart` `session_id`; the OpenCode plugin's session id, R3). A listed session is `in use by <agent>` when another agent's session row holds its id and that session's window is still up: a running agent, or an errored one whose window is still recorded (§5.5). A stopped agent's row is deleted (§7), and a crash-errored agent's pane is dead (tmux's `remain-on-exit` keeps it only so the exit status can be read, §5.5), so neither counts. The agent's own row never marks a session in use against itself: resuming on an errored agent closes its window first (below). Pending R1 and R3: the id is read from the hook payload, and the rule holds only if that id is the resumed session's.
+- **Launch:** `LaunchSpec` gains `resume: Option<ResumeTarget { session_id, cwd }>`. The adapter adds `--resume <id>` or `--session <id>` (pending R1 and R2), sends no task, and builds the rest as in §5.1 step 3 (hooks, token, standing instructions, MCP config, model). Queued messages arrive at the first rest (§6.3), as after any start.
+- **Where it runs:** the session's own directory. For a kept worktree, `sessions.worktree` is set to its task id, so it is in use again (§5.3, P2-D6); a session whose worktree row has gone is not listed.
+- **An errored agent whose CLI session is still up** (§5.5, a failed turn): the window is killed first, as `s` does, then the resume launches.
+- **Written in the last 5 minutes:** the age comes from `SessionInfo`'s last-written time; the confirmation is the TUI's (UI §4.13).
+
 ## 6. Messaging, Duo and MCP
 
 ### 6.1 Identity
@@ -328,7 +344,7 @@ No tool answers a CLI's permission prompt, and messages are never typed onto a w
 - **Hand edits:** `org.toml` is re-read on start and on reload (`o`). A file that doesn't parse shows its line and error, and the last good org stays in use. A hand edit never kills a live session: a reload that would remove a running agent is refused like a broken file (banner `<agent> is running · stop it, then press o to reload`), and a start-up where a running agent's session has no agent in the loaded org starts on that org without marking it last-good, keeps the session row, refuses edits and shows a banner until the agent is added back or stopped; a later reload that names it adopts it.
 - **Single instance:** DuoHive holds an exclusive lock (`File::try_lock`) on `<data_dir>/run.lock` for the life of the hook listener, so a second instance exits at once; a probe that connects to `run.sock` would race. The lock is taken before any agent is spawned, so a spawned child can't inherit it.
 - **Quit and shutdown:** `q`, SIGINT, SIGTERM and SIGHUP all quit with the agents left running. Shutdown stops the hook listener first (a hook then falls back to `pending_hooks` in the database), then drains the hook inputs the core still has queued into `pending_hooks`, and releases `run.lock` last; a second signal exits at once, and the whole shutdown is time-bounded. Hooks stored this way are replayed in order of `sent_at_ms`, the time `duohive hook` stamped when it fired (then by id), not the time they were stored. Live hooks can also arrive out of order (the listener serves connections concurrently), so the core keeps, per launch, the newest `sent_at_ms` it applied: a hook stamped earlier than that still records its reply but moves no state (a `sent_at_ms` of 0, unknown, applies as it comes).
-- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. `sessions.launched_as_duo` marks a session launched as Duo; the helper reads it to decide a caller's rights while DuoHive is closed (P3-D30, migration 4). `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
+- **Session rows:** a `stopped` agent's session row is deleted; its token dies with it. (v1.1, planned: `sessions.cli_session_id`, nullable, in a new migration, §5.6.) `sessions.launched_as_duo` marks a session launched as Duo; the helper reads it to decide a caller's rights while DuoHive is closed (P3-D30, migration 4). `sessions.worktree` names the task whose worktree the current session runs in, if any; it is what keeps a worktree in use across a restart (§5.3, P2-D6).
 - **Worktrees table:** one row per worktree, keyed by agent and task: `repo`, `path`, `branch`, `created_at`, `created_from` (the base commit, P2-D17), `state` (§5.3), `checked_at` and `base`. A row is written before git is asked to create the worktree and deleted once git has removed it (or creation failed); deleting an agent keeps its rows.
 - **Messages table:** `messages(id, sender, recipient, kind, card, text, status, reason, queued_at, delivered_at)`. `sender` is NULL for you; `kind` is `text` or `card` (with `card`); `status` is `queued`, `pasting`, `delivered`, `answered` or `dropped` (with `reason`). Start-up loads the queued and delivered messages, those from the last 10 minutes (for the limits), and the newest, so ids continue (migration 5).
 - **Chat table:** `chat(id, at, kind, text, result, card, message)`, one row per entry, ids counting up from 1. `kind` is `you` (`message` names the message it became), `duo`, `action` (`result` holds the result word) or `card` (`card` and `result` hold the card and its outcome in P3-D12's words). Rows are only ever appended (migration 6).
@@ -391,6 +407,7 @@ Errors are shown where they apply, never only in a log.
 | Hook silent | Status falls back to screen reading (`~`), then to quiet |
 | Message undeliverable | `dropped` with the reason |
 | Worktree not merged or dirty | Kept and listed |
+| v1.1: a CLI's sessions can't be read (untested Claude Code session format, `opencode session list` fails) | `Couldn't read <CLI>'s sessions: <reason>` in the picker; the agent is unchanged (UI §4.13) |
 | No desktop notifier | A footer note; alerts stay in Needs you |
 
 ## 9. Testing
@@ -402,6 +419,7 @@ Errors are shown where they apply, never only in a log.
 | tmux runtime | Integration tests on a real tmux with a throwaway socket. They cover start, send, no-output silencing, activity polling, exit statuses and pane reads |
 | Git | Integration tests on throwaway repos for normal, squash and rebase merge detection |
 | TUI | Ratatui `TestBackend` snapshots at 80×24 and 160×48 for every screen, and key and mouse tests for every action |
+| v1.1 resume (planned) | Core: the in-use refusal (running, errored with its window up, own session, crash-errored), the errored-agent kill, the worktree re-mark. Adapters: resume launch snapshots, recorded session files and `opencode session list` output. TUI: picker snapshots (entries, search and count, `in use by`, the 5-minute `may be open elsewhere` confirmation, empty, unreadable) and key and mouse tests for `r` and the node menu |
 | End to end | A fake agent CLI that fires hooks drives full scenarios, such as "story → Duo splits it → three agents finish → Duo reports", with no model calls |
 
 ## 10. Benchmark
@@ -434,6 +452,7 @@ Errors are shown where they apply, never only in a log.
 | 2. One screen | `duohive-tui`: three-pane layout, agent pane (watch, type and zoom), Needs you, notifications and their Settings, Give work with the worktree option, touchpad scrolling and click to select, theme `auto` following the terminal, quiet colour (P2-D27); in the core, alerts, delivery confirmation (P2-D11) and worktree records, checks and clean-up, stored in `state.db`; the `PaneView`, `Notifier` and `Git` ports and their adapters; the OpenCode 2.0 adapter (P2-D24) and its dialog check (§5.5); the UI/UX improvement pass at the end |
 | 3. Duo and messaging | `duohive-mcp` (a hand-written JSON-RPC over stdio, no `rmcp`: it took the binary over 10 MB, P3-D8) and the `duohive mcp` helper per agent, token-checked tool rights (tokens exist since phase 1), inbox with delivery by paste, Duo and Duo chat, Duo's start and stop, visible `→` actions, approval cards (answered while Duo is stopped, delivered when it next runs), task to a role (with the no-free-agent card), and the TUI's chat pane, cards and Give work by role |
 | 4. Scale and polish | Performance targets at 100 agents on the release benchmark, silencing and activity-poll tuning, first-run setup with templates, model and effort picker, key and mouse completeness, the key-binding editor, the accessibility re-check. Built 2026-10-22; the gate run is done in CI and the one-hour run and the screen walk by the author (2026-10-25); the author's approvals and the sign-off are open ([phase-4-plan](../plans/phase-4-plan.md#open-items-carried-to-the-end-of-the-phase)) |
+| v1.1. Resume an old session | Planned, after v1: §5.6. `SessionCatalog` in `duohive-cli`, `sessions.cli_session_id` in `duohive-store`, the picker in `duohive-tui`; three spikes first (R1 to R3). Tests: adapter snapshot tests of the resume launch commands, parsing of recorded session files and `opencode session list` output, core tests for the in-use refusal, the errored-agent kill and the worktree re-mark, and a TUI snapshot of the picker |
 | 5. Open-source launch | The pre-launch UX check, CI release gate, release builds for macOS and Linux (`release-binaries.yml`; `cargo-dist` is not used by any workflow), docs. Alpha pre-releases are published from CI; the crates.io and Homebrew release is open ([status board](../plans/status.md)) |
 
 ## 13. Risks
@@ -442,6 +461,7 @@ Errors are shown where they apply, never only in a log.
 |---|---|
 | A CLI changes its hooks or flags | Adapters pinned to tested versions, spikes before each adapter, a notice for untested versions, screen reading as fallback |
 | OpenCode 2.0 replaces a model it doesn't know with the default, silently (S2.14) | The model DuoHive passes comes from `opencode models`; a typed one is not checked. The pane shows the model in use |
+| v1.1: Claude Code's session files are an internal format, not an API; a CLI update can change them, or change what `--resume` accepts | A reader per tested version, `Unreadable` for any other (never a crash), the tested-versions list, and spike R1 before the reader is written (§5.6) |
 | OpenCode 2.0 retries a provider 5xx without end (`session.retry.scheduled`), so no turn end comes (S2.14) | Not fixed: the agent stays working, then quiet, and joins Needs you that way |
 | tmux control mode differs across versions | Support 3.2 and newer only; CI on 3.2 and latest |
 | The settle mechanism doesn't work as planned: the one-a-second `list-windows` activity query for all agents (chosen by spike S0 over format subscriptions) reports too slowly or costs too much at 100 windows | Spike S0 measured it before `duohive-tmux` (median delay 0.48–0.53 s, reader about 0.2–0.3 % of a core at 100 windows); the basic `bench` re-measures it in phase 1 |
