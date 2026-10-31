@@ -291,3 +291,11 @@ fn mouse_mode_kept_across_resize_that_drops_rows() {
     v.resize(size(8, 2));
     assert_eq!(v.mouse_mode(), MouseMode::On { sgr: true });
 }
+
+#[test]
+fn zero_size_is_clamped_to_one_cell() {
+    let mut term = TermView::new(size(0, 0));
+    assert_eq!(term.rows(), 1);
+    term.resize(size(0, 0));
+    assert_eq!(term.rows(), 1);
+}
