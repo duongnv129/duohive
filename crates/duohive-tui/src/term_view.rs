@@ -1,5 +1,7 @@
 //! The terminal widget: draws an agent's live terminal inside a pane.
 
+use std::num::NonZeroU16;
+
 use duohive_core::view::{PaneChunk, PaneSize};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -29,7 +31,7 @@ impl TermView {
     /// An empty terminal of `size`.
     pub fn new(size: PaneSize) -> Self {
         Self {
-            parser: vt100::Parser::new(size.rows, size.cols, 0),
+            parser: vt100::Parser::new(non_zero(size.rows), non_zero(size.cols), 0),
         }
     }
 
@@ -61,11 +63,16 @@ impl TermView {
     pub fn resize(&mut self, size: PaneSize) {
         let (cols, rows) = (size.cols.max(1), size.rows.max(1));
         let screen = self.parser.screen();
-        let (old_rows, old_cols) = screen.size();
+        let (old_rows, old_cols) = {
+            let (r, c) = screen.size();
+            (r.get(), c.get())
+        };
         let (cursor_row, cursor_col) = screen.cursor_position();
         let drop = (cursor_row + 1).saturating_sub(rows);
         if drop == 0 {
-            self.parser.screen_mut().set_size(rows, cols);
+            self.parser
+                .screen_mut()
+                .set_size(non_zero(rows), non_zero(cols));
             return;
         }
         let mut seed: Vec<u8> = Vec::new();
@@ -91,13 +98,13 @@ impl TermView {
                 row
             };
             seed.extend_from_slice(format!("\x1b[{};1H", i - drop + 1).as_bytes());
-            seed.extend_from_slice(&row);
+            seed.extend_from_slice(row.as_bytes());
             seed.extend_from_slice(b"\x1b[m");
         }
         if screen.hide_cursor() {
             seed.extend_from_slice(b"\x1b[?25l");
         }
-        let mut next = vt100::Parser::new(rows, cols, 0);
+        let mut next = vt100::Parser::new(non_zero(rows), non_zero(cols), 0);
         next.process(&seed);
         self.parser = next;
         self.move_cursor(cursor_col.min(cols - 1), cursor_row - drop);
@@ -123,7 +130,10 @@ impl TermView {
         no_color: bool,
     ) {
         let screen = self.parser.screen();
-        let (rows, cols) = screen.size();
+        let (rows, cols) = {
+            let (r, c) = screen.size();
+            (r.get(), c.get())
+        };
         let area = area.intersection(buf.area);
         let (cursor_row, cursor_col) = screen.cursor_position();
         let draw_cursor = show_cursor && !screen.hide_cursor();
@@ -165,12 +175,20 @@ impl TermView {
 
     /// The terminal's rows.
     pub fn rows(&self) -> u16 {
-        self.parser.screen().size().0
+        self.parser.screen().size().0.get()
     }
 
     fn move_cursor(&mut self, col: u16, row: u16) {
         let seq = format!("\x1b[{};{}H", row.saturating_add(1), col.saturating_add(1));
         self.parser.process(seq.as_bytes());
+    }
+}
+
+/// `n` as the non-zero size vt100 requires; a zero size becomes 1.
+const fn non_zero(n: u16) -> NonZeroU16 {
+    match NonZeroU16::new(n) {
+        Some(n) => n,
+        None => NonZeroU16::MIN,
     }
 }
 
