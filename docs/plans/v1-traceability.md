@@ -47,7 +47,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Could | Zoom the agent pane | 2 | 2.8 |
 | Could | Compact tree view: hide last replies (`v`) | 1 | T24 |
 | Could | Compact tree view: folding at 80–99 columns | 2 | 2.5 |
-| v1.1 | Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1; design in TD §5.6; UI §4.13 rows below |
+| v1.1 | Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1; design in TD §5.6; plan [v1.1-resume-plan](v1.1-resume-plan.md) (tasks R.1 to R.14); UI §4.13 rows below |
 
 ## PRD — Other requirements
 
