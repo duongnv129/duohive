@@ -896,7 +896,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 ```
 
 - **Scrolling:** the list scrolls with `↑↓` and `PgUp/PgDn`, with `↓ more` at the foot when it doesn't fit.
-- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
+- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, Resume (v1.1), New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
 - **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
 - **Conflicts:** a key is unique within its context (the chat's card keys apply while a card is focused, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane and Chat; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the chat). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
@@ -959,6 +959,7 @@ Below 100 columns it becomes one scrolling column:
 | | `enter` | Agent or Duo: focus the agent pane. Team or role: fold / unfold |
 | | `space` | Give work (agent or role) |
 | | `s` | Stopped agent: start it with no task (it waits, idle). Running agent: stop it (asks first) |
+| | `r` | v1.1: resume an old session of a stopped or errored agent (§4.13); a running agent says to stop it first |
 | | `n` | New here… |
 | | `e` | Edit; on Duo, Edit org |
 | | `m` | Move to… |
@@ -1048,7 +1049,13 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 
 ### 4.13 Resume an old session (v1.1)
 
-Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh.
+Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh. On an errored agent whose CLI session is still up (a failed turn, TD §5.5), resuming closes that session first, as `s` does, then starts the chosen one.
+
+**Where `r` appears.** The §4.11 key table and the Keys screen's action list already carry it, marked v1.1; the rest is added when v1.1 is built:
+- **`?` key map popup (§4.11):** `r` · resume (stopped or errored agent) in the Org pane column. The key table row beside it (§4.11) is already there.
+- **Footer in Selected mode:** a stopped or errored agent adds `r resume`; a running agent's footer is unchanged.
+- **Right-click node menu:** an agent's menu lists `Resume… r`, disabled with the reason `stop it first` while the agent runs, so the picker is reachable by mouse.
+- **Key bindings screen:** Resume is a rebindable single-key action in the Org pane context, and the conflict check counts it.
 
 ```
 ┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐
