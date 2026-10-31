@@ -967,16 +967,16 @@ Task R.3 of the v1.1 plan. OpenCode **v2.2.5**. Run on 2026-10-31 in a throwaway
 
 | Launch | Events in order (hooks marked) |
 |---|---|
-| TUI, fresh, idle | `session-start` (`{}`, after 1.5 s) only; no session exists, no id anywhere |
+| TUI, fresh, idle | `session-start` (`{}`) only, sent by the plugin's `START_DELAY_MS = 1500` timer (a source constant, not a measured delay); no session exists, no id anywhere |
 | TUI, fresh, after the first prompt | `session.created` (id) -> `session.inbox.enqueued` -> `session.execution.started` (**`busy`**, has id) -> ... -> `session.execution.succeeded` (**`turn-end`**, has id) |
 | TUI, `--session <id>`, idle | `session-start` (`{}`) only; **no event carries the resumed id until the first prompt** |
-| `opencode run`, fresh or `--session` | no `session.created` on `--session`; `session-start` `{}` is sent when `session.execution.started` arrives, immediately before `busy` |
+| `opencode run`, fresh or `--session` | `opencode run` emits **no `session.created` at all** (neither fresh nor with `--session`); `session-start` `{}` is sent when `session.execution.started` arrives, immediately before `busy` |
 
 So the first hook that carries the id is the first `busy` (or `needs-input`, whichever comes first), which is after the first prompt; nothing before it could be mistaken for a session id (`session-start` is empty, and `ctx.location.project.id`/`projectId` is a 40-hex project id, not a `ses_…`; the plugin must not use it).
 
 ### R3.3 Does it equal the `list` / `--session` id?
 
-Yes. The `sessionID` in `session.created`, `busy` and `turn-end` was byte-identical to the `id` that `opencode session list --format json` printed (`ses_e6d7a1bcdffekOFbucaSFUMjGm` for the `run` session, `ses_e6d77e474ffe25V0Ho0JFad71a` for the TUI one), and `--session` accepted it.
+Yes. The `sessionID` in `busy` and `turn-end` was byte-identical to the `id` that `opencode session list --format json` printed (`ses_e6d7a1bcdffekOFbucaSFUMjGm` for the `run` session, verified through `busy` and `turn-end` only since `opencode run` emits no `session.created`; `ses_e6d77e474ffe25V0Ho0JFad71a` for the TUI one), and `--session` accepted it.
 
 On `--session <id>` (the `run` form, 3 hooks): `busy` and `turn-end` carry the **same original id** (`ses_e6d7a1bcdffekOFbucaSFUMjGm`), and `opencode session list` still showed one session for the project, not two: the id does not change on resume. (R2 saw the same in the TUI form.)
 
@@ -989,7 +989,8 @@ Trimmed hook payloads:
 
 ### R3.4 Decision
 
-- **Field and event:** `sessionID` in the `busy`/`turn-end` (and `needs-input`, under `properties.sessionID`) payloads; originally `data.sessionID` of the `session.*` bus events. R.6's `cli_session_id` for OpenCode reads `sessionID` from the first hook that has it (V11-D4), never from `session-start`.
+- **Field and event:** `sessionID` in the `busy`/`turn-end` payloads (and `needs-input`, under `properties.sessionID`: **from the plugin source, `d.sessionID ?? form.sessionID`, not observed**); originally `data.sessionID` of the `session.*` bus events. R.6's `cli_session_id` for OpenCode reads `sessionID` from the first hook that has it (V11-D4), never from `session-start`.
 - **Recommended plugin change (for R.6/R.11, not done here):** nothing is needed for correctness, because `busy` already carries the id; to learn the id earlier (when the session is created, before the model answers) the plugin could add `sessionID` to a hook on `session.created`, but that still happens only at the first prompt.
 - **Fallback applied:** the brief's *no id reaches the plugin* applies **partly**: the id does reach the plugin, but only after the first prompt. A fresh idle OpenCode session (no prompt yet, or a freshly launched agent with no task) has no session and thus no id; a resumed idle one has its id known from launch only because DuoHive passed it (`--session`).
 - **Contradicts spec:** PRD/TD §5.6 (and V11-D4's wording "recorded from the first hook") assume the id is known from session-start. For OpenCode it is not: `session-start` is empty, a fresh session does not exist until the first prompt, so a session another DuoHive agent has started fresh but not yet prompted cannot be marked "in use" (it does not even exist in `session list` yet, so nothing is hidden by the refusal either). After the first prompt the id is recorded on `busy` and the "in use" refusal can hold. A session a user resumed with `--session` is known from launch.
+- **Not verified:** (1) the `needs-input` hook (`permission.asked`, `form.created`): no such event appeared in any log, so its `properties.sessionID` rests on reading the plugin source. (2) A subagent (child) session's `parentID` in `session.created`: none was made. (3) A resumed TUI session after its first prompt: the idle log (resumed, `--session`) shows no id event, and the post-prompt id being the original rests on R2 (TUI) and on the `opencode run --session` check here. (4) `session.created` was seen only in the TUI fresh run, not in `opencode run`. (5) `session.execution.failed` and `.interrupted` payloads were not triggered. (6) Not tried: a `--session` id that no longer exists, and more than one project or worktree.
