@@ -951,3 +951,45 @@ with `opencode.json` = `{"plugins":[{"package":"file://$R/opencode-plugin","opti
 - **Fallbacks applied:** *No branch:* not one of the brief's fallbacks; the picker line omits the branch for OpenCode (R.10's `SessionInfo.branch` is `None`). *No size:* applies, the line omits size. *Last-written time:* present (`updated`), so no forced 5-minute confirmation. *No directory field:* does not apply. *`--session` not resuming under `--standalone`:* does not apply (it resumes), so no stop.
 - **Contradicts spec:** (1) PRD/TD §5.6 expect the branch and size per OpenCode session; neither exists, so the OpenCode picker shows title, time and directory only. (2) `opencode session list` is project-wide, not per directory, and a worktree shares its main checkout's project (matches TD §5.6's `dirs` filter, but the filter must be applied to the JSON). (3) The default cap of 100 sessions needs `--max-count`. (4) Unknown ids create a session instead of failing.
 - **Version difference:** this is 2.2.5; the TD was written against 2.0.29. The `--standalone` and `OPENCODE_CONFIG` plugin path still works as in S2.14 on 2.2.5; the list command was not run on 2.0.29.
+
+## R3 OpenCode plugin session id
+
+Task R.3 of the v1.1 plan. OpenCode **v2.2.5**. Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r3.YtZrdE/` (`proj`, a git repo; a scratch copy of DuoHive's real plugin `crates/duohive-cli/src/assets/opencode-plugin/index.js` that additionally appends to a log file the keys of `ctx` in `setup(ctx)`, every bus event `{type, data}` and every hook delivery; a stub `DUOHIVE_HOOK_EXE`; a per-launch `OPENCODE_CONFIG` naming the plugin and the free model `opencode/big-pickle`). Three runs: `opencode run --standalone -m opencode/big-pickle "Reply with just: R3A"` (fresh), the same with `--session <that id> "…R3B"` (resume), and the interactive TUI on a throwaway tmux socket (`tmux -L duohive-r3-spike`), fresh and with `--standalone --session <id>`, each idle and then after one prompt. The global configuration was not touched; the 2 sessions made are in OpenCode's own store (`~/.local/share/opencode/opencode.db`) and were left there.
+
+### R3.1 What carries the session id
+
+- **`setup(ctx)` has no session id.** `ctx` has `app`, `location` (`directory`, and `project` with `id`/`directory`/`canonical`), `options`, `event`, `permission`, `session` (only `hook(…)`), `storage`, and others; none holds a session. The plugin is loaded per server, before any session exists.
+- **Bus events carry it as `data.sessionID`** (a string, `ses_…`, the same name the plugin already reads): `session.created`, `session.inbox.enqueued`/`.delivered`, `session.execution.started`/`.succeeded`/`.failed`/`.interrupted`, `session.step.*`, `session.text.*`, `session.usage.updated`, `session.instructions.updated`. Before the first prompt no event has a `sessionID`: the events seen there are only `integration.updated`, `provider.updated`, `model.updated`, `vcs.branch.updated`, `agent.updated`, `command.updated`, `skill.updated`, `websearch.updated`, `reference.updated`, `plugin.updated`. Child (subagent) sessions are told apart by `parentID` in `session.created`; none were made here.
+- **Hook payloads:** `busy` (from `session.execution.started`) and `turn-end` carry `sessionID`; `session-start` is always `{}` (the plugin sends it with `{}` and, on a timer, before any session exists).
+- **`session.created`** is the earliest event with the id; in the TUI it fires at the first prompt, not at startup. The plugin does not map it to a hook today. Its data: `{sessionID, projectID, location:{directory}, subpath, slug, agent, model:{id, providerID}, version}`.
+
+### R3.2 Ordering
+
+| Launch | Events in order (hooks marked) |
+|---|---|
+| TUI, fresh, idle | `session-start` (`{}`, after 1.5 s) only; no session exists, no id anywhere |
+| TUI, fresh, after the first prompt | `session.created` (id) -> `session.inbox.enqueued` -> `session.execution.started` (**`busy`**, has id) -> ... -> `session.execution.succeeded` (**`turn-end`**, has id) |
+| TUI, `--session <id>`, idle | `session-start` (`{}`) only; **no event carries the resumed id until the first prompt** |
+| `opencode run`, fresh or `--session` | no `session.created` on `--session`; `session-start` `{}` is sent when `session.execution.started` arrives, immediately before `busy` |
+
+So the first hook that carries the id is the first `busy` (or `needs-input`, whichever comes first), which is after the first prompt; nothing before it could be mistaken for a session id (`session-start` is empty, and `ctx.location.project.id`/`projectId` is a 40-hex project id, not a `ses_…`; the plugin must not use it).
+
+### R3.3 Does it equal the `list` / `--session` id?
+
+Yes. The `sessionID` in `session.created`, `busy` and `turn-end` was byte-identical to the `id` that `opencode session list --format json` printed (`ses_e6d7a1bcdffekOFbucaSFUMjGm` for the `run` session, `ses_e6d77e474ffe25V0Ho0JFad71a` for the TUI one), and `--session` accepted it.
+
+On `--session <id>` (the `run` form, 3 hooks): `busy` and `turn-end` carry the **same original id** (`ses_e6d7a1bcdffekOFbucaSFUMjGm`), and `opencode session list` still showed one session for the project, not two: the id does not change on resume. (R2 saw the same in the TUI form.)
+
+Trimmed hook payloads:
+
+```json
+{"type":"session.execution.started","sessionID":"ses_e6d77e474ffe25V0Ho0JFad71a"}
+{"type":"session.execution.succeeded","sessionID":"ses_e6d77e474ffe25V0Ho0JFad71a","duohive_last_reply":"R3C"}
+```
+
+### R3.4 Decision
+
+- **Field and event:** `sessionID` in the `busy`/`turn-end` (and `needs-input`, under `properties.sessionID`) payloads; originally `data.sessionID` of the `session.*` bus events. R.6's `cli_session_id` for OpenCode reads `sessionID` from the first hook that has it (V11-D4), never from `session-start`.
+- **Recommended plugin change (for R.6/R.11, not done here):** nothing is needed for correctness, because `busy` already carries the id; to learn the id earlier (when the session is created, before the model answers) the plugin could add `sessionID` to a hook on `session.created`, but that still happens only at the first prompt.
+- **Fallback applied:** the brief's *no id reaches the plugin* applies **partly**: the id does reach the plugin, but only after the first prompt. A fresh idle OpenCode session (no prompt yet, or a freshly launched agent with no task) has no session and thus no id; a resumed idle one has its id known from launch only because DuoHive passed it (`--session`).
+- **Contradicts spec:** PRD/TD §5.6 (and V11-D4's wording "recorded from the first hook") assume the id is known from session-start. For OpenCode it is not: `session-start` is empty, a fresh session does not exist until the first prompt, so a session another DuoHive agent has started fresh but not yet prompted cannot be marked "in use" (it does not even exist in `session list` yet, so nothing is hidden by the refusal either). After the first prompt the id is recorded on `busy` and the "in use" refusal can hold. A session a user resumed with `--session` is known from launch.
