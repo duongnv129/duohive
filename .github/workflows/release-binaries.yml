@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$' \
             || { echo "'$TAG' is not a version tag like v1.2.3 or v1.2.3-alpha.1" >&2; exit 1; }
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.inputs.tag || github.ref_name }}
       # No build cache in this job: it signs attestations, and a cache restored from another
@@ -80,10 +80,10 @@ jobs:
           if command -v sha256sum >/dev/null; then sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           else shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"; fi
           cat "$name.tar.gz.sha256"
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
         with:
           subject-path: duohive-*.tar.gz
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dist-${{ matrix.target }}
           path: duohive-*.tar.gz*
@@ -96,7 +96,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           path: assets
           pattern: dist-*
