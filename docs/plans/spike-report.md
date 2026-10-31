@@ -885,3 +885,69 @@ Not run: `--effort=e` and the `mcp__duohive__*` permission entry were not combin
 - **Contradicts spec:** nothing outright. Corrections for R.9 and the reader: (1) the folder name is made from the *resolved* directory (`/tmp` is `/private/tmp` on macOS), so canonicalise the directory first; (2) outside a git repository `gitBranch` is `HEAD`, not missing; (3) there are two title records (`custom-title`, `agent-name`) and the title is often absent.
 - **For R.6:** the first `SessionStart` of a launch carries the id to record; on a resume it has `source:"resume"` and the id equals the one launched with, so the V11-D4 fallback (newest file in the directory) is needed only for a fresh launch, if at all.
 - **For R.9:** the launch is the §5.1 command with `--resume <id>` added and no `-- <task>`.
+
+## R2 OpenCode session list and `--session`
+
+Task R.2 of the v1.1 plan. OpenCode **v2.2.5** (the installed build; TD §5.2 was written against 2.0.29). Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r2.bun7VK/`: `a` (git repo, branch `feat-a`), `wt` (a `git worktree` of `a`, branch `wt-branch`), `b` (a separate git repo, branch `feat-b`), `c` (a separate git repo with a different root commit, branch `feat-c`), `ng` (not a git repository). One session each was made with `opencode run -m opencode/big-pickle "Reply with just: ONE-<dir>"` (a free model), run in that directory. The resume check used a throwaway tmux socket (`tmux -L duohive-r2-spike`), a per-launch `OPENCODE_CONFIG` file in `/tmp/duohive-r2.bun7VK/run/` naming DuoHive's real plugin (`crates/duohive-cli/src/assets/opencode-plugin/index.js`, copied as `opencode-plugin/index.js`, loaded by `plugins: [{"package": "file://…/opencode-plugin"}]`), and a stub hook executable (`DUOHIVE_HOOK_EXE`) that appends its arguments and stdin to a log. The global OpenCode configuration was not touched. Sessions live in OpenCode's SQLite store `~/.local/share/opencode/opencode.db` (table `session_v2`); the spike's sessions were left there.
+
+### R2.1 `opencode session list`
+
+`opencode session list --help`: "List top-level sessions in the current project, newest first"; flags `--max-count, -n <integer>` (**default 100**) and `--format table|json`.
+
+| # | Command | Result |
+|---|---|---|
+| 1 | `opencode session list --format json` in `a`, `wt` and `b` | The same three sessions each time (the `a`, `wt` and `b` ones). See the caveat below on why `b` is included. |
+| 2 | same, in `c` | Only `c`'s session. |
+| 3 | same, in `ng` | Only `ng`'s session. |
+| 4 | same, in `/tmp` (not a project) | Empty output. |
+| 5 | `opencode session list` (table) | Lines `<id>\t<title>\t<local time>`: no directory, no branch. |
+
+**Scope: a whole project, not the current directory.** The project is identified by `projectId`, which is a hash of the repository's root commit. A worktree shares it with its main checkout, so running the command in `wt` lists the sessions made in `a` and the other way round (this is the wanted behaviour for DuoHive's worktrees). `b` was listed too only because my `git commit --allow-empty -m init` in `a` and `b` produced the same root commit hash (`877150…`), so both repos had one `projectId`; `c`, with a different root commit, was not listed under `a`. A real repository with its own history has its own project, but two clones of one repository (same root commit) would share one. A non-git directory is its own project (`ng` had a `projectId` of its own).
+
+**Fields** (JSON array, newest `updated` first; every object had exactly these):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | `ses_…`, 30 characters |
+| `title` | string | Automatic: the model names the session after the first prompt ("ONE-b reply instruction"; "Reply with ONE-a"). Never absent in these runs; `opencode run --title` sets it. |
+| `updated` | integer | Last-written time, **Unix epoch milliseconds** (`1793459244608`) |
+| `created` | integer | Creation time, epoch milliseconds |
+| `projectId` | string | 40-hex project id (root commit hash) |
+| `directory` | string | The directory the session was created in, as a **resolved** path (`/private/tmp/…`, not `/tmp/…`); for a worktree session it is the worktree path |
+
+Example (trimmed to one object):
+
+```json
+[
+  {
+    "id": "ses_e6d7fcb84ffeC5ncg10QkyYZTv",
+    "title": "ONE-wt reply test",
+    "updated": 1793459239991,
+    "created": 1793459238035,
+    "projectId": "877150657193f2f270f489ad12cd588db7e13fba",
+    "directory": "/private/tmp/duohive-r2.bun7VK/wt"
+  }
+]
+```
+
+**Not present:** `branch` (nor anything git-related), and `size`. The store's `session_v2` table has token counts, `cost`, `summary_*` and `model`, but no branch column either, so there is nothing to read behind the command. Sessions with a `parent_id` (subagents) are not listed ("top-level"). Not tested: more than 100 sessions (the default cap applies, so R.10 must pass a large `--max-count`), sessions deleted or archived, and a session whose directory has since been removed.
+
+### R2.2 `--session <id>` under `--standalone`
+
+Command (in tmux, started from `ng`, a directory other than the session's):
+`OPENCODE_CONFIG=$R/opencode.json DUOHIVE_HOOK_EXE=$R/hook.sh DUOHIVE_HOOK_AGENT=spike opencode --standalone --session ses_e6d7fea6effeljr0xQqmnat8Sf`
+with `opencode.json` = `{"plugins":[{"package":"file://$R/opencode-plugin","options":{}}],"model":"opencode/big-pickle","default_agent":"build"}`. The DuoHive `mcp` entry and the `instructions` file were left out (not what is under test).
+
+- **Resumes:** the pane shows the old conversation ("Reply with just: ONE-a" and the answer `ONE-a`) above an empty prompt, with the title in the header.
+- **From the session's own directory:** although the process started in `ng`, the status line reads `/private/tmp/duohive-r2.bun7VK/a:feat-a`: OpenCode switched to the session's directory and branch. So DuoHive need not `cd` first, though R.10 may still launch in the session's directory.
+- **Continues the same session:** asking "What did I ask you to reply with?" got `ONE-a` (history loaded); the hook payloads carry `sessionID` `ses_e6d7fea6effeljr0xQqmnat8Sf`, the original id, and `opencode session list` still shows three entries for the project, not four.
+- **Hooks fire under `--standalone` with the plugin:** `session-start` (payload `{}`), `busy` (`session.execution.started`) and `turn-end` (`session.execution.succeeded`, with `duohive_last_reply: "ONE-a"`). Every line appeared twice in the log; I did not find out why (the stub, or the plugin loaded twice). The id on `busy` and `turn-end` is useful to R.11/R3: `sessionID` is in those payloads, but `session-start`'s is empty, so the id comes from the first `busy`.
+- **Not verified:** the `--prompt=<task>` flag together with `--session` (R.9/R.10 send no task on resume anyway), `--session` with a model and effort set in the config (the config named a model; it was applied), the `mcp` and `instructions` entries on resume, and a `--session` id that no longer exists (the help says it is then *created*, so an unknown id starts a new empty session instead of failing; R.10 must only pass ids it has just listed).
+
+### R2.3 Decision
+
+- **Fields available:** `id`, `title`, `updated` (epoch ms), `created`, `directory`, `projectId`.
+- **Filtering rule:** by directory **in the JSON**. One call lists the whole project, so run it once from any directory in the project, then keep sessions whose `directory` equals one of the agent's `dirs` (compare canonicalised paths; the JSON path is resolved). Running it once per directory would return the same list each time. A directory outside any git repository is its own project, so it needs a call run in that directory. Pass `--max-count` large (default 100).
+- **Fallbacks applied:** *No branch:* not one of the brief's fallbacks; the picker line omits the branch for OpenCode (R.10's `SessionInfo.branch` is `None`). *No size:* applies, the line omits size. *Last-written time:* present (`updated`), so no forced 5-minute confirmation. *No directory field:* does not apply. *`--session` not resuming under `--standalone`:* does not apply (it resumes), so no stop.
+- **Contradicts spec:** (1) PRD/TD §5.6 expect the branch and size per OpenCode session; neither exists, so the OpenCode picker shows title, time and directory only. (2) `opencode session list` is project-wide, not per directory, and a worktree shares its main checkout's project (matches TD §5.6's `dirs` filter, but the filter must be applied to the JSON). (3) The default cap of 100 sessions needs `--max-count`. (4) Unknown ids create a session instead of failing.
+- **Version difference:** this is 2.2.5; the TD was written against 2.0.29. The `--standalone` and `OPENCODE_CONFIG` plugin path still works as in S2.14 on 2.2.5; the list command was not run on 2.0.29.
