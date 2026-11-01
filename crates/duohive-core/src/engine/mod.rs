@@ -192,6 +192,8 @@ struct AgentRt {
     worktree: Option<TaskId>,
     /// The current session was launched as Duo (P3-D30).
     launched_as_duo: bool,
+    /// The CLI's own id for the current session: the first valid one the launch reports.
+    cli_session_id: Option<String>,
     /// A next-turn paste not yet taken (P2-D11).
     delivery: Option<Delivery>,
     /// The worktree being created for the next launch (P2-D20).
@@ -233,6 +235,7 @@ impl AgentRt {
             cli: None,
             worktree: None,
             launched_as_duo: false,
+            cli_session_id: None,
             delivery: None,
             creating: None,
             launch_message: None,
@@ -728,8 +731,7 @@ impl Engine {
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
             launched_as_duo: rt.launched_as_duo,
-            // TODO(R.6): carry the runtime's CLI session id here; None clobbers the stored id on every save.
-            cli_session_id: None,
+            cli_session_id: rt.cli_session_id.clone(),
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

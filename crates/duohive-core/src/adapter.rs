@@ -157,6 +157,11 @@ pub trait CliAdapter: Send + Sync {
     fn launch(&self, spec: &LaunchSpec) -> Result<LaunchCommand, LaunchError>;
     /// Maps a hook to a signal; `None` for events DuoHive ignores.
     fn parse_hook(&self, event: &str, payload: &serde_json::Value) -> Option<HookSignal>;
+    /// The CLI's own session id, when this hook carries it; `None` otherwise.
+    /// The engine keeps the first valid one a launch reports.
+    fn cli_session_id(&self, _event: &str, _payload: &serde_json::Value) -> Option<String> {
+        None
+    }
     /// Reads what the screen shows.
     fn read_screen(&self, screen: &str) -> ScreenSignal;
     /// Keys that quit the CLI.

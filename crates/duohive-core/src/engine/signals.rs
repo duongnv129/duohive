@@ -19,6 +19,17 @@ pub(super) enum Exit {
     WindowGone,
 }
 
+/// Longest CLI session id kept.
+const MAX_SESSION_ID_LEN: usize = 128;
+
+/// An id is `[A-Za-z0-9_-]{1,128}`.
+fn is_valid_session_id(id: &str) -> bool {
+    (1..=MAX_SESSION_ID_LEN).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
 /// What the exit rules decide (TD §5.5).
 enum ExitOutcome {
     Stopped,
@@ -38,10 +49,15 @@ impl Engine {
             );
             return Vec::new();
         };
-        let signal = self
-            .with_running_adapter(&agent, |a| a.parse_hook(&message.event, &message.payload))
-            .ok()
-            .flatten();
+        let (signal, session_id) = self
+            .with_running_adapter(&agent, |a| {
+                (
+                    a.parse_hook(&message.event, &message.payload),
+                    a.cli_session_id(&message.event, &message.payload),
+                )
+            })
+            .unwrap_or((None, None));
+        let recorded = self.record_cli_session_id(&agent, session_id);
         let now = self.ports.clock.now();
         let rt = self.rt_mut(&agent);
         rt.last_signal_at = now;
@@ -65,6 +81,9 @@ impl Engine {
             Some(signal) => self.apply_hook(&agent, signal, &mut out),
             None => false,
         };
+        if recorded && !moved && !was_quiet {
+            self.save_row(&agent, &mut out);
+        }
         if was_quiet && !moved {
             let status = self.rt_mut(&agent).status.clone();
             out.push(Event::AgentStatusChanged {
@@ -74,6 +93,20 @@ impl Engine {
             self.save_row(&agent, &mut out);
         }
         out
+    }
+
+    /// Keeps the first valid id a launch reports; later ones and odd ones are ignored.
+    /// Returns whether `id` was recorded.
+    fn record_cli_session_id(&mut self, agent: &AgentName, id: Option<String>) -> bool {
+        let Some(id) = id.filter(|id| is_valid_session_id(id)) else {
+            return false;
+        };
+        let rt = self.rt_mut(agent);
+        if rt.cli_session_id.is_some() {
+            return false;
+        }
+        rt.cli_session_id = Some(id);
+        true
     }
 
     /// The agent a hook names, when it is known and the token is its current one.
@@ -471,5 +504,7 @@ mod failed;
 mod order;
 #[cfg(test)]
 mod races;
+#[cfg(test)]
+mod session_id;
 #[cfg(test)]
 mod tests;

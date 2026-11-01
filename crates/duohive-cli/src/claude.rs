@@ -161,6 +161,15 @@ impl CliAdapter for ClaudeAdapter {
         }
     }
 
+    /// `session_id` of the `SessionStart` payload (spike R1: after `--resume` it is
+    /// the original id).
+    fn cli_session_id(&self, event: &str, payload: &Value) -> Option<String> {
+        (event == "session-start")
+            .then(|| text_field(payload, "session_id"))
+            .flatten()
+            .map(str::to_owned)
+    }
+
     /// The reply comes from the hook, so only the state is read (S1.7).
     fn read_screen(&self, screen: &str) -> ScreenSignal {
         let read = screen_state(screen);
@@ -964,5 +973,24 @@ mod tests {
                 Key::Enter,
             ]
         );
+    }
+
+    #[test]
+    fn claude_session_start_yields_session_id() {
+        let p = serde_json::json!({"session_id": "0a1b-2c", "source": "resume"});
+        assert_eq!(
+            ClaudeAdapter.cli_session_id("session-start", &p).as_deref(),
+            Some("0a1b-2c")
+        );
+    }
+
+    #[test]
+    fn claude_other_events_yield_none() {
+        let p = serde_json::json!({"session_id": "0a1b-2c"});
+        for event in ["busy", "needs-input", "turn-end", "session-end"] {
+            assert_eq!(ClaudeAdapter.cli_session_id(event, &p), None, "{event}");
+        }
+        let none = serde_json::json!({});
+        assert_eq!(ClaudeAdapter.cli_session_id("session-start", &none), None);
     }
 }

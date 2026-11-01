@@ -322,6 +322,7 @@ impl Engine {
         let rt = self.rt_mut(agent);
         rt.token = Some(token);
         rt.launched_as_duo = as_duo;
+        rt.cli_session_id = None;
         rt.last_hook_sent_at = 0;
         rt.cli = Some(cli);
         rt.task_at_launch = task.is_some();

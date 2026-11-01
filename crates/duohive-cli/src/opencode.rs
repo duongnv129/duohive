@@ -177,6 +177,17 @@ impl CliAdapter for OpencodeAdapter {
         }
     }
 
+    /// `sessionID` of `busy` and `turn-end`, `properties.sessionID` of `needs-input`;
+    /// `session-start` is always `{}` (spike R3).
+    fn cli_session_id(&self, event: &str, payload: &Value) -> Option<String> {
+        let id = match event {
+            "busy" | "turn-end" => payload.get("sessionID"),
+            "needs-input" => payload.get("properties")?.get("sessionID"),
+            _ => None,
+        }?;
+        id.as_str().map(str::to_owned)
+    }
+
     /// The reply comes from the plugin, so only the state is read (S2.7).
     fn read_screen(&self, screen: &str) -> ScreenSignal {
         ScreenSignal {

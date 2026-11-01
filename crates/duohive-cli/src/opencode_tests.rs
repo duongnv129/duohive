@@ -737,3 +737,45 @@ fn dialog_check_needs_esc_alone_at_the_end() {
     assert!(!dialog_open("   Status      esc interrupt"));
     assert!(!dialog_open("   Status      esc again to interrupt"));
 }
+
+#[test]
+fn opencode_busy_yields_session_id() {
+    let p = serde_json::json!({"type": "session.execution.started", "sessionID": "ses_e6d77e474ffe25V0Ho0JFad71a"});
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("busy", &p).as_deref(),
+        Some("ses_e6d77e474ffe25V0Ho0JFad71a")
+    );
+}
+
+#[test]
+fn opencode_turn_end_yields_session_id() {
+    let p = serde_json::json!({
+        "type": "session.execution.succeeded",
+        "sessionID": "ses_e6d77e474ffe25V0Ho0JFad71a",
+        "duohive_last_reply": "R3C"
+    });
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("turn-end", &p).as_deref(),
+        Some("ses_e6d77e474ffe25V0Ho0JFad71a")
+    );
+}
+
+#[test]
+fn opencode_session_start_yields_none() {
+    let p = serde_json::json!({});
+    assert_eq!(OpencodeAdapter.cli_session_id("session-start", &p), None);
+}
+
+#[test]
+fn opencode_needs_input_reads_properties_session_id() {
+    // Not observed: the shape is read from the plugin source (`permission.asked`
+    // delivers `properties.sessionID`), not from a recorded log.
+    let p = serde_json::json!({
+        "type": "permission.asked",
+        "properties": {"id": "per_1", "sessionID": "ses_abc", "action": "bash", "resources": ["ls"]}
+    });
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("needs-input", &p).as_deref(),
+        Some("ses_abc")
+    );
+}
