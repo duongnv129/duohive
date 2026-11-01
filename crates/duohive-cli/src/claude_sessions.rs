@@ -111,12 +111,18 @@ fn session_id(path: &Path) -> Option<String> {
         return None;
     }
     let stem = path.file_stem()?.to_str()?;
-    let mut chars = stem.chars();
-    let first = chars.next()?;
-    let valid = (first.is_ascii_alphanumeric() || first == '_')
+    is_valid_session_id(stem).then(|| stem.to_owned())
+}
+
+/// Whether `id` follows the engine's id rule `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`.
+pub(crate) fn is_valid_session_id(id: &str) -> bool {
+    let mut chars = id.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphanumeric() || first == '_')
         && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-        && stem.len() <= ID_MAX_LEN;
-    valid.then(|| stem.to_owned())
+        && id.len() <= ID_MAX_LEN
 }
 
 /// What the records of one file say.
@@ -251,7 +257,7 @@ fn prompt_text(record: &Value) -> Option<String> {
 
 /// Removes escape sequences and control characters (line breaks and tabs become
 /// spaces), trims, and cuts at `TITLE_MAX_CHARS` with `…`.
-fn clean(text: &str) -> String {
+pub(crate) fn clean(text: &str) -> String {
     let mut out = String::new();
     let mut chars = text.chars().peekable();
     while let Some(c) = chars.next() {

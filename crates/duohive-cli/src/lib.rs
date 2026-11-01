@@ -7,6 +7,7 @@ pub mod fake;
 pub mod hooks_json;
 pub mod models;
 pub mod opencode;
+pub mod opencode_sessions;
 
 use std::path::{Path, PathBuf};
 

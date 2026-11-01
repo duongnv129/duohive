@@ -21,7 +21,7 @@ const BUSY_PAUSE: Duration = Duration::from_millis(50);
 /// Starts `cmd`, waiting out "text file busy" (ETXTBSY): Linux refuses to run a file some
 /// process still has open for writing, as when a CLI is being updated while DuoHive starts.
 /// That is not a missing CLI, so it is retried for a moment; any other error is returned.
-fn spawn_waiting_out_busy(cmd: &mut Command) -> std::io::Result<Child> {
+pub(crate) fn spawn_waiting_out_busy(cmd: &mut Command) -> std::io::Result<Child> {
     let mut tries = 0;
     loop {
         match cmd.spawn() {
@@ -151,7 +151,7 @@ const REAP_GRACE: Duration = Duration::from_millis(500);
 
 /// `kill -s KILL -- -<pgid>`: the probe's whole process group (its leader's pid).
 /// Best effort; the group may already be gone.
-fn kill_group(pgid: u32) {
+pub(crate) fn kill_group(pgid: u32) {
     let _ = Command::new("kill")
         .args(["-s", "KILL", "--", &format!("-{pgid}")])
         .stdin(Stdio::null())

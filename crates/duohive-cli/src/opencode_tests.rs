@@ -780,3 +780,43 @@ fn opencode_needs_input_reads_properties_session_id() {
         Some("ses_abc")
     );
 }
+
+fn resume_spec() -> LaunchSpec {
+    let mut s = spec(None);
+    s.resume = Some(duohive_core::launch::ResumeTarget {
+        session_id: "ses_e6d7fcb84ffeC5ncg10QkyYZTv".into(),
+        cwd: "/data/worktrees/squad-1/fix".into(),
+    });
+    s
+}
+
+#[test]
+fn launch_snapshot_resume_opencode() {
+    let cmd = launch(&resume_spec());
+    assert_eq!(cmd.cwd, PathBuf::from("/data/worktrees/squad-1/fix"));
+    assert_eq!(
+        cmd.args,
+        [
+            "--standalone",
+            "--session",
+            "ses_e6d7fcb84ffeC5ncg10QkyYZTv"
+        ]
+    );
+    insta::assert_yaml_snapshot!(for_snapshot(cmd));
+}
+
+#[test]
+fn opencode_launch_resume_has_no_task_prompt() {
+    let mut s = resume_spec();
+    s.task = Some("do the thing".into());
+    let cmd = launch(&s);
+    assert!(!cmd.args.iter().any(|a| a.contains("do the thing")));
+    assert!(!cmd.args.iter().any(|a| a.starts_with("--prompt")));
+    assert!(env(&cmd, "OPENCODE_CONFIG").is_some());
+    // A launch that doesn't resume still carries the task.
+    let plain = launch(&spec(Some("do the thing")));
+    assert_eq!(
+        plain.args.last().map(String::as_str),
+        Some("--prompt=do the thing")
+    );
+}
