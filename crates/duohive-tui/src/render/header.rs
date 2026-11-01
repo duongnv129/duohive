@@ -199,7 +199,7 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             Pane::Org => org_keys(&m.keymap),
             Pane::NeedsYou => needs_you_keys(&m.keymap),
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
-            Pane::Agent => agent_keys(m).to_owned(),
+            Pane::Agent => agent_keys(m),
             Pane::Chat => chat_keys(m),
         }
         .clone(),
@@ -258,11 +258,16 @@ fn chat_keys(m: &UiModel) -> String {
 
 /// The agent pane's keys for what it shows: a running agent's terminal, a stopped
 /// agent's line or a team or role's summary.
-fn agent_keys(m: &UiModel) -> &'static str {
+fn agent_keys(m: &UiModel) -> String {
     match m.selected_agent() {
-        Some(a) if m.view(a).status.state.is_running() => AGENT_KEYS,
-        Some(_) => AGENT_KEYS_STOPPED,
-        None => SUMMARY_KEYS,
+        Some(a) if m.view(a).status.state.is_running() => AGENT_KEYS.to_owned(),
+        // A stopped or errored agent can resume (UI §4.13); Duo cannot.
+        Some(a) if !m.org.is_duo(a) => format!(
+            "{AGENT_KEYS_STOPPED} · {} resume",
+            m.keymap.key(ActionId::Resume).label()
+        ),
+        Some(_) => AGENT_KEYS_STOPPED.to_owned(),
+        None => SUMMARY_KEYS.to_owned(),
     }
 }
 

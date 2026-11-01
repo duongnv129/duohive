@@ -7,7 +7,9 @@ use duohive_core::org::{NodeKey, Org, RoleKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
-use crate::fixtures::{chat_entry, cols, ctx, mins, model_for, render_lines, spec_model, status};
+use crate::fixtures::{
+    chat_entry, cols, ctx, mins, model_for, render_lines, spec_model, status, view,
+};
 use crate::focus::{AgentMode, Pane, layout};
 use crate::forms::LineEdit;
 use crate::model::UiModel;
@@ -303,7 +305,7 @@ fn agent_pane_footer_fits_what_is_selected() {
     };
     assert_eq!(
         footer(NodeKey::Agent(n("pay-qa"))),
-        " z zoom · space give work"
+        " z zoom · space give work · r resume"
     );
     let role = NodeKey::Role(RoleKey {
         team: Some(nn("Payments")),
@@ -495,4 +497,39 @@ fn needs_you_long_names_snapshots() {
     ] {
         insta::assert_snapshot!(name, render_lines(&m, &ctx(), w, h).join("\n"));
     }
+}
+
+#[test]
+fn selected_footer_adds_r_resume_for_stopped_and_errored() {
+    let footer = |state, selected| {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        m.agents.insert(n("pay-qa"), view(status(state, mins(30))));
+        let duo = m.org.duo.name.clone();
+        m.agents
+            .insert(duo, view(status(AgentState::Stopped, mins(30))));
+        m.selected = selected;
+        render_lines(&m, &ctx(), 120, 36)
+            .last()
+            .unwrap()
+            .trim_end()
+            .to_owned()
+    };
+    let qa = NodeKey::Agent(n("pay-qa"));
+    for state in [AgentState::Stopped, AgentState::Errored] {
+        assert_eq!(
+            footer(state, qa.clone()),
+            " z zoom · space give work · r resume",
+            "{state:?}"
+        );
+    }
+    assert_eq!(
+        footer(AgentState::Working, qa.clone()),
+        " enter type · z zoom · PgUp/PgDn scroll · space give work"
+    );
+    // Duo is not resumable here.
+    assert_eq!(
+        footer(AgentState::Stopped, NodeKey::Duo),
+        " z zoom · space give work"
+    );
 }

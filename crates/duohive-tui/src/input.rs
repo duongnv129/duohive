@@ -111,6 +111,8 @@ pub enum Action {
     Filter,
     /// `m`: move the selection (UI §4.8).
     Move,
+    /// `r`: resume an old session (UI §4.13).
+    Resume,
     /// `y` on a focused card.
     CardApprove,
     /// `e` on a focused card.
@@ -295,6 +297,7 @@ fn mapped(id: ActionId) -> Action {
     match id {
         ActionId::GiveWork => Action::GiveWork,
         ActionId::StartStop => Action::StartStop,
+        ActionId::Resume => Action::Resume,
         ActionId::New => Action::New,
         ActionId::Edit => Action::Edit,
         ActionId::Move => Action::Move,
@@ -519,6 +522,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             }
         }
         Action::StartStop => start_stop(m),
+        Action::Resume => resume(m),
         Action::Delete => delete(m),
         Action::New => new_here(m),
         Action::Edit => edit_here(m),
@@ -710,6 +714,22 @@ fn agent_of(m: &UiModel, key: &NodeKey) -> Option<AgentName> {
     }
 }
 
+/// `r`: a stopped or errored agent lists its past sessions; a running one says to stop it
+/// first; a team, a role and Duo do nothing (UI §4.13).
+fn resume(m: &mut UiModel) -> Vec<UiEffect> {
+    let NodeKey::Agent(agent) = m.selected.clone() else {
+        return Vec::new();
+    };
+    if m.org.is_duo(&agent) {
+        return Vec::new();
+    }
+    if m.view(&agent).status.state.is_running() {
+        m.footer_note = Some(format!("{agent} is running · stop it first (s)"));
+        return Vec::new();
+    }
+    vec![UiEffect::Send(Command::ListSessions { agent })]
+}
+
 /// `s`: stopped → start; errored → stop (D16); running → ask first (UI §4.8).
 fn start_stop(m: &mut UiModel) -> Vec<UiEffect> {
     let Some(agent) = agent_of(m, &m.selected) else {
@@ -877,6 +897,8 @@ mod menu_tests;
 pub(super) mod mouse_tests;
 #[cfg(test)]
 mod move_tests;
+#[cfg(test)]
+mod resume_tests;
 #[cfg(test)]
 pub(crate) use move_tests::spec_org as spec_move_org;
 #[cfg(test)]

@@ -98,6 +98,7 @@ fn right_click_menu_lists_every_action_with_its_key() {
         [
             ("Give work", "space"),
             ("Stop", "s"),
+            ("Resume…", "r"),
             ("Edit", "e"),
             ("New here…", "n"),
             ("Move to…", "m"),
@@ -528,4 +529,43 @@ fn reduce_motion_menu_and_drag() {
     let a = render_lines(&m, &still, W, H);
     still.spinner = 9;
     assert_eq!(a, render_lines(&m, &still, W, H));
+}
+
+#[test]
+fn node_menu_has_resume_disabled_with_reason_while_running() {
+    let mut m = model();
+    open_menu(&mut m, "billing-api");
+    let rows = &m.menu.as_ref().unwrap().rows;
+    let at = rows
+        .iter()
+        .position(|r| r.action == ActionId::Resume)
+        .unwrap();
+    assert_eq!(rows[at].label, "Resume…");
+    assert_eq!(rows[at].key, "r");
+    assert_eq!(rows[at].disabled.as_deref(), Some("stop it first"));
+    assert_eq!(rows[at - 1].action, ActionId::StartStop);
+    assert_eq!(super::menu::choose(&mut m, at), []);
+    assert_eq!(m.footer_note.as_deref(), Some("Resume… · stop it first"));
+    // Team, role and Duo menus are unchanged.
+    for node in ["Payments", "Backend", "Duo"] {
+        m.menu = None;
+        open_menu(&mut m, node);
+        assert!(!labels(&m).contains(&"Resume…".to_owned()), "{node}");
+    }
+}
+
+#[test]
+fn click_resume_menu_row_sends_list_sessions() {
+    let mut m = model();
+    open_menu(&mut m, "pay-qa");
+    let rows = &m.menu.as_ref().unwrap().rows;
+    let at = rows
+        .iter()
+        .position(|r| r.action == ActionId::Resume)
+        .unwrap();
+    assert_eq!(rows[at].disabled, None);
+    assert_eq!(
+        super::menu::choose(&mut m, at),
+        [UiEffect::Send(Command::ListSessions { agent: n("pay-qa") })]
+    );
 }

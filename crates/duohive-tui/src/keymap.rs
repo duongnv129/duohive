@@ -12,6 +12,8 @@ pub enum ActionId {
     GiveWork,
     /// Start or stop the selected agent.
     StartStop,
+    /// Resume an old session of the selected agent.
+    Resume,
     /// New here….
     New,
     /// Edit the selection.
@@ -44,9 +46,10 @@ pub enum ActionId {
 
 impl ActionId {
     /// Every action, in the order the key map and the editor list them.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::GiveWork,
         Self::StartStop,
+        Self::Resume,
         Self::New,
         Self::Edit,
         Self::Move,
@@ -68,6 +71,7 @@ impl ActionId {
         match self {
             Self::GiveWork => "give_work",
             Self::StartStop => "start_stop",
+            Self::Resume => "resume",
             Self::New => "new",
             Self::Edit => "edit",
             Self::Move => "move",
@@ -95,6 +99,7 @@ impl ActionId {
         match self {
             Self::GiveWork => "Give work",
             Self::StartStop => "Start / stop",
+            Self::Resume => "Resume",
             Self::New => "New",
             Self::Edit => "Edit",
             Self::Move => "Move",
@@ -318,6 +323,7 @@ fn defaults() -> BTreeMap<ActionId, Binding> {
     for (action, text) in [
         (ActionId::GiveWork, " "),
         (ActionId::StartStop, "s"),
+        (ActionId::Resume, "r"),
         (ActionId::New, "n"),
         (ActionId::Edit, "e"),
         (ActionId::Move, "m"),
@@ -433,6 +439,7 @@ pub fn contexts(action: ActionId) -> &'static [Context] {
     match action {
         ActionId::GiveWork | ActionId::Zoom => &[Context::OrgPane, Context::AgentPane],
         ActionId::StartStop
+        | ActionId::Resume
         | ActionId::New
         | ActionId::Edit
         | ActionId::Move
@@ -531,6 +538,7 @@ mod tests {
         let want = [
             (ActionId::GiveWork, "space"),
             (ActionId::StartStop, "s"),
+            (ActionId::Resume, "r"),
             (ActionId::New, "n"),
             (ActionId::Edit, "e"),
             (ActionId::Move, "m"),
