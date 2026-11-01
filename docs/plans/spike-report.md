@@ -881,6 +881,8 @@ Not run: `--effort=e` and the `mcp__duohive__*` permission entry were not combin
 
 **Addendum (2026-11-01).** A scan of real session files found `ai-title` records (`{"type":"ai-title","aiTitle":"…","sessionId":…}`, repeated through a session) that the original spike missed. The reader now uses them: the last `custom-title` or `agent-name` record (a title the user set) wins, else the last `ai-title`, else the first prompt. Whether this matches the ordering Claude Code's own `/resume` uses exactly is to be confirmed by hand (R4).
 
+A comparison with the author's Claude Code `/resume` list (17 sessions) on 2026-11-02 changed the fallback: titles now fall back to the last prompt (`last-prompt.lastPrompt`, else the last real user prompt) instead of the first, injected text (`isMeta` records, skill and caveat text, command wrappers, system reminders) is skipped, and a session of slash commands only shows the command name (`/clear`, `/effort`, `/doctor`). Also found: Claude Code hides sessions with `entrypoint: sdk-cli` (48 of the 66 files in this project); DuoHive does not yet filter them (open item for the author, see the v1.1 roadmap).
+
 ### R1.3 Decision
 
 - **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the first prompt (UI §4.13 already does this); branch, size and last-written are always available.

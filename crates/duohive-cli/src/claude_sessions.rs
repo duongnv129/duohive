@@ -137,7 +137,12 @@ struct Facts {
     branch: Option<String>,
     title: Option<String>,
     ai_title: Option<String>,
-    first_prompt: Option<String>,
+    /// The last usable `last-prompt` record's text.
+    last_prompt: Option<String>,
+    /// The last real (not meta, not injected) user prompt.
+    last_user_prompt: Option<String>,
+    /// The last slash command, as `/name`.
+    last_command: Option<String>,
 }
 
 fn read_session(path: &Path, id: &str) -> Option<(SessionInfo, Option<String>)> {
@@ -154,7 +159,9 @@ fn read_session(path: &Path, id: &str) -> Option<(SessionInfo, Option<String>)> 
         .title
         .filter(|t| !t.is_empty())
         .or(facts.ai_title)
-        .or(facts.first_prompt)
+        .or(facts.last_prompt)
+        .or(facts.last_user_prompt)
+        .or(facts.last_command)
         .unwrap_or_default();
     let updated_ms = meta
         .modified()
@@ -242,11 +249,18 @@ fn absorb(facts: &mut Facts, record: &Value) {
                 facts.ai_title = cleaned;
             }
         }
-        "user" if facts.first_prompt.is_none() => {
-            facts.first_prompt = prompt_text(record)
-                .map(|t| clean(&t))
+        "last-prompt" => {
+            let cleaned = record
+                .get("lastPrompt")
+                .and_then(Value::as_str)
+                .filter(|t| !is_injected(t))
+                .map(clean)
                 .filter(|t| !t.is_empty());
+            if cleaned.is_some() {
+                facts.last_prompt = cleaned;
+            }
         }
+        "user" => absorb_user(facts, record),
         _ => {}
     }
 }
@@ -257,19 +271,65 @@ fn set_title(facts: &mut Facts, value: Option<&Value>) {
     }
 }
 
-/// The text of a user record, unless it is a meta prompt.
+/// Notes a user record: a slash command, or a real prompt. Meta records and
+/// injected text are never titles.
+fn absorb_user(facts: &mut Facts, record: &Value) {
+    if record.get("isMeta").and_then(Value::as_bool) == Some(true) {
+        return;
+    }
+    let Some(text) = prompt_text(record) else {
+        return;
+    };
+    if let Some(command) = command_name(&text) {
+        facts.last_command = Some(command);
+    }
+    if is_injected(&text) {
+        return;
+    }
+    let cleaned = clean(&text);
+    if !cleaned.is_empty() {
+        facts.last_user_prompt = Some(cleaned);
+    }
+}
+
+/// The text of a user record.
 fn prompt_text(record: &Value) -> Option<String> {
     let content = record.get("message")?.get("content")?;
-    let text = match content {
-        Value::String(s) => s.clone(),
+    match content {
+        Value::String(s) => Some(s.clone()),
         Value::Array(blocks) => blocks
             .iter()
-            .find_map(|b| b.get("text").and_then(Value::as_str))?
-            .to_owned(),
-        _ => return None,
-    };
+            .find_map(|b| b.get("text").and_then(Value::as_str))
+            .map(str::to_owned),
+        _ => None,
+    }
+}
+
+/// Text Claude Code or a skill injects into the transcript; never a title.
+const INJECTED_PREFIXES: [&str; 9] = [
+    "Base directory for this skill",
+    "<local-command-caveat>",
+    "<local-command-stdout>",
+    "<command-message>",
+    "<command-name>",
+    "<command-args>",
+    "<system-reminder>",
+    "Caveat:",
+    "<local-command-stderr>",
+];
+
+fn is_injected(text: &str) -> bool {
     let t = text.trim_start();
-    (!t.starts_with("<system-reminder>") && !t.starts_with("<command-")).then_some(text)
+    INJECTED_PREFIXES.iter().any(|p| t.starts_with(p))
+}
+
+/// The `/xxx` inside `<command-name>/xxx</command-name>`, when present.
+fn command_name(text: &str) -> Option<String> {
+    const OPEN: &str = "<command-name>";
+    let start = text.find(OPEN)? + OPEN.len();
+    let len = text[start..].find("</command-name>")?;
+    let name = clean(&text[start..start + len]);
+    (!name.is_empty()).then_some(name)
 }
 
 /// Removes escape sequences and control characters (line breaks and tabs become

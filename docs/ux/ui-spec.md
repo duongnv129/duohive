@@ -1076,7 +1076,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its first prompt, cut with `…`.
+- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its last prompt (injected text skipped; a session of slash commands only shows the command, e.g. `/clear`), cut with `…`.
 - **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
 - **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
 - **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
@@ -1084,7 +1084,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 - **As built, where this section was silent:**
   - The count is `{position} of {visible}`: the highlighted row's place among the entries the search leaves, so `1 of 36` at the start, `0 of 0` when nothing matches (the list then reads `No sessions match`).
   - An entry shows only the fields it has, in the order age, branch, size, `worktree <task-id>`, `in use by <agent>`, `may be open elsewhere`; the branch is cut at 32 cells so the marks are never cut. Ages read `just now`, `N minutes ago`, `N hours ago`, `N days ago`.
-  - A session with no title and no first prompt shows `(untitled)`.
+  - A session with no title, prompt or command shows `(untitled)`.
   - A click on a row does what `enter` does; the wheel moves the highlight; while searching, the hint reads `esc clear search`.
   - The 5-minute confirmation is titled `Resume session?`; **Cancel** returns to the picker with its search and cursor intact.
   - A listing that arrives while another dialog, a right-click menu or the first-run wizard is open, or for an agent that no longer exists, is dropped, so a late answer never steals focus. A second listing while the picker is open is dropped too.
