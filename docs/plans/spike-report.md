@@ -879,6 +879,8 @@ Not run: `--effort=e` and the `mcp__duohive__*` permission entry were not combin
 - **Worktree storage:** a session run from the worktree directory is stored under the worktree's own folder (`-private-tmp-duohive-r1-q12J8s-wt`, with `cwd` the worktree path and `gitBranch: wt-branch`), not under the main checkout's folder. The catalog must list each worktree path as its own directory, as TD §5.6 already plans (`dirs`).
 - **Version:** each record carries `"version":"2.1.316"`, so the reader can check the version per file.
 
+**Addendum (2026-11-01).** A scan of real session files found `ai-title` records (`{"type":"ai-title","aiTitle":"…","sessionId":…}`, repeated through a session) that the original spike missed. The reader now uses them: the last `custom-title` or `agent-name` record (a title the user set) wins, else the last `ai-title`, else the first prompt. Whether this matches the ordering Claude Code's own `/resume` uses exactly is to be confirmed by hand (R4).
+
 ### R1.3 Decision
 
 - **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the first prompt (UI §4.13 already does this); branch, size and last-written are always available.
@@ -1012,3 +1014,4 @@ For each of Claude Code and OpenCode:
 - [ ] `r` on a running agent says `<agent> is running · stop it first (s)`; `s` still starts fresh.
 - [ ] 80x24: the picker, the confirmation and the footer fit and read well.
 - [ ] 160x48: the same.
+- [ ] Claude Code only: compare the picker's titles for one directory against Claude Code's own `/resume` list for the same directory (5 to 10 sessions) and report any title that differs.

@@ -136,6 +136,7 @@ struct Facts {
     cwd: Option<String>,
     branch: Option<String>,
     title: Option<String>,
+    ai_title: Option<String>,
     first_prompt: Option<String>,
 }
 
@@ -152,6 +153,7 @@ fn read_session(path: &Path, id: &str) -> Option<(SessionInfo, Option<String>)> 
     let title = facts
         .title
         .filter(|t| !t.is_empty())
+        .or(facts.ai_title)
         .or(facts.first_prompt)
         .unwrap_or_default();
     let updated_ms = meta
@@ -229,6 +231,17 @@ fn absorb(facts: &mut Facts, record: &Value) {
     match kind {
         "custom-title" => set_title(facts, record.get("customTitle")),
         "agent-name" => set_title(facts, record.get("agentName")),
+        "ai-title" => {
+            let cleaned = record
+                .get("aiTitle")
+                .and_then(Value::as_str)
+                .map(clean)
+                .filter(|t| !t.is_empty());
+            // Records come in file order (head window, then tail window): the last wins.
+            if cleaned.is_some() {
+                facts.ai_title = cleaned;
+            }
+        }
         "user" if facts.first_prompt.is_none() => {
             facts.first_prompt = prompt_text(record)
                 .map(|t| clean(&t))

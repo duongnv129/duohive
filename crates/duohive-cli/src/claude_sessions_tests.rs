@@ -379,3 +379,108 @@ fn ids_that_start_with_a_dash_are_skipped() {
     assert_eq!(got.len(), 1);
     assert_eq!(got[0].id, "good_1");
 }
+
+const AI_TITLED: &str = "00000000-0000-4000-8000-000000000003";
+
+fn ai_title(text: &str) -> String {
+    line(&serde_json::json!({"type":"ai-title","aiTitle":text}))
+}
+
+#[test]
+fn ai_title_is_used_when_no_user_title() {
+    let env = Env::new();
+    let d = env.dir("p");
+    env.put_fixture(&d, AI_TITLED, 5);
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(got[0].title, "Review the cache layer");
+}
+
+#[test]
+fn user_set_title_beats_ai_title() {
+    let env = Env::new();
+    let d = env.dir("p");
+    let custom = user("a prompt")
+        + &ai_title("Auto")
+        + &line(&serde_json::json!({"type":"custom-title","customTitle":"Mine"}))
+        + &ai_title("Auto later");
+    env.put(&d, "custom", &custom, 5);
+    let agent = user("a prompt")
+        + &line(&serde_json::json!({"type":"agent-name","agentName":"Named"}))
+        + &ai_title("Auto later");
+    env.put(&d, "agent", &agent, 6);
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(got.iter().find(|s| s.id == "custom").unwrap().title, "Mine");
+    assert_eq!(got.iter().find(|s| s.id == "agent").unwrap().title, "Named");
+}
+
+#[test]
+fn last_ai_title_wins() {
+    let env = Env::new();
+    let d = env.dir("p");
+    env.put(
+        &d,
+        "small",
+        &(user("p") + &ai_title("First") + &ai_title("Second")),
+        5,
+    );
+    // Large sparse file: the earlier title in the head window, the later one in the tail.
+    let big_len: u64 = 100 * 1024 * 1024;
+    let p = env.put(&d, "big", &(user("p") + &ai_title("Head title")), 6);
+    let tail = String::from("\n") + &ai_title("Tail title");
+    write_at(&p, big_len - tail.len() as u64, tail.as_bytes());
+    age(&p, 6);
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(
+        got.iter().find(|s| s.id == "small").unwrap().title,
+        "Second"
+    );
+    assert_eq!(
+        got.iter().find(|s| s.id == "big").unwrap().title,
+        "Tail title"
+    );
+}
+
+#[test]
+fn ai_title_is_sanitised() {
+    let env = Env::new();
+    let d = env.dir("p");
+    env.put(
+        &d,
+        "ansi",
+        &ai_title("\u{1b}[1mBold\u{1b}[0m\u{8} name\n"),
+        5,
+    );
+    env.put(&d, "long", &ai_title(&"y".repeat(300)), 6);
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(
+        got.iter().find(|s| s.id == "ansi").unwrap().title,
+        "Bold name"
+    );
+    let long = &got.iter().find(|s| s.id == "long").unwrap().title;
+    assert_eq!(long.chars().count(), 201);
+    assert!(long.ends_with('…'));
+}
+
+#[test]
+fn empty_or_non_string_ai_title_falls_back_to_the_first_prompt() {
+    let env = Env::new();
+    let d = env.dir("p");
+    let bad = [
+        ai_title(""),
+        ai_title("\u{7}\u{1b}[0m"),
+        line(&serde_json::json!({"type":"ai-title","aiTitle":42})),
+        line(&serde_json::json!({"type":"ai-title","aiTitle":null})),
+        line(&serde_json::json!({"type":"ai-title"})),
+    ];
+    for (i, rec) in bad.iter().enumerate() {
+        env.put(
+            &d,
+            &format!("bad{i}"),
+            &(user("the prompt") + rec),
+            5 + i as u64,
+        );
+    }
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(got.len(), 5);
+    assert!(got.iter().all(|s| s.title == "the prompt"));
+}
