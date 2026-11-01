@@ -33,6 +33,7 @@ pub(super) fn agent_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             Vec::new()
         }
         Action::GiveWork => super::give_work::open(m),
+        Action::Resume => super::resume(m),
         Action::PageUp => vec![UiEffect::Scroll { up: true }],
         Action::PageDown => vec![UiEffect::Scroll { up: false }],
         _ => Vec::new(),

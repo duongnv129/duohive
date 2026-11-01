@@ -120,3 +120,73 @@ fn resume_loads_from_settings_toml_keys() {
     assert!(notices.is_empty(), "{notices:?}");
     assert_eq!(km.key(ActionId::Resume).label(), "x");
 }
+
+fn in_agent_pane(state: AgentState) -> (UiModel, AgentName) {
+    let (mut m, agent) = selected(state);
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = crate::focus::AgentMode::Selected;
+    (m, agent)
+}
+
+#[test]
+fn r_in_agent_pane_selected_on_stopped_agent_sends_list_sessions() {
+    let (mut m, agent) = in_agent_pane(AgentState::Stopped);
+    assert_eq!(press(&mut m, key('r')), list(&agent));
+}
+
+#[test]
+fn r_in_agent_pane_selected_on_errored_agent_sends_list_sessions() {
+    let (mut m, agent) = in_agent_pane(AgentState::Errored);
+    assert_eq!(press(&mut m, key('r')), list(&agent));
+}
+
+#[test]
+fn r_in_agent_pane_selected_on_running_agent_shows_stop_it_first() {
+    let (mut m, _) = in_agent_pane(AgentState::Working);
+    assert_eq!(press(&mut m, key('r')), []);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("pay-qa is running · stop it first (s)")
+    );
+}
+
+#[test]
+fn r_in_agent_pane_typing_goes_to_the_agent() {
+    let (mut m, _) = in_agent_pane(AgentState::Working);
+    m.focus.agent_mode = crate::focus::AgentMode::Typing;
+    m.live_agent = Some(n("pay-qa"));
+    let out = press(&mut m, key('r'));
+    assert!(matches!(out.as_slice(), [UiEffect::Pane(_)]), "{out:?}");
+}
+
+#[test]
+fn r_in_agent_pane_with_a_team_role_or_duo_selected_does_nothing() {
+    let (mut m, _) = in_agent_pane(AgentState::Stopped);
+    let name = |s| duohive_core::names::NodeName::parse(s).unwrap();
+    for node in [
+        NodeKey::Team(name("Payments")),
+        NodeKey::Role(RoleKey {
+            team: Some(name("Payments")),
+            role: name("QA"),
+        }),
+        NodeKey::Duo,
+    ] {
+        m.selected = node.clone();
+        m.footer_note = None;
+        assert_eq!(press(&mut m, key('r')), [], "{node:?}");
+        assert_eq!(m.footer_note, None, "{node:?}");
+    }
+}
+
+#[test]
+fn rebinding_resume_to_an_agent_pane_key_is_refused() {
+    let mut m = spec_model();
+    let zoom = m.keymap.key(ActionId::Zoom);
+    assert_eq!(
+        m.keymap.rebind(ActionId::Resume, zoom),
+        Err(crate::keymap::RebindError::Conflict {
+            key: "z".to_owned(),
+            action: ActionId::Zoom
+        })
+    );
+}

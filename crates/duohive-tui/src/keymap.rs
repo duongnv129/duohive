@@ -437,9 +437,10 @@ impl Keymap {
 /// The contexts an action's key works in (UI §4.10).
 pub fn contexts(action: ActionId) -> &'static [Context] {
     match action {
-        ActionId::GiveWork | ActionId::Zoom => &[Context::OrgPane, Context::AgentPane],
+        ActionId::GiveWork | ActionId::Zoom | ActionId::Resume => {
+            &[Context::OrgPane, Context::AgentPane]
+        }
         ActionId::StartStop
-        | ActionId::Resume
         | ActionId::New
         | ActionId::Edit
         | ActionId::Move

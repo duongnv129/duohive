@@ -716,7 +716,7 @@ fn agent_of(m: &UiModel, key: &NodeKey) -> Option<AgentName> {
 
 /// `r`: a stopped or errored agent lists its past sessions; a running one says to stop it
 /// first; a team, a role and Duo do nothing (UI §4.13).
-fn resume(m: &mut UiModel) -> Vec<UiEffect> {
+pub(super) fn resume(m: &mut UiModel) -> Vec<UiEffect> {
     let NodeKey::Agent(agent) = m.selected.clone() else {
         return Vec::new();
     };
