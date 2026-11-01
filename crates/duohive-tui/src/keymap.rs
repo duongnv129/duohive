@@ -352,6 +352,7 @@ impl Keymap {
     pub fn from_settings(saved: &BTreeMap<String, String>) -> (Self, Vec<String>) {
         let mut out = Self::default();
         let mut notices = Vec::new();
+        let mut resume_saved = false;
         for (id, text) in saved {
             let Some(action) = ActionId::from_id(id) else {
                 notices.push(format!(
@@ -365,9 +366,34 @@ impl Keymap {
                 ));
                 continue;
             };
+            resume_saved |= action == ActionId::Resume;
             out.bindings.insert(action, binding);
         }
+        if !resume_saved {
+            out.yield_resume_default(&mut notices);
+        }
         (out, notices)
+    }
+
+    /// Resume's default key is new in v1.1: when a saved binding already holds it, the
+    /// saved one wins, Resume has no key until rebound, and a notice says so.
+    fn yield_resume_default(&mut self, notices: &mut Vec<String>) {
+        let Some(own) = self.bindings.get(&ActionId::Resume).copied() else {
+            return;
+        };
+        let holder = ActionId::ALL.into_iter().find(|other| {
+            *other != ActionId::Resume
+                && self.bindings.get(other) == Some(&own)
+                && share_contexts(ActionId::Resume, *other)
+        });
+        if let Some(other) = holder {
+            self.bindings.remove(&ActionId::Resume);
+            notices.push(format!(
+                "resume: {} is taken by {} · rebind it in Keys",
+                own.label(),
+                other.id()
+            ));
+        }
     }
 
     /// The action's binding.
@@ -418,8 +444,19 @@ impl Keymap {
 
     /// Puts the action back on its default key.
     pub fn reset(&mut self, action: ActionId) {
-        if let Some(default) = defaults().get(&action) {
-            self.bindings.insert(action, *default);
+        let Some(default) = defaults().get(&action).copied() else {
+            return;
+        };
+        // Never put two actions on one key: a default another action now holds stays unbound.
+        let held = ActionId::ALL.into_iter().any(|other| {
+            other != action
+                && self.bindings.get(&other) == Some(&default)
+                && share_contexts(action, other)
+        });
+        if held {
+            self.bindings.remove(&action);
+        } else {
+            self.bindings.insert(action, default);
         }
     }
 
@@ -711,5 +748,34 @@ mod tests {
         let (k, notices) = Keymap::from_settings(&saved);
         assert_eq!(notices.len(), 2);
         assert_eq!(k.key(ActionId::Zoom), bind("z"));
+    }
+
+    #[test]
+    fn rebinding_resume_makes_action_for_agent_pane_return_resume() {
+        let saved: BTreeMap<String, String> = [("resume".to_owned(), "x".to_owned())]
+            .into_iter()
+            .collect();
+        let (k, _) = Keymap::from_settings(&saved);
+        assert_eq!(
+            k.action_for(Context::AgentPane, &key('x')),
+            Some(ActionId::Resume)
+        );
+        assert_ne!(
+            k.action_for(Context::AgentPane, &key('r')),
+            Some(ActionId::Resume)
+        );
+    }
+
+    #[test]
+    fn reset_never_puts_two_actions_on_one_key() {
+        let saved: BTreeMap<String, String> =
+            [("move".to_owned(), "r".to_owned())].into_iter().collect();
+        let (mut k, _) = Keymap::from_settings(&saved);
+        k.reset(ActionId::Resume);
+        assert_eq!(k.key(ActionId::Resume).label(), "");
+        assert_eq!(
+            k.action_for(Context::OrgPane, &key('r')),
+            Some(ActionId::Move)
+        );
     }
 }

@@ -8,7 +8,7 @@ use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
 use super::{UiEffect, map_key, update};
-use crate::fixtures::{mins, spec_model, status, view};
+use crate::fixtures::{ctx, mins, render_lines, spec_model, status, view};
 use crate::focus::Pane;
 use crate::forms::{LineEdit, SettingsRow, SettingsState};
 use crate::keymap::{ActionId, parse_binding};
@@ -189,6 +189,87 @@ fn rebinding_resume_to_an_agent_pane_key_is_refused() {
             action: ActionId::Zoom
         })
     );
+}
+
+// ---- A saved `r` binding beats Resume's default (v1 compatibility) ----
+
+fn with_saved_keys(m: &mut UiModel, keys: &[(&str, &str)]) {
+    let mut settings = m.settings.clone();
+    settings.keys = keys
+        .iter()
+        .map(|(a, k)| ((*a).to_owned(), (*k).to_owned()))
+        .collect();
+    m.set_settings(settings);
+}
+
+const TAKEN_NOTICE: &str = "resume: r is taken by move · rebind it in Keys";
+
+#[test]
+fn saved_key_r_for_another_action_beats_the_resume_default() {
+    let (mut m, _) = selected(AgentState::Stopped);
+    with_saved_keys(&mut m, &[("move", "r")]);
+    let out = press(&mut m, key('r'));
+    assert!(
+        !out.iter()
+            .any(|e| matches!(e, UiEffect::Send(Command::ListSessions { .. }))),
+        "{out:?}"
+    );
+    assert!(m.dialog.is_some(), "r should open Move: {:?}", m.dialog);
+    assert_eq!(m.keymap.key(ActionId::Resume).label(), "");
+    assert_eq!(m.keymap.key(ActionId::Move).label(), "r");
+    assert_eq!(m.keys_notices, [TAKEN_NOTICE.to_owned()]);
+}
+
+#[test]
+fn unbound_resume_is_not_advertised() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    with_saved_keys(&mut m, &[("move", "r")]);
+    m.focus.pane = Pane::Agent;
+    let footer = render_lines(&m, &ctx(), 120, 36);
+    let last = footer.last().cloned().unwrap_or_default();
+    assert!(!last.contains("resume"), "{last}");
+    // The node menu shows no key; the row still works by mouse.
+    let menu = super::menu::build(
+        &m,
+        NodeKey::Agent(agent.clone()),
+        ratatui::layout::Position::new(0, 0),
+    );
+    let at = menu
+        .rows
+        .iter()
+        .position(|r| r.action == ActionId::Resume)
+        .expect("resume row");
+    assert_eq!(menu.rows[at].key, "");
+    m.menu = Some(menu);
+    assert_eq!(super::menu::choose(&mut m, at), list(&agent));
+}
+
+#[test]
+fn bound_resume_is_advertised_in_the_agent_footer() {
+    let (mut m, _) = selected(AgentState::Stopped);
+    m.focus.pane = Pane::Agent;
+    let last = render_lines(&m, &ctx(), 120, 36)
+        .last()
+        .cloned()
+        .unwrap_or_default();
+    assert!(last.contains("r resume"), "{last}");
+}
+
+#[test]
+fn explicit_resume_binding_wins_without_notice() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    with_saved_keys(&mut m, &[("move", "r"), ("resume", "x")]);
+    assert!(m.keys_notices.is_empty(), "{:?}", m.keys_notices);
+    assert_eq!(press(&mut m, key('x')), list(&agent));
+}
+
+#[test]
+fn no_collision_leaves_defaults_unchanged() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    with_saved_keys(&mut m, &[("move", "u")]);
+    assert!(m.keys_notices.is_empty(), "{:?}", m.keys_notices);
+    assert_eq!(m.keymap.key(ActionId::Resume).label(), "r");
+    assert_eq!(press(&mut m, key('r')), list(&agent));
 }
 
 // ---- The picker (UI §4.13) ----

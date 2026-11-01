@@ -266,10 +266,10 @@ fn agent_keys(m: &UiModel) -> String {
     match m.selected_agent() {
         Some(a) if m.view(a).status.state.is_running() => AGENT_KEYS.to_owned(),
         // A stopped or errored agent can resume (UI §4.13); Duo cannot.
-        Some(a) if !m.org.is_duo(a) => format!(
-            "{AGENT_KEYS_STOPPED} · {} resume",
-            m.keymap.key(ActionId::Resume).label()
-        ),
+        Some(a) if !m.org.is_duo(a) => match m.keymap.key(ActionId::Resume).label() {
+            key if key.is_empty() => AGENT_KEYS_STOPPED.to_owned(),
+            key => format!("{AGENT_KEYS_STOPPED} · {key} resume"),
+        },
         Some(_) => AGENT_KEYS_STOPPED.to_owned(),
         None => SUMMARY_KEYS.to_owned(),
     }
