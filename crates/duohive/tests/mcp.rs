@@ -47,6 +47,7 @@ fn session(agent: &str, token: &str, as_duo: bool) -> SessionRow {
         last_task: None,
         worktree: None,
         launched_as_duo: as_duo,
+        cli_session_id: None,
     }
 }
 

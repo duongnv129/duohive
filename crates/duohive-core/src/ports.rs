@@ -193,6 +193,8 @@ pub struct SessionRow {
     pub worktree: Option<TaskId>,
     /// This session was launched as Duo, so its token has Duo's rights (P3-D30).
     pub launched_as_duo: bool,
+    /// The CLI's own session id for this agent's conversation, once known; deleted with the row on stop (TD section 7).
+    pub cli_session_id: Option<String>,
 }
 
 /// A tool call made while DuoHive was closed, waiting to run (P3-D10, P3-D24).
@@ -525,6 +527,7 @@ mod tests {
             last_task: None,
             worktree: None,
             launched_as_duo: false,
+            cli_session_id: None,
         }
     }
 

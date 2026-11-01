@@ -728,6 +728,7 @@ impl Engine {
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
             launched_as_duo: rt.launched_as_duo,
+            cli_session_id: None,
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

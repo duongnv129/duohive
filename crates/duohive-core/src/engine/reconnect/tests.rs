@@ -42,6 +42,7 @@ fn row(agent: &str, state: AgentState, window: Option<&str>, since: Millis) -> S
         last_task: Some("fix the login".into()),
         worktree: None,
         launched_as_duo: false,
+        cli_session_id: None,
     }
 }
 

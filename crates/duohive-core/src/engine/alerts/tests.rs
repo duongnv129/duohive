@@ -218,6 +218,7 @@ fn row(agent: &str, state: AgentState, window: &str) -> SessionRow {
         last_task: None,
         worktree: None,
         launched_as_duo: false,
+        cli_session_id: None,
     }
 }
 

@@ -369,6 +369,7 @@ fn in_use_survives_restart() {
             last_task: Some("t".into()),
             worktree: Some(TaskId("t".into())),
             launched_as_duo: false,
+            cli_session_id: None,
         },
     );
     let events = h.engine.start_up();
@@ -426,6 +427,7 @@ fn restart_without_its_window_is_not_in_use() {
             last_task: None,
             worktree: Some(TaskId("t".into())),
             launched_as_duo: false,
+            cli_session_id: None,
         },
     );
     h.engine.start_up();
@@ -716,6 +718,7 @@ fn held_agent_worktree_is_in_use() {
             last_task: None,
             worktree: Some(TaskId("t".into())),
             launched_as_duo: false,
+            cli_session_id: None,
         },
     );
     h.engine.start_up();
@@ -767,6 +770,7 @@ fn session_in(h: &Harness, agent: &str, task: &str, window: &str) {
             last_task: None,
             worktree: Some(TaskId(task.into())),
             launched_as_duo: false,
+            cli_session_id: None,
         },
     );
 }

@@ -87,6 +87,7 @@ fn read_row(r: &Row<'_>) -> rusqlite::Result<Result<SessionRow, String>> {
         last_task: r.get("last_task")?,
         worktree: r.get::<_, Option<String>>("worktree")?.map(TaskId),
         launched_as_duo: r.get("launched_as_duo")?,
+        cli_session_id: r.get("cli_session_id")?,
     }))
 }
 
@@ -208,7 +209,7 @@ impl Store for SqliteStore {
             .execute(
                 "INSERT OR REPLACE INTO sessions (agent, token, window, state, quiet, quiet_since, \
                  from_screen, since, error, last_reply, task_at_launch, saw_end_hook, last_task, worktree, \
-                 launched_as_duo) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                 launched_as_duo, cli_session_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
                 rusqlite::params![
                     row.agent.as_str(),
                     row.token.as_ref().map(|t| t.0.as_str()),
@@ -225,6 +226,7 @@ impl Store for SqliteStore {
                     row.last_task,
                     row.worktree.as_ref().map(|t| t.0.as_str()),
                     row.launched_as_duo,
+                    row.cli_session_id,
                 ],
             )
             .map(drop)
