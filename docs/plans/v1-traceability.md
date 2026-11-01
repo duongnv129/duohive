@@ -47,7 +47,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Could | Zoom the agent pane | 2 | 2.8 |
 | Could | Compact tree view: hide last replies (`v`) | 1 | T24 |
 | Could | Compact tree view: folding at 80–99 columns | 2 | 2.5 |
-| v1.1 | Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1; design in TD §5.6; plan [v1.1-resume-plan](v1.1-resume-plan.md) (tasks R.1 to R.14); UI §4.13 rows below |
+| v1.1 | Resume an old session | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1; design in TD §5.6; plan [v1.1-resume-plan](v1.1-resume-plan.md) (tasks R.1 to R.13 built on the branch `feat/resume-session`, not released; hand check R.14 pending, [open items](v1.1-roadmap.md#open-items-before-merge)); UI §4.13 rows below |
 
 ## PRD — Other requirements
 
@@ -137,17 +137,17 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | §4.12 Errors and empty states: errored row's `space retry` | 2 | 2.15 |
 | §4.12 Errors and empty states: empty role, full copy (`… or ask Duo`) | 3 | 3.9 |
 | §4.12 Errors and empty states: worktree creation error | 2 | 2.12 |
-| §4.13 Resume an old session: the picker, search, count and entries | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1 |
-| §4.13 Resume an old session: `r` on a running agent says to stop it first; `s` still starts fresh; resume is never automatic | v1.1 | feature 1; PRD *Asked for, never automatic* |
-| §4.13 Resume an old session: continues the original session itself (`--resume` / `--session`), not a fork | v1.1 | feature 1; TD §5.6 (pending R1, R2) |
-| §4.13 Resume an old session: spikes R1 (Claude Code), R2 (OpenCode), R3 (OpenCode plugin) before the v1.1 plan | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) *Before planning*; TD §5.6 |
-| §4.13 Resume an old session: entries from the agent's directory and kept worktrees; the worktree is in use again | v1.1 | feature 1; TD §5.3, §5.6 |
-| §4.13 Resume an old session: after resuming, at rest, no task typed, queued messages at the first rest | v1.1 | feature 1; TD §5.6, §6.3 |
-| §4.13 Resume an old session: `in use by <agent>` refusal | v1.1 | feature 1; TD §5.6 (`sessions.cli_session_id`) |
-| §4.13 Resume an old session: 5-minute `may be open elsewhere` confirmation | v1.1 | feature 1 |
-| §4.13 Resume an old session: empty and unreadable states | v1.1 | feature 1; TD §8 |
-| §4.13 Resume an old session: errored agent closes its still-up session first | v1.1 | feature 1; TD §5.5, §5.6 |
-| §4.13 Resume an old session: `r` in the key table, key map, footer, node menu and Keys screen | v1.1 | feature 1 |
+| §4.13 Resume an old session: the picker, search, count and entries | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) feature 1; built: R.4 `8ebac08` (types), R.9 `39333a3`/`e3c9e22` (Claude Code reader), R.10 `817cc2f` (OpenCode reader), R.11 `abe070a` (wiring), R.13 `b1c4330` (picker) |
+| §4.13 Resume an old session: `r` on a running agent says to stop it first; `s` still starts fresh; resume is never automatic | v1.1 | feature 1; PRD *Asked for, never automatic*; built: R.8 `c67bedd`, R.12 `7a8c001`/`8cb9c94` |
+| §4.13 Resume an old session: continues the original session itself (`--resume` / `--session`), not a fork | v1.1 | feature 1; TD §5.6; spikes R1 `8aaf8fc`, R2 `1011dbd`; built: R.9 `39333a3`, R.10 `817cc2f` |
+| §4.13 Resume an old session: spikes R1 (Claude Code), R2 (OpenCode), R3 (OpenCode plugin) before the v1.1 plan | v1.1 | [v1.1 roadmap](v1.1-roadmap.md) *Before planning*; TD §5.6; done: [spike report](spike-report.md) R1 `8aaf8fc`, R2 `1011dbd`/`29e283e`, R3 `6b54205`/`a372a4b` |
+| §4.13 Resume an old session: entries from the agent's directory and kept worktrees; the worktree is in use again | v1.1 | feature 1; TD §5.3, §5.6; built: R.7 `80e5dbb`, R.8 `c67bedd` |
+| §4.13 Resume an old session: after resuming, at rest, no task typed, queued messages at the first rest | v1.1 | feature 1; TD §5.6, §6.3; built: R.8 `c67bedd`, R.9 `e3c9e22` (no task on resume) |
+| §4.13 Resume an old session: `in use by <agent>` refusal | v1.1 | feature 1; TD §5.6 (`sessions.cli_session_id`); built: R.5 `dbf0a03` (column), R.6 `8d3d017` (recorded from hooks), R.7 `80e5dbb` (marking), R.8 `c67bedd`/`f60229f` (refusal) |
+| §4.13 Resume an old session: 5-minute `may be open elsewhere` confirmation | v1.1 | feature 1; built: R.13 `b1c4330` |
+| §4.13 Resume an old session: empty and unreadable states | v1.1 | feature 1; TD §8; built: R.7 `80e5dbb`, R.13 `b1c4330` |
+| §4.13 Resume an old session: errored agent closes its still-up session first | v1.1 | feature 1; TD §5.5, §5.6; built: R.8 `c67bedd` |
+| §4.13 Resume an old session: `r` in the key table, key map, footer, node menu and Keys screen | v1.1 | feature 1; built: R.12 `7a8c001`, `8cb9c94` (Agent pane too) |
 | §5 Interaction rules: keys, typing, quit, destructive confirms, calm | 1 | T24 |
 | §5 Interaction rules: typing goes where focus is (agent pane, chat) | 2 | 2.5, 2.7 |
 | §5 Interaction rules: cards answer only with focus | 3 | 3.10 |

@@ -994,3 +994,21 @@ Trimmed hook payloads:
 - **Fallback applied:** the brief's *no id reaches the plugin* applies **partly**: the id does reach the plugin, but only after the first prompt. A fresh idle OpenCode session (no prompt yet, or a freshly launched agent with no task) has no session and thus no id; a resumed idle one has its id known from launch only because DuoHive passed it (`--session`).
 - **Contradicts spec:** PRD/TD §5.6 (and V11-D4's wording "recorded from the first hook") assume the id is known from session-start. For OpenCode it is not: `session-start` is empty, a fresh session does not exist until the first prompt, so a session another DuoHive agent has started fresh but not yet prompted cannot be marked "in use" (it does not even exist in `session list` yet, so nothing is hidden by the refusal either). After the first prompt the id is recorded on `busy` and the "in use" refusal can hold. A session a user resumed with `--session` is known from launch.
 - **Not verified:** (1) the `needs-input` hook (`permission.asked`, `form.created`): no such event appeared in any log, so its `properties.sessionID` rests on reading the plugin source. (2) A subagent (child) session's `parentID` in `session.created`: none was made. (3) A resumed TUI session after its first prompt: the idle log (resumed, `--session`) shows no id event, and the post-prompt id being the original rests on R2 (TUI) and on the `opencode run --session` check here. (4) `session.created` was seen only in the TUI fresh run, not in `opencode run`. (5) `session.execution.failed` and `.interrupted` payloads were not triggered. (6) Not tried: a `--session` id that no longer exists, and more than one project or worktree.
+
+## R4 Hand check (author)
+
+Task R.14 of the v1.1 plan, step 1. **This section is for the author.** An agent cannot do it: it needs iTerm2 and the real CLIs. Nothing below is checked yet. Run it once for Claude Code (2.1.316 was used for the readers) and once for OpenCode (2.2.5), on the branch `feat/resume-session`, at 80x24 and again at 160x48, and tick each box (or note what failed).
+
+For each of Claude Code and OpenCode:
+
+- [ ] Start a session outside DuoHive (the CLI in a plain terminal, in the agent's directory), send one prompt, then quit it.
+- [ ] In DuoHive, `r` on the stopped agent opens the picker, and the session appears in it (newest first, with its title or first prompt).
+- [ ] Resume it: the agent pane shows the old conversation, and DuoHive types no task.
+- [ ] The 5-minute confirmation: a session written in the last 5 minutes shows `may be open elsewhere`, and `enter` asks first with Cancel focused.
+- [ ] A session held by another agent is refused: it shows `in use by <agent>`, and `enter` says `<agent> is using this session`. (For OpenCode, the other agent must have had a first prompt.)
+- [ ] An errored agent resumes after its session is closed (its old window is closed first, then the chosen session starts).
+- [ ] A kept worktree's session resumes, and the worktree shows as in use again.
+- [ ] The empty state (`No <CLI> sessions for <dir>`) and the unreadable state (`Couldn't read <CLI>'s sessions: <reason>` as a footer note) both look right.
+- [ ] `r` on a running agent says `<agent> is running · stop it first (s)`; `s` still starts fresh.
+- [ ] 80x24: the picker, the confirmation and the footer fit and read well.
+- [ ] 160x48: the same.
