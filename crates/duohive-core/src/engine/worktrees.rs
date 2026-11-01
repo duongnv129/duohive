@@ -337,7 +337,7 @@ impl Engine {
     }
 
     /// Every worktree row; a failure is reported and reads as none.
-    fn worktree_rows(&mut self, out: &mut Vec<Event>) -> Vec<WorktreeRow> {
+    pub(super) fn worktree_rows(&mut self, out: &mut Vec<Event>) -> Vec<WorktreeRow> {
         self.ports.store.load_worktrees().unwrap_or_else(|e| {
             out.push(Event::CommandRejected {
                 reason: format!("couldn't read worktrees: {e}"),

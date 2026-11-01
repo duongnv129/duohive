@@ -74,3 +74,22 @@ fn new_launch_clears_the_id() {
     h.start("pay-qa");
     assert_eq!(h.rt("pay-qa").cli_session_id, None);
 }
+
+#[test]
+fn stale_token_hook_cannot_record_a_session_id() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    let old = h.rt("pay-qa").token.clone().unwrap();
+    h.force("pay-qa", crate::status::AgentState::Stopped);
+    h.start("pay-qa");
+    assert_ne!(h.rt("pay-qa").token.clone().unwrap(), old);
+    h.input(Input::Hook(HookMessage {
+        sent_at_ms: 0,
+        token: old.0,
+        agent: "pay-qa".into(),
+        event: "busy".into(),
+        payload: json!({"session_id": "stale"}),
+    }));
+    assert_eq!(h.rt("pay-qa").cli_session_id, None);
+    assert_eq!(stored(&h), None);
+}

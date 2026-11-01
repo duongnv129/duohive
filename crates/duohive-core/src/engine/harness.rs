@@ -134,6 +134,7 @@ impl Setup {
         let git = FakeGit::default();
         let git_log = Arc::clone(&git.calls);
         let sessions = crate::testkit::FakeSessionCatalog::default();
+        let session_requests = Arc::clone(&sessions.requests);
         let ports = Ports {
             runtime: Box::new(runtime.clone()),
             store: Box::new(store.clone()),
@@ -174,6 +175,7 @@ impl Setup {
             dir_probes,
             alerts,
             git_log,
+            session_requests,
             t0: self.start,
         };
         if let Some(list) = self.inventory {
@@ -199,6 +201,8 @@ pub(crate) struct Harness {
     pub alerts: Arc<Mutex<Vec<Alert>>>,
     /// Git calls the engine made, oldest first.
     pub git_log: Arc<Mutex<Vec<GitCall>>>,
+    /// Session catalog requests the engine made, oldest first.
+    pub session_requests: Arc<Mutex<Vec<crate::testkit::SessionRequest>>>,
     /// When the clock started.
     pub t0: Millis,
 }

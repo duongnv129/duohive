@@ -564,6 +564,10 @@ impl CliAdapter for StubAdapter {
             files: Vec::new(),
         })
     }
+    /// Any event whose payload has a string `session_id`.
+    fn cli_session_id(&self, _event: &str, payload: &serde_json::Value) -> Option<String> {
+        payload["session_id"].as_str().map(str::to_owned)
+    }
     fn parse_hook(&self, event: &str, payload: &serde_json::Value) -> Option<HookSignal> {
         match event {
             "session-start" => Some(HookSignal::Ready),
@@ -586,10 +590,6 @@ impl CliAdapter for StubAdapter {
     }
     /// The last non-blank line names the state (`BUSY`, `ASK`, `REST`, or `TRUST`
     /// for a trust dialog); at rest, the non-blank line above it is the last reply.
-    /// Any event whose payload has a string `session_id`.
-    fn cli_session_id(&self, _event: &str, payload: &serde_json::Value) -> Option<String> {
-        payload["session_id"].as_str().map(str::to_owned)
-    }
     fn read_screen(&self, screen: &str) -> ScreenSignal {
         let mut lines = screen.lines().rev().filter(|l| !l.trim().is_empty());
         let last = lines.next().map(str::trim_end);

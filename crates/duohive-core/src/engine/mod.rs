@@ -15,6 +15,7 @@ mod lifecycle;
 mod org_edit;
 mod reconnect;
 mod replace;
+mod resume;
 mod rights;
 mod signals;
 mod timers;
@@ -415,8 +416,7 @@ impl Engine {
             Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::ModelsListed { cli, result } => vec![Event::ModelsListed { cli, result }],
-            // R.7 turns the catalog's answer into events.
-            Input::SessionsListed { .. } => Vec::new(),
+            Input::SessionsListed { agent, result } => self.on_sessions_listed(agent, result),
             Input::DirInventory(list) => self.on_dir_inventory(list),
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
@@ -496,8 +496,9 @@ impl Engine {
                 duo_cli,
             } => self.create_org(&template, your_name, duo_cli),
             Command::NewOrgFromTemplate { template } => self.start_replace(&template),
-            // R.7 lists the sessions, R.8 resumes one.
-            Command::ListSessions { .. } | Command::ResumeSession { .. } => Vec::new(),
+            Command::ListSessions { agent } => self.list_sessions(agent),
+            // R.8 resumes one.
+            Command::ResumeSession { .. } => Vec::new(),
         }
     }
 
