@@ -374,6 +374,8 @@ impl UiModel {
             Event::ModelsListed { cli, result } => self.models_listed(cli, result),
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
+            // R.13 shows the resume picker.
+            Event::SessionsListed { .. } | Event::SessionsUnreadable { .. } => {}
         }
         true
     }

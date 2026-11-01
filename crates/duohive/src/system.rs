@@ -32,6 +32,7 @@ use duohive_core::hook::HookMessage;
 use duohive_core::inherit::resolve;
 use duohive_core::org::Org;
 use duohive_core::ports::{Git, NoNotifier, Notifier, OrgFileError, Store, StoreError};
+use duohive_core::session_catalog::NoSessionCatalog;
 use duohive_core::settings::Settings;
 use duohive_store::{Paths, SqliteStore, load_settings};
 use duohive_tmux::{TmuxConfig, TmuxError, TmuxRuntime};
@@ -278,6 +279,8 @@ pub async fn start_system(
         dirs: Arc::new(FsDirProbe),
         notifier,
         git,
+        // R.11 wires the real catalog.
+        sessions: Box::new(NoSessionCatalog),
     };
     let cfg = EngineConfig {
         home: home.clone(),

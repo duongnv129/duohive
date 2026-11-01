@@ -51,6 +51,7 @@ use crate::org::Org;
 use crate::ports::{
     Clock, Git, GitEvent, Ids, Notifier, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store,
 };
+use crate::session_catalog::{CatalogError, SessionCatalog, SessionInfo};
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
@@ -93,6 +94,8 @@ pub struct Ports {
     pub notifier: Box<dyn Notifier>,
     /// Git worktrees.
     pub git: Box<dyn Git>,
+    /// A CLI's past sessions.
+    pub sessions: Box<dyn SessionCatalog>,
 }
 
 /// Everything the engine reacts to.
@@ -121,6 +124,13 @@ pub enum Input {
         cli: CliKind,
         /// The list, or why it couldn't be read.
         result: Result<ModelList, String>,
+    },
+    /// The session catalog's answer to a request for an agent's past sessions.
+    SessionsListed {
+        /// Which agent.
+        agent: AgentName,
+        /// The sessions, or why they couldn't be read.
+        result: Result<Vec<SessionInfo>, CatalogError>,
     },
     /// A timer is due.
     Tick,
@@ -402,6 +412,8 @@ impl Engine {
             Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::ModelsListed { cli, result } => vec![Event::ModelsListed { cli, result }],
+            // R.7 turns the catalog's answer into events.
+            Input::SessionsListed { .. } => Vec::new(),
             Input::DirInventory(list) => self.on_dir_inventory(list),
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
@@ -481,6 +493,8 @@ impl Engine {
                 duo_cli,
             } => self.create_org(&template, your_name, duo_cli),
             Command::NewOrgFromTemplate { template } => self.start_replace(&template),
+            // R.7 lists the sessions, R.8 resumes one.
+            Command::ListSessions { .. } | Command::ResumeSession { .. } => Vec::new(),
         }
     }
 

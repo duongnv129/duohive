@@ -133,6 +133,7 @@ impl Setup {
         let dir_probes = Arc::clone(&dirs.1);
         let git = FakeGit::default();
         let git_log = Arc::clone(&git.calls);
+        let sessions = crate::testkit::FakeSessionCatalog::default();
         let ports = Ports {
             runtime: Box::new(runtime.clone()),
             store: Box::new(store.clone()),
@@ -141,6 +142,7 @@ impl Setup {
             dirs: Arc::new(dirs),
             notifier: Box::new(notifier),
             git: Box::new(git),
+            sessions: Box::new(sessions),
         };
         let adapters = Arc::new(Adapters::new(
             [self.claude.clone(), self.opencode.clone()]
