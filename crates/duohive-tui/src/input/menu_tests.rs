@@ -568,4 +568,9 @@ fn click_resume_menu_row_sends_list_sessions() {
         super::menu::choose(&mut m, at),
         [UiEffect::Send(Command::ListSessions { agent: n("pay-qa") })]
     );
+    let note = m.footer_note.as_deref().unwrap_or_default();
+    assert!(
+        note.starts_with("reading ") && note.ends_with("'s sessions…"),
+        "{note}"
+    );
 }

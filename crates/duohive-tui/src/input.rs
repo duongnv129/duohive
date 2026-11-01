@@ -739,6 +739,8 @@ pub(super) fn resume(m: &mut UiModel) -> Vec<UiEffect> {
         m.footer_note = Some(format!("{agent} is running · stop it first (s)"));
         return Vec::new();
     }
+    // No in-flight flag: a rejected command gets no answer, and `r` must never lock out.
+    m.footer_note = Some(m.reading_note(&agent));
     vec![UiEffect::Send(Command::ListSessions { agent })]
 }
 

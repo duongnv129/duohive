@@ -191,6 +191,65 @@ fn rebinding_resume_to_an_agent_pane_key_is_refused() {
     );
 }
 
+// ---- While the sessions are read ----
+
+fn reading_note(m: &UiModel, agent: &AgentName) -> String {
+    let cli = duohive_core::inherit::resolve(&m.org, agent)
+        .map_or(m.org.defaults.cli, |r| r.cli)
+        .display();
+    format!("reading {cli}'s sessions…")
+}
+
+#[test]
+fn r_sets_the_reading_note() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    assert_eq!(press(&mut m, key('r')), list(&agent));
+    let note = reading_note(&m, &agent);
+    assert!(note.starts_with("reading ") && note.ends_with("'s sessions…"));
+    assert_eq!(m.footer_note, Some(note));
+}
+
+#[test]
+fn reading_note_is_replaced_by_the_error_note() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    press(&mut m, key('r'));
+    m.apply(duohive_core::event::Event::SessionsUnreadable {
+        agent: agent.clone(),
+        reason: "disk gone".to_owned(),
+    });
+    let note = m.footer_note.clone().expect("a note");
+    assert!(note.starts_with("Couldn't read "), "{note}");
+    assert_eq!(m.error_note, Some(note));
+}
+
+#[test]
+fn reading_note_does_not_stick_after_the_picker_opens() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    press(&mut m, key('r'));
+    m.apply(duohive_core::event::Event::SessionsListed {
+        agent,
+        sessions: Vec::new(),
+    });
+    assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+    assert_eq!(m.footer_note, None);
+}
+
+#[test]
+fn reading_note_goes_with_the_next_action() {
+    let (mut m, _) = selected(AgentState::Stopped);
+    press(&mut m, key('r'));
+    press(&mut m, KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+    assert_eq!(m.footer_note, None);
+}
+
+#[test]
+fn r_again_while_reading_still_sends_the_command() {
+    let (mut m, agent) = selected(AgentState::Stopped);
+    assert_eq!(press(&mut m, key('r')), list(&agent));
+    assert_eq!(press(&mut m, key('r')), list(&agent));
+    assert!(m.footer_note.is_some());
+}
+
 // ---- A saved `r` binding beats Resume's default (v1 compatibility) ----
 
 fn with_saved_keys(m: &mut UiModel, keys: &[(&str, &str)]) {

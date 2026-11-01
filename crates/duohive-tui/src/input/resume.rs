@@ -90,6 +90,10 @@ impl UiModel {
     /// The engine listed `agent`'s sessions: open the picker, unless a dialog is up (the
     /// answer is dropped; focus is never stolen) or the agent is gone.
     pub(crate) fn sessions_listed(&mut self, agent: &AgentName, sessions: Vec<SessionInfo>) {
+        // The answer is in: "reading…" has done its job, whether or not the picker opens.
+        if self.footer_note.as_deref() == Some(self.reading_note(agent).as_str()) {
+            self.footer_note = None;
+        }
         let known = self.org.is_duo(agent) || self.org.find_agent(agent).is_some();
         if self.dialog.is_some() || self.wizard.is_some() || !known {
             return;
@@ -101,6 +105,14 @@ impl UiModel {
             .map_or_else(|| NO_DIR.to_owned(), |d| clean(&d));
         let picker = ResumePicker::new(agent.clone(), cli.display().to_owned(), dir, sessions);
         self.dialog = Some(Dialog::Resume(Box::new(picker)));
+    }
+
+    /// The footer note while `agent`'s CLI is read: `reading Claude Code's sessions…`.
+    pub(crate) fn reading_note(&self, agent: &AgentName) -> String {
+        let cli = resolve(&self.org, agent)
+            .map_or(self.org.defaults.cli, |r| r.cli)
+            .display();
+        format!("reading {cli}'s sessions…")
     }
 
     /// The sessions couldn't be listed: a note in `status.error`, the agent unchanged.
