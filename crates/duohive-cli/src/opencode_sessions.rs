@@ -167,7 +167,13 @@ pub(crate) fn run_session_list_with(
                 let _ = child.wait();
                 return Err(unreadable("opencode session list timed out"));
             }
-            Err(e) => return Err(unreadable(format!("can't wait for {binary}: {e}"))),
+            Err(e) => {
+                // Don't leak the process group or leave a zombie behind.
+                kill_group(child.id());
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(unreadable(format!("can't wait for {binary}: {e}")));
+            }
         }
     };
     let out = stdout.recv_timeout(STDERR_GRACE).unwrap_or_default();

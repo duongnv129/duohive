@@ -390,6 +390,23 @@ mod picker {
     }
 
     #[test]
+    fn answer_is_dropped_when_a_menu_is_open() {
+        let (mut m, agent) = resume_model(Vec::new());
+        m.dialog = None;
+        m.menu = Some(super::super::menu::build(
+            &m,
+            duohive_core::org::NodeKey::Agent(agent.clone()),
+            ratatui::layout::Position::new(0, 0),
+        ));
+        m.apply(Event::SessionsListed {
+            agent,
+            sessions: three_sessions(),
+        });
+        assert!(m.dialog.is_none());
+        assert!(m.menu.is_some());
+    }
+
+    #[test]
     fn answer_is_dropped_when_another_dialog_is_open() {
         let (mut m, agent) = resume_model(Vec::new());
         m.dialog = Some(Dialog::Worktrees(WorktreeList::default()));

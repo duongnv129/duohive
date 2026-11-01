@@ -541,7 +541,17 @@ fn resume_blocked_while_replacing() {
     });
     let events = resume(&mut h, "pay-qa", "s1");
     assert_eq!(rejected(&events), Some("the org is being replaced"));
-    assert!(launched(&h).len() <= 1);
+    // billing-api's own start is the one launch; the resume adds none.
+    assert_eq!(launched(&h).len(), 1);
+}
+
+#[test]
+fn unknown_agent_answer_is_not_cached() {
+    let mut h = Harness::new();
+    listed(&mut h, "ghost", vec![info("s1")]);
+    assert!(!h.engine.last_listed.contains_key(&n("ghost")));
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    assert!(h.engine.last_listed.contains_key(&n("pay-qa")));
 }
 
 #[test]

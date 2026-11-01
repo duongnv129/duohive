@@ -61,14 +61,12 @@ impl ResumePicker {
     /// matches on its title only.
     pub fn visible(&self) -> Vec<&SessionInfo> {
         let needle = self.search.to_lowercase();
+        // The screen shows the cleaned text, so that is what the search matches.
+        let shows = |text: &str| clean(text).to_lowercase().contains(&needle);
         self.sessions
             .iter()
             .filter(|s| {
-                needle.is_empty()
-                    || s.title.to_lowercase().contains(&needle)
-                    || s.branch
-                        .as_deref()
-                        .is_some_and(|b| b.to_lowercase().contains(&needle))
+                needle.is_empty() || shows(&s.title) || s.branch.as_deref().is_some_and(shows)
             })
             .collect()
     }
@@ -251,6 +249,24 @@ mod tests {
         p.clear_search();
         type_str(&mut p, "zzz");
         assert_eq!(p.count_label(), "0 of 0");
+    }
+
+    #[test]
+    fn search_matches_the_visible_text_not_hidden_bytes() {
+        let mut s = session("Fix \u{1b}[31mred\u{1b}[0m bug", mins(5), None, 0);
+        s.branch = Some("feat/\u{1b}]0;hidden\u{7}ui".to_owned());
+        let mut p = picker(vec![s]);
+        type_str(&mut p, "red bug");
+        assert_eq!(p.visible().len(), 1);
+        p.clear_search();
+        type_str(&mut p, "31m");
+        assert_eq!(p.visible().len(), 0);
+        p.clear_search();
+        type_str(&mut p, "hidden");
+        assert_eq!(p.visible().len(), 0);
+        p.clear_search();
+        type_str(&mut p, "feat/ui");
+        assert_eq!(p.visible().len(), 1);
     }
 
     #[test]

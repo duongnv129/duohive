@@ -79,7 +79,10 @@ impl Engine {
                 for s in &mut sessions {
                     s.in_use_by = self.holder_of(&s.id, &agent);
                 }
-                self.last_listed.insert(agent.clone(), sessions.clone());
+                // Nothing resumes an agent the org doesn't have: don't keep its list.
+                if self.knows(&agent) {
+                    self.last_listed.insert(agent.clone(), sessions.clone());
+                }
                 vec![Event::SessionsListed { agent, sessions }]
             }
         }

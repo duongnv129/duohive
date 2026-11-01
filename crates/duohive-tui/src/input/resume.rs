@@ -87,15 +87,15 @@ fn enter(m: &mut UiModel, mut p: Box<ResumePicker>) -> Vec<UiEffect> {
 }
 
 impl UiModel {
-    /// The engine listed `agent`'s sessions: open the picker, unless a dialog is up (the
-    /// answer is dropped; focus is never stolen) or the agent is gone.
+    /// The engine listed `agent`'s sessions: open the picker, unless a dialog or a menu is
+    /// up (the answer is dropped; focus is never stolen) or the agent is gone.
     pub(crate) fn sessions_listed(&mut self, agent: &AgentName, sessions: Vec<SessionInfo>) {
         // The answer is in: "reading…" has done its job, whether or not the picker opens.
         if self.footer_note.as_deref() == Some(self.reading_note(agent).as_str()) {
             self.footer_note = None;
         }
         let known = self.org.is_duo(agent) || self.org.find_agent(agent).is_some();
-        if self.dialog.is_some() || self.wizard.is_some() || !known {
+        if self.dialog.is_some() || self.wizard.is_some() || self.menu.is_some() || !known {
             return;
         }
         let resolved = resolve(&self.org, agent).ok();
