@@ -728,6 +728,7 @@ impl Engine {
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
             launched_as_duo: rt.launched_as_duo,
+            // TODO(R.6): carry the runtime's CLI session id here; None clobbers the stored id on every save.
             cli_session_id: None,
         };
         if let Err(e) = self.ports.store.save_session(&row) {
