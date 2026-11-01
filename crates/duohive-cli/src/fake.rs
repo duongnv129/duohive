@@ -216,6 +216,7 @@ mod tests {
             hook_exe: "/bin/duohive".into(),
             home: "/h".into(),
             cwd: None,
+            resume: None,
         }
     }
 

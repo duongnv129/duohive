@@ -23,7 +23,7 @@ pub(super) enum Exit {
 const MAX_SESSION_ID_LEN: usize = 128;
 
 /// An id is `[A-Za-z0-9_-]{1,128}`.
-fn is_valid_session_id(id: &str) -> bool {
+pub(super) fn is_valid_session_id(id: &str) -> bool {
     (1..=MAX_SESSION_ID_LEN).contains(&id.len())
         && id
             .bytes()

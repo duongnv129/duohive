@@ -52,6 +52,19 @@ pub struct LaunchSpec {
     /// Where to run instead of the agent's directory: a new worktree (TD §5.3).
     #[serde(default)]
     pub cwd: Option<PathBuf>,
+    /// An old session to pick up instead of starting a new one (v1.1). Then
+    /// `task` is `None`.
+    #[serde(default)]
+    pub resume: Option<ResumeTarget>,
+}
+
+/// The old session a launch picks up.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResumeTarget {
+    /// The CLI's own session id; it matches `[A-Za-z0-9_-]{1,128}`.
+    pub session_id: String,
+    /// The directory the session ran in; the CLI is started there.
+    pub cwd: PathBuf,
 }
 
 /// A file to write before launching; always under the run dir, mode 0600.

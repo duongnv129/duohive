@@ -53,6 +53,7 @@ mod tests {
             hook_exe: hook_exe.into(),
             home: "/h".into(),
             cwd: None,
+            resume: None,
         }
     }
 

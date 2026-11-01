@@ -2,13 +2,19 @@
 //! sessions a stopped agent could pick up, and marking those another agent holds.
 
 use super::lifecycle::{getting_ready, not_found};
+use super::signals::is_valid_session_id;
 use super::{Engine, reject};
 use crate::adapter::CliPresence;
+use crate::command::Command;
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
+use crate::launch::ResumeTarget;
 use crate::names::AgentName;
 use crate::session_catalog::{CatalogError, SessionInfo};
 use crate::status::AgentState;
+use crate::worktree::{TaskId, WorktreeState};
+
+const NOT_LISTED: &str = "that session isn't in the list \u{b7} open the picker again";
 
 impl Engine {
     /// `ListSessions`: asks the catalog for the sessions that ran in the
@@ -73,9 +79,87 @@ impl Engine {
                 for s in &mut sessions {
                     s.in_use_by = self.holder_of(&s.id, &agent);
                 }
+                self.last_listed.insert(agent.clone(), sessions.clone());
                 vec![Event::SessionsListed { agent, sessions }]
             }
         }
+    }
+
+    /// `ResumeSession`: starts the agent on an old session it was shown (V11-D3).
+    /// The checks run in order; the launch then goes the way any start does.
+    pub(super) fn resume_session(&mut self, agent: AgentName, session_id: String) -> Vec<Event> {
+        if !self.knows(&agent) {
+            return reject(format!("no agent named {agent}"));
+        }
+        if !is_valid_session_id(&session_id) {
+            return reject("that isn't a session id".to_owned());
+        }
+        if self.creating_worktree(&agent) {
+            return reject(getting_ready(&agent));
+        }
+        if self.state_of(&agent).is_running() {
+            return reject(format!("{agent} is running \u{b7} stop it first (s)"));
+        }
+        let Some(session) = self
+            .last_listed
+            .get(&agent)
+            .and_then(|l| l.iter().find(|s| s.id == session_id))
+            .cloned()
+        else {
+            return reject(NOT_LISTED.to_owned());
+        };
+        // Live, not from the list: two clicks can race (Review Focus 3).
+        if let Some(holder) = self.holder_of(&session_id, &agent) {
+            return reject(format!("{holder} is using this session"));
+        }
+        let mut out = Vec::new();
+        let worktree = match session.worktree.as_ref() {
+            None => None,
+            Some(task) => match self.kept_worktree(&agent, task, &mut out) {
+                Ok(w) => Some(w),
+                Err(reason) => {
+                    out.extend(reject(reason));
+                    return out;
+                }
+            },
+        };
+        if self.replace.is_some() {
+            return reject(super::replace::REPLACING.to_owned());
+        }
+        if self.cli.is_none() {
+            self.queued_launches
+                .push(Command::ResumeSession { agent, session_id });
+            return Vec::new();
+        }
+        let target = ResumeTarget {
+            session_id,
+            cwd: session.dir,
+        };
+        let in_worktree = worktree.is_some();
+        out.extend(self.launch(&agent, None, worktree, Some(target)));
+        if in_worktree {
+            // The row goes back to in use at the next publish (P2-D16).
+            self.worktrees_stale = true;
+        }
+        out
+    }
+
+    /// The agent's kept worktree for `task`, with its path, if a launch may use it.
+    fn kept_worktree(
+        &mut self,
+        agent: &AgentName,
+        task: &TaskId,
+        out: &mut Vec<Event>,
+    ) -> Result<(TaskId, std::path::PathBuf), String> {
+        let row = self
+            .worktree_rows(out)
+            .into_iter()
+            .find(|r| r.agent == *agent && r.task == *task)
+            .ok_or_else(|| NOT_LISTED.to_owned())?;
+        if row.state == WorktreeState::Removing {
+            return Err(format!("{agent}'s worktree is being removed"));
+        }
+        Ok((row.task, row.path))
     }
 
     /// The agent, other than `asking`, whose live session is `id`: running, or

@@ -197,7 +197,12 @@ impl Engine {
     ) -> Vec<Event> {
         let Creating { task, row, .. } = c;
         let id = row.task.clone();
-        let mut out = self.launch(agent, Some(task), Some((id.clone(), row.path.clone())));
+        let mut out = self.launch(
+            agent,
+            Some(task),
+            Some((id.clone(), row.path.clone())),
+            None,
+        );
         // P3-D23: a tool call waiting for this worktree is answered now.
         let result = if self.state_of(agent).is_running() {
             Ok(ToolOk::Given {

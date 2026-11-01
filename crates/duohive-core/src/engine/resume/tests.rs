@@ -8,11 +8,16 @@ use crate::adapter::CliPresence;
 use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
+use crate::hook::HookMessage;
+use crate::launch::ResumeTarget;
 use crate::names::AgentName;
 use crate::session_catalog::{CatalogError, SessionInfo};
 use crate::status::AgentState;
-use crate::testkit::n;
+use crate::templates::{SquadInput, TemplateInput};
+use crate::testkit::{RuntimeCall, n};
+use crate::tool::{CallId, ToolCall, ToolOk};
 use crate::worktree::{BaseRef, TaskId, WorktreeRow, WorktreeState};
+use serde_json::json;
 
 fn list(h: &mut Harness, agent: &str) -> Vec<Event> {
     h.send(Command::ListSessions { agent: n(agent) })
@@ -229,4 +234,346 @@ fn unreadable_answer_becomes_sessions_unreadable() {
             reason: "no such store".into(),
         }]
     );
+}
+
+// ---- Resume (Task R.8) ----
+
+fn resume(h: &mut Harness, agent: &str, id: &str) -> Vec<Event> {
+    h.send(Command::ResumeSession {
+        agent: n(agent),
+        session_id: id.into(),
+    })
+}
+
+/// The picker was opened for `agent` and showed `sessions`.
+fn listed(h: &mut Harness, agent: &str, sessions: Vec<SessionInfo>) {
+    h.input(Input::SessionsListed {
+        agent: n(agent),
+        result: Ok(sessions),
+    });
+}
+
+fn in_dir(id: &str, dir: &str) -> SessionInfo {
+    SessionInfo {
+        dir: PathBuf::from(dir),
+        ..info(id)
+    }
+}
+
+fn in_worktree(id: &str, agent: &str, task: &str) -> SessionInfo {
+    SessionInfo {
+        dir: worktree_row(agent, task).path,
+        worktree: Some(TaskId(task.into())),
+        ..info(id)
+    }
+}
+
+fn keep_row(h: &mut Harness, row: &WorktreeRow) {
+    h.store
+        .state
+        .lock()
+        .unwrap()
+        .worktrees
+        .insert((row.agent.clone(), row.task.clone()), row.clone());
+}
+
+fn launched(h: &Harness) -> Vec<crate::launch::LaunchSpec> {
+    h.claude.launches.lock().unwrap().clone()
+}
+
+fn hook_with(h: &mut Harness, agent: &str, event: &str, payload: serde_json::Value) {
+    let token = h.rt(agent).token.clone().unwrap();
+    h.input(Input::Hook(HookMessage {
+        sent_at_ms: 0,
+        token: token.0,
+        agent: agent.into(),
+        event: event.into(),
+        payload,
+    }));
+}
+
+#[test]
+fn resume_launches_with_the_session_and_no_task() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), None, "{events:?}");
+    let specs = launched(&h);
+    let [spec] = specs.as_slice() else {
+        panic!("expected one launch, got {specs:?}")
+    };
+    assert_eq!(spec.task, None);
+    assert_eq!(
+        spec.resume,
+        Some(ResumeTarget {
+            session_id: "s1".into(),
+            cwd: PathBuf::from("/home/me/code/pay-qa"),
+        })
+    );
+    assert_eq!(spec.cwd, None);
+    assert_eq!(h.state("pay-qa"), AgentState::Starting);
+}
+
+#[test]
+fn resume_runs_in_the_sessions_own_directory() {
+    let mut h = Harness::new();
+    listed(
+        &mut h,
+        "pay-qa",
+        vec![in_dir("s1", "/home/me/code/elsewhere")],
+    );
+    resume(&mut h, "pay-qa", "s1");
+    let specs = launched(&h);
+    assert_eq!(
+        specs[0].resume.as_ref().map(|r| r.cwd.clone()),
+        Some(PathBuf::from("/home/me/code/elsewhere"))
+    );
+}
+
+#[test]
+fn resume_in_a_kept_worktree_marks_it_in_use_again() {
+    let mut h = Harness::new();
+    let row = worktree_row("pay-qa", "t1");
+    keep_row(&mut h, &row);
+    listed(&mut h, "pay-qa", vec![in_worktree("s1", "pay-qa", "t1")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), None, "{events:?}");
+    assert_eq!(h.rt("pay-qa").worktree, Some(TaskId("t1".into())));
+    let st = h.store.state.lock().unwrap();
+    assert_eq!(
+        st.sessions[&n("pay-qa")].worktree,
+        Some(TaskId("t1".into()))
+    );
+    assert_eq!(
+        st.worktrees[&(n("pay-qa"), TaskId("t1".into()))].state,
+        WorktreeState::InUse
+    );
+    drop(st);
+    let specs = launched(&h);
+    assert_eq!(specs[0].cwd, Some(row.path.clone()));
+    assert_eq!(
+        specs[0].resume.as_ref().map(|r| r.cwd.clone()),
+        Some(row.path)
+    );
+}
+
+#[test]
+fn resume_on_errored_agent_kills_its_window_first() {
+    let mut h = Harness::new();
+    h.force_errored("pay-qa", "start timed out", Some("@9"));
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    resume(&mut h, "pay-qa", "s1");
+    let calls = h.calls();
+    let kill = calls
+        .iter()
+        .position(|c| matches!(c, RuntimeCall::Kill(..)));
+    let start = calls
+        .iter()
+        .position(|c| matches!(c, RuntimeCall::Start(..)));
+    assert!(
+        kill.is_some() && start.is_some() && kill < start,
+        "{calls:?}"
+    );
+    assert_eq!(h.state("pay-qa"), AgentState::Starting);
+}
+
+#[test]
+fn resume_refused_while_running() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    h.start("pay-qa");
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("pay-qa is running \u{b7} stop it first (s)")
+    );
+    assert_eq!(launched(&h).len(), 1);
+}
+
+#[test]
+fn resume_refused_when_session_in_use_by_another_agent() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    h.start("billing-api");
+    holds(&mut h, "billing-api", "s1");
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), Some("billing-api is using this session"));
+    assert_eq!(h.state("pay-qa"), AgentState::Stopped);
+}
+
+#[test]
+fn second_resume_of_same_session_is_refused() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    listed(&mut h, "billing-api", vec![info("s1")]);
+    let first = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&first), None, "{first:?}");
+    let second = resume(&mut h, "billing-api", "s1");
+    assert_eq!(rejected(&second), Some("pay-qa is using this session"));
+    assert_eq!(launched(&h).len(), 1);
+}
+
+#[test]
+fn resume_rejects_odd_session_id() {
+    let mut h = Harness::new();
+    for bad in ["", "a b", "../x", "a;b", &"x".repeat(129)] {
+        let events = resume(&mut h, "pay-qa", bad);
+        assert_eq!(
+            rejected(&events),
+            Some("that isn't a session id"),
+            "{bad:?}"
+        );
+    }
+    assert!(launched(&h).is_empty());
+}
+
+#[test]
+fn resume_records_the_launch_session_id() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    resume(&mut h, "pay-qa", "s1");
+    assert_eq!(h.rt("pay-qa").cli_session_id.as_deref(), Some("s1"));
+    let stored = |h: &Harness| {
+        h.store.state.lock().unwrap().sessions[&n("pay-qa")]
+            .cli_session_id
+            .clone()
+    };
+    assert_eq!(stored(&h).as_deref(), Some("s1"));
+    hook_with(&mut h, "pay-qa", "busy", json!({"session_id": "other"}));
+    assert_eq!(h.rt("pay-qa").cli_session_id.as_deref(), Some("s1"));
+    assert_eq!(stored(&h).as_deref(), Some("s1"));
+}
+
+#[test]
+fn queued_messages_arrive_at_the_first_rest_after_resume() {
+    let mut h = Harness::new();
+    h.start("squad-1");
+    hook_with(&mut h, "squad-1", "session-start", json!({}));
+    let token = h.rt("squad-1").token.clone().unwrap();
+    let out = h.send(Command::Tool {
+        call_id: CallId(7),
+        token,
+        call: ToolCall::SendMessage {
+            to: n("pay-qa"),
+            text: "hi".into(),
+        },
+    });
+    assert!(
+        out.iter().any(|e| matches!(
+            e,
+            Event::ToolResult {
+                result: Ok(ToolOk::Queued { .. }),
+                ..
+            }
+        )),
+        "{out:?}"
+    );
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    let pastes = |h: &Harness| {
+        h.calls()
+            .into_iter()
+            .filter(|c| matches!(c, RuntimeCall::Paste(a, ..) if *a == n("pay-qa")))
+            .count()
+    };
+    resume(&mut h, "pay-qa", "s1");
+    assert_eq!(pastes(&h), 0);
+    hook_with(&mut h, "pay-qa", "session-start", json!({}));
+    assert_eq!(pastes(&h), 1);
+}
+
+#[test]
+fn resume_while_cli_not_found_errors_like_any_start() {
+    let mut inventory = all_found();
+    for (k, p) in &mut inventory {
+        if *k == CliKind::Claude {
+            *p = CliPresence::Missing;
+        }
+    }
+    let mut h = Setup {
+        inventory: Some(inventory),
+        ..Setup::default()
+    }
+    .build();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    resume(&mut h, "pay-qa", "s1");
+    assert_eq!(h.state("pay-qa"), AgentState::Errored);
+    assert_eq!(
+        h.rt("pay-qa").status.error.as_deref(),
+        Some("claude not found \u{b7} install it or change its CLI (e)")
+    );
+    assert!(launched(&h).is_empty());
+}
+
+#[test]
+fn resume_blocked_while_replacing() {
+    let mut h = Harness::new();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    h.start("billing-api");
+    h.force("billing-api", AgentState::Working);
+    h.send(Command::NewOrgFromTemplate {
+        template: TemplateInput::AgentSquad(SquadInput {
+            size: 3,
+            directory: "~/code/app".into(),
+            cli: CliKind::Claude,
+            worktrees: false,
+            prompt: None,
+        }),
+    });
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), Some("the org is being replaced"));
+    assert!(launched(&h).len() <= 1);
+}
+
+#[test]
+fn resume_waits_for_the_cli_inventory_like_a_start() {
+    let mut h = Setup {
+        inventory: None,
+        ..Setup::default()
+    }
+    .build();
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), None);
+    assert!(launched(&h).is_empty());
+    h.input(Input::CliInventory(all_found()));
+    assert_eq!(launched(&h).len(), 1);
+}
+
+#[test]
+fn resume_rejects_unlisted_session() {
+    let mut h = Harness::new();
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("that session isn't in the list \u{b7} open the picker again")
+    );
+    listed(&mut h, "pay-qa", vec![info("s2")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("that session isn't in the list \u{b7} open the picker again")
+    );
+    assert!(launched(&h).is_empty());
+}
+
+#[test]
+fn resume_refused_for_worktree_being_removed() {
+    let mut h = Harness::new();
+    let mut row = worktree_row("pay-qa", "t1");
+    row.state = WorktreeState::Removing;
+    keep_row(&mut h, &row);
+    listed(&mut h, "pay-qa", vec![in_worktree("s1", "pay-qa", "t1")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("pay-qa's worktree is being removed")
+    );
+    // A row that is gone altogether is a stale list.
+    h.store.state.lock().unwrap().worktrees.clear();
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("that session isn't in the list \u{b7} open the picker again")
+    );
+    assert!(launched(&h).is_empty());
 }

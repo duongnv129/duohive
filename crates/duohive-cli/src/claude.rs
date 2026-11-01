@@ -444,6 +444,7 @@ mod tests {
             hook_exe: "/usr/local/bin/duohive".into(),
             home: "/home/u".into(),
             cwd: None,
+            resume: None,
         }
     }
 

@@ -263,6 +263,9 @@ pub struct Engine {
     replace_ready: bool,
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
+    /// The sessions last listed for each asking agent, for `ResumeSession` to
+    /// check an id against (v1.1). Replaced on every listing.
+    last_listed: HashMap<AgentName, Vec<SessionInfo>>,
     /// The Needs you list last reported in `NeedsYouChanged`.
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
@@ -335,6 +338,7 @@ impl Engine {
             replace: None,
             replace_ready: false,
             queued_launches: Vec::new(),
+            last_listed: HashMap::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
             replaying: false,
@@ -497,8 +501,7 @@ impl Engine {
             } => self.create_org(&template, your_name, duo_cli),
             Command::NewOrgFromTemplate { template } => self.start_replace(&template),
             Command::ListSessions { agent } => self.list_sessions(agent),
-            // R.8 resumes one.
-            Command::ResumeSession { .. } => Vec::new(),
+            Command::ResumeSession { agent, session_id } => self.resume_session(agent, session_id),
         }
     }
 

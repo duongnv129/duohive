@@ -60,6 +60,7 @@ mod tests {
             hook_exe: "/bin/duohive".into(),
             home: "/home/u".into(),
             cwd: cwd.map(PathBuf::from),
+            resume: None,
         }
     }
 
