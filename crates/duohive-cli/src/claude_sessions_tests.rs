@@ -333,6 +333,33 @@ fn untested_format_is_unreadable_not_a_crash() {
 }
 
 #[test]
+fn zero_length_jsonl_is_skipped_not_an_error() {
+    let env = Env::new();
+    let d = env.dir("p");
+    env.put(&d, "empty", "", 5);
+    assert_eq!(
+        read_claude_sessions(&env.home(), &[(d, None)]),
+        Ok(Vec::new())
+    );
+}
+
+#[test]
+fn empty_file_next_to_a_good_one_lists_the_good_one() {
+    let env = Env::new();
+    let d = env.dir("p");
+    env.put(&d, "empty", "", 5);
+    env.put(
+        &d,
+        TITLED,
+        "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"hi\"}}\n",
+        6,
+    );
+    let found = list(&env, &[(d, None)]);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert_eq!(found[0].id, TITLED);
+}
+
+#[test]
 fn missing_project_folder_is_empty_not_an_error() {
     let env = Env::new();
     let d = env.dir("nothing");

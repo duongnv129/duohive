@@ -68,7 +68,11 @@ pub fn read_claude_sessions(
             let Some(id) = session_id(&entry.path()) else {
                 continue;
             };
-            files_seen += 1;
+            // An empty file (a session just started, or a crash before its first write) is
+            // not evidence of a changed format.
+            if entry.metadata().is_ok_and(|md| md.len() > 0) {
+                files_seen += 1;
+            }
             if let Some((found, cwd)) = read_session(&entry.path(), &id) {
                 // The record's `cwd` names the dir (R1.2); else the first requested one.
                 let (dir, task) = cwd
