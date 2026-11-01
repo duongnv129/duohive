@@ -25,7 +25,7 @@ use ratatui::layout::Rect;
 use crate::chat::{self, ChatLines};
 use crate::first_run::FirstRun;
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, SettingsState};
+use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, ResumePicker, SettingsState};
 use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
@@ -44,6 +44,8 @@ pub enum Dialog {
     Worktrees(WorktreeList),
     /// Where a node can move to (UI §4.4.2).
     MoveTo(Box<MoveTo>),
+    /// An agent's past sessions (UI §4.13).
+    Resume(Box<ResumePicker>),
     /// Personal settings (UI §4.10).
     Settings(SettingsState),
     /// The key map (UI §4.11).
@@ -76,6 +78,8 @@ pub struct Confirm {
     pub back: Option<Box<Form>>,
     /// The worktree list that asked, with its cursor: cancel and yes go back to it.
     pub back_list: Option<WorktreeList>,
+    /// The resume picker that asked: cancel goes back to it, yes closes it.
+    pub back_resume: Option<Box<ResumePicker>>,
 }
 
 /// The directory probe forms use; equal only to itself, so the model stays comparable.
@@ -129,6 +133,8 @@ pub struct UiModel {
     pub selected: NodeKey,
     /// A one-off message that replaces the footer's keys.
     pub footer_note: Option<String>,
+    /// The text of a footer note that is an error, drawn in `status.error`.
+    pub error_note: Option<String>,
     /// The open dialog.
     pub dialog: Option<Dialog>,
     /// Agents still being reattached at start-up; 0 = none.
@@ -215,6 +221,7 @@ impl UiModel {
             settings_error: None,
             selected: NodeKey::Duo,
             footer_note: None,
+            error_note: None,
             dialog: None,
             reconnecting: 0,
             settings: Settings::default(),
@@ -269,6 +276,7 @@ impl UiModel {
     }
 
     /// Applies an engine event; `true` when the screen needs a redraw.
+    #[expect(clippy::too_many_lines, reason = "one arm per engine event")]
     pub fn apply(&mut self, e: Event) -> bool {
         match e {
             Event::Snapshot(s) => self.apply_snapshot(*s),
@@ -374,8 +382,8 @@ impl UiModel {
             Event::ModelsListed { cli, result } => self.models_listed(cli, result),
             // Duo's tool results show as its action lines (UI §4.6).
             Event::ToolResult { .. } => {}
-            // R.13 shows the resume picker.
-            Event::SessionsListed { .. } | Event::SessionsUnreadable { .. } => {}
+            Event::SessionsListed { agent, sessions } => self.sessions_listed(&agent, sessions),
+            Event::SessionsUnreadable { agent, reason } => self.sessions_failed(&agent, &reason),
         }
         true
     }

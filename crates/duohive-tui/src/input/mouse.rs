@@ -103,6 +103,17 @@ fn on_menu(m: &mut UiModel, ev: MouseEvent, at: Position) -> Vec<UiEffect> {
 
 /// A left press in a dialog or the wizard: the keys the clicked button or row stands for.
 fn on_dialog(m: &mut UiModel, ev: MouseEvent, at: Position) -> Vec<UiEffect> {
+    // The wheel moves the resume picker's highlight, as `↑↓` do.
+    if matches!(m.dialog, Some(crate::model::Dialog::Resume(_))) {
+        let wheel = match ev.kind {
+            MouseEventKind::ScrollUp => Some(super::Action::Up),
+            MouseEventKind::ScrollDown => Some(super::Action::Down),
+            _ => None,
+        };
+        if let Some(a) = wheel {
+            return super::update(m, a);
+        }
+    }
     if ev.kind != MouseEventKind::Down(MouseButton::Left) {
         return Vec::new();
     }

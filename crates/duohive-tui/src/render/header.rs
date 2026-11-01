@@ -186,6 +186,8 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
             format!(" {HINT}{newline}")
         }
         (None, Some(Dialog::Chooser(_))) => format!(" {CHOOSER_HINT}"),
+        // The picker draws its own hint.
+        (None, Some(Dialog::Resume(_))) => String::new(),
         (None, Some(Dialog::Worktrees(_))) =>
         // The list draws its own hint (UI §4.9); a note still shows.
         {
@@ -204,7 +206,9 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
         }
         .clone(),
     };
-    put(buf, r.x, r.y, &text, usize::from(r.width), fg(p.fg_muted));
+    let error = m.footer_note.is_some() && m.footer_note == m.error_note;
+    let color = if error { p.error } else { p.fg_muted };
+    put(buf, r.x, r.y, &text, usize::from(r.width), fg(color));
 }
 
 /// The org pane's keys (P2-D9), with `? help` (UI §4.11).

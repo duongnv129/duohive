@@ -12,6 +12,7 @@ mod give_work;
 mod line_edit;
 mod move_to;
 mod org;
+mod resume_picker;
 mod role;
 mod settings;
 mod team;
@@ -34,6 +35,7 @@ pub use field::{Field, FieldId, FieldKind, Look};
 pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
 pub use move_to::{InheritedChange, MoveOption, MoveTo, node_name, valid_targets};
+pub use resume_picker::{RECENT_MS, ResumePicker, age_text, clean, size_text};
 pub use settings::{
     SettingsRow, SettingsState, cycled, name_typed, quiet_stepped, quiet_typed, toggled,
 };
@@ -750,6 +752,7 @@ pub(crate) fn confirm(title: String, lines: Vec<String>, yes: &str, edit: OrgEdi
         on_yes: Command::EditOrg(edit),
         back: None,
         back_list: None,
+        back_resume: None,
     }
 }
 

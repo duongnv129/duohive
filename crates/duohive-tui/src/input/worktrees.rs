@@ -84,6 +84,7 @@ fn remove(m: &mut UiModel, l: WorktreeList) -> Vec<UiEffect> {
     };
     m.dialog = Some(Dialog::Confirm(Box::new(Confirm {
         back_list: Some(l),
+        back_resume: None,
         ..*c
     })));
     Vec::new()

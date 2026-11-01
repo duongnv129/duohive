@@ -213,6 +213,10 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.modifiers.contains(KeyModifiers::ALT) {
         return None;
     }
+    // The picker's search box takes every printable key, `q` included.
+    if matches!(m.dialog, Some(Dialog::Resume(_))) {
+        return resume::map_key(k);
+    }
     let common = match k.code {
         KeyCode::Esc => Some(Action::Esc),
         KeyCode::Tab => Some(Action::Tab),
@@ -283,7 +287,7 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             _ => None,
         },
         // Forms and Give work took their keys above, before `common`.
-        Dialog::Form(_) | Dialog::GiveWork(_) => None,
+        Dialog::Form(_) | Dialog::GiveWork(_) | Dialog::Resume(_) => None,
     }
 }
 
@@ -388,6 +392,7 @@ fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
                 on_yes: *command,
                 back: None,
                 back_list: None,
+                back_resume: None,
             };
             m.dialog = Some(Dialog::Confirm(Box::new(confirm)));
             Vec::new()
@@ -419,6 +424,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
         Some(Dialog::MoveTo(p)) => return move_to::action(m, p, a),
+        Some(Dialog::Resume(p)) => return resume::action(m, p, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
         Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
@@ -585,6 +591,12 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
     }
     if let Some(list) = c.back_list {
         m.dialog = Some(Dialog::Worktrees(list));
+    }
+    if let Some(mut picker) = c.back_resume
+        && !yes
+    {
+        picker.confirm = None;
+        m.dialog = Some(Dialog::Resume(picker));
     }
     if yes {
         vec![UiEffect::Send(c.on_yes)]
@@ -865,6 +877,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
         on_yes,
         back: None,
         back_list: None,
+        back_resume: None,
     }))
 }
 
@@ -877,6 +890,7 @@ mod menu;
 pub(crate) mod mouse;
 mod move_to;
 mod panes;
+pub(crate) mod resume;
 mod select;
 mod settings;
 mod worktrees;

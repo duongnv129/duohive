@@ -190,3 +190,273 @@ fn rebinding_resume_to_an_agent_pane_key_is_refused() {
         })
     );
 }
+
+// ---- The picker (UI §4.13) ----
+
+mod picker {
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseEvent, MouseEventKind};
+    use duohive_core::command::Command;
+    use duohive_core::event::Event;
+    use duohive_core::testkit::n;
+    use ratatui::layout::Rect;
+
+    use super::super::mouse::on_mouse;
+    use super::super::mouse_tests::{cell_of, mouse, press};
+    use super::super::{Action, UiEffect, map_key, update};
+    use crate::fixtures::{resume_model, three_sessions};
+    use crate::forms::ResumePicker;
+    use crate::model::{Dialog, UiModel, WorktreeList};
+
+    fn code(c: KeyCode) -> KeyEvent {
+        KeyEvent::new(c, KeyModifiers::NONE)
+    }
+
+    fn press_key(m: &mut UiModel, k: KeyEvent) -> Vec<UiEffect> {
+        match map_key(m, k) {
+            Some(a) => update(m, a),
+            None => Vec::new(),
+        }
+    }
+
+    fn type_str(m: &mut UiModel, s: &str) {
+        for c in s.chars() {
+            let out = press_key(m, code(KeyCode::Char(c)));
+            assert_eq!(out, [], "{c}");
+        }
+    }
+
+    fn picker(m: &UiModel) -> &ResumePicker {
+        match &m.dialog {
+            Some(Dialog::Resume(p)) => p,
+            other => panic!("not the picker: {other:?}"),
+        }
+    }
+
+    fn resume_cmd(title: &str) -> UiEffect {
+        UiEffect::Send(Command::ResumeSession {
+            agent: n("pay-qa"),
+            session_id: format!("id-{title}"),
+        })
+    }
+
+    #[test]
+    fn the_answer_opens_the_picker_titled_with_the_agent() {
+        let (m, agent) = resume_model(three_sessions());
+        let p = picker(&m);
+        assert_eq!(p.agent, agent);
+        assert_eq!(p.cursor, 0);
+        assert_eq!(p.cli_label, "Claude Code");
+        assert_eq!(p.sessions.len(), 3);
+    }
+
+    #[test]
+    fn answer_is_dropped_when_another_dialog_is_open() {
+        let (mut m, agent) = resume_model(Vec::new());
+        m.dialog = Some(Dialog::Worktrees(WorktreeList::default()));
+        m.apply(Event::SessionsListed {
+            agent,
+            sessions: three_sessions(),
+        });
+        assert!(matches!(m.dialog, Some(Dialog::Worktrees(_))));
+    }
+
+    #[test]
+    fn answer_for_an_unknown_agent_is_dropped() {
+        let (mut m, _) = resume_model(Vec::new());
+        m.dialog = None;
+        m.apply(Event::SessionsListed {
+            agent: n("ghost"),
+            sessions: three_sessions(),
+        });
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn unreadable_is_a_footer_note_and_no_dialog() {
+        let (mut m, agent) = resume_model(Vec::new());
+        m.dialog = None;
+        let before = m.agents.clone();
+        m.apply(Event::SessionsUnreadable {
+            agent,
+            reason: "boom".to_owned(),
+        });
+        assert_eq!(m.dialog, None);
+        assert_eq!(
+            m.footer_note.as_deref(),
+            Some("Couldn't read Claude Code's sessions: boom")
+        );
+        assert_eq!(m.agents, before);
+    }
+
+    #[test]
+    fn enter_sends_resume_session() {
+        let (mut m, _) = resume_model(three_sessions());
+        press_key(&mut m, code(KeyCode::Down));
+        let out = press_key(&mut m, code(KeyCode::Enter));
+        assert_eq!(out, [resume_cmd("Payout ledger migration")]);
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn esc_clears_search_then_closes() {
+        let (mut m, _) = resume_model(three_sessions());
+        type_str(&mut m, "web");
+        assert_eq!(picker(&m).search, "web");
+        press_key(&mut m, code(KeyCode::Esc));
+        assert_eq!(picker(&m).search, "");
+        assert_eq!(picker(&m).visible().len(), 3);
+        press_key(&mut m, code(KeyCode::Esc));
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn backspace_edits_the_search() {
+        let (mut m, _) = resume_model(three_sessions());
+        type_str(&mut m, "abc");
+        press_key(&mut m, code(KeyCode::Backspace));
+        assert_eq!(picker(&m).search, "ab");
+    }
+
+    #[test]
+    fn typing_goes_to_search_not_global_keys() {
+        let (mut m, _) = resume_model(three_sessions());
+        type_str(&mut m, "qsr? ,wzmfn");
+        assert_eq!(picker(&m).search, "qsr? ,wzmfn");
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+    }
+
+    #[test]
+    fn in_use_entry_ignores_enter_and_footer_says_who() {
+        let mut sessions = three_sessions();
+        sessions[1].in_use_by = Some(n("squad-2"));
+        let (mut m, _) = resume_model(sessions);
+        press_key(&mut m, code(KeyCode::Down));
+        let out = press_key(&mut m, code(KeyCode::Enter));
+        assert_eq!(out, []);
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+        assert_eq!(
+            m.footer_note.as_deref(),
+            Some("squad-2 is using this session")
+        );
+    }
+
+    #[test]
+    fn enter_on_recent_asks_with_cancel_focused() {
+        let (mut m, _) = resume_model(three_sessions());
+        let out = press_key(&mut m, code(KeyCode::Enter));
+        assert_eq!(out, []);
+        let Some(Dialog::Confirm(c)) = &m.dialog else {
+            panic!("no confirmation: {:?}", m.dialog);
+        };
+        assert_eq!(
+            c.lines,
+            [
+                r#"Resume "Retry loop for failed payouts"? It was active 3 minutes ago and may still be open in another terminal."#
+            ]
+        );
+        assert!(!c.focus_yes);
+        assert_eq!(c.yes_label, "Resume");
+    }
+
+    #[test]
+    fn cancel_returns_to_the_picker_unchanged() {
+        let (mut m, _) = resume_model(three_sessions());
+        type_str(&mut m, "payout");
+        press_key(&mut m, code(KeyCode::Down));
+        let before = picker(&m).clone();
+        // Cursor 1 is "Retry..."? "payout" matches two: the recent one is first.
+        press_key(&mut m, code(KeyCode::Up));
+        press_key(&mut m, code(KeyCode::Enter));
+        assert!(matches!(m.dialog, Some(Dialog::Confirm(_))));
+        // `enter` with Cancel focused cancels.
+        let out = press_key(&mut m, code(KeyCode::Enter));
+        assert_eq!(out, []);
+        let after = picker(&m);
+        assert_eq!(after.search, "payout");
+        assert_eq!(after.cursor, 0);
+        assert_eq!(after.confirm, None);
+        assert_eq!(after.sessions, before.sessions);
+    }
+
+    #[test]
+    fn y_on_the_confirmation_resumes() {
+        let (mut m, _) = resume_model(three_sessions());
+        press_key(&mut m, code(KeyCode::Enter));
+        let out = press_key(&mut m, code(KeyCode::Char('y')));
+        assert_eq!(out, [resume_cmd("Retry loop for failed payouts")]);
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn click_row_selects_and_double_click_or_enter_resumes() {
+        let (mut m, _) = resume_model(three_sessions());
+        let (x, y) = cell_of(&m, Rect::new(0, 0, 120, 36), "Flaky webhook test");
+        let out = on_mouse(&mut m, press(x, y));
+        assert_eq!(out, [resume_cmd("Flaky webhook test")]);
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn click_on_a_recent_row_asks_first() {
+        let (mut m, _) = resume_model(three_sessions());
+        let (x, y) = cell_of(&m, Rect::new(0, 0, 120, 36), "Retry loop");
+        assert_eq!(on_mouse(&mut m, press(x, y)), []);
+        assert!(matches!(m.dialog, Some(Dialog::Confirm(_))));
+    }
+
+    #[test]
+    fn click_confirm_buttons() {
+        let (mut m, _) = resume_model(three_sessions());
+        press_key(&mut m, code(KeyCode::Enter));
+        let screen = Rect::new(0, 0, 120, 36);
+        let (x, y) = cell_of(&m, screen, "[ n Cancel ]");
+        assert_eq!(on_mouse(&mut m, press(x, y)), []);
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+        press_key(&mut m, code(KeyCode::Enter));
+        let (x, y) = cell_of(&m, screen, "[ y Resume ]");
+        let out = on_mouse(&mut m, press(x, y));
+        assert_eq!(out, [resume_cmd("Retry loop for failed payouts")]);
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn click_outside_the_dialog_is_ignored() {
+        let (mut m, _) = resume_model(three_sessions());
+        assert_eq!(on_mouse(&mut m, press(0, 0)), []);
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+    }
+
+    #[test]
+    fn the_wheel_scrolls_the_list() {
+        let (mut m, _) = resume_model(three_sessions());
+        let wheel = |kind: MouseEventKind| -> MouseEvent { mouse(kind, 60, 18) };
+        on_mouse(&mut m, wheel(MouseEventKind::ScrollDown));
+        assert_eq!(picker(&m).cursor, 1);
+        on_mouse(&mut m, wheel(MouseEventKind::ScrollUp));
+        assert_eq!(picker(&m).cursor, 0);
+    }
+
+    #[test]
+    fn empty_list_opens_and_esc_closes() {
+        let (mut m, _) = resume_model(Vec::new());
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+        assert_eq!(press_key(&mut m, code(KeyCode::Enter)), []);
+        assert!(matches!(m.dialog, Some(Dialog::Resume(_))));
+        press_key(&mut m, code(KeyCode::Esc));
+        assert_eq!(m.dialog, None);
+    }
+
+    #[test]
+    fn up_down_page_clamp() {
+        let (mut m, _) = resume_model(three_sessions());
+        press_key(&mut m, code(KeyCode::Up));
+        assert_eq!(picker(&m).cursor, 0);
+        press_key(&mut m, code(KeyCode::PageDown));
+        assert_eq!(picker(&m).cursor, 2);
+        press_key(&mut m, code(KeyCode::Down));
+        assert_eq!(picker(&m).cursor, 2);
+        press_key(&mut m, code(KeyCode::PageUp));
+        assert_eq!(picker(&m).cursor, 0);
+        let _ = Action::Up;
+    }
+}
