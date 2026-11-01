@@ -22,12 +22,13 @@ pub(super) enum Exit {
 /// Longest CLI session id kept.
 const MAX_SESSION_ID_LEN: usize = 128;
 
-/// An id is `[A-Za-z0-9_-]{1,128}`.
+/// An id is `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`: it never starts with a dash, so
+/// on a CLI's argv it can't be read as an option.
 pub(super) fn is_valid_session_id(id: &str) -> bool {
+    let word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
     (1..=MAX_SESSION_ID_LEN).contains(&id.len())
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        && id.bytes().next().is_some_and(word)
+        && id.bytes().all(|b| word(b) || b == b'-')
 }
 
 /// What the exit rules decide (TD §5.5).

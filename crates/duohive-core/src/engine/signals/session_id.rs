@@ -56,6 +56,18 @@ fn id_with_odd_characters_is_ignored() {
 }
 
 #[test]
+fn id_with_leading_dash_is_ignored() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    for bad in ["-x", "--help", "-"] {
+        hook_with(&mut h, "busy", json!({"session_id": bad}));
+        assert_eq!(h.rt("pay-qa").cli_session_id, None, "{bad:?}");
+    }
+    hook_with(&mut h, "busy", json!({"session_id": "3f2a-b-c"}));
+    assert_eq!(h.rt("pay-qa").cli_session_id.as_deref(), Some("3f2a-b-c"));
+}
+
+#[test]
 fn save_row_keeps_cli_session_id() {
     let mut h = Harness::new();
     h.start("pay-qa");

@@ -416,7 +416,16 @@ fn second_resume_of_same_session_is_refused() {
 #[test]
 fn resume_rejects_odd_session_id() {
     let mut h = Harness::new();
-    for bad in ["", "a b", "../x", "a;b", &"x".repeat(129)] {
+    for bad in [
+        "",
+        "-x",
+        "--help",
+        "-",
+        "a b",
+        "../x",
+        "a;b",
+        &"x".repeat(129),
+    ] {
         let events = resume(&mut h, "pay-qa", bad);
         assert_eq!(
             rejected(&events),
@@ -425,6 +434,17 @@ fn resume_rejects_odd_session_id() {
         );
     }
     assert!(launched(&h).is_empty());
+}
+
+#[test]
+fn resume_accepts_real_session_id_shapes() {
+    let mut h = Harness::new();
+    for ok in ["3f2a9c1e-0b7d-4e55-9a11-6c2d8f0e1b34", "ses_abc123"] {
+        listed(&mut h, "pay-qa", vec![info(ok)]);
+        let events = resume(&mut h, "pay-qa", ok);
+        assert_eq!(rejected(&events), None, "{ok}");
+        h.force("pay-qa", AgentState::Stopped);
+    }
 }
 
 #[test]

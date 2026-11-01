@@ -61,7 +61,8 @@ pub struct LaunchSpec {
 /// The old session a launch picks up.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResumeTarget {
-    /// The CLI's own session id; it matches `[A-Za-z0-9_-]{1,128}`.
+    /// The CLI's own session id; it matches `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`
+    /// (never a leading dash, so argv can't read it as an option).
     pub session_id: String,
     /// The directory the session ran in; the CLI is started there.
     pub cwd: PathBuf,
