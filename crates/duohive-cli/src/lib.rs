@@ -1,6 +1,7 @@
 //! The CLI adapters: Claude Code and OpenCode.
 
 pub mod claude;
+pub mod claude_sessions;
 pub mod detect;
 pub mod fake;
 pub mod hooks_json;

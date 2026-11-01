@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli_kind::CliKind;
 use crate::launch::{Key, LaunchCommand, LaunchSpec};
+use crate::session_catalog::{CatalogError, SessionInfo};
 use crate::status::WaitingOn;
+use crate::worktree::TaskId;
 
 /// The models and efforts a CLI offers, read from the CLI itself (TD §5.2).
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -187,6 +189,18 @@ pub trait CliAdapter: Send + Sync {
     }
     /// Adds to a hook payload before parsing (may read files). Called by the hook listener, never the engine.
     fn enrich_hook(&self, _event: &str, _payload: &mut serde_json::Value) {}
+    /// Lists the CLI's past sessions that ran in any of `dirs` (each with the
+    /// worktree task it belongs to, if any). Blocking, read-only; called off the
+    /// core task.
+    fn list_sessions(
+        &self,
+        _home: &std::path::Path,
+        _dirs: &[(std::path::PathBuf, Option<TaskId>)],
+    ) -> Result<Vec<SessionInfo>, CatalogError> {
+        Err(CatalogError::Unreadable(
+            "sessions of this CLI can't be listed".into(),
+        ))
+    }
 }
 
 /// The adapters in use; shared as `Arc<Adapters>`.
