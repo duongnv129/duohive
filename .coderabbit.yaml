@@ -1,0 +1,57 @@
+# CodeRabbit review settings for DuoHive (https://docs.coderabbit.ai/reference/configuration).
+# The CodeRabbit GitHub app must be installed on the repository for this file to take effect.
+language: en-US
+
+reviews:
+  # Calm reviews: the project gate (make check) already catches format, lint and tests.
+  profile: chill
+  high_level_summary: true
+  poem: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "^main$"
+
+  path_filters:
+    - "!**/*.snap"
+    - "!Cargo.lock"
+    - "!.superpowers/**"
+
+  path_instructions:
+    - path: "crates/**/*.rs"
+      instructions: |
+        Project rules (see AGENTS.md): no `unwrap` or `expect` outside tests; no `unsafe`
+        except in `crates/duohive/src/bench/measure.rs`, each block under
+        `#[expect(unsafe_code, reason = "...")]`. Tests must not call `std::env::set_var`.
+        Flag a new behaviour that has no test.
+    - path: "crates/duohive-core/**"
+      instructions: |
+        `duohive-core` does no I/O and depends on no other `duohive-*` crate. Flag any file,
+        process, network or clock access, and any new dependency on a sibling crate.
+        The other crates may depend only on `duohive-core`; only `duohive` depends on all.
+    - path: "crates/duohive-tmux/**"
+      instructions: |
+        tmux tests must use a throwaway socket, never the `duohive` socket.
+    - path: "docs/**"
+      instructions: |
+        The PRD decides what, the UI/UX spec decides how it looks, and the technical design
+        decides how it is built. Flag a change to one of them that contradicts the other two.
+        Quoted user-facing strings must match the code.
+    - path: ".github/workflows/**"
+      instructions: |
+        Actions must be pinned to commit SHAs and run with least-privilege `permissions`.
+        Flag secrets exposed to pull requests from forks.
+
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+    title:
+      mode: warning
+      requirements: >-
+        Conventional commit title: feat, fix, docs, test, chore, ci, refactor or perf,
+        followed by a colon and a short description.
+
+chat:
+  auto_reply: true
