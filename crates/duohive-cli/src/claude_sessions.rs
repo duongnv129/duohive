@@ -12,6 +12,9 @@ use duohive_core::session_catalog::{CatalogError, SessionInfo};
 use duohive_core::worktree::TaskId;
 use serde_json::Value;
 
+/// A requested directory (resolved) and the worktree task it belongs to.
+type Owner = (PathBuf, Option<TaskId>);
+
 /// How much of a file's start, and of its end, is read.
 const CHUNK_BYTES: u64 = 256 * 1024;
 /// A title or first prompt is cut after this many characters.
@@ -31,19 +34,24 @@ pub fn read_claude_sessions(
     home: &Path,
     dirs: &[(PathBuf, Option<TaskId>)],
 ) -> Result<Vec<SessionInfo>, CatalogError> {
-    let mut sessions = Vec::new();
-    let mut files_seen = 0_usize;
-    let mut seen_dirs: Vec<PathBuf> = Vec::new();
+    // Group the requested dirs by project folder: two dirs can encode to one folder.
+    let mut groups: Vec<(PathBuf, Vec<Owner>)> = Vec::new();
     for (dir, task) in dirs {
         let resolved = fs::canonicalize(dir).unwrap_or_else(|_| dir.clone());
-        if seen_dirs.contains(&resolved) {
-            continue;
-        }
         let folder = home
             .join(".claude")
             .join("projects")
             .join(folder_name(&resolved));
-        let entries = match fs::read_dir(&folder) {
+        match groups.iter_mut().find(|(f, _)| *f == folder) {
+            Some((_, owners)) if owners.iter().any(|(d, _)| *d == resolved) => {}
+            Some((_, owners)) => owners.push((resolved, task.clone())),
+            None => groups.push((folder, vec![(resolved, task.clone())])),
+        }
+    }
+    let mut sessions = Vec::new();
+    let mut files_seen = 0_usize;
+    for (folder, owners) in &groups {
+        let entries = match fs::read_dir(folder) {
             Ok(entries) => entries,
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
             Err(e) => {
@@ -61,15 +69,18 @@ pub fn read_claude_sessions(
                 continue;
             };
             files_seen += 1;
-            if let Some(found) = read_session(&entry.path(), &id) {
+            if let Some((found, cwd)) = read_session(&entry.path(), &id) {
+                // The record's `cwd` names the dir (R1.2); else the first requested one.
+                let (dir, task) = cwd
+                    .and_then(|c| owners.iter().find(|(d, _)| *d == Path::new(&c)))
+                    .unwrap_or(&owners[0]);
                 sessions.push(SessionInfo {
-                    dir: resolved.clone(),
+                    dir: dir.clone(),
                     worktree: task.clone(),
                     ..found
                 });
             }
         }
-        seen_dirs.push(resolved);
     }
     if files_seen > 0 && sessions.is_empty() {
         return Err(CatalogError::Unreadable(
@@ -112,12 +123,13 @@ fn session_id(path: &Path) -> Option<String> {
 #[derive(Default)]
 struct Facts {
     recognised: bool,
+    cwd: Option<String>,
     branch: Option<String>,
     title: Option<String>,
     first_prompt: Option<String>,
 }
 
-fn read_session(path: &Path, id: &str) -> Option<SessionInfo> {
+fn read_session(path: &Path, id: &str) -> Option<(SessionInfo, Option<String>)> {
     let meta = fs::metadata(path).ok().filter(fs::Metadata::is_file)?;
     let records = read_records(path, meta.len()).ok()?;
     let mut facts = Facts::default();
@@ -137,7 +149,7 @@ fn read_session(path: &Path, id: &str) -> Option<SessionInfo> {
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-    Some(SessionInfo {
+    let info = SessionInfo {
         id: id.to_owned(),
         title,
         updated_ms,
@@ -146,7 +158,8 @@ fn read_session(path: &Path, id: &str) -> Option<SessionInfo> {
         dir: PathBuf::new(),
         worktree: None,
         in_use_by: None,
-    })
+    };
+    Some((info, facts.cwd))
 }
 
 /// The JSON objects in the first and last `CHUNK_BYTES` of the file, in order.
@@ -197,6 +210,9 @@ fn absorb(facts: &mut Facts, record: &Value) {
         return;
     };
     facts.recognised = true;
+    if facts.cwd.is_none() {
+        facts.cwd = record.get("cwd").and_then(Value::as_str).map(str::to_owned);
+    }
     if let Some(branch) = record.get("gitBranch").and_then(Value::as_str) {
         facts.branch = (!branch.is_empty() && branch != NO_BRANCH).then(|| branch.to_owned());
     }

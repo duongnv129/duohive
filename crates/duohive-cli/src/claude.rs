@@ -130,7 +130,8 @@ impl CliAdapter for ClaudeAdapter {
             args.push(format!("--effort={effort}"));
         }
         args.extend(agent.flags.iter().cloned());
-        if let Some(task) = &spec.task {
+        // A resumed session continues its own conversation: no task.
+        if let (Some(task), None) = (&spec.task, &spec.resume) {
             // `--` keeps a task that starts with `-` from being read as options (S1.8).
             args.extend(["--".to_owned(), task.clone()]);
         }
@@ -526,14 +527,20 @@ mod tests {
 
     #[test]
     fn launch_resume_has_no_task_prompt() {
-        let cmd = launch(&resume_spec());
+        let mut s = resume_spec();
+        s.task = Some("do the thing".into());
+        let cmd = launch(&s);
         let at = cmd.args.iter().position(|a| a == "--resume").unwrap();
         assert_eq!(cmd.args[at + 1], "81dd1d5a-cb77-4275-bf08-34e237ce08da");
+        assert!(!cmd.args.iter().any(|a| a.contains("do the thing")));
         assert!(!cmd.args.contains(&"--".to_owned()));
         for flag in ["--settings", "--append-system-prompt", "--mcp-config"] {
             assert!(cmd.args.contains(&flag.to_owned()), "{flag}");
         }
         assert!(cmd.args.contains(&"--model=opus".to_owned()));
+        // A launch that doesn't resume still carries the task.
+        let plain = launch(&spec(Some("do the thing")));
+        assert_eq!(plain.args[plain.args.len() - 2..], ["--", "do the thing"]);
     }
 
     #[test]

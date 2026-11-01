@@ -188,33 +188,135 @@ fn directory_match_resolves_symlinks_and_slashes() {
     }
 }
 
+/// Writes `bytes` at `offset`, growing the file (sparse) when needed.
+fn write_at(path: &Path, offset: u64, bytes: &[u8]) {
+    use std::io::{Seek, SeekFrom, Write};
+    let mut f = fs::OpenOptions::new().write(true).open(path).unwrap();
+    if f.metadata().unwrap().len() < offset + bytes.len() as u64 {
+        f.set_len(offset + bytes.len() as u64).unwrap();
+    }
+    f.seek(SeekFrom::Start(offset)).unwrap();
+    f.write_all(bytes).unwrap();
+}
+
+fn line(v: &serde_json::Value) -> String {
+    format!("{v}\n")
+}
+
+const WINDOW: u64 = 256 * 1024;
+
 #[test]
 fn claude_catalog_reads_metadata_only() {
     let env = Env::new();
     let d = env.dir("p");
-    let head = user("head prompt");
-    let tail = format!(
-        "{}{}",
-        serde_json::json!({"type":"custom-title","customTitle":"Big one"}),
-        "\n"
+    let big_len: u64 = 100 * 1024 * 1024;
+    let p = env.put(
+        &d,
+        "big",
+        &line(&serde_json::json!({"type":"user","gitBranch":"head-branch","message":{"content":"head prompt"}})),
+        5,
     );
-    let p = env.put(&d, "big", &head, 5);
-    {
-        use std::io::{Seek, SeekFrom, Write};
-        let mut f = fs::OpenOptions::new().write(true).open(&p).unwrap();
-        f.set_len(100 * 1024 * 1024).unwrap();
-        let back = i64::try_from(tail.len()).unwrap() + 1;
-        f.seek(SeekFrom::End(-back)).unwrap();
-        f.write_all(b"\n").unwrap();
-        f.write_all(tail.as_bytes()).unwrap();
-    }
+    // Valid records far from both windows: a whole-file reader would take them.
+    let middle = line(
+        &serde_json::json!({"type":"custom-title","customTitle":"MIDDLE","gitBranch":"middle-branch"}),
+    );
+    write_at(&p, 50 * 1024 * 1024, format!("\n{middle}").as_bytes());
+    let tail = String::from("\n")
+        + &line(&serde_json::json!({"type":"custom-title","customTitle":"Tail title"}))
+        + &line(&serde_json::json!({"type":"assistant","gitBranch":"tail-branch"}));
+    write_at(&p, big_len - tail.len() as u64, tail.as_bytes());
     age(&p, 5);
-    let got = list(&env, &[(d, None)]);
+    let got = list(&env, &[(d.clone(), None)]);
     assert_eq!(got.len(), 1);
-    assert_eq!(got[0].size_bytes, 100 * 1024 * 1024);
-    // The middle is zero bytes (not even one JSON line): only head and tail are read.
-    assert_eq!(got[0].title, "Big one");
-    assert_eq!(got[0].branch.as_deref(), Some("main"));
+    assert_eq!(got[0].size_bytes, big_len);
+    assert_eq!(got[0].title, "Tail title");
+    assert_eq!(got[0].branch.as_deref(), Some("tail-branch"));
+
+    // Without head/tail titles, the middle title is still not seen.
+    let q = env.put(
+        &d,
+        "big2",
+        &line(&serde_json::json!({"type":"user","gitBranch":"head-branch","message":{"content":"head prompt"}})),
+        6,
+    );
+    write_at(&q, 50 * 1024 * 1024, format!("\n{middle}").as_bytes());
+    write_at(&q, big_len - 1, b"\n");
+    age(&q, 6);
+    let got = list(&env, &[(d, None)]);
+    let s = got.iter().find(|s| s.id == "big2").unwrap();
+    assert_eq!(s.title, "head prompt");
+    assert_eq!(s.branch.as_deref(), Some("head-branch"));
+}
+
+#[test]
+fn records_straddling_a_window_edge_are_discarded_without_error() {
+    let env = Env::new();
+    let d = env.dir("p");
+    let first = line(
+        &serde_json::json!({"type":"user","gitBranch":"b","message":{"content":"head prompt"}}),
+    );
+    let straddle = String::from("\n")
+        + &line(
+            &serde_json::json!({"type":"custom-title","customTitle":"STRADDLE","pad":"x".repeat(40)}),
+        );
+    let after = String::from("\n")
+        + &line(&serde_json::json!({"type":"assistant","gitBranch":"after-edge"}));
+    let len = 2 * 1024 * 1024_u64;
+
+    // Cut by the end of the head window.
+    let h = env.put(&d, "head-edge", &first, 5);
+    write_at(&h, WINDOW - 20, straddle.as_bytes());
+    write_at(&h, len - 1, b"\n");
+    age(&h, 5);
+
+    // Cut by the start of the tail window.
+    let t = env.put(&d, "tail-edge", &first, 6);
+    write_at(&t, len - WINDOW - 20, straddle.as_bytes());
+    write_at(&t, len - after.len() as u64, after.as_bytes());
+    age(&t, 6);
+
+    let got = list(&env, &[(d, None)]);
+    assert_eq!(got.len(), 2);
+    for s in &got {
+        assert_eq!(s.title, "head prompt", "{}", s.id);
+    }
+    assert_eq!(got[1].branch.as_deref(), Some("after-edge"));
+}
+
+#[test]
+fn colliding_dirs_attribute_each_session_once() {
+    let env = Env::new();
+    let (under, dash) = (env.dir("a_b"), env.dir("a-b"));
+    let at =
+        |cwd: &Path| line(&serde_json::json!({"type":"user","cwd":cwd,"message":{"content":"hi"}}));
+    let folder = env.folder(&under);
+    assert_eq!(folder, env.folder(&dash), "both dirs share one folder");
+    env.put(&under, "s-under", &at(&under), 5);
+    env.put(&dash, "s-dash", &at(&dash), 6);
+    env.put(&under, "s-nocwd", &user("no cwd here"), 7);
+    let (t1, t2) = (TaskId("t1".into()), TaskId("t2".into()));
+    let got = list(
+        &env,
+        &[
+            (under.clone(), Some(t1.clone())),
+            (dash.clone(), Some(t2.clone())),
+        ],
+    );
+    assert_eq!(got.len(), 3, "{got:?}");
+    let by = |id: &str| got.iter().find(|s| s.id == id).unwrap();
+    assert_eq!(
+        (by("s-under").dir.clone(), by("s-under").worktree.clone()),
+        (under.clone(), Some(t1.clone()))
+    );
+    assert_eq!(
+        (by("s-dash").dir.clone(), by("s-dash").worktree.clone()),
+        (dash, Some(t2))
+    );
+    // No cwd: the first requested dir for that folder.
+    assert_eq!(
+        (by("s-nocwd").dir.clone(), by("s-nocwd").worktree.clone()),
+        (under, Some(t1))
+    );
 }
 
 #[test]
