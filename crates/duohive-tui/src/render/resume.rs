@@ -22,6 +22,8 @@ const CHROME_ROWS: usize = 4;
 const SCREEN_MARGIN: usize = 4;
 /// Longest branch shown before the in-use and recent marks, so those are never cut.
 const BRANCH_CELLS: usize = 32;
+/// The least of the lead worth showing next to the marks; below it only the marks show.
+const MIN_LEAD_CELLS: usize = 8;
 /// Cells from the box's edge to a row's marker, and to its text.
 const MARKER_X: u16 = 2;
 const TEXT_X: u16 = 4;
@@ -35,9 +37,10 @@ const NO_MATCH: &str = "No sessions match";
 const MORE: &str = "↓ more";
 const SEP: &str = " · ";
 
-/// The details line of a session: age, branch, size, worktree, then who has it or that
-/// it may be open elsewhere. Branch and size are left out when the CLI doesn't know them.
-fn details(s: &SessionInfo, recent: bool, now_ms: u64) -> String {
+/// The details of a session in two parts: the lead (age, branch, size, worktree; branch
+/// and size are left out when the CLI doesn't know them) and the marks (who has it, or
+/// that it may be open elsewhere), which carry state and are the last to be cut.
+fn details(s: &SessionInfo, recent: bool, now_ms: u64) -> (String, String) {
     let mut parts = vec![age_text(now_ms.saturating_sub(s.updated_ms))];
     let branch = s.branch.as_deref().map(clean).unwrap_or_default();
     if !branch.is_empty() {
@@ -49,13 +52,32 @@ fn details(s: &SessionInfo, recent: bool, now_ms: u64) -> String {
     if let Some(task) = &s.worktree {
         parts.push(format!("worktree {}", clean(&task.0)));
     }
+    let mut marks = Vec::new();
     if let Some(holder) = &s.in_use_by {
-        parts.push(format!("in use by {holder}"));
+        marks.push(format!("in use by {holder}"));
     }
     if recent {
-        parts.push("may be open elsewhere".to_owned());
+        marks.push("may be open elsewhere".to_owned());
     }
-    parts.join(SEP)
+    (parts.join(SEP), marks.join(SEP))
+}
+
+/// The details line fitted to `room` cells. When it is too long the lead is cut first, so
+/// the marks stay whole; a lead that would be left under `MIN_LEAD_CELLS` is dropped, and
+/// only marks wider than `room` themselves are cut.
+fn fit_details(lead: &str, marks: &str, room: usize) -> String {
+    if marks.is_empty() {
+        return truncate_end(lead, room);
+    }
+    let whole = format!("{lead}{SEP}{marks}");
+    if width(&whole) <= room {
+        return whole;
+    }
+    let lead_room = room.saturating_sub(width(marks) + width(SEP));
+    if lead_room < MIN_LEAD_CELLS {
+        return truncate_end(marks, room);
+    }
+    format!("{}{SEP}{marks}", truncate_end(lead, lead_room))
 }
 
 /// Draws the picker centred over `area`; returns where the terminal cursor goes.
@@ -163,7 +185,8 @@ fn draw_entry(
     }
     let title = truncate_end(&title_of(session), room);
     put(buf, r.x + TEXT_X, y, &title, room, base);
-    let line = truncate_end(&details(session, recent, now_ms), room);
+    let (lead, marks) = details(session, recent, now_ms);
+    let line = fit_details(&lead, &marks, room);
     put(buf, r.x + TEXT_X, y + 1, &line, room, base.fg(p.fg_muted));
 }
 

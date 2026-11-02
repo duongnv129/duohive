@@ -192,3 +192,62 @@ fn themes_change_style_not_words() {
         }
     }
 }
+
+/// The details line under the entry titled `title`, from `first` to the dialog's edge.
+fn details_line(t: &str, title: &str, first: &str) -> String {
+    let mut lines = t.lines().skip_while(|l| !l.contains(title));
+    lines.next();
+    let line = lines.next().unwrap_or_default();
+    let from = line.find(first).unwrap_or(0);
+    line[from..]
+        .trim_end_matches(|c: char| c == '│' || c == '┃' || c.is_whitespace())
+        .to_owned()
+}
+
+fn long_entry(holder: &str) -> Vec<duohive_core::session_catalog::SessionInfo> {
+    let mut s = session(
+        "Long one",
+        mins(3),
+        Some("feature/a-really-long-branch-name-that-is-cut"),
+        4_200_000,
+    );
+    s.worktree = Some(duohive_core::worktree::TaskId("w".repeat(32)));
+    s.in_use_by = Some(duohive_core::testkit::n(holder));
+    vec![s]
+}
+
+#[test]
+fn long_lead_is_cut_before_the_marks() {
+    let holder = "squad-holder1";
+    let (m, _) = resume_model(long_entry(holder));
+    let t = text(&m, 80, 24);
+    let line = details_line(&t, "Long one", "3 minutes ago");
+    assert!(
+        line.ends_with(&format!("in use by {holder} · may be open elsewhere")),
+        "{t}"
+    );
+    assert!(line.contains('…'), "{line}");
+    insta::assert_snapshot!("resume_long_line_80x24", t);
+}
+
+#[test]
+fn marks_alone_wider_than_the_dialog_are_cut_last() {
+    let holder = "h".repeat(40);
+    let (m, _) = resume_model(long_entry(&holder));
+    let t = text(&m, 80, 24);
+    let line = details_line(&t, "Long one", "in use by");
+    assert!(line.starts_with(&format!("in use by {holder}")), "{line}");
+    assert!(line.ends_with('…'), "{line}");
+    assert!(!line.contains("minutes ago"), "{line}");
+}
+
+#[test]
+fn short_lines_are_unchanged() {
+    let (m, _) = resume_model(three_sessions());
+    let t = text(&m, 80, 24);
+    let line = details_line(&t, "Retry loop", "3 minutes ago");
+    assert_eq!(
+        line,
+        "3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere"
+    );
+}

@@ -1083,7 +1083,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 - **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
 - **As built, where this section was silent:**
   - The count is `{position} of {visible}`: the position of the highlighted row within the entries that match the search, so the mockup's `(1 of 36)` is that format at the start, and `0 of 0` when none match (the list then reads `No sessions match`).
-  - An entry shows only the fields it has, in the order age, branch, size, `worktree <task-id>`, `in use by <agent>`, `may be open elsewhere`; the branch is cut at 32 cells so the marks are never cut. Ages read `just now`, `N minutes ago`, `N hours ago`, `N days ago`.
+  - An entry shows only the fields it has, in the order age, branch, size, `worktree <task-id>`, `in use by <agent>`, `may be open elsewhere`; the branch is cut at 32 cells, and when the line is still too long the leading fields (age, branch, size, worktree) are cut first so the marks stay visible; only if the marks alone do not fit are they cut. Ages read `just now`, `N minutes ago`, `N hours ago`, `N days ago`.
   - A session with no title, prompt or command shows `(untitled)`.
   - A click on a row does what `enter` does; the wheel moves the highlight; while searching, the hint reads `esc clear search`.
   - The 5-minute confirmation is titled `Resume session?`; **Cancel** returns to the picker with its search and cursor intact.
