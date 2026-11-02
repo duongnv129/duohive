@@ -314,10 +314,18 @@ fn prompt_text(record: &Value) -> Option<String> {
     let content = record.get("message")?.get("content")?;
     match content {
         Value::String(s) => Some(s.clone()),
-        Value::Array(blocks) => blocks
-            .iter()
-            .find_map(|b| b.get("text").and_then(Value::as_str))
-            .map(str::to_owned),
+        Value::Array(blocks) => {
+            let texts: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect();
+            // A real prompt can follow an injected block (a reminder) in one record.
+            texts
+                .iter()
+                .find(|t| !is_injected(t))
+                .or_else(|| texts.first())
+                .map(|t| (*t).to_owned())
+        }
         _ => None,
     }
 }
