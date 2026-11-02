@@ -1,6 +1,6 @@
 # Status board
 
-**As of 2026-10-25.** One page: every phase, what is done, what CI/CD verifies automatically, and what remains. The plans hold the detail; this file is the index. Keep it in step with the phase plans and the [roadmap](v1-roadmap.md).
+**As of 2026-10-25** (the v1.1 entry below: 2026-11-01). One page: every phase, what is done, what CI/CD verifies automatically, and what remains. The plans hold the detail; this file is the index. Keep it in step with the phase plans and the [roadmap](v1-roadmap.md).
 
 **Legend:** **Done** merged and verified · **Done (CI)** covered by an automated CI/CD job (the evidence is its run) · **Done (author)** done by the author and confirmed · **Open: author** manual, needs the author · **Open: agent** an agent can do it once asked or decided · **Later** after v1.
 
@@ -49,7 +49,7 @@ These need a person: a decision, an account, real users or time. Nothing in CI/C
 | 3. Duo and messaging | **Done** 2026-10-18 | [phase-3-plan](phase-3-plan.md), [bench results](bench-results.md#phase-3-acceptance) |
 | 4. Scale and polish | **Built; benchmark Done (CI); the one-hour run and screen walk Done (author)** 2026-10-25; approvals and sign-off open | [phase-4-plan](phase-4-plan.md), [bench results](bench-results.md#phase-4-acceptance) |
 | 5. Open-source launch | **Agent tasks built; alpha releases Done (CI)**; launch steps open | [phase-5-plan](phase-5-plan.md), [releases](https://github.com/duongnv129/duohive/releases) |
-| v1.1 | **Later**: starts after v1 | [v1.1-roadmap](v1.1-roadmap.md) |
+| v1.1 | **Later**: starts after v1; resume built on a branch, hand check pending | [v1.1-roadmap](v1.1-roadmap.md) |
 
 Phases 0 to 3 have no open task boxes.
 
@@ -107,4 +107,4 @@ Phases 0 to 3 have no open task boxes.
 
 ## Later (v1.1)
 
-Resume an old session (plan: [v1.1-resume-plan](v1.1-resume-plan.md), awaiting review; designed in TD §5.6; needs three spikes first: Claude Code `--resume` with the per-launch flags, OpenCode session list and `--session`, and the OpenCode plugin's session id); Codex as a third CLI and alert clicks that select the agent are candidates, not agreed. See [v1.1-roadmap](v1.1-roadmap.md).
+Resume an old session is built on the branch `feat/resume-session` (2026-11-01; plan: [v1.1-resume-plan](v1.1-resume-plan.md), tasks R.1 to R.13; designed in TD §5.6; the three spikes are in the [spike report](spike-report.md)). It is not released: the hand check and the author decisions are pending, see [Open items before merge](v1.1-roadmap.md#open-items-before-merge); Codex as a third CLI and alert clicks that select the agent are candidates, not agreed. See [v1.1-roadmap](v1.1-roadmap.md).

@@ -11,15 +11,15 @@ expression: text
 ┃     billing-api   ┌─ pay-qa ────────────┐                                    │
 ┃   ▾ QA            │ Give work     space │                                    │
 ┃▌    pay-qa        │ Start         s     │                                    │
-┃ ▾ Generalist      │ Edit          e     │                                    │
-┃     squad-1       │ New here…     n     │                                    │
-┃     squad-2       │ Move to…      m     │                                    │
-┃     squad-3       │ Delete        d     │                                    │
+┃ ▾ Generalist      │ Resume…       r     │                                    │
+┃     squad-1       │ Edit          e     │                                    │
+┃     squad-2       │ New here…     n     │                                    │
+┃     squad-3       │ Move to…      m     │                                    │
+┃                   │ Delete        d     │                                    │
 ┃                   │ Zoom          z     │                                    │
 ┃                   │ Worktrees     w     │                                    │
 ┃                   │ Hide replies  v     │                                    │
-┃                   └─────────────────────┘                                    │
-┣━ Needs you (0) ━━━━━━━━━━━━━━┫│                                              │
+┣━ Needs you (0) ━━━└─────────────────────┘                                    │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────┐
 │                                                                              │

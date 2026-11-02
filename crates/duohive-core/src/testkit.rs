@@ -18,6 +18,7 @@ use crate::ports::{
     CheckWorktree, Clock, CreateWorktree, Git, Ids, Notifier, OrgFileError, PaneView,
     QueuedToolCall, RemoveWorktree, Runtime, SessionRow, Store, StoreError,
 };
+use crate::session_catalog::{CatalogError, SessionCatalog, SessionInfo};
 use crate::settings::Settings;
 use crate::status::WaitingOn;
 use crate::time::Millis;
@@ -563,6 +564,10 @@ impl CliAdapter for StubAdapter {
             files: Vec::new(),
         })
     }
+    /// Any event whose payload has a string `session_id`.
+    fn cli_session_id(&self, _event: &str, payload: &serde_json::Value) -> Option<String> {
+        payload["session_id"].as_str().map(str::to_owned)
+    }
     fn parse_hook(&self, event: &str, payload: &serde_json::Value) -> Option<HookSignal> {
         match event {
             "session-start" => Some(HookSignal::Ready),
@@ -806,6 +811,56 @@ impl Git for FakeGit {
     }
     fn remove(&mut self, req: RemoveWorktree) {
         self.calls.lock().unwrap().push(GitCall::Remove(req));
+    }
+}
+
+/// One request made on a [`FakeSessionCatalog`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionRequest {
+    /// Who asked.
+    pub agent: AgentName,
+    /// Which CLI.
+    pub cli: CliKind,
+    /// The directories asked about.
+    pub dirs: Vec<(PathBuf, Option<TaskId>)>,
+}
+
+/// A [`SessionCatalog`] that records its requests; the test answers each with an
+/// `Input::SessionsListed`. `result` is the canned answer a test can replay.
+#[derive(Clone, Debug)]
+pub struct FakeSessionCatalog {
+    /// Requests so far, oldest first.
+    pub requests: Arc<Mutex<Vec<SessionRequest>>>,
+    /// The canned answer to replay.
+    pub result: Result<Vec<SessionInfo>, CatalogError>,
+}
+
+impl Default for FakeSessionCatalog {
+    fn default() -> Self {
+        FakeSessionCatalog {
+            requests: Arc::default(),
+            result: Ok(Vec::new()),
+        }
+    }
+}
+
+impl FakeSessionCatalog {
+    /// The `Input` that answers `agent`'s request with the canned result.
+    pub fn answer(&self, agent: &AgentName) -> crate::engine::Input {
+        crate::engine::Input::SessionsListed {
+            agent: agent.clone(),
+            result: self.result.clone(),
+        }
+    }
+}
+
+impl SessionCatalog for FakeSessionCatalog {
+    fn request(&mut self, agent: &AgentName, cli: CliKind, dirs: Vec<(PathBuf, Option<TaskId>)>) {
+        self.requests.lock().unwrap().push(SessionRequest {
+            agent: agent.clone(),
+            cli,
+            dirs,
+        });
     }
 }
 

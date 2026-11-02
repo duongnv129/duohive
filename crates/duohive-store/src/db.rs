@@ -50,6 +50,9 @@ CREATE TABLE chat(id INTEGER PRIMARY KEY, at INTEGER NOT NULL, kind TEXT NOT NUL
 -- source 'duo' | 'no_free_agent'; change: CardChange as JSON; outcome NULL while pending.
 CREATE TABLE cards(id INTEGER PRIMARY KEY, source TEXT NOT NULL, change TEXT NOT NULL, raised_at INTEGER NOT NULL,
   outcome TEXT, answered_at INTEGER);
+", "
+-- The CLI's own session id; NULL until known. Deleted with the row when the agent stops.
+ALTER TABLE sessions ADD COLUMN cli_session_id TEXT;
 "];
 
 pub(crate) fn db_err(what: &str, e: &impl std::fmt::Display) -> StoreError {

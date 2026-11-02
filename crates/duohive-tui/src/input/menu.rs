@@ -64,13 +64,15 @@ fn running_under(m: &UiModel, node: &NodeKey) -> Option<String> {
 
 /// The actions a node's menu lists, in the order of the mock-up.
 fn actions(node: &NodeKey) -> &'static [ActionId] {
-    use ActionId::{Delete, Edit, GiveWork, LastReply, Move, New, StartStop, Worktrees, Zoom};
+    use ActionId::{
+        Delete, Edit, GiveWork, LastReply, Move, New, Resume, StartStop, Worktrees, Zoom,
+    };
     match node {
         NodeKey::Duo => &[Edit, New, Zoom, Worktrees, LastReply],
         NodeKey::Team(_) => &[New, Edit, Move, Delete, Worktrees, LastReply],
         NodeKey::Role(_) => &[GiveWork, New, Edit, Move, Delete, Worktrees, LastReply],
         NodeKey::Agent(_) => &[
-            GiveWork, StartStop, Edit, New, Move, Delete, Zoom, Worktrees, LastReply,
+            GiveWork, StartStop, Resume, Edit, New, Move, Delete, Zoom, Worktrees, LastReply,
         ],
     }
 }
@@ -90,6 +92,12 @@ fn row(m: &UiModel, node: &NodeKey, action: ActionId) -> MenuRow {
                 "Stop"
             },
             None,
+        ),
+        ActionId::Resume => (
+            "Resume…",
+            state
+                .is_some_and(AgentState::is_running)
+                .then(|| "stop it first".to_owned()),
         ),
         ActionId::Edit if *node == NodeKey::Duo => ("Edit org", None),
         ActionId::Edit => ("Edit", None),

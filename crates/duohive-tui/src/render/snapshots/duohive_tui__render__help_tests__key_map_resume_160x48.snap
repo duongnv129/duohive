@@ -1,0 +1,52 @@
+---
+source: crates/duohive-tui/src/render/help_tests.rs
+expression: wide
+---
+┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│Everywhere                                           Org pane                                             Agent pane                                          │
+│  tab       next pane/field                            ↑↓    move                                           enter     start typing                            │
+│  shift+tab previous pane                              ←→    fold / unfold                                  ctrl+q    stop typing                             │
+│  ?         this help                                  enter open agent pane                                z         zoom / restore                          │
+│  ,         settings                                   space give work                                      space     give work                               │
+│  w         worktrees                                  s     start / stop                                   PgUp/Dn   scroll back                             │
+│  f         filter tree by state                       r     resume                                                                                           │
+│  esc       back one level                             n     new here…                                    Chat (Duo)                                          │
+│  q         quit (agents run on)                       e     edit (Duo: Edit org)                           enter     send                                    │
+│  ctrl+c    quit if not typing                         m     move to…                                       alt+enter new line                                │
+│  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /       agents / commands                       │
+│                                                       z     zoom agent                                     ↑         newest card                             │
+│Mouse                                                  v     last reply on/off                              y e n     approve/edit/reject                     │
+│  click     select / focus                             o     open org.toml                                  PgUp/Dn   scroll history                          │
+│  right     node menu                                                                                                                                         │
+│  wheel     scroll                                   Needs you                                                                                                │
+│  drag      move node                                  ↑↓    move                                                                                             │
+│                                                       enter go to agent or card                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

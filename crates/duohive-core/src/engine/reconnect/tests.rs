@@ -42,6 +42,7 @@ fn row(agent: &str, state: AgentState, window: Option<&str>, since: Millis) -> S
         last_task: Some("fix the login".into()),
         worktree: None,
         launched_as_duo: false,
+        cli_session_id: None,
     }
 }
 
@@ -479,3 +480,12 @@ fn connection_lost_before_the_inventory_ends_the_reconnect() {
 }
 
 mod org_switch;
+
+#[test]
+fn reconnect_restores_cli_session_id() {
+    let mut h = Harness::new();
+    let mut r = row("pay-qa", AgentState::Idle, Some("@1"), Millis(0));
+    r.cli_session_id = Some("ses-1".into());
+    h.engine.restore(r);
+    assert_eq!(h.rt("pay-qa").cli_session_id.as_deref(), Some("ses-1"));
+}

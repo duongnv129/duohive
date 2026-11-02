@@ -11,6 +11,9 @@
 mod detection;
 mod enriching_store;
 mod models;
+mod sessions;
+
+use sessions::SessionCatalogRunner;
 
 pub use enriching_store::EnrichingStore;
 
@@ -278,6 +281,11 @@ pub async fn start_system(
         dirs: Arc::new(FsDirProbe),
         notifier,
         git,
+        sessions: Box::new(SessionCatalogRunner::new(
+            Arc::clone(&adapters),
+            home.clone(),
+            inputs_tx.clone(),
+        )),
     };
     let cfg = EngineConfig {
         home: home.clone(),

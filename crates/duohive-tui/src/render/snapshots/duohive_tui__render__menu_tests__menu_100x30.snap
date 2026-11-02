@@ -11,15 +11,15 @@ expression: text
 ┃ │  │  └─ billing-a┌─ pay-qa ────────────┐  1d  ┃│                                                │
 ┃ │  └─ ◇ QA        │ Give work     space │      ┃│                                                │
 ┃▌│     └─ pay-qa   │ Start         s     │  1d  ┃│                                                │
-┃ └─ ◇ Generalist   │ Edit          e     │      ┃│                                                │
-┃    ├─ squad-1     │ New here…     n     │  1d  ┃│                                                │
-┃    ├─ squad-2     │ Move to…      m     │  1d  ┃│                                                │
-┃    └─ squad-3     │ Delete        d     │  1d  ┃│                                                │
+┃ └─ ◇ Generalist   │ Resume…       r     │      ┃│                                                │
+┃    ├─ squad-1     │ Edit          e     │  1d  ┃│                                                │
+┃    ├─ squad-2     │ New here…     n     │  1d  ┃│                                                │
+┃    └─ squad-3     │ Move to…      m     │  1d  ┃│                                                │
+┃                   │ Delete        d     │      ┃│                                                │
 ┃                   │ Zoom          z     │      ┃│                                                │
 ┃                   │ Worktrees     w     │      ┃│                                                │
 ┃                   │ Hide replies  v     │      ┃│                                                │
 ┃                   └─────────────────────┘      ┃│                                                │
-┃                                                ┃│                                                │
 ┃                                                ┃│                                                │
 ┃                                                ┃│                                                │
 ┃                                                ┃│                                                │

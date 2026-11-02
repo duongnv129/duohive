@@ -27,6 +27,7 @@ fn idle_row(agent: &str, token: &str, window: &str) -> SessionRow {
         last_task: None,
         worktree: None,
         launched_as_duo: false,
+        cli_session_id: None,
     }
 }
 

@@ -5,9 +5,12 @@ use std::time::Duration;
 use duohive_core::card::{Card, CardChange, CardId, CardSource};
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::{AgentDraft, OrgEdit};
+use duohive_core::event::Event;
 use duohive_core::event::{AgentView, NeedsYouItem};
+use duohive_core::names::AgentName;
 use duohive_core::names::NodeName;
 use duohive_core::org::{Fields, NodeKey, Org, RoleKey};
+use duohive_core::session_catalog::SessionInfo;
 use duohive_core::settings::Settings;
 use duohive_core::status::{AgentState, Status};
 use duohive_core::testkit::{example_org, n};
@@ -364,4 +367,59 @@ pub fn raise(m: &mut UiModel, c: Card, age: Duration) {
     };
     m.needs_you.push(item);
     m.cards.insert(c.id, c);
+}
+
+/// A past session `age` before [`NOW`].
+pub fn session(title: &str, age: Duration, branch: Option<&str>, size_bytes: u64) -> SessionInfo {
+    SessionInfo {
+        id: format!("id-{title}"),
+        title: title.to_owned(),
+        updated_ms: NOW.0 - u64::try_from(age.as_millis()).unwrap(),
+        branch: branch.map(str::to_owned),
+        size_bytes,
+        dir: std::path::PathBuf::from("/work/pay-qa"),
+        worktree: None,
+        in_use_by: None,
+    }
+}
+
+/// Three sessions, newest first: one written 3 minutes ago, then 1 and 2 days ago.
+pub fn three_sessions() -> Vec<SessionInfo> {
+    let day = 24 * 60;
+    vec![
+        session(
+            "Retry loop for failed payouts",
+            mins(3),
+            Some("fix/payout-retry"),
+            4_400_000,
+        ),
+        session(
+            "Payout ledger migration",
+            mins(day),
+            Some("main"),
+            7_600_000,
+        ),
+        session(
+            "Flaky webhook test",
+            mins(2 * day),
+            Some("fix/webhook-flake"),
+            610 * 1024,
+        ),
+    ]
+}
+
+/// A 120x36 model whose stopped `pay-qa` is showing its picker over `sessions`, opened the
+/// way the engine's answer opens it.
+pub fn resume_model(sessions: Vec<SessionInfo>) -> (UiModel, AgentName) {
+    let mut m = spec_model();
+    m.screen = ratatui::layout::Rect::new(0, 0, 120, 36);
+    let agent = n("pay-qa");
+    m.agents
+        .insert(agent.clone(), view(status(AgentState::Stopped, mins(30))));
+    m.selected = NodeKey::Agent(agent.clone());
+    m.apply(Event::SessionsListed {
+        agent: agent.clone(),
+        sessions,
+    });
+    (m, agent)
 }

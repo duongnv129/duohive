@@ -9,7 +9,7 @@
 //! server, which reads `OPENCODE_CONFIG`.
 
 use std::fmt::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use duohive_core::adapter::{
     CliAdapter, CliPresence, DialogCheck, HookCoverage, HookSignal, LaunchError, ModelList,
@@ -17,6 +17,8 @@ use duohive_core::adapter::{
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
+use duohive_core::session_catalog::{CatalogError, SessionInfo};
+use duohive_core::worktree::TaskId;
 use serde_json::{Map, Value, json};
 
 use crate::detect::probe_version;
@@ -136,8 +138,12 @@ impl CliAdapter for OpencodeAdapter {
         });
 
         let mut args = vec!["--standalone".to_owned()];
+        if let Some(resume) = &spec.resume {
+            args.extend(["--session".to_owned(), resume.session_id.clone()]);
+        }
         args.extend(agent.flags.iter().cloned());
-        if let Some(task) = &spec.task {
+        // A resumed session continues its own conversation: no task.
+        if let (Some(task), None) = (&spec.task, &spec.resume) {
             args.push(format!("--prompt={task}"));
         }
         Ok(LaunchCommand {
@@ -148,7 +154,10 @@ impl CliAdapter for OpencodeAdapter {
                 (HOOK_EXE_VAR.into(), hook_exe.to_owned()),
                 (HOOK_AGENT_VAR.into(), agent.name.as_str().to_owned()),
             ],
-            cwd: launch_cwd(spec),
+            cwd: spec
+                .resume
+                .as_ref()
+                .map_or_else(|| launch_cwd(spec), |r| r.cwd.clone()),
             files,
         })
     }
@@ -175,6 +184,17 @@ impl CliAdapter for OpencodeAdapter {
             "session-end" => Some(HookSignal::SessionEnded),
             _ => None,
         }
+    }
+
+    /// `sessionID` of `busy` and `turn-end`, `properties.sessionID` of `needs-input`;
+    /// `session-start` is always `{}` (spike R3).
+    fn cli_session_id(&self, event: &str, payload: &Value) -> Option<String> {
+        let id = match event {
+            "busy" | "turn-end" => payload.get("sessionID"),
+            "needs-input" => payload.get("properties")?.get("sessionID"),
+            _ => None,
+        }?;
+        id.as_str().map(str::to_owned)
     }
 
     /// The reply comes from the plugin, so only the state is read (S2.7).
@@ -208,6 +228,15 @@ impl CliAdapter for OpencodeAdapter {
     /// 6), so the screen is read again before the paste and before `Enter`.
     fn dialog_check(&self) -> Option<DialogCheck> {
         Some(dialog_open)
+    }
+
+    /// One `opencode session list` per directory, filtered by `directory` (R2).
+    fn list_sessions(
+        &self,
+        _home: &Path,
+        dirs: &[(PathBuf, Option<TaskId>)],
+    ) -> Result<Vec<SessionInfo>, CatalogError> {
+        crate::opencode_sessions::list_with_default_binary(self.kind().binary(), dirs)
     }
 
     /// No trust or login prompt was seen (S2.8, S2.14).

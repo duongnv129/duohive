@@ -115,6 +115,21 @@ impl Engine {
             .any(|r| &r.agent == agent && r.worktree.as_ref() == Some(task))
     }
 
+    /// The held agent whose live session is `id`: its pane hasn't died, and it
+    /// is running or errored with its window still up.
+    pub(in crate::engine) fn held_holder_of(&self, id: &str) -> Option<AgentName> {
+        self.held
+            .rows
+            .iter()
+            .find(|r| {
+                r.cli_session_id.as_deref() == Some(id)
+                    && !self.held.dead.contains_key(&r.agent)
+                    && (r.status.state.is_running()
+                        || (r.status.state == AgentState::Errored && r.window.is_some()))
+            })
+            .map(|r| r.agent.clone())
+    }
+
     /// Whether `agent` is held.
     pub(super) fn is_held(&self, agent: &AgentName) -> bool {
         self.held.rows.iter().any(|r| &r.agent == agent)

@@ -1,0 +1,3 @@
+{"type":"user","sessionId":"00000000-0000-4000-8000-000000000002","cwd":"/work/plain","gitBranch":"HEAD","version":"2.1.316","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>ignore me</system-reminder>"}]}}
+{"type":"user","sessionId":"00000000-0000-4000-8000-000000000002","cwd":"/work/plain","gitBranch":"HEAD","message":{"role":"user","content":[{"type":"text","text":"Explain the build setup"}]}}
+{"type":"last-prompt","lastPrompt":"Something later","sessionId":"00000000-0000-4000-8000-000000000002"}

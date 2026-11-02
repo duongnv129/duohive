@@ -1,0 +1,410 @@
+//! Reads Claude Code's past sessions from `~/.claude/projects` (spike R1.2).
+//!
+//! Read only: nothing under `~/.claude` is written or deleted. Each file is read
+//! as at most a head and a tail chunk, so a huge transcript is never read whole.
+
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
+
+use duohive_core::session_catalog::{CatalogError, SessionInfo};
+use duohive_core::worktree::TaskId;
+use serde_json::Value;
+
+/// A requested directory (resolved) and the worktree task it belongs to.
+type Owner = (PathBuf, Option<TaskId>);
+
+/// How much of a file's start, and of its end, is read.
+const CHUNK_BYTES: u64 = 256 * 1024;
+/// A title or first prompt is cut after this many characters.
+const TITLE_MAX_CHARS: usize = 200;
+/// What `gitBranch` holds outside a git repository (R1.2).
+const NO_BRANCH: &str = "HEAD";
+/// The longest session id the engine accepts.
+const ID_MAX_LEN: usize = 128;
+
+/// Lists the Claude Code sessions that ran in any of `dirs`, newest first.
+///
+/// A session is attributed by its recorded `cwd` (canonicalised) to the requested
+/// directory that equals it; one that ran in any other directory (even one sharing
+/// the project folder) is skipped. Only a session with no recorded `cwd` goes to
+/// the first requested directory of its folder.
+///
+/// # Errors
+///
+/// `CatalogError::Unreadable` when a project folder can't be read, or when
+/// session files exist but none has a recognisable record.
+pub fn read_claude_sessions(
+    home: &Path,
+    dirs: &[(PathBuf, Option<TaskId>)],
+) -> Result<Vec<SessionInfo>, CatalogError> {
+    // Group the requested dirs by project folder: two dirs can encode to one folder.
+    let mut groups: Vec<(PathBuf, Vec<Owner>)> = Vec::new();
+    for (dir, task) in dirs {
+        let resolved = fs::canonicalize(dir).unwrap_or_else(|_| dir.clone());
+        let folder = home
+            .join(".claude")
+            .join("projects")
+            .join(folder_name(&resolved));
+        match groups.iter_mut().find(|(f, _)| *f == folder) {
+            Some((_, owners)) if owners.iter().any(|(d, _)| *d == resolved) => {}
+            Some((_, owners)) => owners.push((resolved, task.clone())),
+            None => groups.push((folder, vec![(resolved, task.clone())])),
+        }
+    }
+    let mut sessions = Vec::new();
+    let mut files_seen = 0_usize;
+    // Readable sessions that ran in a directory nobody asked for.
+    let mut foreign = 0_usize;
+    for (folder, owners) in &groups {
+        let entries = match fs::read_dir(folder) {
+            Ok(entries) => entries,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                return Err(CatalogError::Unreadable(format!(
+                    "can't read {}: {e}",
+                    folder.display()
+                )));
+            }
+        };
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                CatalogError::Unreadable(format!("can't read {}: {e}", folder.display()))
+            })?;
+            let Some(id) = session_id(&entry.path()) else {
+                continue;
+            };
+            // An empty file (a session just started, or a crash before its first write) is
+            // not evidence of a changed format.
+            if entry.metadata().is_ok_and(|md| md.len() > 0) {
+                files_seen += 1;
+            }
+            if let Some((found, cwd)) = read_session(&entry.path(), &id) {
+                // The record's `cwd` names the dir (R1.2). One that matches no requested
+                // dir ran elsewhere and is skipped; with no `cwd` at all, the first owner.
+                let owner = match cwd {
+                    Some(c) => {
+                        let raw = PathBuf::from(c);
+                        let canon = fs::canonicalize(&raw).unwrap_or(raw);
+                        owners.iter().find(|(d, _)| *d == canon)
+                    }
+                    None => owners.first(),
+                };
+                let Some((dir, task)) = owner else {
+                    foreign += 1;
+                    continue;
+                };
+                sessions.push(SessionInfo {
+                    dir: dir.clone(),
+                    worktree: task.clone(),
+                    ..found
+                });
+            }
+        }
+    }
+    if files_seen > 0 && sessions.is_empty() && foreign == 0 {
+        return Err(CatalogError::Unreadable(
+            "unrecognised Claude Code session format".into(),
+        ));
+    }
+    sessions.sort_by(|a, b| {
+        b.updated_ms
+            .cmp(&a.updated_ms)
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Ok(sessions)
+}
+
+/// The folder name Claude Code gives a working directory: every character that is
+/// not `[A-Za-z0-9]` becomes `-` (R1.2).
+fn folder_name(dir: &Path) -> String {
+    dir.to_string_lossy()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect()
+}
+
+/// The id of a `*.jsonl` file, when its stem follows the engine's id rule
+/// `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`.
+fn session_id(path: &Path) -> Option<String> {
+    if path.extension()? != "jsonl" {
+        return None;
+    }
+    let stem = path.file_stem()?.to_str()?;
+    is_valid_session_id(stem).then(|| stem.to_owned())
+}
+
+/// Whether `id` follows the engine's id rule `[A-Za-z0-9_][A-Za-z0-9_-]{0,127}`.
+pub(crate) fn is_valid_session_id(id: &str) -> bool {
+    let mut chars = id.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    (first.is_ascii_alphanumeric() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        && id.len() <= ID_MAX_LEN
+}
+
+/// What the records of one file say.
+#[derive(Default)]
+struct Facts {
+    recognised: bool,
+    cwd: Option<String>,
+    branch: Option<String>,
+    title: Option<String>,
+    ai_title: Option<String>,
+    /// The last usable `last-prompt` record's text.
+    last_prompt: Option<String>,
+    /// The last real (not meta, not injected) user prompt.
+    last_user_prompt: Option<String>,
+    /// The last slash command, as `/name`.
+    last_command: Option<String>,
+}
+
+fn read_session(path: &Path, id: &str) -> Option<(SessionInfo, Option<String>)> {
+    let meta = fs::metadata(path).ok().filter(fs::Metadata::is_file)?;
+    let records = read_records(path, meta.len()).ok()?;
+    let mut facts = Facts::default();
+    for record in &records {
+        absorb(&mut facts, record);
+    }
+    if !facts.recognised {
+        return None;
+    }
+    let title = facts
+        .title
+        .filter(|t| !t.is_empty())
+        .or(facts.ai_title)
+        .or(facts.last_prompt)
+        .or(facts.last_user_prompt)
+        .or(facts.last_command)
+        .unwrap_or_default();
+    let updated_ms = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+    let info = SessionInfo {
+        id: id.to_owned(),
+        title,
+        updated_ms,
+        branch: facts.branch,
+        size_bytes: meta.len(),
+        dir: PathBuf::new(),
+        worktree: None,
+        in_use_by: None,
+    };
+    Some((info, facts.cwd))
+}
+
+/// The JSON objects in the first and last `CHUNK_BYTES` of the file, in order.
+/// A line cut by a chunk edge, and any line that isn't JSON, is dropped.
+fn read_records(path: &Path, len: u64) -> io::Result<Vec<Value>> {
+    let mut file = File::open(path)?;
+    let mut records = Vec::new();
+    if len <= 2 * CHUNK_BYTES {
+        parse_lines(&read_range(&mut file, 0, len)?, false, false, &mut records);
+        return Ok(records);
+    }
+    parse_lines(
+        &read_range(&mut file, 0, CHUNK_BYTES)?,
+        false,
+        true,
+        &mut records,
+    );
+    let tail = read_range(&mut file, len - CHUNK_BYTES, CHUNK_BYTES)?;
+    parse_lines(&tail, true, false, &mut records);
+    Ok(records)
+}
+
+fn read_range(file: &mut File, start: u64, count: u64) -> io::Result<Vec<u8>> {
+    file.seek(SeekFrom::Start(start))?;
+    let mut buf = Vec::new();
+    file.take(count).read_to_end(&mut buf)?;
+    Ok(buf)
+}
+
+fn parse_lines(bytes: &[u8], drop_first: bool, drop_last: bool, out: &mut Vec<Value>) {
+    let mut lines: Vec<&[u8]> = bytes.split(|b| *b == b'\n').collect();
+    if drop_last {
+        lines.pop();
+    }
+    if drop_first && !lines.is_empty() {
+        lines.remove(0);
+    }
+    out.extend(
+        lines
+            .into_iter()
+            .filter_map(|l| serde_json::from_slice::<Value>(l).ok())
+            .filter(Value::is_object),
+    );
+}
+
+fn absorb(facts: &mut Facts, record: &Value) {
+    let Some(kind) = record.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    facts.recognised = true;
+    if facts.cwd.is_none() {
+        facts.cwd = record.get("cwd").and_then(Value::as_str).map(str::to_owned);
+    }
+    if let Some(branch) = record.get("gitBranch").and_then(Value::as_str) {
+        facts.branch = (!branch.is_empty() && branch != NO_BRANCH).then(|| branch.to_owned());
+    }
+    match kind {
+        "custom-title" => set_title(facts, record.get("customTitle")),
+        "agent-name" => set_title(facts, record.get("agentName")),
+        "ai-title" => {
+            let cleaned = record
+                .get("aiTitle")
+                .and_then(Value::as_str)
+                .map(clean)
+                .filter(|t| !t.is_empty());
+            // Records come in file order (head window, then tail window): the last wins.
+            if cleaned.is_some() {
+                facts.ai_title = cleaned;
+            }
+        }
+        "last-prompt" => {
+            let cleaned = record
+                .get("lastPrompt")
+                .and_then(Value::as_str)
+                .filter(|t| !is_injected(t))
+                .map(clean)
+                .filter(|t| !t.is_empty());
+            if cleaned.is_some() {
+                facts.last_prompt = cleaned;
+            }
+        }
+        "user" => absorb_user(facts, record),
+        _ => {}
+    }
+}
+
+fn set_title(facts: &mut Facts, value: Option<&Value>) {
+    if let Some(text) = value.and_then(Value::as_str) {
+        facts.title = Some(clean(text));
+    }
+}
+
+/// Notes a user record: a slash command, or a real prompt. Meta records and
+/// injected text are never titles.
+fn absorb_user(facts: &mut Facts, record: &Value) {
+    if record.get("isMeta").and_then(Value::as_bool) == Some(true) {
+        return;
+    }
+    let Some(text) = prompt_text(record) else {
+        return;
+    };
+    if let Some(command) = command_name(&text) {
+        facts.last_command = Some(command);
+    }
+    if is_injected(&text) {
+        return;
+    }
+    let cleaned = clean(&text);
+    if !cleaned.is_empty() {
+        facts.last_user_prompt = Some(cleaned);
+    }
+}
+
+/// The text of a user record.
+fn prompt_text(record: &Value) -> Option<String> {
+    let content = record.get("message")?.get("content")?;
+    match content {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(blocks) => {
+            let texts: Vec<&str> = blocks
+                .iter()
+                .filter_map(|b| b.get("text").and_then(Value::as_str))
+                .collect();
+            // A real prompt can follow an injected block (a reminder) in one record.
+            texts
+                .iter()
+                .find(|t| !is_injected(t) && !clean(t).is_empty())
+                .or_else(|| texts.first())
+                .map(|t| (*t).to_owned())
+        }
+        _ => None,
+    }
+}
+
+/// Text Claude Code or a skill injects into the transcript; never a title.
+const INJECTED_PREFIXES: [&str; 9] = [
+    "Base directory for this skill",
+    "<local-command-caveat>",
+    "<local-command-stdout>",
+    "<command-message>",
+    "<command-name>",
+    "<command-args>",
+    "<system-reminder>",
+    "Caveat:",
+    "<local-command-stderr>",
+];
+
+fn is_injected(text: &str) -> bool {
+    let t = text.trim_start();
+    INJECTED_PREFIXES.iter().any(|p| t.starts_with(p))
+}
+
+/// The `/xxx` inside `<command-name>/xxx</command-name>`, when present.
+fn command_name(text: &str) -> Option<String> {
+    const OPEN: &str = "<command-name>";
+    let start = text.find(OPEN)? + OPEN.len();
+    let len = text[start..].find("</command-name>")?;
+    let name = clean(&text[start..start + len]);
+    (!name.is_empty()).then_some(name)
+}
+
+/// Removes escape sequences and control characters (line breaks and tabs become
+/// spaces), trims, and cuts at `TITLE_MAX_CHARS` with `…`.
+pub(crate) fn clean(text: &str) -> String {
+    let mut out = String::new();
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => skip_escape(&mut chars),
+            '\n' | '\r' | '\t' => out.push(' '),
+            c if c.is_control() => {}
+            c => out.push(c),
+        }
+    }
+    let out = out.trim();
+    if out.chars().count() > TITLE_MAX_CHARS {
+        let mut cut: String = out.chars().take(TITLE_MAX_CHARS).collect();
+        cut.push('…');
+        return cut;
+    }
+    out.to_owned()
+}
+
+/// Skips the rest of an escape sequence after `ESC`: CSI (`[` … final byte
+/// `@`-`~`), OSC (`]` … BEL or `ESC \`), or a single following character.
+fn skip_escape(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) {
+    match chars.next() {
+        Some('[') => {
+            for c in chars.by_ref() {
+                if ('@'..='~').contains(&c) {
+                    break;
+                }
+            }
+        }
+        Some(']') => {
+            while let Some(c) = chars.next() {
+                if c == '\u{7}' {
+                    break;
+                }
+                if c == '\u{1b}' {
+                    chars.next();
+                    break;
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(test)]
+#[path = "claude_sessions_tests.rs"]
+mod tests;

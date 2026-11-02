@@ -73,6 +73,7 @@ fn groups(km: &Keymap) -> Vec<Group> {
                 pair("enter", "open agent pane"),
                 pair(&key(km, ActionId::GiveWork), "give work"),
                 pair(&key(km, ActionId::StartStop), "start / stop"),
+                pair(&key(km, ActionId::Resume), "resume"),
                 pair(&key(km, ActionId::New), "new here…"),
                 pair(&key(km, ActionId::Edit), "edit (Duo: Edit org)"),
                 pair(&key(km, ActionId::Move), "move to…"),

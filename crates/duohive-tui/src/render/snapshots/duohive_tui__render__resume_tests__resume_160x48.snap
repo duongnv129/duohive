@@ -1,0 +1,51 @@
+---
+source: crates/duohive-tui/src/render/resume_tests.rs
+expression: "text(&m, w, h)"
+---
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ pay-qa · Claude ──────────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│   ○ stopped · space to give work                                                                           │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃ │  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
+┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃▌│     └─ pay-qa               ○ stopped   30m  ┃│                                                                                                            │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                                                                            │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
+┃                                        ┌─ Resume pay-qa (1 of 4) ───────────────────────────────────────────────────┐                                        │
+┃                                        │ ⌕ Search…                                                                  │                                        │
+┃                                        │                                                                            │                                        │
+┃                                        │ ▌ Retry loop for failed payouts                                            │                                        │
+┃                                        │   3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere         │                                        │
+┃                                        │                                                                            │                                        │
+┃                                        │   Payout ledger migration                                                  │                                        │
+┃                                        │   1 day ago · main · 7.2MB · in use by squad-2                             │                                        │
+┃                                        │                                                                            │                                        │
+┃                                        │   Flaky webhook test                                                       │                                        │
+┃                                        │   2 days ago · fix/webhook-flake · 610KB · worktree flaky-date             │                                        │
+┃                                        │                                                                            │                                        │
+┃                                        │   OpenCode style entry                                                     │                                        │
+┃                                        │   5 days ago                                                               │                                        │
+┃                                        │                                                                            │                                        │
+┃                                        ├────────────────────────────────────────────────────────────────────────────┤                                        │
+┃                                        │ enter resume · type to search · ↑↓ move · esc cancel                       │                                        │
+┃                                        └────────────────────────────────────────────────────────────────────────────┘                                        │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│                                                                                                                                                              │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘

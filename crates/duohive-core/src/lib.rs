@@ -16,6 +16,7 @@ pub mod launch;
 pub mod names;
 pub mod org;
 pub mod ports;
+pub mod session_catalog;
 pub mod settings;
 pub mod status;
 pub mod templates;

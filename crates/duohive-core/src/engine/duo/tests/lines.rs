@@ -162,6 +162,7 @@ fn idle_row(agent: &str, token: &str, launched_as_duo: bool) -> SessionRow {
         last_task: None,
         worktree: None,
         launched_as_duo,
+        cli_session_id: None,
     }
 }
 

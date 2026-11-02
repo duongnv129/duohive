@@ -16,6 +16,7 @@ pub(crate) mod menu;
 mod move_to;
 mod needs_you;
 mod org_pane;
+mod resume;
 mod screens;
 mod settings;
 mod worktrees;
@@ -496,6 +497,8 @@ mod move_tests;
 mod pane_tests;
 #[cfg(test)]
 mod prelaunch_tests;
+#[cfg(test)]
+mod resume_tests;
 #[cfg(test)]
 mod screen_tests;
 #[cfg(test)]

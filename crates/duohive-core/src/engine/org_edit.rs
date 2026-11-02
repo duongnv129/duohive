@@ -285,6 +285,8 @@ impl Engine {
         let now = self.ports.clock.now();
         let names: BTreeSet<AgentName> = self.agent_names().into_iter().collect();
         self.agents.retain(|a, _| names.contains(a));
+        self.last_listed.retain(|a, _| names.contains(a));
+        self.pending_lists.retain(|a, _| names.contains(a));
         for name in names {
             self.agents
                 .entry(name)

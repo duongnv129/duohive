@@ -52,6 +52,7 @@ fn row(state: AgentState) -> SessionRow {
         last_task: Some("fix it".into()),
         worktree: None,
         launched_as_duo: false,
+        cli_session_id: None,
     }
 }
 
@@ -76,10 +77,10 @@ fn user_version(conn: &rusqlite::Connection) -> i64 {
 fn migrations_apply_once_and_set_user_version() {
     let (_t, paths) = temp_paths();
     let first = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&first), 7);
+    assert_eq!(user_version(&first), 8);
     drop(first);
     let second = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&second), 7);
+    assert_eq!(user_version(&second), 8);
 }
 
 #[test]
@@ -500,7 +501,7 @@ fn migration_3_applies_on_v2_db() {
         .unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 7);
+    assert_eq!(user_version(&conn), 8);
 }
 
 #[test]
@@ -513,6 +514,7 @@ fn migration_4_applies_on_v3_db() {
              DROP TABLE chat;
              DROP TABLE messages;
              DROP TABLE pending_tool_calls;
+             ALTER TABLE sessions DROP COLUMN cli_session_id;
              ALTER TABLE sessions DROP COLUMN launched_as_duo;
              INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
                error, last_reply, task_at_launch, saw_end_hook, last_task)
@@ -528,7 +530,7 @@ fn migration_4_applies_on_v3_db() {
     assert_eq!(store.take_queued_tool_calls().unwrap(), vec![]);
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 7);
+    assert_eq!(user_version(&conn), 8);
 }
 
 #[test]
@@ -667,7 +669,8 @@ fn migration_5_applies() {
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
         conn.execute_batch(
-            "DROP TABLE cards; DROP TABLE chat; DROP TABLE messages; PRAGMA user_version = 4;",
+            "DROP TABLE cards; DROP TABLE chat; DROP TABLE messages;
+             ALTER TABLE sessions DROP COLUMN cli_session_id; PRAGMA user_version = 4;",
         )
         .unwrap();
     }
@@ -677,7 +680,7 @@ fn migration_5_applies() {
     store.save_message(&first).unwrap();
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 7);
+    assert_eq!(user_version(&conn), 8);
     let sender: Option<String> = conn
         .query_row("SELECT sender FROM messages WHERE id = 1", [], |r| r.get(0))
         .unwrap();
@@ -754,8 +757,11 @@ fn migration_6_applies() {
     let (_t, paths) = temp_paths();
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
-        conn.execute_batch("DROP TABLE cards; DROP TABLE chat; PRAGMA user_version = 5;")
-            .unwrap();
+        conn.execute_batch(
+            "DROP TABLE cards; DROP TABLE chat;
+             ALTER TABLE sessions DROP COLUMN cli_session_id; PRAGMA user_version = 5;",
+        )
+        .unwrap();
     }
     let mut store = SqliteStore::open(&paths).unwrap();
     assert_eq!(store.load_chat(500).unwrap(), vec![]);
@@ -764,7 +770,7 @@ fn migration_6_applies() {
     assert_eq!(store.load_chat(500).unwrap(), vec![first]);
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 7);
+    assert_eq!(user_version(&conn), 8);
     let kind: String = conn
         .query_row("SELECT kind FROM chat WHERE id = 1", [], |r| r.get(0))
         .unwrap();
@@ -879,7 +885,9 @@ fn migration_7_applies() {
     let (_t, paths) = temp_paths();
     {
         let conn = open_db(&paths.state_db(), BUSY).unwrap();
-        conn.execute_batch("DROP TABLE cards; PRAGMA user_version = 6;")
+        conn.execute_batch(
+            "DROP TABLE cards; ALTER TABLE sessions DROP COLUMN cli_session_id; PRAGMA user_version = 6;",
+        )
             .unwrap();
     }
     let mut store = SqliteStore::open(&paths).unwrap();
@@ -896,9 +904,76 @@ fn migration_7_applies() {
     assert_eq!(store.load_cards().unwrap(), vec![first]);
     drop(store);
     let conn = open_db(&paths.state_db(), BUSY).unwrap();
-    assert_eq!(user_version(&conn), 7);
+    assert_eq!(user_version(&conn), 8);
     let source: String = conn
         .query_row("SELECT source FROM cards WHERE id = 1", [], |r| r.get(0))
         .unwrap();
     assert_eq!(source, "duo");
+}
+
+#[test]
+fn cli_session_id_round_trips() {
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let with_id = SessionRow {
+        cli_session_id: Some("ses_abc123".into()),
+        ..row(AgentState::Idle)
+    };
+    store.save_session(&with_id).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![with_id.clone()]);
+    let cleared = SessionRow {
+        cli_session_id: None,
+        ..with_id
+    };
+    store.save_session(&cleared).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![cleared]);
+}
+
+#[test]
+fn migration_8_keeps_existing_rows() {
+    let (_t, paths) = temp_paths();
+    {
+        // A version-7 database: the schema before `cli_session_id`.
+        let conn = open_db(&paths.state_db(), BUSY).unwrap();
+        conn.execute_batch(
+            "ALTER TABLE sessions DROP COLUMN cli_session_id;
+             INSERT INTO sessions (agent, token, window, state, quiet, quiet_since, from_screen, since,
+               error, last_reply, task_at_launch, saw_end_hook, last_task)
+               VALUES ('auth-service', 'tok-1', '@3', 'idle', 0, NULL, 0, 1, NULL, 'hi', 0, 0, 'old task');
+             PRAGMA user_version = 7;",
+        )
+        .unwrap();
+    }
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let rows = store.load_sessions().unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].cli_session_id, None);
+    assert_eq!(rows[0].last_task.as_deref(), Some("old task"));
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    assert_eq!(user_version(&conn), 8);
+}
+
+#[test]
+fn stopped_row_delete_removes_the_id() {
+    // TD section 7: a stopped agent's row is deleted, and its CLI session id goes with it.
+    let (_t, paths) = temp_paths();
+    let mut store = SqliteStore::open(&paths).unwrap();
+    let r = SessionRow {
+        cli_session_id: Some("ses_abc123".into()),
+        ..row(AgentState::Idle)
+    };
+    store.save_session(&r).unwrap();
+    store.delete_session(&r.agent).unwrap();
+    assert_eq!(store.load_sessions().unwrap(), vec![]);
+    drop(store);
+    let conn = open_db(&paths.state_db(), BUSY).unwrap();
+    let left: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sessions WHERE cli_session_id IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(left, 0);
 }

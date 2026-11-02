@@ -55,6 +55,18 @@ pub enum Command {
     },
     /// Re-read `org.toml`.
     ReloadOrg,
+    /// List the past sessions an agent could resume.
+    ListSessions {
+        /// Which agent.
+        agent: AgentName,
+    },
+    /// Start an agent on a past session of its CLI.
+    ResumeSession {
+        /// Which agent.
+        agent: AgentName,
+        /// The CLI's session id.
+        session_id: String,
+    },
     /// Apply new settings.
     UpdateSettings(Settings),
     /// Stop everything and exit.

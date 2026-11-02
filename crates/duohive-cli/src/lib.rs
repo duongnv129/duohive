@@ -1,11 +1,13 @@
 //! The CLI adapters: Claude Code and OpenCode.
 
 pub mod claude;
+pub mod claude_sessions;
 pub mod detect;
 pub mod fake;
 pub mod hooks_json;
 pub mod models;
 pub mod opencode;
+pub mod opencode_sessions;
 
 use std::path::{Path, PathBuf};
 
@@ -60,6 +62,7 @@ mod tests {
             hook_exe: "/bin/duohive".into(),
             home: "/home/u".into(),
             cwd: cwd.map(PathBuf::from),
+            resume: None,
         }
     }
 

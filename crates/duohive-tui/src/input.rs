@@ -111,6 +111,8 @@ pub enum Action {
     Filter,
     /// `m`: move the selection (UI §4.8).
     Move,
+    /// `r`: resume an old session (UI §4.13).
+    Resume,
     /// `y` on a focused card.
     CardApprove,
     /// `e` on a focused card.
@@ -211,6 +213,10 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if k.modifiers.contains(KeyModifiers::ALT) {
         return None;
     }
+    // The picker's search box takes every printable key, `q` included.
+    if matches!(m.dialog, Some(Dialog::Resume(_))) {
+        return resume::map_key(k);
+    }
     let common = match k.code {
         KeyCode::Esc => Some(Action::Esc),
         KeyCode::Tab => Some(Action::Tab),
@@ -281,7 +287,7 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             _ => None,
         },
         // Forms and Give work took their keys above, before `common`.
-        Dialog::Form(_) | Dialog::GiveWork(_) => None,
+        Dialog::Form(_) | Dialog::GiveWork(_) | Dialog::Resume(_) => None,
     }
 }
 
@@ -295,6 +301,7 @@ fn mapped(id: ActionId) -> Action {
     match id {
         ActionId::GiveWork => Action::GiveWork,
         ActionId::StartStop => Action::StartStop,
+        ActionId::Resume => Action::Resume,
         ActionId::New => Action::New,
         ActionId::Edit => Action::Edit,
         ActionId::Move => Action::Move,
@@ -385,6 +392,7 @@ fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
                 on_yes: *command,
                 back: None,
                 back_list: None,
+                back_resume: None,
             };
             m.dialog = Some(Dialog::Confirm(Box::new(confirm)));
             Vec::new()
@@ -416,6 +424,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::GiveWork(g)) => return give_work::action(m, g, a),
         Some(Dialog::Worktrees(l)) => return worktrees::action(m, l, a),
         Some(Dialog::MoveTo(p)) => return move_to::action(m, p, a),
+        Some(Dialog::Resume(p)) => return resume::action(m, p, a),
         Some(Dialog::Settings(s)) => return settings::action(m, s, a),
         Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
         Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
@@ -519,6 +528,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             }
         }
         Action::StartStop => start_stop(m),
+        Action::Resume => resume(m),
         Action::Delete => delete(m),
         Action::New => new_here(m),
         Action::Edit => edit_here(m),
@@ -581,6 +591,12 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
     }
     if let Some(list) = c.back_list {
         m.dialog = Some(Dialog::Worktrees(list));
+    }
+    if let Some(mut picker) = c.back_resume
+        && !yes
+    {
+        picker.confirm = None;
+        m.dialog = Some(Dialog::Resume(picker));
     }
     if yes {
         vec![UiEffect::Send(c.on_yes)]
@@ -708,6 +724,28 @@ fn agent_of(m: &UiModel, key: &NodeKey) -> Option<AgentName> {
         NodeKey::Agent(a) => Some(a.clone()),
         NodeKey::Team(_) | NodeKey::Role(_) => None,
     }
+}
+
+/// `r`: a stopped or errored agent lists its past sessions; a running one says to stop it
+/// first; a team, a role and Duo do nothing (UI §4.13).
+pub(super) fn resume(m: &mut UiModel) -> Vec<UiEffect> {
+    let NodeKey::Agent(agent) = m.selected.clone() else {
+        return Vec::new();
+    };
+    if m.org.is_duo(&agent) {
+        return Vec::new();
+    }
+    if m.view(&agent).status.state.is_running() {
+        // The hint is the live Start / stop key; unbound, there is none to show.
+        m.footer_note = Some(match m.keymap.key(ActionId::StartStop).label() {
+            key if key.is_empty() => format!("{agent} is running · stop it first"),
+            key => format!("{agent} is running · stop it first ({key})"),
+        });
+        return Vec::new();
+    }
+    // No in-flight flag: a rejected command gets no answer, and `r` must never lock out.
+    m.footer_note = Some(m.reading_note(&agent));
+    vec![UiEffect::Send(Command::ListSessions { agent })]
 }
 
 /// `s`: stopped → start; errored → stop (D16); running → ask first (UI §4.8).
@@ -845,6 +883,7 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
         on_yes,
         back: None,
         back_list: None,
+        back_resume: None,
     }))
 }
 
@@ -857,6 +896,7 @@ mod menu;
 pub(crate) mod mouse;
 mod move_to;
 mod panes;
+pub(crate) mod resume;
 mod select;
 mod settings;
 mod worktrees;
@@ -877,6 +917,8 @@ mod menu_tests;
 pub(super) mod mouse_tests;
 #[cfg(test)]
 mod move_tests;
+#[cfg(test)]
+mod resume_tests;
 #[cfg(test)]
 pub(crate) use move_tests::spec_org as spec_move_org;
 #[cfg(test)]

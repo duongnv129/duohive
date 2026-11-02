@@ -6,11 +6,15 @@ use duohive_core::adapter::{
 };
 use duohive_core::cli_kind::CliKind;
 use duohive_core::launch::{Key, LaunchCommand, LaunchFile, LaunchSpec};
+use duohive_core::session_catalog::{CatalogError, SessionInfo};
 use duohive_core::status::WaitingOn;
 use duohive_core::tool::WAIT_MAX_MINUTES;
 use duohive_core::validate::forbidden_flag;
+use duohive_core::worktree::TaskId;
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 
+use crate::claude_sessions::read_claude_sessions;
 use crate::detect::probe_version;
 use crate::hooks_json::command_hooks;
 use crate::{launch_cwd, utf8};
@@ -104,6 +108,10 @@ impl CliAdapter for ClaudeAdapter {
             .map_err(|e| LaunchError::Invalid(format!("couldn't build the MCP config: {e}")))?;
         let agent = &spec.agent;
         let mut args = Vec::new();
+        // The old session comes first; every per-launch flag below still applies (R1.1).
+        if let Some(resume) = &spec.resume {
+            args.extend(["--resume".to_owned(), resume.session_id.clone()]);
+        }
         if !agent.prompt.trim().is_empty() {
             args.extend(["--append-system-prompt".to_owned(), agent.prompt.clone()]);
         }
@@ -122,7 +130,8 @@ impl CliAdapter for ClaudeAdapter {
             args.push(format!("--effort={effort}"));
         }
         args.extend(agent.flags.iter().cloned());
-        if let Some(task) = &spec.task {
+        // A resumed session continues its own conversation: no task.
+        if let (Some(task), None) = (&spec.task, &spec.resume) {
             // `--` keeps a task that starts with `-` from being read as options (S1.8).
             args.extend(["--".to_owned(), task.clone()]);
         }
@@ -130,7 +139,10 @@ impl CliAdapter for ClaudeAdapter {
             program: self.kind().binary().to_owned(),
             args,
             env: Vec::new(),
-            cwd: launch_cwd(spec),
+            cwd: spec
+                .resume
+                .as_ref()
+                .map_or_else(|| launch_cwd(spec), |r| r.cwd.clone()),
             files: vec![
                 LaunchFile {
                     path: settings_path,
@@ -142,6 +154,14 @@ impl CliAdapter for ClaudeAdapter {
                 },
             ],
         })
+    }
+
+    fn list_sessions(
+        &self,
+        home: &Path,
+        dirs: &[(PathBuf, Option<TaskId>)],
+    ) -> Result<Vec<SessionInfo>, CatalogError> {
+        read_claude_sessions(home, dirs)
     }
 
     fn parse_hook(&self, event: &str, payload: &Value) -> Option<HookSignal> {
@@ -159,6 +179,15 @@ impl CliAdapter for ClaudeAdapter {
             "session-end" => Some(HookSignal::SessionEnded),
             _ => None,
         }
+    }
+
+    /// `session_id` of the `SessionStart` payload (spike R1: after `--resume` it is
+    /// the original id).
+    fn cli_session_id(&self, event: &str, payload: &Value) -> Option<String> {
+        (event == "session-start")
+            .then(|| text_field(payload, "session_id"))
+            .flatten()
+            .map(str::to_owned)
     }
 
     /// The reply comes from the hook, so only the state is read (S1.7).
@@ -435,6 +464,7 @@ mod tests {
             hook_exe: "/usr/local/bin/duohive".into(),
             home: "/home/u".into(),
             cwd: None,
+            resume: None,
         }
     }
 
@@ -476,6 +506,41 @@ mod tests {
         assert!(pos("--effort=high") > pos("--model=opus"));
         assert_eq!(args[args.len() - 2..], ["--", "Add retry cases"]);
         insta::assert_yaml_snapshot!(cmd);
+    }
+
+    fn resume_spec() -> LaunchSpec {
+        let mut s = spec(None);
+        s.resume = Some(duohive_core::launch::ResumeTarget {
+            session_id: "81dd1d5a-cb77-4275-bf08-34e237ce08da".into(),
+            cwd: "/data/worktrees/squad-1/fix".into(),
+        });
+        s.agent.model = Some("opus".into());
+        s
+    }
+
+    #[test]
+    fn launch_snapshot_resume() {
+        let cmd = launch(&resume_spec());
+        assert_eq!(cmd.cwd, PathBuf::from("/data/worktrees/squad-1/fix"));
+        insta::assert_yaml_snapshot!(cmd);
+    }
+
+    #[test]
+    fn launch_resume_has_no_task_prompt() {
+        let mut s = resume_spec();
+        s.task = Some("do the thing".into());
+        let cmd = launch(&s);
+        let at = cmd.args.iter().position(|a| a == "--resume").unwrap();
+        assert_eq!(cmd.args[at + 1], "81dd1d5a-cb77-4275-bf08-34e237ce08da");
+        assert!(!cmd.args.iter().any(|a| a.contains("do the thing")));
+        assert!(!cmd.args.contains(&"--".to_owned()));
+        for flag in ["--settings", "--append-system-prompt", "--mcp-config"] {
+            assert!(cmd.args.contains(&flag.to_owned()), "{flag}");
+        }
+        assert!(cmd.args.contains(&"--model=opus".to_owned()));
+        // A launch that doesn't resume still carries the task.
+        let plain = launch(&spec(Some("do the thing")));
+        assert_eq!(plain.args[plain.args.len() - 2..], ["--", "do the thing"]);
     }
 
     #[test]
@@ -964,5 +1029,24 @@ mod tests {
                 Key::Enter,
             ]
         );
+    }
+
+    #[test]
+    fn claude_session_start_yields_session_id() {
+        let p = serde_json::json!({"session_id": "0a1b-2c", "source": "resume"});
+        assert_eq!(
+            ClaudeAdapter.cli_session_id("session-start", &p).as_deref(),
+            Some("0a1b-2c")
+        );
+    }
+
+    #[test]
+    fn claude_other_events_yield_none() {
+        let p = serde_json::json!({"session_id": "0a1b-2c"});
+        for event in ["busy", "needs-input", "turn-end", "session-end"] {
+            assert_eq!(ClaudeAdapter.cli_session_id(event, &p), None, "{event}");
+        }
+        let none = serde_json::json!({});
+        assert_eq!(ClaudeAdapter.cli_session_id("session-start", &none), None);
     }
 }

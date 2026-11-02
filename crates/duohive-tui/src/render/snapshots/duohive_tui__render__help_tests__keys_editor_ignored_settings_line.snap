@@ -8,6 +8,7 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 ┃ │  Action                  Key                                             │ │
 ┃ │▌ Give work               space                                           │ │
 ┃▌│  Start / stop            s                                               │ │
+┃ │  Resume                  r                                               │ │
 ┃ │  New                     n                                               │ │
 ┃ │  Edit                    e                                               │ │
 ┃ │  Move                    m                                               │ │
@@ -16,12 +17,11 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 ┃ │  Last reply              v                                               │ │
 ┃ │  Open org.toml           o                                               │ │
 ┃ │  Settings                ,                                               │ │
-┃ │  Worktrees               w                                               │ │
-┣━│  Filter                  f                                               │ │
+┣━│  Worktrees               w                                               │ │
+┃ │  Filter                  f                                               │ │
 ┃ │  Key map                 ?                                               │ │
-┃ │  Approve card            y                                               │ │
-┗━│  Edit card               e                                               │─┘
-┌─│  Reject card             n                                               │─┐
+┗━│  Approve card            y                                               │─┘
+┌─│  ↓ more                                                                  │─┐
 │ │  ignored in settings.toml: nope · using the default                      │ │
 │ │  enter rebind (press the new key) · backspace default · esc back         │ │
 └─└──────────────────────────────────────────────────────────────────────────┘─┘

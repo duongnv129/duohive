@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ses_aaaa0000000000000000000001",
+    "title": "Fix the retry loop",
+    "updated": 1793459244608,
+    "created": 1793459238035,
+    "projectId": "0000000000000000000000000000000000000001",
+    "directory": "/work/payments"
+  },
+  {
+    "id": "ses_aaaa0000000000000000000002",
+    "title": "Add pagination to the report",
+    "updated": 1793459239991,
+    "created": 1793459230000,
+    "projectId": "0000000000000000000000000000000000000001",
+    "directory": "/work/payments-wt/fix"
+  },
+  {
+    "id": "ses_aaaa0000000000000000000003",
+    "title": "Sibling checkout work",
+    "updated": 1793459100000,
+    "created": 1793459000000,
+    "projectId": "0000000000000000000000000000000000000001",
+    "directory": "/work/payments-sibling"
+  }
+]

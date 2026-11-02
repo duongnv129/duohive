@@ -1,0 +1,27 @@
+---
+source: crates/duohive-tui/src/render/resume_tests.rs
+expression: "text(&m, w, h)"
+---
+ DuoHive  ● 2 · ◆ 2                                                             
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ pay-qa · Claude ────────────────────────────┐
+┃ ⬢ Duo                ◦   1m  ┃│                                              │
+┃ ┌─ Resume pay-qa (1 of 4) ─────────────────────────────────────────────────┐ │
+┃ │ ⌕ Search…                                                                │ │
+┃ │                                                                          │ │
+┃ │ ▌ Retry loop for failed payouts                                          │ │
+┃ │   3 minutes ago · fix/payout-retry · 4.2MB · may be open elsewhere       │ │
+┃▌│                                                                          │ │
+┃ │   Payout ledger migration                                                │ │
+┃ │   1 day ago · main · 7.2MB · in use by squad-2                           │ │
+┃ │                                                                          │ │
+┃ │   Flaky webhook test                                                     │ │
+┃ │   2 days ago · fix/webhook-flake · 610KB · worktree flaky-date           │ │
+┃ │                                                                          │ │
+┣━│   OpenCode style entry                                                   │ │
+┃ │   5 days ago                                                             │ │
+┃ │                                                                          │ │
+┗━├──────────────────────────────────────────────────────────────────────────┤─┘
+┌─│ enter resume · type to search · ↑↓ move · esc cancel                     │─┐
+│ └──────────────────────────────────────────────────────────────────────────┘ │
+│ ❯                                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘

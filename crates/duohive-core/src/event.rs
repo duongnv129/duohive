@@ -14,6 +14,7 @@ use crate::names::AgentName;
 use crate::org::Org;
 use crate::org::RoleKey;
 use crate::ports::OrgFileError;
+use crate::session_catalog::SessionInfo;
 use crate::status::{AgentState, Status};
 use crate::time::Millis;
 use crate::tool::{CallId, Given, ToolResult};
@@ -152,6 +153,20 @@ pub enum Event {
         cli: CliKind,
         /// The list, or the reason.
         result: Result<ModelList, String>,
+    },
+    /// The past sessions an agent could resume.
+    SessionsListed {
+        /// Which agent.
+        agent: AgentName,
+        /// The sessions, as the catalog returned them.
+        sessions: Vec<SessionInfo>,
+    },
+    /// An agent's past sessions couldn't be listed.
+    SessionsUnreadable {
+        /// Which agent.
+        agent: AgentName,
+        /// Why.
+        reason: String,
     },
     /// A desktop alert to show.
     Alert(Alert),
@@ -360,6 +375,11 @@ mod tests {
             }),
             Command::EditOrg(OrgEdit::Delete(NodeKey::Role(rk))),
             Command::ReloadOrg,
+            Command::ListSessions { agent: n("a") },
+            Command::ResumeSession {
+                agent: n("a"),
+                session_id: "s-1".into(),
+            },
             Command::UpdateSettings(Settings::default()),
             Command::Shutdown,
         ]
@@ -442,6 +462,23 @@ mod tests {
                 pending: false,
             },
             Event::Reconnected,
+            Event::SessionsListed {
+                agent: n("a"),
+                sessions: vec![crate::session_catalog::SessionInfo {
+                    id: "s-1".into(),
+                    title: "t".into(),
+                    updated_ms: 1,
+                    branch: None,
+                    size_bytes: 0,
+                    dir: "/r".into(),
+                    worktree: None,
+                    in_use_by: None,
+                }],
+            },
+            Event::SessionsUnreadable {
+                agent: n("a"),
+                reason: "no".into(),
+            },
         ]
     }
 

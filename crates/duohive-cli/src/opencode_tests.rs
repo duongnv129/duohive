@@ -39,6 +39,7 @@ fn spec(task: Option<&str>) -> LaunchSpec {
         hook_exe: "/usr/local/bin/duohive".into(),
         home: "/home/u".into(),
         cwd: None,
+        resume: None,
     }
 }
 
@@ -736,4 +737,86 @@ fn dialog_check_needs_esc_alone_at_the_end() {
     assert!(!dialog_open("   Press esc"));
     assert!(!dialog_open("   Status      esc interrupt"));
     assert!(!dialog_open("   Status      esc again to interrupt"));
+}
+
+#[test]
+fn opencode_busy_yields_session_id() {
+    let p = serde_json::json!({"type": "session.execution.started", "sessionID": "ses_e6d77e474ffe25V0Ho0JFad71a"});
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("busy", &p).as_deref(),
+        Some("ses_e6d77e474ffe25V0Ho0JFad71a")
+    );
+}
+
+#[test]
+fn opencode_turn_end_yields_session_id() {
+    let p = serde_json::json!({
+        "type": "session.execution.succeeded",
+        "sessionID": "ses_e6d77e474ffe25V0Ho0JFad71a",
+        "duohive_last_reply": "R3C"
+    });
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("turn-end", &p).as_deref(),
+        Some("ses_e6d77e474ffe25V0Ho0JFad71a")
+    );
+}
+
+#[test]
+fn opencode_session_start_yields_none() {
+    let p = serde_json::json!({});
+    assert_eq!(OpencodeAdapter.cli_session_id("session-start", &p), None);
+}
+
+#[test]
+fn opencode_needs_input_reads_properties_session_id() {
+    // Not observed: the shape is read from the plugin source (`permission.asked`
+    // delivers `properties.sessionID`), not from a recorded log.
+    let p = serde_json::json!({
+        "type": "permission.asked",
+        "properties": {"id": "per_1", "sessionID": "ses_abc", "action": "bash", "resources": ["ls"]}
+    });
+    assert_eq!(
+        OpencodeAdapter.cli_session_id("needs-input", &p).as_deref(),
+        Some("ses_abc")
+    );
+}
+
+fn resume_spec() -> LaunchSpec {
+    let mut s = spec(None);
+    s.resume = Some(duohive_core::launch::ResumeTarget {
+        session_id: "ses_e6d7fcb84ffeC5ncg10QkyYZTv".into(),
+        cwd: "/data/worktrees/squad-1/fix".into(),
+    });
+    s
+}
+
+#[test]
+fn launch_snapshot_resume_opencode() {
+    let cmd = launch(&resume_spec());
+    assert_eq!(cmd.cwd, PathBuf::from("/data/worktrees/squad-1/fix"));
+    assert_eq!(
+        cmd.args,
+        [
+            "--standalone",
+            "--session",
+            "ses_e6d7fcb84ffeC5ncg10QkyYZTv"
+        ]
+    );
+    insta::assert_yaml_snapshot!(for_snapshot(cmd));
+}
+
+#[test]
+fn opencode_launch_resume_has_no_task_prompt() {
+    let mut s = resume_spec();
+    s.task = Some("do the thing".into());
+    let cmd = launch(&s);
+    assert!(!cmd.args.iter().any(|a| a.contains("do the thing")));
+    assert!(!cmd.args.iter().any(|a| a.starts_with("--prompt")));
+    assert!(env(&cmd, "OPENCODE_CONFIG").is_some());
+    // A launch that doesn't resume still carries the task.
+    let plain = launch(&spec(Some("do the thing")));
+    assert_eq!(
+        plain.args.last().map(String::as_str),
+        Some("--prompt=do the thing")
+    );
 }

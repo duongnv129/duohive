@@ -845,3 +845,175 @@ Task 4.5, step 1. The plan assumed OpenCode 2.0's `opencode models --verbose` gi
 - **Fixtures:** `crates/duohive-cli/tests/fixtures/models/opencode-models.txt` (plain list) and `claude-help.txt` (`claude --help`, from which the aliases and `--effort` choices are read).
 - **Decision:** `parse_opencode_models` returns models with empty `efforts`; OpenCode's Effort field takes typed text, and an existing `model#effort` value still launches. TD §5.2 and UI §4.4.1 say so.
 - **Open (P4-Q7):** re-check on a build that lists variants; until then there is no effort dropdown for OpenCode.
+
+## R1 Claude Code `--resume`
+
+Task R.1 of the v1.1 plan. Claude Code **2.1.316** (the installed build; DuoHive's adapter lists `2.1`). Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r1.q12J8s/` (`proj`: a git repo on branch `feature-x` with one commit; `wt`: a `git worktree` of it on branch `wt-branch`; `we ird_é.dir`: a plain non-git directory). Hooks: a per-launch `--settings` file whose `SessionStart` and `Stop` commands append the payload to a file. `-p` calls used `--model haiku`; one interactive check used a throwaway tmux socket (`tmux -L duohive-r1-spike`). Nothing under `~/.claude` was edited by hand. The spike's sessions are in `~/.claude/projects/-private-tmp-duohive-r1-q12J8s-{proj,wt,we-ird---dir}/` (left in place). The one interactive launch had to answer Claude Code's trust dialog for the throwaway `proj` directory ("Yes, I trust this folder"), which Claude Code records in its own state; `-p` never shows that dialog.
+
+### R1.1 `--resume` with the per-launch flags
+
+| # | Command (in `proj`) | Result |
+|---|---|---|
+| 1 | `claude -p "Reply with just: ONE" --model haiku --settings $D/settings.json --append-system-prompt "You are tester." --mcp-config $D/mcp.json --output-format json </dev/null` | New session `81dd1d5a-cb77-4275-bf08-34e237ce08da`. `SessionStart` hook ran, `"source":"startup"`. |
+| 2 | Same flags plus `--resume 81dd1d5a-…`, prompt "What exact text did I ask you to reply with in my first message?" | Accepted every flag. Answer: "You asked me to reply with just: ONE" (the old conversation is loaded). `init` and `result` `session_id` are `81dd1d5a-…`, the original id. The hooks file took a second `SessionStart` with `"source":"resume"` and the same `session_id`, and a `Stop`. No new `.jsonl`: the original file was appended to (623 511 to 645 065 bytes). |
+| 3 | tmux, `claude --resume 81dd1d5a-… --settings … --append-system-prompt 'You are tester.' --mcp-config … --model=haiku` (DuoHive's `--model=m` form) | The pane shows the old turns ("Reply with just: ONE", "ONE", and the question and answer from run 2) above an empty prompt, and a `SessionStart` with `"source":"resume"` and the original id. |
+
+Not run: `--effort=e` and the `mcp__duohive__*` permission entry were not combined with `--resume`; they go through the same option parser as the flags above, and an empty `mcpServers` config was used, so MCP tool loading on resume is untested here. `--resume` together with `-- <task>` was also not run; R.9 sends no task on resume anyway.
+
+**`SessionStart` payload** (both `startup` and `resume`): `session_id`, `transcript_path` (`/Users/<user>/.claude/projects/<folder>/<session_id>.jsonl`), `cwd`, `hook_event_name`, `source` (`"startup"` or `"resume"`). `Stop` carries the same `session_id` and `transcript_path`.
+
+**Verdict:** `session_id` is present, and after `--resume <id>` it is the original id (the same file is continued). So the in-use rule of TD §5.6 holds: the id recorded from the first hook payload of a launch is the resumed session's. `source` tells a resume from a fresh start.
+
+### R1.2 Session files: the reader rules
+
+- **Folder:** `~/.claude/projects/<folder>/`, with `<folder>` = the session's working directory after symlinks are resolved (`/tmp/…` became `/private/tmp/…`), then every character that is not `[A-Za-z0-9]` replaced by `-`, one `-` per character: `/private/tmp/duohive-r1.q12J8s/proj` is `-private-tmp-duohive-r1-q12J8s-proj`; `/…/we ird_é.dir` is `-private-tmp-duohive-r1-q12J8s-we-ird---dir` (space, `_`, `é` and `.` each give one `-`). The leading `/` gives the leading `-`. Not tested: directories whose encoded name is very long (Claude Code is believed to truncate such names and add a hash). Safer rule for the reader: derive the folder as above, and take a session's directory from the `cwd` field of its records rather than from the folder name.
+- **Glob:** `<folder>/*.jsonl`; the file stem is the session id (a UUID). The folder also holds a `memory/` directory (skip it). A `-p` run writes its file too.
+- **Format:** JSON Lines, one object per line, each with a `type`. Types seen: `user`, `assistant`, `attachment`, `system`, `queue-operation`, `last-prompt`, `mode`, `custom-title`, `agent-name`, `api-request*`, `atis-latch`, `cost-state`. Files are large (620 KB for a one-word reply, mostly `attachment` and `api-request` records), so read line by line and parse only the types needed.
+- **Session id:** `sessionId` on nearly every record; equals the file stem and the hook's `session_id`.
+- **Directory:** `cwd` on `user`, `assistant`, `attachment` and `system` records (not on `queue-operation`, `last-prompt`, `custom-title` or `mode`). It is the resolved path (`/private/tmp/…`); for a worktree session it is the worktree path.
+- **Branch:** `gitBranch` on the same records, taken when the record was written: `feature-x` in `proj`, `wt-branch` in `wt`. In a directory that is not a git repository it is the string `HEAD`, not absent. Use the last record's value; treat `HEAD` as "no branch".
+- **Last written:** the file's mtime (the resume updated it). Per-record `timestamp` (ISO 8601, UTC) also exists on `user`, `assistant`, `attachment` and `system` records.
+- **Size:** the file's byte length.
+- **Title:** a `custom-title` record `{"type":"custom-title","customTitle":"My Title","sessionId":…}`, written when the session is named (`-n "My Title"`, or `/rename`); an `agent-name` record `{"type":"agent-name","agentName":"My Title",…}` carries the same text. Several copies can be present (3 `custom-title` lines in a one-turn session), so take the last. No other title record appeared in these `-p` sessions; an automatic title for an interactive session was **not** observed and is unverified. The reader must accept a missing title.
+- **First-prompt fallback:** the first `type:"user"` record's `message.content` (a string in these sessions; handle an array of blocks by taking the first text block). `{"type":"last-prompt","lastPrompt":"…"}` records hold the most recent prompt, not the first. The reader should skip meta prompts (starting with `<system-reminder>` or `<command-`); none occurred in these runs.
+- **Worktree storage:** a session run from the worktree directory is stored under the worktree's own folder (`-private-tmp-duohive-r1-q12J8s-wt`, with `cwd` the worktree path and `gitBranch: wt-branch`), not under the main checkout's folder. The catalog must list each worktree path as its own directory, as TD §5.6 already plans (`dirs`).
+- **Version:** each record carries `"version":"2.1.316"`, so the reader can check the version per file.
+
+**Addendum (2026-11-01).** A scan of real session files found `ai-title` records (`{"type":"ai-title","aiTitle":"…","sessionId":…}`, repeated through a session) that the original spike missed. The reader now uses them: the last `custom-title` or `agent-name` record (a title the user set) wins, else the last `ai-title`, else the first prompt. Whether this matches the ordering Claude Code's own `/resume` uses exactly is to be confirmed by hand (R4).
+
+A comparison with the author's Claude Code `/resume` list (17 sessions) on 2026-11-02 changed the fallback: titles now fall back to the last prompt (`last-prompt.lastPrompt`, else the last real user prompt) instead of the first, injected text (`isMeta` records, skill and caveat text, command wrappers, system reminders) is skipped, and a session of slash commands only shows the command name (`/clear`, `/effort`, `/doctor`). Also found: Claude Code hides sessions with `entrypoint: sdk-cli` (48 of the 66 files in this project); DuoHive does not yet filter them (open item for the author, see the v1.1 roadmap).
+
+### R1.3 Decision
+
+- **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the last prompt (`last-prompt.lastPrompt`) when there is no `ai-title` (see the R1 addendum and TD §5.6); branch, size and last-written are always available.
+- **Contradicts spec:** nothing outright. Corrections for R.9 and the reader: (1) the folder name is made from the *resolved* directory (`/tmp` is `/private/tmp` on macOS), so canonicalise the directory first; (2) outside a git repository `gitBranch` is `HEAD`, not missing; (3) there are two title records (`custom-title`, `agent-name`) and the title is often absent.
+- **For R.6:** the first `SessionStart` of a launch carries the id to record; on a resume it has `source:"resume"` and the id equals the one launched with, so the V11-D4 fallback (newest file in the directory) is needed only for a fresh launch, if at all.
+- **For R.9:** the launch is the §5.1 command with `--resume <id>` added and no `-- <task>`.
+
+## R2 OpenCode session list and `--session`
+
+Task R.2 of the v1.1 plan. OpenCode **v2.2.5** (the installed build; TD §5.2 was written against 2.0.29). Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r2.bun7VK/`: `a` (git repo, branch `feat-a`), `wt` (a `git worktree` of `a`, branch `wt-branch`), `b` (a separate git repo, branch `feat-b`), `c` (a separate git repo with a different root commit, branch `feat-c`), `ng` (not a git repository). One session each was made with `opencode run -m opencode/big-pickle "Reply with just: ONE-<dir>"` (a free model), run in that directory. The resume check used a throwaway tmux socket (`tmux -L duohive-r2-spike`), a per-launch `OPENCODE_CONFIG` file in `/tmp/duohive-r2.bun7VK/run/` naming DuoHive's real plugin (`crates/duohive-cli/src/assets/opencode-plugin/index.js`, copied as `opencode-plugin/index.js`, loaded by `plugins: [{"package": "file://…/opencode-plugin"}]`), and a stub hook executable (`DUOHIVE_HOOK_EXE`) that appends its arguments and stdin to a log. The global OpenCode configuration was not touched. Sessions live in OpenCode's SQLite store `~/.local/share/opencode/opencode.db` (table `session_v2`); the spike's sessions were left there.
+
+### R2.1 `opencode session list`
+
+`opencode session list --help`: "List top-level sessions in the current project, newest first"; flags `--max-count, -n <integer>` (**default 100**) and `--format table|json`.
+
+| # | Command | Result |
+|---|---|---|
+| 1 | `opencode session list --format json` in `a`, `wt` and `b` | The same three sessions each time. All three throwaway directories share one `projectId` by accident (a shared root commit, see below), so they list the same sessions; this accident is exactly why filtering by `directory` is needed. |
+| 2 | same, in `c` | Only `c`'s session. |
+| 3 | same, in `ng` | Only `ng`'s session. |
+| 4 | same, in `/tmp` (not a project) | Empty output. |
+| 5 | `opencode session list` (table) | Lines `<id>\t<title>\t<local time>`: no directory, no branch. |
+
+**Scope: a whole project, not the current directory.** The project is identified by `projectId`, which is a hash of the repository's root commit. A worktree shares it with its main checkout, so running the command in `wt` lists the sessions made in `a` and the other way round (this is the wanted behaviour for DuoHive's worktrees). `b` was listed too only because my `git commit --allow-empty -m init` in `a` and `b` produced the same root commit hash (`877150…`), so both repos had one `projectId`; `c`, with a different root commit, was not listed under `a`. A real repository with its own history has its own project, but two clones of one repository (same root commit) would share one. A non-git directory is its own project (`ng` had a `projectId` of its own).
+
+**Fields** (JSON array, newest `updated` first; every object had exactly these):
+
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | `ses_…`, 30 characters |
+| `title` | string | Automatic: the model names the session after the first prompt ("ONE-b reply instruction"; "Reply with ONE-a"). Never absent in these runs; `opencode run --title` sets it. |
+| `updated` | integer | Last-written time, **Unix epoch milliseconds** (`1793459244608`) |
+| `created` | integer | Creation time, epoch milliseconds |
+| `projectId` | string | 40-hex project id (root commit hash) |
+| `directory` | string | The directory the session was created in, as a **resolved** path (`/private/tmp/…`, not `/tmp/…`); for a worktree session it is the worktree path |
+
+Example (trimmed to one object):
+
+```json
+[
+  {
+    "id": "ses_e6d7fcb84ffeC5ncg10QkyYZTv",
+    "title": "ONE-wt reply test",
+    "updated": 1793459239991,
+    "created": 1793459238035,
+    "projectId": "877150657193f2f270f489ad12cd588db7e13fba",
+    "directory": "/private/tmp/duohive-r2.bun7VK/wt"
+  }
+]
+```
+
+**Not present:** `branch` (nor anything git-related), and `size`. The store's `session_v2` table has token counts, `cost`, `summary_*` and `model`, but no branch column either, so there is nothing to read behind the command. Sessions with a `parent_id` (subagents) are not listed ("top-level"). Not tested: more than 100 sessions (the default cap applies, so R.10 must pass a large `--max-count`), sessions deleted or archived, and a session whose directory has since been removed.
+
+### R2.2 `--session <id>` under `--standalone`
+
+Command (in tmux, started from `ng`, a directory other than the session's):
+`OPENCODE_CONFIG=$R/opencode.json DUOHIVE_HOOK_EXE=$R/hook.sh DUOHIVE_HOOK_AGENT=spike opencode --standalone --session ses_e6d7fea6effeljr0xQqmnat8Sf`
+with `opencode.json` = `{"plugins":[{"package":"file://$R/opencode-plugin","options":{}}],"model":"opencode/big-pickle","default_agent":"build"}`. The DuoHive `mcp` entry and the `instructions` file were left out (not what is under test).
+
+- **Resumes:** the pane shows the old conversation ("Reply with just: ONE-a" and the answer `ONE-a`) above an empty prompt, with the title in the header.
+- **From the session's own directory:** although the process started in `ng`, the status line reads `/private/tmp/duohive-r2.bun7VK/a:feat-a`: OpenCode switched to the session's directory and branch. So DuoHive need not `cd` first, though R.10 may still launch in the session's directory.
+- **Continues the same session:** asking "What did I ask you to reply with?" got `ONE-a` (history loaded); the hook payloads carry `sessionID` `ses_e6d7fea6effeljr0xQqmnat8Sf`, the original id, and `opencode session list` still shows three entries for the project, not four.
+- **Hooks fire under `--standalone` with the plugin:** `session-start` (payload `{}`), `busy` (`session.execution.started`) and `turn-end` (`session.execution.succeeded`, with `duohive_last_reply: "ONE-a"`). Every line appeared twice in the log; I did not find out why (the stub, or the plugin loaded twice). The id on `busy` and `turn-end` is useful to R.11/R3: `sessionID` is in those payloads, but `session-start`'s is empty, so the id comes from the first `busy`.
+- **Not verified:** the `--prompt=<task>` flag together with `--session` (R.9/R.10 send no task on resume anyway), `--session` with a model and effort set in the config (the config named a model; it was applied), the `mcp` and `instructions` entries on resume, and a `--session` id that no longer exists (the help says it is then *created*, so an unknown id starts a new empty session instead of failing; R.10 must only pass ids it has just listed).
+
+### R2.3 Decision
+
+- **Fields available:** `id`, `title`, `updated` (epoch ms), `created`, `directory`, `projectId`.
+- **Filtering rule:** by directory **in the JSON**. One call lists the whole project, so run it once from any directory in the project, then keep sessions whose `directory` equals one of the agent's `dirs` (compare canonicalised paths; the JSON path is resolved). Running it once per directory would return the same list each time. A directory outside any git repository is its own project, so it needs a call run in that directory. Pass `--max-count` large (default 100).
+- **Fallbacks applied:** *No branch:* not one of the brief's fallbacks. *No size:* the brief's fallback (the line omits size). Both are **proposed, pending the author's decision (V11-D2)**: R.10 will omit branch (`SessionInfo.branch` is `None`) and size for OpenCode, but the PRD, UI and TD wording is not changed here, and the author decides it before R.14. *Last-written time:* present (`updated`, epoch ms), so no forced 5-minute confirmation, provided `updated` moves when the session is used. Observed: session `a` was created at `…30112` and, after its `opencode run`, had `updated` `1793459237925`; after the `--session` resume and one new message in the TUI it read `1793459290663` (checked in both `session list` and the `session_v2.time_updated` column). So a new message bumps `updated`. Whether a bare resume (opening the session, sending nothing) bumps it was **not** verified, since the two actions were not separated; a message sent in the TUI is what the check covers, and the 5-minute confirmation should be treated as correct for sessions written to, unverified for ones merely opened. *No directory field:* does not apply. *`--session` not resuming under `--standalone`:* does not apply (it resumes), so no stop.
+- **Contradicts spec:** (1) PRD/TD §5.6 expect the branch and size per OpenCode session; neither exists, so the OpenCode picker shows title, time and directory only. (2) `opencode session list` is project-wide, not per directory, and a worktree shares its main checkout's project (matches TD §5.6's `dirs` filter, but the filter must be applied to the JSON). (3) The default cap of 100 sessions needs `--max-count`. (4) Unknown ids create a session instead of failing.
+- **Version difference:** this is 2.2.5; the TD was written against 2.0.29. The `--standalone` and `OPENCODE_CONFIG` plugin path still works as in S2.14 on 2.2.5; the list command was not run on 2.0.29.
+
+## R3 OpenCode plugin session id
+
+Task R.3 of the v1.1 plan. OpenCode **v2.2.5**. Run on 2026-10-31 in a throwaway tree `/tmp/duohive-r3.YtZrdE/` (`proj`, a git repo; a scratch copy of DuoHive's real plugin `crates/duohive-cli/src/assets/opencode-plugin/index.js` that additionally appends to a log file the keys of `ctx` in `setup(ctx)`, every bus event `{type, data}` and every hook delivery; a stub `DUOHIVE_HOOK_EXE`; a per-launch `OPENCODE_CONFIG` naming the plugin and the free model `opencode/big-pickle`). Three runs: `opencode run --standalone -m opencode/big-pickle "Reply with just: R3A"` (fresh), the same with `--session <that id> "…R3B"` (resume), and the interactive TUI on a throwaway tmux socket (`tmux -L duohive-r3-spike`), fresh and with `--standalone --session <id>`, each idle and then after one prompt. The global configuration was not touched; the 2 sessions made are in OpenCode's own store (`~/.local/share/opencode/opencode.db`) and were left there.
+
+### R3.1 What carries the session id
+
+- **`setup(ctx)` has no session id.** `ctx` has `app`, `location` (`directory`, and `project` with `id`/`directory`/`canonical`), `options`, `event`, `permission`, `session` (only `hook(…)`), `storage`, and others; none holds a session. The plugin is loaded per server, before any session exists.
+- **Bus events carry it as `data.sessionID`** (a string, `ses_…`, the same name the plugin already reads): `session.created`, `session.inbox.enqueued`/`.delivered`, `session.execution.started`/`.succeeded`/`.failed`/`.interrupted`, `session.step.*`, `session.text.*`, `session.usage.updated`, `session.instructions.updated`. Before the first prompt no event has a `sessionID`: the events seen there are only `integration.updated`, `provider.updated`, `model.updated`, `vcs.branch.updated`, `agent.updated`, `command.updated`, `skill.updated`, `websearch.updated`, `reference.updated`, `plugin.updated`. Child (subagent) sessions are told apart by `parentID` in `session.created`; none were made here.
+- **Hook payloads:** `busy` (from `session.execution.started`) and `turn-end` carry `sessionID`; `session-start` is always `{}` (the plugin sends it with `{}` and, on a timer, before any session exists).
+- **`session.created`** is the earliest event with the id; in the TUI it fires at the first prompt, not at startup. The plugin does not map it to a hook today. Its data: `{sessionID, projectID, location:{directory}, subpath, slug, agent, model:{id, providerID}, version}`.
+
+### R3.2 Ordering
+
+| Launch | Events in order (hooks marked) |
+|---|---|
+| TUI, fresh, idle | `session-start` (`{}`) only, sent by the plugin's `START_DELAY_MS = 1500` timer (a source constant, not a measured delay); no session exists, no id anywhere |
+| TUI, fresh, after the first prompt | `session.created` (id) -> `session.inbox.enqueued` -> `session.execution.started` (**`busy`**, has id) -> ... -> `session.execution.succeeded` (**`turn-end`**, has id) |
+| TUI, `--session <id>`, idle | `session-start` (`{}`) only; **no event carries the resumed id until the first prompt** |
+| `opencode run`, fresh or `--session` | `opencode run` emits **no `session.created` at all** (neither fresh nor with `--session`); `session-start` `{}` is sent when `session.execution.started` arrives, immediately before `busy` |
+
+So the first hook that carries the id is the first `busy` (or `needs-input`, whichever comes first), which is after the first prompt; nothing before it could be mistaken for a session id (`session-start` is empty, and `ctx.location.project.id`/`projectId` is a 40-hex project id, not a `ses_…`; the plugin must not use it).
+
+### R3.3 Does it equal the `list` / `--session` id?
+
+Yes. The `sessionID` in `busy` and `turn-end` was byte-identical to the `id` that `opencode session list --format json` printed (`ses_e6d7a1bcdffekOFbucaSFUMjGm` for the `run` session, verified through `busy` and `turn-end` only since `opencode run` emits no `session.created`; `ses_e6d77e474ffe25V0Ho0JFad71a` for the TUI one), and `--session` accepted it.
+
+On `--session <id>` (the `run` form, 3 hooks): `busy` and `turn-end` carry the **same original id** (`ses_e6d7a1bcdffekOFbucaSFUMjGm`), and `opencode session list` still showed one session for the project, not two: the id does not change on resume. (R2 saw the same in the TUI form.)
+
+Trimmed hook payloads:
+
+```json
+{"type":"session.execution.started","sessionID":"ses_e6d77e474ffe25V0Ho0JFad71a"}
+{"type":"session.execution.succeeded","sessionID":"ses_e6d77e474ffe25V0Ho0JFad71a","duohive_last_reply":"R3C"}
+```
+
+### R3.4 Decision
+
+- **Field and event:** `sessionID` in the `busy`/`turn-end` payloads (and `needs-input`, under `properties.sessionID`: **from the plugin source, `d.sessionID ?? form.sessionID`, not observed**); originally `data.sessionID` of the `session.*` bus events. R.6's `cli_session_id` for OpenCode reads `sessionID` from the first hook that has it (V11-D4), never from `session-start`.
+- **Recommended plugin change (for R.6/R.11, not done here):** nothing is needed for correctness, because `busy` already carries the id; to learn the id earlier (when the session is created, before the model answers) the plugin could add `sessionID` to a hook on `session.created`, but that still happens only at the first prompt.
+- **Fallback applied:** the brief's *no id reaches the plugin* applies **partly**: the id does reach the plugin, but only after the first prompt. A fresh idle OpenCode session (no prompt yet, or a freshly launched agent with no task) has no session and thus no id; a resumed idle one has its id known from launch only because DuoHive passed it (`--session`).
+- **Contradicts spec:** PRD/TD §5.6 (and V11-D4's wording "recorded from the first hook") assume the id is known from session-start. For OpenCode it is not: `session-start` is empty, a fresh session does not exist until the first prompt, so a session another DuoHive agent has started fresh but not yet prompted cannot be marked "in use" (it does not even exist in `session list` yet, so nothing is hidden by the refusal either). After the first prompt the id is recorded on `busy` and the "in use" refusal can hold. A session a user resumed with `--session` is known from launch.
+- **Not verified:** (1) the `needs-input` hook (`permission.asked`, `form.created`): no such event appeared in any log, so its `properties.sessionID` rests on reading the plugin source. (2) A subagent (child) session's `parentID` in `session.created`: none was made. (3) A resumed TUI session after its first prompt: the idle log (resumed, `--session`) shows no id event, and the post-prompt id being the original rests on R2 (TUI) and on the `opencode run --session` check here. (4) `session.created` was seen only in the TUI fresh run, not in `opencode run`. (5) `session.execution.failed` and `.interrupted` payloads were not triggered. (6) Not tried: a `--session` id that no longer exists, and more than one project or worktree.
+
+## R4 Hand check (author)
+
+Task R.14 of the v1.1 plan, step 1. **This section is for the author.** An agent cannot do it: it needs iTerm2 and the real CLIs. Nothing below is checked yet. Run it once for Claude Code (2.1.316 was used for the readers) and once for OpenCode (2.2.5), on the branch `feat/resume-session`, at 80x24 and again at 160x48, and tick each box (or note what failed).
+
+For each of Claude Code and OpenCode:
+
+- [ ] Start a session outside DuoHive (the CLI in a plain terminal, in the agent's directory), send one prompt, then quit it.
+- [ ] In DuoHive, `r` on the stopped agent opens the picker, and the session appears in it (newest first, with its title or first prompt).
+- [ ] Resume it: the agent pane shows the old conversation, and DuoHive types no task.
+- [ ] The 5-minute confirmation: a session written in the last 5 minutes shows `may be open elsewhere`, and `enter` asks first with Cancel focused.
+- [ ] A session held by another agent is refused: it shows `in use by <agent>`, and `enter` says `<agent> is using this session`. (For OpenCode, the other agent must have had a first prompt.)
+- [ ] An errored agent resumes after its session is closed (its old window is closed first, then the chosen session starts).
+- [ ] A kept worktree's session resumes, and the worktree shows as in use again.
+- [ ] The empty state (`No <CLI> sessions for <dir>`) and the unreadable state (`Couldn't read <CLI>'s sessions: <reason>` as a footer note) both look right.
+- [ ] `r` on a running agent says `<agent> is running · stop it first (s)`; `s` still starts fresh.
+- [ ] 80x24: the picker, the confirmation and the footer fit and read well.
+- [ ] 160x48: the same.
+- [ ] Claude Code only: compare the picker's titles for one directory against Claude Code's own `/resume` list for the same directory (5 to 10 sessions) and report any title that differs.

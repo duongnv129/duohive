@@ -15,6 +15,7 @@ mod lifecycle;
 mod org_edit;
 mod reconnect;
 mod replace;
+mod resume;
 mod rights;
 mod signals;
 mod timers;
@@ -51,6 +52,7 @@ use crate::org::Org;
 use crate::ports::{
     Clock, Git, GitEvent, Ids, Notifier, OrgFileError, Runtime, RuntimeEvent, SessionRow, Store,
 };
+use crate::session_catalog::{CatalogError, SessionCatalog, SessionInfo};
 use crate::settings::Settings;
 use crate::status::{AgentState, Status, Trigger, WaitingOn, transition};
 use crate::time::Millis;
@@ -93,6 +95,8 @@ pub struct Ports {
     pub notifier: Box<dyn Notifier>,
     /// Git worktrees.
     pub git: Box<dyn Git>,
+    /// A CLI's past sessions.
+    pub sessions: Box<dyn SessionCatalog>,
 }
 
 /// Everything the engine reacts to.
@@ -121,6 +125,13 @@ pub enum Input {
         cli: CliKind,
         /// The list, or why it couldn't be read.
         result: Result<ModelList, String>,
+    },
+    /// The session catalog's answer to a request for an agent's past sessions.
+    SessionsListed {
+        /// Which agent.
+        agent: AgentName,
+        /// The sessions, or why they couldn't be read.
+        result: Result<Vec<SessionInfo>, CatalogError>,
     },
     /// A timer is due.
     Tick,
@@ -182,6 +193,8 @@ struct AgentRt {
     worktree: Option<TaskId>,
     /// The current session was launched as Duo (P3-D30).
     launched_as_duo: bool,
+    /// The CLI's own id for the current session: the first valid one the launch reports.
+    cli_session_id: Option<String>,
     /// A next-turn paste not yet taken (P2-D11).
     delivery: Option<Delivery>,
     /// The worktree being created for the next launch (P2-D20).
@@ -223,6 +236,7 @@ impl AgentRt {
             cli: None,
             worktree: None,
             launched_as_duo: false,
+            cli_session_id: None,
             delivery: None,
             creating: None,
             launch_message: None,
@@ -249,6 +263,13 @@ pub struct Engine {
     replace_ready: bool,
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
+    /// The sessions last listed for each asking agent, for `ResumeSession` to
+    /// check an id against (v1.1), with the fingerprint they were read for.
+    /// Replaced on every listing.
+    last_listed: HashMap<AgentName, (resume::ListFingerprint, Vec<SessionInfo>)>,
+    /// The listing in flight for each agent, with the fingerprint it was
+    /// requested for: one request per agent at a time (v1.1).
+    pending_lists: HashMap<AgentName, resume::ListFingerprint>,
     /// The Needs you list last reported in `NeedsYouChanged`.
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
@@ -321,6 +342,8 @@ impl Engine {
             replace: None,
             replace_ready: false,
             queued_launches: Vec::new(),
+            last_listed: HashMap::new(),
+            pending_lists: HashMap::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
             replaying: false,
@@ -402,6 +425,7 @@ impl Engine {
             Input::Hook(message) => self.hook_or_buffer(message),
             Input::CliInventory(list) => self.on_cli_inventory(list),
             Input::ModelsListed { cli, result } => vec![Event::ModelsListed { cli, result }],
+            Input::SessionsListed { agent, result } => self.on_sessions_listed(agent, result),
             Input::DirInventory(list) => self.on_dir_inventory(list),
             Input::Runtime(RuntimeEvent::Activity { agent, at_secs }) => {
                 self.on_activity(&agent, at_secs)
@@ -481,6 +505,8 @@ impl Engine {
                 duo_cli,
             } => self.create_org(&template, your_name, duo_cli),
             Command::NewOrgFromTemplate { template } => self.start_replace(&template),
+            Command::ListSessions { agent } => self.list_sessions(agent),
+            Command::ResumeSession { agent, session_id } => self.resume_session(agent, session_id),
         }
     }
 
@@ -714,6 +740,7 @@ impl Engine {
             last_task: rt.last_task.clone(),
             worktree: rt.worktree.clone(),
             launched_as_duo: rt.launched_as_duo,
+            cli_session_id: rt.cli_session_id.clone(),
         };
         if let Err(e) = self.ports.store.save_session(&row) {
             out.push(Event::CommandRejected {

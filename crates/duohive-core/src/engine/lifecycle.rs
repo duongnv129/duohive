@@ -12,7 +12,7 @@ use crate::command::Command;
 use crate::event::Event;
 use crate::inbox::MessageId;
 use crate::inherit::{expand_home, resolve};
-use crate::launch::{Key, LaunchSpec};
+use crate::launch::{Key, LaunchSpec, ResumeTarget};
 use crate::names::AgentName;
 use crate::status::{AgentState, Trigger};
 use crate::tool::Given;
@@ -259,7 +259,7 @@ impl Engine {
         }
         match (task, run) {
             (Some(task), RunIn::NewWorktree) => self.begin_worktree(&agent, task),
-            (task, _) => self.launch(&agent, task, None),
+            (task, _) => self.launch(&agent, task, None, None),
         }
     }
 
@@ -269,6 +269,7 @@ impl Engine {
         agent: &AgentName,
         task: Option<String>,
         worktree: Option<(TaskId, PathBuf)>,
+        resume: Option<ResumeTarget>,
     ) -> Vec<Event> {
         let r = match resolve(&self.org, agent) {
             Ok(r) => r,
@@ -293,7 +294,9 @@ impl Engine {
         if let Some(old) = self.rt_mut(agent).window.take() {
             self.ports.runtime.kill(agent, &old);
         }
+        self.last_listed.remove(agent);
         let (worktree, cwd) = worktree.unzip();
+        let resumed_id = resume.as_ref().map(|r| r.session_id.clone());
         let spec = LaunchSpec {
             agent: r,
             task: task.clone(),
@@ -301,6 +304,7 @@ impl Engine {
             hook_exe: self.cfg.hook_exe.clone(),
             home,
             cwd,
+            resume,
         };
         let mut cmd = match adapter.launch(&spec) {
             Ok(cmd) => cmd,
@@ -322,6 +326,9 @@ impl Engine {
         let rt = self.rt_mut(agent);
         rt.token = Some(token);
         rt.launched_as_duo = as_duo;
+        // A resumed launch already knows its session (V11-D4); a hook's id
+        // can't replace it (first id wins).
+        rt.cli_session_id = resumed_id;
         rt.last_hook_sent_at = 0;
         rt.cli = Some(cli);
         rt.task_at_launch = task.is_some();

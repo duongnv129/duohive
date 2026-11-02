@@ -197,7 +197,12 @@ impl Engine {
     ) -> Vec<Event> {
         let Creating { task, row, .. } = c;
         let id = row.task.clone();
-        let mut out = self.launch(agent, Some(task), Some((id.clone(), row.path.clone())));
+        let mut out = self.launch(
+            agent,
+            Some(task),
+            Some((id.clone(), row.path.clone())),
+            None,
+        );
         // P3-D23: a tool call waiting for this worktree is answered now.
         let result = if self.state_of(agent).is_running() {
             Ok(ToolOk::Given {
@@ -337,7 +342,7 @@ impl Engine {
     }
 
     /// Every worktree row; a failure is reported and reads as none.
-    fn worktree_rows(&mut self, out: &mut Vec<Event>) -> Vec<WorktreeRow> {
+    pub(super) fn worktree_rows(&mut self, out: &mut Vec<Event>) -> Vec<WorktreeRow> {
         self.ports.store.load_worktrees().unwrap_or_else(|e| {
             out.push(Event::CommandRejected {
                 reason: format!("couldn't read worktrees: {e}"),

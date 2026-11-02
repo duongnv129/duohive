@@ -959,7 +959,7 @@ Below 100 columns it becomes one scrolling column:
 | | `enter` | Agent or Duo: focus the agent pane. Team or role: fold / unfold |
 | | `space` | Give work (agent or role) |
 | | `s` | Stopped agent: start it with no task (it waits, idle). Running agent: stop it (asks first) |
-| | `r` | v1.1: resume an old session of a stopped or errored agent (§4.13); a running agent says to stop it first |
+| | `r` | v1.1: resume an old session of a stopped or errored agent (§4.13); a running agent says to stop it first. Also in the agent pane's Selected mode |
 | | `n` | New here… |
 | | `e` | Edit; on Duo, Edit org |
 | | `m` | Move to… |
@@ -971,6 +971,7 @@ Below 100 columns it becomes one scrolling column:
 | Agent pane | `enter` / `ctrl+q` | Start / stop typing |
 | | `z` | Zoom / restore |
 | | `space` | Give work |
+| | `r` | v1.1: resume an old session (§4.13), as in the org pane; not while typing |
 | | `PgUp` / `PgDn` | Scroll the agent's scrollback (sent to the agent when its CLI takes the mouse, §4.1.2) |
 | Chat | `enter` / `alt+enter` | Send / new line |
 | | `@` / `/` | Agent / command suggestions |
@@ -1049,13 +1050,14 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 
 ### 4.13 Resume an old session (v1.1)
 
-Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh. On an errored agent whose CLI session is still up (a failed turn, TD §5.5), resuming closes that session first, as `s` does, then starts the chosen one.
+Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, with the hand check and other open items pending (PRD *Resume an old session*; see [Open items before merge](../plans/v1.1-roadmap.md#open-items-before-merge) in the v1.1 roadmap). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`, where the key is the active Start / stop binding (default `s`; with Start / stop unbound the note has no key). The engine's own refusal, for a client that does not know the keys, reads `<agent> is running · stop it first` with no key. `s` still starts fresh. On an errored agent whose CLI session is still up (a failed turn, TD §5.5), resuming closes that session first, as `s` does, then starts the chosen one.
 
-**Where `r` appears.** The §4.11 key table and the Keys screen's action list already carry it, marked v1.1; the rest is added when v1.1 is built:
-- **`?` key map popup (§4.11):** `r` · resume (stopped or errored agent) in the Org pane column. The key table row beside it (§4.11) is already there.
-- **Footer in Selected mode:** a stopped or errored agent adds `r resume`; a running agent's footer is unchanged.
-- **Right-click node menu:** an agent's menu lists `Resume… r`, disabled with the reason `stop it first` while the agent runs, so the picker is reachable by mouse.
-- **Key bindings screen:** Resume is a rebindable single-key action in the Org pane context, and the conflict check counts it.
+**Where `r` appears** (as built):
+- **Key table and Keys screen (§4.11, §4.10):** the Org pane row `r` and a Keys screen entry, Resume, right after Start / stop. `r` works in the Org pane and in the Agent pane's Selected mode (the pane focused, not Typing); while Typing, `r` goes to the agent. A dialog takes the key first, so `r` there is not resume.
+- **`?` key map popup (§4.11):** `r` · resume in the Org pane column.
+- **Footer in Selected mode:** a stopped or errored agent adds ` · r resume` (the key as bound); a running agent's footer is unchanged.
+- **Right-click node menu:** an agent's menu lists `Resume… r` after Start / Stop, disabled with the reason `stop it first` while the agent runs, so the picker is reachable by mouse.
+- **Key bindings screen:** Resume is a rebindable single-key action (id `resume`) in the Org and Agent pane contexts, one binding for both like Zoom, and the conflict check counts it.
 
 ```
 ┌─ Resume billing-api (1 of 36) ─────────────────────────────────────────────┐
@@ -1074,11 +1076,21 @@ Not in v1; planned for v1.1 (PRD *Resume an old session*, [v1.1 roadmap](../plan
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its first prompt, cut with `…`.
+- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age always, and its git branch and size only when the CLI provides them (Claude Code does; OpenCode does not, spike R2), in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its last prompt (injected text skipped; a session of slash commands only shows the command, e.g. `/clear`), cut with `…`.
 - **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
-- **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
+- **Search:** typing filters by title and branch; the count becomes `{position} of {visible}` (below). `esc` clears the search first, then closes.
 - **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
 - **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
+- **As built, where this section was silent:**
+  - The count is `{position} of {visible}`: the position of the highlighted row within the entries that match the search, so the mockup's `(1 of 36)` is that format at the start, and `0 of 0` when none match (the list then reads `No sessions match`).
+  - An entry shows only the fields it has, in the order age, branch, size, `worktree <task-id>`, `in use by <agent>`, `may be open elsewhere`; the branch is cut at 32 cells, and when the line is still too long the leading fields (age, branch, size, worktree) are cut first so the marks stay visible; only if the marks alone do not fit are they cut. Ages read `just now`, `N minutes ago`, `N hours ago`, `N days ago`.
+  - A session with no title, prompt or command shows `(untitled)`.
+  - A click on a row does what `enter` does; the wheel moves the highlight; while searching, the hint reads `esc clear search`.
+  - The 5-minute confirmation is titled `Resume session?`; **Cancel** returns to the picker with its search and cursor intact.
+  - A listing that arrives while another dialog, a right-click menu or the first-run wizard is open, or for an agent that no longer exists, is dropped, so a late answer never steals focus. A second listing while the picker is open is dropped too.
+  - `Couldn't read <CLI>'s sessions: <reason>` is a footer note in `status.error`, not a dialog.
+  - While the sessions are being read, `r` sets the footer note `reading <CLI>'s sessions…`; the picker opening or the `Couldn't read …` note replaces it, and the next action clears it. `r` is never locked out while it shows.
+  - If a `settings.toml` from v1 already binds `r` to another action, that binding wins: Resume has no key until it is rebound (its footer hint, key-map row and menu key are then empty), and the Keys screen says `resume: r is taken by <action> · rebind it in Keys`. A saved `resume = "…"` is always honoured.
 - **Empty:** `No <CLI> sessions for <dir>` with `esc close`. **Unreadable** (an untested Claude Code session format, or `opencode session list` failing): `Couldn't read <CLI>'s sessions: <reason>` in `status.error`, and the agent is unchanged.
 
 ## 5. Interaction rules
