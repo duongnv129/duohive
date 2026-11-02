@@ -56,6 +56,11 @@ impl Env {
     }
     fn put_fixture(&self, dir: &Path, id: &str, age_s: u64) -> PathBuf {
         let text = fs::read_to_string(Path::new(FIXTURES).join(format!("{id}.jsonl"))).unwrap();
+        // The fixtures were recorded elsewhere: point their cwd at `dir`.
+        let here = format!("\"cwd\":{}", serde_json::json!(dir));
+        let text = text
+            .replace("\"cwd\":\"/work/demo\"", &here)
+            .replace("\"cwd\":\"/work/plain\"", &here);
         self.put(dir, id, &text, age_s)
     }
 }
@@ -318,6 +323,46 @@ fn colliding_dirs_attribute_each_session_once() {
         (by("s-nocwd").dir.clone(), by("s-nocwd").worktree.clone()),
         (under, Some(t1))
     );
+}
+
+fn cwd_line(cwd: &Path) -> String {
+    line(&serde_json::json!({"type":"user","cwd":cwd,"message":{"content":"hi"}}))
+}
+
+#[test]
+fn session_of_an_unrequested_colliding_directory_is_not_listed() {
+    let env = Env::new();
+    let (under, dash) = (env.dir("a_b"), env.dir("a-b"));
+    assert_eq!(env.folder(&under), env.folder(&dash));
+    env.put(&under, "s-under", &cwd_line(&under), 5);
+    env.put(&dash, "s-dash", &cwd_line(&dash), 6);
+    let got = list(&env, &[(under.clone(), None)]);
+    let ids: Vec<&str> = got.iter().map(|s| s.id.as_str()).collect();
+    assert_eq!(ids, ["s-under"], "{got:?}");
+    assert_eq!(got[0].dir, under);
+}
+
+#[test]
+fn session_without_cwd_still_goes_to_the_first_owner() {
+    let env = Env::new();
+    let (under, dash) = (env.dir("a_b"), env.dir("a-b"));
+    env.put(&under, "s-nocwd", &user("no cwd here"), 5);
+    let got = list(&env, &[(under.clone(), None), (dash, None)]);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].dir, under);
+}
+
+#[cfg(unix)]
+#[test]
+fn symlink_spelled_cwd_still_matches_its_directory() {
+    let env = Env::new();
+    let real = env.dir("real");
+    let link = env.tmp.path().join("work").join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+    env.put(&real, "s-link", &cwd_line(&link), 5);
+    let got = list(&env, &[(real.clone(), None)]);
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].dir, real);
 }
 
 #[test]

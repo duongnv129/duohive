@@ -26,6 +26,11 @@ const ID_MAX_LEN: usize = 128;
 
 /// Lists the Claude Code sessions that ran in any of `dirs`, newest first.
 ///
+/// A session is attributed by its recorded `cwd` (canonicalised) to the requested
+/// directory that equals it; one that ran in any other directory (even one sharing
+/// the project folder) is skipped. Only a session with no recorded `cwd` goes to
+/// the first requested directory of its folder.
+///
 /// # Errors
 ///
 /// `CatalogError::Unreadable` when a project folder can't be read, or when
@@ -50,6 +55,8 @@ pub fn read_claude_sessions(
     }
     let mut sessions = Vec::new();
     let mut files_seen = 0_usize;
+    // Readable sessions that ran in a directory nobody asked for.
+    let mut foreign = 0_usize;
     for (folder, owners) in &groups {
         let entries = match fs::read_dir(folder) {
             Ok(entries) => entries,
@@ -74,10 +81,20 @@ pub fn read_claude_sessions(
                 files_seen += 1;
             }
             if let Some((found, cwd)) = read_session(&entry.path(), &id) {
-                // The record's `cwd` names the dir (R1.2); else the first requested one.
-                let (dir, task) = cwd
-                    .and_then(|c| owners.iter().find(|(d, _)| *d == Path::new(&c)))
-                    .unwrap_or(&owners[0]);
+                // The record's `cwd` names the dir (R1.2). One that matches no requested
+                // dir ran elsewhere and is skipped; with no `cwd` at all, the first owner.
+                let owner = match cwd {
+                    Some(c) => {
+                        let raw = PathBuf::from(c);
+                        let canon = fs::canonicalize(&raw).unwrap_or(raw);
+                        owners.iter().find(|(d, _)| *d == canon)
+                    }
+                    None => owners.first(),
+                };
+                let Some((dir, task)) = owner else {
+                    foreign += 1;
+                    continue;
+                };
                 sessions.push(SessionInfo {
                     dir: dir.clone(),
                     worktree: task.clone(),
@@ -86,7 +103,7 @@ pub fn read_claude_sessions(
             }
         }
     }
-    if files_seen > 0 && sessions.is_empty() {
+    if files_seen > 0 && sessions.is_empty() && foreign == 0 {
         return Err(CatalogError::Unreadable(
             "unrecognised Claude Code session format".into(),
         ));
