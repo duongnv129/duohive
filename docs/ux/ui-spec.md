@@ -1050,7 +1050,7 @@ An errored agent stays errored, and in Needs you, until you give it work or stop
 
 ### 4.13 Resume an old session (v1.1)
 
-Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, with the hand check and two author decisions pending (PRD *Resume an old session*, [v1.1 roadmap](../plans/v1.1-roadmap.md#open-items-before-merge)). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh. On an errored agent whose CLI session is still up (a failed turn, TD §5.5), resuming closes that session first, as `s` does, then starts the chosen one.
+Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, with the hand check and other open items pending (PRD *Resume an old session*; see [Open items before merge](../plans/v1.1-roadmap.md#open-items-before-merge) in the v1.1 roadmap). `r` on a stopped or errored agent opens it; on a running agent the footer says `<agent> is running · stop it first (s)`. `s` still starts fresh. On an errored agent whose CLI session is still up (a failed turn, TD §5.5), resuming closes that session first, as `s` does, then starts the chosen one.
 
 **Where `r` appears** (as built):
 - **Key table and Keys screen (§4.11, §4.10):** the Org pane row `r` and a Keys screen entry, Resume, right after Start / stop. `r` works in the Org pane and in the Agent pane's Selected mode (the pane focused, not Typing); while Typing, `r` goes to the agent. A dialog takes the key first, so `r` there is not resume.
@@ -1076,13 +1076,13 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age, git branch and size in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its last prompt (injected text skipped; a session of slash commands only shows the command, e.g. `/clear`), cut with `…`.
+- **Entries:** the agent's CLI's sessions for its directory and each worktree it keeps, newest first: the session's title, then its age always, and its git branch and size only when the CLI provides them (Claude Code does; OpenCode does not, spike R2), in `fg.muted`, plus `worktree <task-id>` for a worktree's session. A session with no title shows its last prompt (injected text skipped; a session of slash commands only shows the command, e.g. `/clear`), cut with `…`.
 - **In use:** a session live in another DuoHive agent adds `in use by <agent>` in `fg.muted`; `enter` on it does nothing, and the footer says `<agent> is using this session`.
-- **Search:** typing filters by title and branch; the count becomes `n of total`. `esc` clears the search first, then closes.
+- **Search:** typing filters by title and branch; the count becomes `{position} of {visible}` (below). `esc` clears the search first, then closes.
 - **Written in the last 5 minutes:** the entry adds `may be open elsewhere`, and `enter` asks first: `Resume "<title>"? It was active 3 minutes ago and may still be open in another terminal.` with **Cancel** focused and **Resume**.
 - **After resuming:** the agent starts on that session, in its directory or worktree, at rest, and the agent pane shows its old conversation; DuoHive types no task (queued messages still arrive at the first rest).
 - **As built, where this section was silent:**
-  - The count is `{position} of {visible}`: the highlighted row's place among the entries the search leaves, so `1 of 36` at the start, `0 of 0` when nothing matches (the list then reads `No sessions match`).
+  - The count is `{position} of {visible}`: the position of the highlighted row within the entries that match the search, so the mockup's `(1 of 36)` is that format at the start, and `0 of 0` when none match (the list then reads `No sessions match`).
   - An entry shows only the fields it has, in the order age, branch, size, `worktree <task-id>`, `in use by <agent>`, `may be open elsewhere`; the branch is cut at 32 cells so the marks are never cut. Ages read `just now`, `N minutes ago`, `N hours ago`, `N days ago`.
   - A session with no title, prompt or command shows `(untitled)`.
   - A click on a row does what `enter` does; the wheel moves the highlight; while searching, the hint reads `esc clear search`.

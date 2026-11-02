@@ -885,7 +885,7 @@ A comparison with the author's Claude Code `/resume` list (17 sessions) on 2026-
 
 ### R1.3 Decision
 
-- **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the first prompt (UI §4.13 already does this); branch, size and last-written are always available.
+- **Fallback applied:** none for the flags (`--settings`, `--append-system-prompt`, `--mcp-config` and `--model` are all accepted with `--resume`) and none for the hook id (present, and stable across a resume). The third fallback applies in part: a title exists only for a named session, so most lines show the last prompt (`last-prompt.lastPrompt`) when there is no `ai-title` (see the R1 addendum and TD §5.6); branch, size and last-written are always available.
 - **Contradicts spec:** nothing outright. Corrections for R.9 and the reader: (1) the folder name is made from the *resolved* directory (`/tmp` is `/private/tmp` on macOS), so canonicalise the directory first; (2) outside a git repository `gitBranch` is `HEAD`, not missing; (3) there are two title records (`custom-title`, `agent-name`) and the title is often absent.
 - **For R.6:** the first `SessionStart` of a launch carries the id to record; on a resume it has `source:"resume"` and the id equals the one launched with, so the V11-D4 fallback (newest file in the directory) is needed only for a fresh launch, if at all.
 - **For R.9:** the launch is the §5.1 command with `--resume <id>` added and no `-- <task>`.

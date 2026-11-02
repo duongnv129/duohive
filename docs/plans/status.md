@@ -1,6 +1,6 @@
 # Status board
 
-**As of 2026-10-25.** One page: every phase, what is done, what CI/CD verifies automatically, and what remains. The plans hold the detail; this file is the index. Keep it in step with the phase plans and the [roadmap](v1-roadmap.md).
+**As of 2026-10-25** (the v1.1 entry below: 2026-11-01). One page: every phase, what is done, what CI/CD verifies automatically, and what remains. The plans hold the detail; this file is the index. Keep it in step with the phase plans and the [roadmap](v1-roadmap.md).
 
 **Legend:** **Done** merged and verified · **Done (CI)** covered by an automated CI/CD job (the evidence is its run) · **Done (author)** done by the author and confirmed · **Open: author** manual, needs the author · **Open: agent** an agent can do it once asked or decided · **Later** after v1.
 
