@@ -9,10 +9,11 @@ use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
 use crate::hook::HookMessage;
-use crate::launch::ResumeTarget;
+use crate::launch::{ResumeTarget, Token, WindowId};
 use crate::names::AgentName;
+use crate::ports::{LiveWindow, RuntimeEvent, SessionRow};
 use crate::session_catalog::{CatalogError, SessionInfo};
-use crate::status::AgentState;
+use crate::status::{AgentState, Status};
 use crate::templates::{SquadInput, TemplateInput};
 use crate::testkit::{RuntimeCall, n};
 use crate::tool::{CallId, ToolCall, ToolOk};
@@ -262,6 +263,73 @@ fn own_session_is_never_in_use_by_itself() {
     h.force("pay-qa", AgentState::Stopped);
     h.rt_mut("pay-qa").cli_session_id = Some("s1".into());
     h.force_errored("pay-qa", "x", Some("@3"));
+    let got = answer(&mut h, "pay-qa", &["s1"]);
+    assert_eq!(in_use(&got), vec![None]);
+}
+
+/// `ghost`, running on `s1`, is held: `org.toml` no longer names it (ruling B).
+fn hold_ghost_on(h: &mut Harness, id: &str) {
+    h.store.state.lock().unwrap().sessions.insert(
+        n("ghost"),
+        SessionRow {
+            agent: n("ghost"),
+            token: Some(Token("tok-ghost".into())),
+            window: Some(WindowId("@9".into())),
+            status: Status {
+                state: AgentState::Working,
+                quiet: false,
+                quiet_since: None,
+                from_screen: false,
+                since: h.t0,
+                error: None,
+                waiting_on: None,
+            },
+            last_reply: None,
+            task_at_launch: true,
+            saw_end_hook: false,
+            last_task: None,
+            worktree: None,
+            launched_as_duo: false,
+            cli_session_id: Some(id.into()),
+        },
+    );
+    h.engine.start_up();
+    h.input(Input::Runtime(RuntimeEvent::Inventory(vec![LiveWindow {
+        agent: n("ghost"),
+        window: WindowId("@9".into()),
+        dead: None,
+        activity_secs: 0,
+    }])));
+    assert!(h.engine.holds_rows());
+}
+
+#[test]
+fn in_use_marks_a_session_held_by_a_held_agent() {
+    let mut h = Harness::new();
+    hold_ghost_on(&mut h, "s1");
+    let got = answer(&mut h, "pay-qa", &["s1", "s2"]);
+    assert_eq!(in_use(&got), vec![Some(n("ghost")), None]);
+}
+
+#[test]
+fn resume_refused_when_a_held_agent_uses_the_session() {
+    let mut h = Harness::new();
+    hold_ghost_on(&mut h, "s1");
+    listed(&mut h, "pay-qa", vec![info("s1")]);
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(rejected(&events), Some("ghost is using this session"));
+    assert!(launched(&h).is_empty());
+}
+
+#[test]
+fn held_agent_whose_pane_died_no_longer_uses_its_session() {
+    let mut h = Harness::new();
+    hold_ghost_on(&mut h, "s1");
+    h.input(Input::Runtime(RuntimeEvent::PaneDied {
+        agent: n("ghost"),
+        window: WindowId("@9".into()),
+        status: Some(1),
+    }));
     let got = answer(&mut h, "pay-qa", &["s1"]);
     assert_eq!(in_use(&got), vec![None]);
 }

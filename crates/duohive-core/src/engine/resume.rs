@@ -227,7 +227,7 @@ impl Engine {
     }
 
     /// The agent, other than `asking`, whose live session is `id`: running, or
-    /// errored with its window still up.
+    /// errored with its window still up. Held agents (ruling B) count too.
     fn holder_of(&self, id: &str, asking: &AgentName) -> Option<AgentName> {
         self.agents
             .iter()
@@ -238,6 +238,7 @@ impl Engine {
                         || (rt.status.state == AgentState::Errored && rt.window.is_some()))
             })
             .map(|(name, _)| name.clone())
+            .or_else(|| self.held_holder_of(id))
     }
 }
 
