@@ -154,6 +154,8 @@ fn list_refused_while_worktree_is_being_created() {
 
 #[test]
 fn list_for_missing_cli_answers_unreadable_not_found() {
+    // The inventory has arrived and lacks the CLI: that is "not found",
+    // unlike before any inventory (see `list_waits_for_the_cli_inventory`).
     let mut inventory = all_found();
     for (k, p) in &mut inventory {
         if *k == CliKind::Claude {
@@ -173,6 +175,50 @@ fn list_for_missing_cli_answers_unreadable_not_found() {
             reason: "claude not found \u{b7} install it or change its CLI (e)".into(),
         }]
     );
+    assert!(h.session_requests.lock().unwrap().is_empty());
+}
+
+fn before_inventory() -> Harness {
+    Setup {
+        inventory: None,
+        ..Setup::default()
+    }
+    .build()
+}
+
+#[test]
+fn list_waits_for_the_cli_inventory_like_a_start() {
+    let mut h = before_inventory();
+    let events = list(&mut h, "pay-qa");
+    assert!(events.is_empty(), "{events:?}");
+    assert!(h.session_requests.lock().unwrap().is_empty());
+    let events = h.input(Input::CliInventory(all_found()));
+    assert!(events.is_empty(), "{events:?}");
+    let reqs = h.session_requests.lock().unwrap().clone();
+    assert_eq!(reqs.len(), 1);
+    assert_eq!(reqs[0].agent, n("pay-qa"));
+    assert_eq!(
+        reqs[0].dirs,
+        vec![(PathBuf::from("/home/me/code/pay-qa"), None)]
+    );
+}
+
+#[test]
+fn repeated_list_before_the_inventory_queues_once() {
+    let mut h = before_inventory();
+    list(&mut h, "pay-qa");
+    list(&mut h, "pay-qa");
+    h.input(Input::CliInventory(all_found()));
+    assert_eq!(h.session_requests.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn list_refused_for_an_agent_without_a_directory() {
+    let mut setup = Setup::default();
+    setup.org.teams[0].roles[1].agents[0].fields.directory = None;
+    let mut h = setup.build();
+    let events = list(&mut h, "pay-qa");
+    assert_eq!(rejected(&events), Some("no directory set \u{b7} e to fix"));
     assert!(h.session_requests.lock().unwrap().is_empty());
 }
 

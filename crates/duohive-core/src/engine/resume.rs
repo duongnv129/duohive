@@ -12,6 +12,7 @@ use crate::launch::ResumeTarget;
 use crate::names::AgentName;
 use crate::session_catalog::{CatalogError, SessionInfo};
 use crate::status::AgentState;
+use crate::validate::agent_problem;
 use crate::worktree::{TaskId, WorktreeState};
 
 const NOT_LISTED: &str = "that session isn't in the list \u{b7} open the picker again";
@@ -34,6 +35,19 @@ impl Engine {
             Ok(r) => r,
             Err(e) => return reject(e.message),
         };
+        if let Some(problem) = agent_problem(&r, &self.cfg.home, None) {
+            return reject(problem);
+        }
+        // Like a start: wait for the first CLI inventory, once per agent.
+        if self.cli.is_none() {
+            let wait = Command::ListSessions {
+                agent: agent.clone(),
+            };
+            if !self.queued_launches.contains(&wait) {
+                self.queued_launches.push(wait);
+            }
+            return Vec::new();
+        }
         let cli = r.cli;
         let found = matches!(
             self.cli.as_ref().and_then(|m| m.get(&cli)),
