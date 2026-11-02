@@ -322,7 +322,7 @@ fn prompt_text(record: &Value) -> Option<String> {
             // A real prompt can follow an injected block (a reminder) in one record.
             texts
                 .iter()
-                .find(|t| !is_injected(t))
+                .find(|t| !is_injected(t) && !clean(t).is_empty())
                 .or_else(|| texts.first())
                 .map(|t| (*t).to_owned())
         }
