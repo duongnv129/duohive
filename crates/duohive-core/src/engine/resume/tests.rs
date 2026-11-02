@@ -114,7 +114,7 @@ fn list_refused_while_running() {
     let events = list(&mut h, "pay-qa");
     assert_eq!(
         rejected(&events),
-        Some("pay-qa is running \u{b7} stop it first (s)")
+        Some("pay-qa is running \u{b7} stop it first")
     );
     assert!(h.session_requests.lock().unwrap().is_empty());
 }
@@ -424,6 +424,16 @@ fn resume_on_errored_agent_kills_its_window_first() {
 }
 
 #[test]
+fn engine_running_refusal_has_no_key_hint() {
+    let mut h = Harness::new();
+    h.start("pay-qa");
+    let events = list(&mut h, "pay-qa");
+    let reason = rejected(&events).expect("a refusal");
+    assert!(!reason.contains('('), "{reason}");
+    assert_eq!(reason, "pay-qa is running \u{b7} stop it first");
+}
+
+#[test]
 fn resume_refused_while_running() {
     let mut h = Harness::new();
     listed(&mut h, "pay-qa", vec![info("s1")]);
@@ -431,7 +441,7 @@ fn resume_refused_while_running() {
     let events = resume(&mut h, "pay-qa", "s1");
     assert_eq!(
         rejected(&events),
-        Some("pay-qa is running \u{b7} stop it first (s)")
+        Some("pay-qa is running \u{b7} stop it first")
     );
     assert_eq!(launched(&h).len(), 1);
 }

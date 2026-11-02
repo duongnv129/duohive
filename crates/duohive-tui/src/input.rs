@@ -736,7 +736,11 @@ pub(super) fn resume(m: &mut UiModel) -> Vec<UiEffect> {
         return Vec::new();
     }
     if m.view(&agent).status.state.is_running() {
-        m.footer_note = Some(format!("{agent} is running · stop it first (s)"));
+        // The hint is the live Start / stop key; unbound, there is none to show.
+        m.footer_note = Some(match m.keymap.key(ActionId::StartStop).label() {
+            key if key.is_empty() => format!("{agent} is running · stop it first"),
+            key => format!("{agent} is running · stop it first ({key})"),
+        });
         return Vec::new();
     }
     // No in-flight flag: a rejected command gets no answer, and `r` must never lock out.

@@ -36,7 +36,7 @@ impl Engine {
             return reject(getting_ready(&agent));
         }
         if self.state_of(&agent).is_running() {
-            return reject(format!("{agent} is running \u{b7} stop it first (s)"));
+            return reject(format!("{agent} is running \u{b7} stop it first"));
         }
         let r = match resolve(&self.org, &agent) {
             Ok(r) => r,
@@ -154,7 +154,7 @@ impl Engine {
             return reject(getting_ready(&agent));
         }
         if self.state_of(&agent).is_running() {
-            return reject(format!("{agent} is running \u{b7} stop it first (s)"));
+            return reject(format!("{agent} is running \u{b7} stop it first"));
         }
         if self
             .last_listed

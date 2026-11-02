@@ -73,6 +73,45 @@ fn r_on_running_agent_says_stop_it_first() {
 }
 
 #[test]
+fn running_note_default_is_still_s() {
+    let (mut m, _) = selected(AgentState::Working);
+    super::resume(&mut m);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("pay-qa is running · stop it first (s)")
+    );
+}
+
+#[test]
+fn running_note_shows_the_rebound_stop_key() {
+    let (mut m, _) = selected(AgentState::Working);
+    let binding = parse_binding("x").expect("x is a key");
+    assert_eq!(m.keymap.rebind(ActionId::StartStop, binding), Ok(()));
+    assert_eq!(press(&mut m, key('r')), []);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("pay-qa is running · stop it first (x)")
+    );
+}
+
+#[test]
+fn running_note_without_a_stop_key_has_no_hint() {
+    let (mut m, _) = selected(AgentState::Working);
+    let moved = parse_binding("x").expect("x is a key");
+    assert_eq!(m.keymap.rebind(ActionId::StartStop, moved), Ok(()));
+    // Resume takes `s`, so resetting Start / stop leaves it unbound.
+    let s = parse_binding("s").expect("s is a key");
+    assert_eq!(m.keymap.rebind(ActionId::Resume, s), Ok(()));
+    m.keymap.reset(ActionId::StartStop);
+    assert_eq!(m.keymap.key(ActionId::StartStop).label(), "");
+    super::resume(&mut m);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("pay-qa is running · stop it first")
+    );
+}
+
+#[test]
 fn r_on_team_or_role_does_nothing() {
     let (mut m, _) = selected(AgentState::Stopped);
     let nodes = [
