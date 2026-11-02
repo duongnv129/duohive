@@ -4,7 +4,10 @@
 use super::lifecycle::{getting_ready, not_found};
 use super::signals::is_valid_session_id;
 use super::{Engine, reject};
+use std::path::PathBuf;
+
 use crate::adapter::CliPresence;
+use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
@@ -14,6 +17,10 @@ use crate::session_catalog::{CatalogError, SessionInfo};
 use crate::status::AgentState;
 use crate::validate::agent_problem;
 use crate::worktree::{TaskId, WorktreeState};
+
+/// What a listing was read for: the agent's CLI and its expanded directory. A
+/// same-name edit that changes either makes a listing (or its cache) stale.
+pub(super) type ListFingerprint = (CliKind, Option<PathBuf>);
 
 const NOT_LISTED: &str = "that session isn't in the list \u{b7} open the picker again";
 
@@ -74,8 +81,30 @@ impl Engine {
             return out;
         }
         dirs.extend(kept);
+        // One listing per agent at a time: the answer in flight serves a repeat press.
+        if self.pending_lists.contains_key(&agent) {
+            return Vec::new();
+        }
+        let fingerprint = (
+            cli,
+            r.directory
+                .as_deref()
+                .map(|d| expand_home(d, &self.cfg.home)),
+        );
+        self.pending_lists.insert(agent.clone(), fingerprint);
         self.ports.sessions.request(&agent, cli, dirs);
         Vec::new()
+    }
+
+    /// The fingerprint of `agent` as it is now, if the org resolves it.
+    fn fingerprint(&self, agent: &AgentName) -> Option<ListFingerprint> {
+        let r = resolve(&self.org, agent).ok()?;
+        Some((
+            r.cli,
+            r.directory
+                .as_deref()
+                .map(|d| expand_home(d, &self.cfg.home)),
+        ))
     }
 
     /// The catalog's answer: the sessions with `in_use_by` marked, or why not.
@@ -84,18 +113,28 @@ impl Engine {
         agent: AgentName,
         result: Result<Vec<SessionInfo>, CatalogError>,
     ) -> Vec<Event> {
+        let requested_for = self.pending_lists.remove(&agent);
         match result {
             Err(e) => vec![Event::SessionsUnreadable {
                 agent,
                 reason: e.to_string(),
             }],
+            Ok(_) if requested_for.is_some() && requested_for != self.fingerprint(&agent) => {
+                vec![Event::SessionsUnreadable {
+                    reason: format!(
+                        "{agent} changed while its sessions were being read \u{b7} press r again"
+                    ),
+                    agent,
+                }]
+            }
             Ok(mut sessions) => {
                 for s in &mut sessions {
                     s.in_use_by = self.holder_of(&s.id, &agent);
                 }
                 // Nothing resumes an agent the org doesn't have: don't keep its list.
-                if self.knows(&agent) {
-                    self.last_listed.insert(agent.clone(), sessions.clone());
+                if let Some(now) = self.fingerprint(&agent).filter(|_| self.knows(&agent)) {
+                    self.last_listed
+                        .insert(agent.clone(), (now, sessions.clone()));
                 }
                 vec![Event::SessionsListed { agent, sessions }]
             }
@@ -117,10 +156,18 @@ impl Engine {
         if self.state_of(&agent).is_running() {
             return reject(format!("{agent} is running \u{b7} stop it first (s)"));
         }
+        if self
+            .last_listed
+            .get(&agent)
+            .is_some_and(|(fp, _)| Some(fp) != self.fingerprint(&agent).as_ref())
+        {
+            // Listed for another CLI or directory: don't resume from it.
+            self.last_listed.remove(&agent);
+        }
         let Some(session) = self
             .last_listed
             .get(&agent)
-            .and_then(|l| l.iter().find(|s| s.id == session_id))
+            .and_then(|(_, l)| l.iter().find(|s| s.id == session_id))
             .cloned()
         else {
             return reject(NOT_LISTED.to_owned());

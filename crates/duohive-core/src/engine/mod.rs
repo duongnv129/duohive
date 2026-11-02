@@ -264,8 +264,12 @@ pub struct Engine {
     /// Launch commands that arrived before the first `CliInventory`, in order (D30).
     queued_launches: Vec<Command>,
     /// The sessions last listed for each asking agent, for `ResumeSession` to
-    /// check an id against (v1.1). Replaced on every listing.
-    last_listed: HashMap<AgentName, Vec<SessionInfo>>,
+    /// check an id against (v1.1), with the fingerprint they were read for.
+    /// Replaced on every listing.
+    last_listed: HashMap<AgentName, (resume::ListFingerprint, Vec<SessionInfo>)>,
+    /// The listing in flight for each agent, with the fingerprint it was
+    /// requested for: one request per agent at a time (v1.1).
+    pending_lists: HashMap<AgentName, resume::ListFingerprint>,
     /// The Needs you list last reported in `NeedsYouChanged`.
     needs_you_shown: Vec<NeedsYouItem>,
     /// Set from `start_up` until the start-up inventory is applied (Task 15).
@@ -339,6 +343,7 @@ impl Engine {
             replace_ready: false,
             queued_launches: Vec::new(),
             last_listed: HashMap::new(),
+            pending_lists: HashMap::new(),
             needs_you_shown: Vec::new(),
             reconnect: None,
             replaying: false,

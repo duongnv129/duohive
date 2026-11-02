@@ -653,3 +653,133 @@ fn resume_refused_for_worktree_being_removed() {
     );
     assert!(launched(&h).is_empty());
 }
+
+fn requests(h: &Harness) -> usize {
+    h.session_requests.lock().unwrap().len()
+}
+
+fn edit_fields(h: &mut Harness, agent: &str, change: impl FnOnce(&mut crate::org::Fields)) {
+    let mut fields = h
+        .engine
+        .org
+        .find_agent(&n(agent))
+        .expect("agent")
+        .agent
+        .fields
+        .clone();
+    change(&mut fields);
+    let events = h.send(Command::EditOrg(crate::command::OrgEdit::EditAgent {
+        key: n(agent),
+        draft: crate::command::AgentDraft {
+            name: n(agent),
+            fields,
+        },
+    }));
+    assert_eq!(rejected(&events), None, "{events:?}");
+}
+
+fn unreadable(events: &[Event]) -> Option<&str> {
+    events.iter().find_map(|e| match e {
+        Event::SessionsUnreadable { reason, .. } => Some(reason.as_str()),
+        _ => None,
+    })
+}
+
+#[test]
+fn second_list_while_one_is_pending_sends_no_second_request() {
+    let mut h = Harness::new();
+    assert!(list(&mut h, "pay-qa").is_empty());
+    let again = list(&mut h, "pay-qa");
+    assert!(again.is_empty(), "{again:?}");
+    assert_eq!(requests(&h), 1);
+}
+
+#[test]
+fn pending_is_cleared_by_the_answer_so_the_next_list_runs() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    answer(&mut h, "pay-qa", &["s1"]);
+    list(&mut h, "pay-qa");
+    assert_eq!(requests(&h), 2);
+}
+
+#[test]
+fn pending_is_cleared_by_an_error_answer() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    let events = h.input(Input::SessionsListed {
+        agent: n("pay-qa"),
+        result: Err(CatalogError::Unreadable("boom".into())),
+    });
+    assert_eq!(unreadable(&events), Some("boom"));
+    list(&mut h, "pay-qa");
+    assert_eq!(requests(&h), 2);
+}
+
+const CHANGED: &str = "pay-qa changed while its sessions were being read \u{b7} press r again";
+
+#[test]
+fn answer_after_the_agents_cli_changed_is_dropped_with_a_note() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    edit_fields(&mut h, "pay-qa", |f| f.cli = Some(CliKind::Opencode));
+    let events = h.input(Input::SessionsListed {
+        agent: n("pay-qa"),
+        result: Ok(vec![info("s1")]),
+    });
+    assert_eq!(unreadable(&events), Some(CHANGED), "{events:?}");
+    assert!(!h.engine.last_listed.contains_key(&n("pay-qa")));
+    list(&mut h, "pay-qa");
+    assert_eq!(requests(&h), 2);
+}
+
+#[test]
+fn answer_after_the_agents_directory_changed_is_dropped_with_a_note() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    edit_fields(&mut h, "pay-qa", |f| {
+        f.directory = Some("~/code/other".into());
+    });
+    let events = h.input(Input::SessionsListed {
+        agent: n("pay-qa"),
+        result: Ok(vec![info("s1")]),
+    });
+    assert_eq!(unreadable(&events), Some(CHANGED), "{events:?}");
+    assert!(!h.engine.last_listed.contains_key(&n("pay-qa")));
+}
+
+#[test]
+fn resume_refuses_a_cached_list_from_before_a_cli_change() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    answer(&mut h, "pay-qa", &["s1"]);
+    edit_fields(&mut h, "pay-qa", |f| f.cli = Some(CliKind::Opencode));
+    let events = resume(&mut h, "pay-qa", "s1");
+    assert_eq!(
+        rejected(&events),
+        Some("that session isn't in the list \u{b7} open the picker again")
+    );
+    assert!(launched(&h).is_empty());
+    assert!(!h.engine.last_listed.contains_key(&n("pay-qa")));
+}
+
+#[test]
+fn removed_agent_loses_its_pending_and_cached_state() {
+    let mut h = Harness::new();
+    list(&mut h, "pay-qa");
+    answer(&mut h, "pay-qa", &["s1"]);
+    list(&mut h, "billing-api");
+    list(&mut h, "pay-qa");
+    assert!(h.engine.pending_lists.contains_key(&n("billing-api")));
+    let events = h.send(Command::EditOrg(crate::command::OrgEdit::Delete(
+        crate::org::NodeKey::Agent(n("billing-api")),
+    )));
+    assert_eq!(rejected(&events), None, "{events:?}");
+    assert!(!h.engine.pending_lists.contains_key(&n("billing-api")));
+    let events = h.send(Command::EditOrg(crate::command::OrgEdit::Delete(
+        crate::org::NodeKey::Agent(n("pay-qa")),
+    )));
+    assert_eq!(rejected(&events), None, "{events:?}");
+    assert!(!h.engine.last_listed.contains_key(&n("pay-qa")));
+    assert!(!h.engine.pending_lists.contains_key(&n("pay-qa")));
+}
