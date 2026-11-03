@@ -138,7 +138,7 @@ New in this phase:
    - A task of `/`, `..`, emoji, 2 000 characters or only whitespace gives a safe slug (`task` when empty) inside the worktrees dir.
    - An existing branch is never reused or reset (P2-D7).
    - Tests: Task 2.11 `task_slugs_are_safe`; Task 2.12 `existing_branch_takes_next_suffix_then_errors`; Task 2.14 `existing_branch_is_an_error_not_reused`.
-6. **The mouse never leaks or surprises (P2-D25).**
+6. **The mouse never leaks or surprises (P2-D25).** *Superseded in part by [click-to-type-plan](click-to-type-plan.md) (CT-D1): a click on a running agent now starts Typing; the "click never reaches the agent" and "wheel never moves focus" clauses stand.*
    - After exit, a panic or the `$EDITOR` hand-over, the shell and the editor get no mouse escape codes.
    - A stray click never types into an agent, and the wheel never moves focus.
    - Tests: Task 2.21 `mouse_capture_off_on_exit_restore_panic_and_editor_and_back_on_after_editor`, `click_never_reaches_agent`, `click_agent_pane_does_not_start_typing`, `wheel_does_not_move_focus`.
@@ -182,7 +182,7 @@ These decisions change or narrow PRD wording. Each takes its default unless the 
 | P2-D20 | While a worktree is being created for an agent, `StartAgent` and `GiveWork` for it are refused, which narrows the PRD's "stopped (or errored): starts a fresh session with the task". Phase 3 (3.7) also leaves such an agent out of "free" | 2.12 |
 | P2-D13 | Settings (You, Attention, Look) ships in phase 2, not phase 4 | 2.17 |
 | P2-D18 | An alert click doesn't raise the terminal window | 2.10 |
-| P2-D25 | The wheel (touchpad scrolling) and left click ship in phase 2, not phase 4; text selection then takes the terminal's bypass modifier | 2.21 |
+| P2-D25 | The wheel (touchpad scrolling) and left click ship in phase 2, not phase 4; text selection then takes the terminal's bypass modifier. *The "a click never starts typing" rule is superseded by CT-D1 ([click-to-type-plan](click-to-type-plan.md)).* | 2.21 |
 | P2-D26 | Theme `auto` follows the terminal (transparent) in phase 2, instead of rendering dark until phase 4's background detection | 2.22 |
 | P2-D27 | One accent for focus; colour only on the glyphs of states that need you; Duo bold instead of honey; neutral borders; new `dark` and `light` palettes | 2.23 |
 | P2-D28 | `esc` in the Needs you, agent and chat panes moves focus to the org pane, which pins UI §4.11's "back one level" for the main screen | 2.20 |

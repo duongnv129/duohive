@@ -63,6 +63,7 @@ Dependencies point inward only:
 - **`PaneView`** (phase 2, P2-D1) is the live terminal of the selected agent, and bypasses the engine:
   - **Wiring:** the port (traits and data only) is implemented in `duohive-tmux`, and the binary hands it to the TUI as `Arc<dyn PaneView>`. Raw bytes never pass through the core's single task. The engine still receives `ViewAgent`.
   - **Binding:** `open` returns a `StreamId` bound to the window open at that moment (its pane id, which tmux never reuses within a server).
+  - **Typing from a click or `enter` (click-to-type):** starting Typing needs the agent's live terminal to be showing (`live_agent` equals the agent). When it isn't yet, the TUI keeps a `typing_wanted` agent name in `UiModel`; `LiveView` turns it into Typing when that agent's first `Reset` arrives, and any change of selection, focus or mode drops it. The press only selects and focuses; Typing starts on release, after the drag and selection handlers have had their say.
   - **Keys never reach a newer window:** `send` and `resize` take that id, and fail with `ViewError::Closed` once that window is gone.
   - **The tmux path** is in §4.3 (spike S3).
 
