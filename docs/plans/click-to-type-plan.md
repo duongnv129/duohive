@@ -23,9 +23,9 @@ From [AGENTS.md](../../AGENTS.md) and Phase 0's [Global Constraints](phase-0-pla
 | # | Decision |
 |---|---|
 | CT-D1 | **Reverses P2-D25's "a click never starts typing".** Decided by the author, 2026-11-03 (option A of three: click and `enter` straight to Typing; `enter` only, and a setting, were rejected). The rest of P2-D25 stands: the wheel never moves focus and a click is never sent to the agent. |
-| CT-D2 | **Typing starts on button release**, only if the press did not become a drag (moving a node, resizing the chat) or a text selection. A press still selects and focuses as today. |
+| CT-D2 | **Typing starts on button release**, only if the press did not become a drag (moving a node, resizing the chat) or a text selection. A press still selects and focuses as today (an org or Needs you press leaves focus on that pane); the release then moves focus to the agent pane and requests Typing, because `UiModel::typing()` needs `focus.pane == Agent` and Typing without it would leave the keys on the tree. |
 | CT-D3 | **Only a running agent** (`AgentState::is_running`) goes to Typing, Duo included. Stopped, errored and finished agents land in Selected, as today. |
-| CT-D4 | **Typing waits for the live terminal.** `start_typing` needs `live_agent == agent`, and a freshly selected agent's stream arrives later. A click or `enter` on a running agent that isn't live yet sets `UiModel.typing_wanted`; `LiveView` turns it into Typing when that agent becomes `live_agent`. Selection, focus or mode changes drop it. |
+| CT-D4 | **Typing waits for the live terminal.** `start_typing` needs `live_agent == agent`, and a freshly selected agent's stream arrives later. A click or `enter` on a running agent that isn't live yet sets `UiModel.typing_wanted`; `LiveView` turns it into Typing when that agent becomes `live_agent`. Selection, focus or mode changes drop it; the focus check is against the agent pane, which a click or `enter` has already set. |
 | CT-D5 | `tab`, `shift+tab`, arrows and `esc` never start Typing. Teams and roles keep fold/select. |
 
 ## Review Focus
@@ -38,6 +38,7 @@ Most likely to go wrong first; each has a test in the owning task.
 4. A stray release with no matching press (press on a dialog, release outside) starts Typing (CT.3).
 5. Typing starts for an agent that stopped between press and release (CT.3).
 6. Key map, footers and help snapshots still say "focus the agent pane" (CT.5).
+7. Typing starts while focus is still on the org or Needs you pane, so `typing()` is false and keys keep going to the tree (CT.3).
 
 ## File Structure
 
@@ -87,10 +88,13 @@ crates/duohive-tui/src/
   - `release_without_press_does_not_start_typing`;
   - `agent_stopped_between_press_and_release_does_not_start_typing`;
   - `click_needs_you_agent_row_starts_typing`;
+  - `org_row_click_moves_focus_to_agent_pane_and_keys_reach_agent` (agent already live: after release `m.typing()` is true and `a` becomes `UiEffect::Pane` input, not a tree action);
+  - `org_row_click_before_stream_opens_types_once_live` (not live at release: pane is Agent, `typing_wanted` set, Typing starts when the stream goes live);
+  - `team_and_role_clicks_keep_focus_on_org`;
   - `click_while_zoomed_does_nothing_new`;
   - `click_other_row_while_typing_moves_typing_to_that_agent`;
   - `right_click_never_starts_typing`.
-- [ ] **Step 2:** On a left press that targets an agent row (org or Needs you) or the agent pane showing a running agent, store `m.click = Some(ClickIntent { agent, moved: false })`. `on_drag` and a selection that grows set `moved = true`. On `Up(Left)`: take the intent; if `!moved`, no selection range and the agent is still running, call `request_typing`. Any other press, a menu, a dialog or a wheel event clears the intent.
+- [ ] **Step 2:** On a left press that targets an agent row (org or Needs you) or the agent pane showing a running agent, store `m.click = Some(ClickIntent { agent, moved: false })`. `on_drag` and a selection that grows set `moved = true`. On `Up(Left)`: take the intent; if `!moved`, no selection range and the agent is still running, set `m.focus.pane = Pane::Agent` (and `focus.card = None`), then call `request_typing`. Any other press, a menu, a dialog or a wheel event clears the intent.
 - [ ] **Step 3:** Run, then commit `feat: a click on a running agent starts typing`.
 
 ### Task CT.4: Typing once the live terminal shows
