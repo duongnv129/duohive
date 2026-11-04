@@ -346,6 +346,7 @@ fn form_key(k: KeyEvent) -> Option<Action> {
 /// Applies an action to the model; pure. Any key clears the footer note. A card keeps
 /// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    m.click = None;
     m.selection = None;
     let out = apply(m, a);
     if m.focus.pane != Pane::Chat {

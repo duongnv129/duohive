@@ -116,6 +116,15 @@ impl DirProbe for NoProbe {
     }
 }
 
+/// The agent a left press landed on, until the button comes up (click-to-type, CT-D2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClickIntent {
+    /// The agent the press targeted.
+    pub agent: AgentName,
+    /// The pointer moved with the button held: a drag or a selection, not a click.
+    pub moved: bool,
+}
+
 /// Everything the main screen draws.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UiModel {
@@ -179,6 +188,10 @@ pub struct UiModel {
     /// A click or `enter` asked to type into this agent, whose live terminal isn't showing
     /// yet; Typing starts when it is (click-to-type, CT-D4).
     pub typing_wanted: Option<AgentName>,
+    /// A left press on an agent (row or pane) that may become a click and start Typing on
+    /// release (CT-D2); dropped by a drag, a key, another press, a wheel tick, a menu or a
+    /// dialog.
+    pub click: Option<ClickIntent>,
     /// `z`: the selected agent's pane fills the screen (UI §4.2).
     pub zoomed: bool,
     /// The pane that had focus when zoom started; restoring goes back to it.
@@ -246,6 +259,7 @@ impl UiModel {
             scrolled: false,
             live_agent: None,
             typing_wanted: None,
+            click: None,
             zoomed: false,
             zoom_from: crate::focus::Pane::Org,
             give_sent: None,

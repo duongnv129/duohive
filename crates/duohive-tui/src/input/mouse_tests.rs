@@ -426,13 +426,17 @@ fn click_needs_you_row_acts_as_enter() {
 }
 
 #[test]
-fn click_agent_pane_does_not_start_typing() {
+fn click_agent_pane_starts_typing_on_release() {
     let mut m = model();
     m.focus.pane = Pane::Org;
+    m.live_agent = Some(n("auth-service"));
     let (x, y) = middle(areas(&m).live);
     let effects = on_mouse(&mut m, press(x, y));
     assert_eq!(m.focus.pane, Pane::Agent);
-    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected, "not on press");
+    assert!(no_pane_input(&effects));
+    let effects = on_mouse(&mut m, release(x, y));
+    assert!(m.typing());
     assert!(no_pane_input(&effects));
 }
 
@@ -587,4 +591,241 @@ fn chat_scroll_kept_from_p2_d25() {
     assert_eq!(m.chat.scroll, Some(40 - usize::from(WHEEL_LINES)));
     on_mouse(&mut m, wheel(false, x, y));
     assert_eq!(m.chat.scroll, None);
+}
+
+fn release(x: u16, y: u16) -> MouseEvent {
+    mouse(MouseEventKind::Up(MouseButton::Left), x, y)
+}
+
+fn drag_to(x: u16, y: u16) -> MouseEvent {
+    mouse(MouseEventKind::Drag(MouseButton::Left), x, y)
+}
+
+/// A full click (press, release) at `at`; the release's effects.
+fn click(m: &mut UiModel, at: (u16, u16)) -> Vec<UiEffect> {
+    on_mouse(m, press(at.0, at.1));
+    on_mouse(m, release(at.0, at.1))
+}
+
+fn org_cell(m: &UiModel, text: &str) -> (u16, u16) {
+    cell_of(m, areas(m).org, text)
+}
+
+#[test]
+fn press_alone_does_not_start_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert!(!m.typing());
+}
+
+#[test]
+fn click_org_row_of_a_running_agent_moves_focus_and_types() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let at = org_cell(&m, "billing-api");
+    click(&mut m, at);
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert!(m.typing(), "keys must reach the agent, not the tree");
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn click_org_row_before_the_stream_opens_types_once_live() {
+    let mut m = model();
+    m.live_agent = None;
+    let at = org_cell(&m, "billing-api");
+    click(&mut m, at);
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, Some(n("billing-api")));
+}
+
+#[test]
+fn click_org_row_of_a_stopped_or_errored_agent_stays_selected() {
+    let mut m = model();
+    let at = org_cell(&m, "pay-qa");
+    m.live_agent = Some(n("pay-qa"));
+    click(&mut m, at);
+    assert_eq!(
+        m.focus.pane,
+        Pane::Org,
+        "a stopped agent's row only selects"
+    );
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+    m.agents.get_mut(&n("billing-api")).unwrap().status = status(AgentState::Errored, mins(1));
+    let at = org_cell(&m, "billing-api");
+    click(&mut m, at);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn click_finished_agent_marks_it_seen_and_starts_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("squad-2"));
+    let at = org_cell(&m, "squad-2");
+    let pressed = on_mouse(&mut m, press(at.0, at.1));
+    assert_eq!(
+        pressed,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("squad-2")
+        })]
+    );
+    on_mouse(&mut m, release(at.0, at.1));
+    assert!(m.typing());
+}
+
+#[test]
+fn click_needs_you_agent_row_starts_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let at = cell_of(&m, areas(&m).needs_you, "billing-api");
+    click(&mut m, at);
+    assert!(m.typing());
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+}
+
+#[test]
+fn click_team_and_role_keep_focus_on_org() {
+    let mut m = model();
+    for text in ["Payments", "Backend"] {
+        let at = org_cell(&m, text);
+        click(&mut m, at);
+        assert_eq!(m.focus.pane, Pane::Org, "{text}");
+        assert_eq!(m.typing_wanted, None);
+    }
+}
+
+#[test]
+fn drag_from_an_org_row_does_not_start_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    let (tx, ty) = org_cell(&m, "squad-1");
+    on_mouse(&mut m, press(x, y));
+    on_mouse(&mut m, drag_to(tx, ty));
+    on_mouse(&mut m, release(tx, ty));
+    assert!(!m.typing());
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn drag_in_the_agent_pane_selects_text_and_does_not_start_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    let live = areas(&m).live;
+    on_mouse(&mut m, press(live.x + 2, live.y + 1));
+    on_mouse(&mut m, drag_to(live.x + 9, live.y + 1));
+    on_mouse(&mut m, release(live.x + 9, live.y + 1));
+    assert!(!m.typing());
+}
+
+#[test]
+fn chat_edge_resize_does_not_start_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    let chat = areas(&m).chat;
+    on_mouse(&mut m, press(chat.x + 4, chat.y));
+    on_mouse(&mut m, drag_to(chat.x + 4, chat.y.saturating_sub(2)));
+    on_mouse(&mut m, release(chat.x + 4, chat.y.saturating_sub(2)));
+    assert!(!m.typing());
+}
+
+#[test]
+fn release_without_a_press_does_not_start_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    let (x, y) = middle(areas(&m).live);
+    on_mouse(&mut m, release(x, y));
+    assert!(!m.typing());
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn an_agent_stopped_between_press_and_release_does_not_get_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    m.agents.get_mut(&n("billing-api")).unwrap().status = status(AgentState::Stopped, mins(1));
+    on_mouse(&mut m, release(x, y));
+    assert!(!m.typing());
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn a_selection_moved_by_a_key_between_press_and_release_does_not_get_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    m.selected = NodeKey::Agent(n("auth-service"));
+    on_mouse(&mut m, release(x, y));
+    assert!(!m.typing());
+}
+
+#[test]
+fn a_key_between_press_and_release_clears_the_click() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    assert!(m.click.is_some());
+    super::update(&mut m, Action::Esc);
+    assert!(m.click.is_none());
+    on_mouse(&mut m, release(x, y));
+    assert!(!m.typing());
+}
+
+#[test]
+fn clicks_while_zoomed_start_nothing_new() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    m.zoomed = true;
+    m.focus.pane = Pane::Agent;
+    let (x, y) = middle(m.screen);
+    click(&mut m, (x, y));
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert!(m.click.is_none());
+}
+
+#[test]
+fn clicking_another_row_while_typing_moves_typing_to_that_agent() {
+    let mut m = typing();
+    m.live_agent = Some(n("auth-service"));
+    let at = org_cell(&m, "billing-api");
+    click(&mut m, at);
+    assert_eq!(m.selected, NodeKey::Agent(n("billing-api")));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, Some(n("billing-api")));
+}
+
+#[test]
+fn right_click_never_starts_typing() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(
+        &mut m,
+        mouse(MouseEventKind::Down(MouseButton::Right), x, y),
+    );
+    on_mouse(&mut m, mouse(MouseEventKind::Up(MouseButton::Right), x, y));
+    assert!(!m.typing());
+}
+
+#[test]
+fn a_click_that_starts_typing_keeps_the_scrolled_snapshot() {
+    let mut m = model();
+    m.live_agent = Some(n("auth-service"));
+    m.scrolled = true;
+    let (x, y) = middle(areas(&m).live);
+    click(&mut m, (x, y));
+    assert!(m.typing());
+    assert!(m.scrolled);
 }

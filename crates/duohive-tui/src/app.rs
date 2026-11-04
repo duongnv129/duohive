@@ -455,6 +455,7 @@ pub(crate) async fn run_loop<B: Backend>(
                         Some(a) => update(&mut m, a),
                         None => {
                             m.footer_note = None;
+                            m.click = None;
                             Vec::new()
                         }
                     };

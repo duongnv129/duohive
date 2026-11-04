@@ -116,7 +116,7 @@ pub(super) fn enter(m: &mut UiModel) {
         NodeKey::Agent(_) | NodeKey::Duo => {
             m.focus.pane = Pane::Agent;
             m.focus.agent_mode = AgentMode::Selected;
-            super::agent::request_typing(m);
+            super::agent::request_typing(m, false);
         }
     }
 }
@@ -141,7 +141,7 @@ pub(super) fn needs_you_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             let Some(agent) = needs_you_enter(m) else {
                 return Vec::new();
             };
-            super::agent::request_typing(m);
+            super::agent::request_typing(m, false);
             return vec![UiEffect::Send(Command::ViewAgent { agent })];
         }
         _ => {}

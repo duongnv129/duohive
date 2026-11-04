@@ -186,7 +186,7 @@ fn request_typing_starts_typing_when_live() {
     m.focus.pane = Pane::Agent;
     m.live_agent = Some(n("auth-service"));
     m.scrolled = true;
-    request_typing(&mut m);
+    request_typing(&mut m, false);
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);
     assert!(!m.scrolled);
     assert_eq!(m.typing_wanted, None);
@@ -198,7 +198,7 @@ fn request_typing_waits_when_not_live() {
     m.focus.pane = Pane::Agent;
     for live in [None, Some(n("billing-api"))] {
         m.live_agent = live;
-        request_typing(&mut m);
+        request_typing(&mut m, false);
         assert_eq!(m.focus.agent_mode, AgentMode::Selected);
         assert_eq!(m.typing_wanted, Some(n("auth-service")));
     }
@@ -209,7 +209,7 @@ fn request_typing_takes_a_finished_agent() {
     let mut m = spec_model();
     m.selected = NodeKey::Agent(n("squad-2"));
     m.live_agent = Some(n("squad-2"));
-    request_typing(&mut m);
+    request_typing(&mut m, false);
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);
 }
 
@@ -219,13 +219,13 @@ fn request_typing_ignores_stopped_and_errored_agents() {
     m.selected = NodeKey::Agent(n("pay-qa"));
     m.live_agent = Some(n("pay-qa"));
     m.typing_wanted = Some(n("auth-service"));
-    request_typing(&mut m);
+    request_typing(&mut m, false);
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
     assert_eq!(m.typing_wanted, None);
     assert_eq!(m.footer_note, None);
     m.agents.get_mut(&n("squad-2")).unwrap().status = status(AgentState::Errored, mins(1));
     m.selected = NodeKey::Agent(n("squad-2"));
-    request_typing(&mut m);
+    request_typing(&mut m, false);
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
     assert_eq!(m.typing_wanted, None);
 }
@@ -234,7 +234,7 @@ fn request_typing_ignores_stopped_and_errored_agents() {
 fn request_typing_on_a_team_does_nothing() {
     let mut m = spec_model();
     m.selected = NodeKey::Team(duohive_core::names::NodeName::parse("Payments").unwrap());
-    request_typing(&mut m);
+    request_typing(&mut m, false);
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
     assert_eq!(m.typing_wanted, None);
 }
@@ -336,4 +336,14 @@ fn tab_and_arrows_never_start_typing() {
     press(&mut m, plain(KeyCode::Up));
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
     assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn request_typing_can_keep_a_scrolled_snapshot() {
+    let mut m = spec_model();
+    m.live_agent = Some(n("auth-service"));
+    m.scrolled = true;
+    request_typing(&mut m, true);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert!(m.scrolled);
 }
