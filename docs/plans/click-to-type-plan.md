@@ -26,7 +26,7 @@ From [AGENTS.md](../../AGENTS.md) and Phase 0's [Global Constraints](phase-0-pla
 | CT-D2 | **Typing starts on button release**, only if the press did not become a drag (moving a node, resizing the chat) or a text selection. A press still selects and focuses as today (an org or Needs you press leaves focus on that pane); the release then moves focus to the agent pane and requests Typing, because `UiModel::typing()` needs `focus.pane == Agent` and Typing without it would leave the keys on the tree. |
 | CT-D3 | **Only a running agent** (`AgentState::is_running`) goes to Typing, Duo included. Stopped, errored and finished agents land in Selected, as today. |
 | CT-D4 | **Typing waits for the live terminal.** `start_typing` needs `live_agent == agent`, and a freshly selected agent's stream arrives later. A click or `enter` on a running agent that isn't live yet sets `UiModel.typing_wanted`; `LiveView` turns it into Typing when that agent becomes `live_agent`. Selection, focus or mode changes drop it; the focus check is against the agent pane, which a click or `enter` has already set. |
-| CT-D5 | `tab`, `shift+tab`, arrows and `esc` never start Typing. Teams and roles keep fold/select. |
+| CT-D5 | `tab`, `shift+tab`, arrows and `esc` never start Typing. Teams and roles keep fold/select. The Worktrees list's `enter` ("open in agent") also stays in Selected mode: it is a dialog action, and the row may belong to a stopped agent. |
 
 ## Review Focus
 
@@ -39,6 +39,7 @@ Most likely to go wrong first; each has a test in the owning task.
 5. Typing starts for an agent that stopped between press and release (CT.3).
 6. Key map, footers and help snapshots still say "focus the agent pane" (CT.5).
 7. Typing starts while focus is still on the org or Needs you pane, so `typing()` is false and keys keep going to the tree (CT.3).
+8. An arrow key pressed while the button is held moves the selection, and the release starts Typing on a different agent than the one clicked (CT.3).
 
 ## File Structure
 
@@ -93,8 +94,10 @@ crates/duohive-tui/src/
   - `team_and_role_clicks_keep_focus_on_org`;
   - `click_while_zoomed_does_nothing_new`;
   - `click_other_row_while_typing_moves_typing_to_that_agent`;
+  - `selection_moved_by_key_between_press_and_release_does_not_start_typing`;
+  - `key_between_press_and_release_clears_the_click`;
   - `right_click_never_starts_typing`.
-- [ ] **Step 2:** On a left press that targets an agent row (org or Needs you) or the agent pane showing a running agent, store `m.click = Some(ClickIntent { agent, moved: false })`. `on_drag` and a selection that grows set `moved = true`. On `Up(Left)`: take the intent; if `!moved`, no selection range and the agent is still running, set `m.focus.pane = Pane::Agent` (and `focus.card = None`), then call `request_typing`. Any other press, a menu, a dialog or a wheel event clears the intent.
+- [ ] **Step 2:** On a left press that targets an agent row (org or Needs you) or the agent pane showing a running agent, store `m.click = Some(ClickIntent { agent, moved: false })`. `on_drag` and a selection that grows set `moved = true`. On `Up(Left)`: take the intent; if `!moved`, no selection range and the agent is still running, set `m.focus.pane = Pane::Agent` (and `focus.card = None`), then call `request_typing`. The release also requires the selection to still be the pressed agent (`agent_of(m, &m.selected) == Some(intent.agent)`), and any key event, other press, menu, dialog or wheel event clears the intent, so a key pressed while the button is held cannot send Typing to a different agent.
 - [ ] **Step 3:** Run, then commit `feat: a click on a running agent starts typing`.
 
 ### Task CT.4: Typing once the live terminal shows
