@@ -605,6 +605,49 @@ impl UiModel {
             && self.focus.agent_mode == crate::focus::AgentMode::Typing
     }
 
+    /// The footer note while a click or `enter` waits for an agent's terminal (CT-D6).
+    pub fn opening_note(agent: &AgentName) -> String {
+        format!("opening {agent}…")
+    }
+
+    /// Forgets a pending typing request, and the footer note that announced it.
+    pub fn drop_typing_wanted(&mut self) {
+        if let Some(agent) = self.typing_wanted.take()
+            && self.footer_note.as_deref() == Some(Self::opening_note(&agent).as_str())
+        {
+            self.footer_note = None;
+        }
+    }
+
+    /// Drops a pending typing request nothing supports any more: the selection moved,
+    /// focus left the agent pane, a dialog or menu opened, or the agent stopped (CT-D4).
+    pub fn drop_stale_typing_wanted(&mut self) {
+        let Some(agent) = &self.typing_wanted else {
+            return;
+        };
+        let supported = self.selected_agent() == Some(agent)
+            && self.focus.pane == crate::focus::Pane::Agent
+            && self.dialog.is_none()
+            && self.menu.is_none()
+            && self.view(agent).status.state.is_running();
+        if !supported {
+            self.drop_typing_wanted();
+        }
+    }
+
+    /// Starts Typing when the agent a click or `enter` asked for now shows its live
+    /// terminal. Both must be `Some`: no request and no live agent never match.
+    pub fn start_wanted_typing(&mut self) {
+        if self.typing_wanted.is_some()
+            && self.typing_wanted == self.live_agent
+            && self.focus.pane == crate::focus::Pane::Agent
+        {
+            self.drop_typing_wanted();
+            self.focus.agent_mode = crate::focus::AgentMode::Typing;
+            self.scrolled = false;
+        }
+    }
+
     /// The agent whose pane fills the screen: the selected agent while `z` has zoomed.
     pub fn zoomed_agent(&self) -> Option<&AgentName> {
         self.zoomed.then(|| self.selected_agent()).flatten()

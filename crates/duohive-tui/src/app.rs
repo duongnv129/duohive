@@ -454,7 +454,9 @@ pub(crate) async fn run_loop<B: Backend>(
                     let effects = match map_key(&m, k) {
                         Some(a) => update(&mut m, a),
                         None => {
-                            m.footer_note = None;
+                            if m.typing_wanted.is_none() {
+                                m.footer_note = None;
+                            }
                             m.click = None;
                             Vec::new()
                         }

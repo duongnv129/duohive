@@ -339,6 +339,52 @@ fn tab_and_arrows_never_start_typing() {
 }
 
 #[test]
+fn keys_are_inert_while_typing_is_pending() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    assert_eq!(note.as_deref(), Some("opening auth-service…"));
+    for c in [' ', 'z', 'r', 's', 'q', 'o', 'w'] {
+        assert_eq!(press(&mut m, plain(KeyCode::Char(c))), [], "{c}");
+        assert!(m.dialog.is_none() && !m.zoomed, "{c}");
+        assert_eq!(m.typing_wanted, Some(n("auth-service")), "{c}");
+        assert_eq!(m.footer_note, note, "{c}");
+    }
+    assert_eq!(
+        press(&mut m, with(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+        []
+    );
+}
+
+#[test]
+fn esc_tab_and_arrows_cancel_a_pending_request_and_act() {
+    for code in [
+        KeyCode::Esc,
+        KeyCode::Tab,
+        KeyCode::BackTab,
+        KeyCode::Up,
+        KeyCode::Down,
+    ] {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        request_typing(&mut m, false);
+        press(&mut m, plain(code));
+        assert_eq!(m.typing_wanted, None, "{code:?}");
+        assert_eq!(m.footer_note, None, "{code:?}");
+    }
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    press(&mut m, plain(KeyCode::Esc));
+    assert_eq!(
+        m.focus.pane,
+        Pane::Org,
+        "esc still goes back to the org pane"
+    );
+}
+
+#[test]
 fn request_typing_can_keep_a_scrolled_snapshot() {
     let mut m = spec_model();
     m.live_agent = Some(n("auth-service"));

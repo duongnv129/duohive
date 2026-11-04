@@ -348,6 +348,20 @@ fn form_key(k: KeyEvent) -> Option<Action> {
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     m.click = None;
     m.selection = None;
+    if m.typing_wanted.is_some() {
+        // CT-D6: until the agent's terminal is live, DuoHive's own keys are ignored (not
+        // buffered), so a fast typist cannot give work or zoom by accident; these cancel.
+        match a {
+            Action::Esc
+            | Action::Tab
+            | Action::BackTab
+            | Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right => m.drop_typing_wanted(),
+            _ => return Vec::new(),
+        }
+    }
     let out = apply(m, a);
     if m.focus.pane != Pane::Chat {
         m.focus.card = None;

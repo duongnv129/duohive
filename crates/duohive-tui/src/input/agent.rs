@@ -74,7 +74,7 @@ fn start_typing(m: &mut UiModel) {
 /// A stopped or errored agent, a team and a role leave the mode as it is. `enter` returns
 /// a scrolled-back pane to live; a click keeps the snapshot (`keep_scroll`).
 pub(super) fn request_typing(m: &mut UiModel, keep_scroll: bool) {
-    m.typing_wanted = None;
+    m.drop_typing_wanted();
     let Some(agent) = agent_of(m, &m.selected) else {
         return;
     };
@@ -85,6 +85,7 @@ pub(super) fn request_typing(m: &mut UiModel, keep_scroll: bool) {
         m.focus.agent_mode = AgentMode::Typing;
         m.scrolled &= keep_scroll;
     } else {
+        m.footer_note = Some(UiModel::opening_note(&agent));
         m.typing_wanted = Some(agent);
     }
 }
