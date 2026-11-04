@@ -198,7 +198,8 @@ fn click_to_type(m: &mut UiModel, click: Option<ClickIntent>) {
         return;
     };
     let still_selected = agent_of(m, &m.selected).as_ref() == Some(&click.agent);
-    let blocked = click.moved || m.dialog.is_some() || m.menu.is_some();
+    // A click inside the pane while Typing keeps Typing and asks for nothing.
+    let blocked = click.moved || m.dialog.is_some() || m.menu.is_some() || m.typing();
     if blocked || !still_selected || !m.view(&click.agent).status.state.is_running() {
         return;
     }

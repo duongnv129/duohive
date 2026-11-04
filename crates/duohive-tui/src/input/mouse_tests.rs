@@ -829,3 +829,22 @@ fn a_click_that_starts_typing_keeps_the_scrolled_snapshot() {
     assert!(m.typing());
     assert!(m.scrolled);
 }
+
+#[test]
+fn a_click_inside_while_typing_never_leaves_a_pending_request_that_eats_keys() {
+    let mut m = typing();
+    // The live terminal is momentarily not published (a stream re-open).
+    m.live_agent = None;
+    let (x, y) = middle(areas(&m).live);
+    click(&mut m, (x, y));
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert_eq!(m.typing_wanted, None);
+    let effects = super::update(
+        &mut m,
+        Action::Type(KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE)),
+    );
+    assert!(
+        effects.iter().any(|e| matches!(e, UiEffect::Pane(_))),
+        "a typed key still reaches the agent: {effects:?}"
+    );
+}
