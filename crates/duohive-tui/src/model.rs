@@ -176,6 +176,9 @@ pub struct UiModel {
     /// The agent whose live terminal the pane shows (its stream has delivered a `Reset`);
     /// kept by the app loop. Typing needs it.
     pub live_agent: Option<AgentName>,
+    /// A click or `enter` asked to type into this agent, whose live terminal isn't showing
+    /// yet; Typing starts when it is (click-to-type, CT-D4).
+    pub typing_wanted: Option<AgentName>,
     /// `z`: the selected agent's pane fills the screen (UI §4.2).
     pub zoomed: bool,
     /// The pane that had focus when zoom started; restoring goes back to it.
@@ -242,6 +245,7 @@ impl UiModel {
             screen: Rect::default(),
             scrolled: false,
             live_agent: None,
+            typing_wanted: None,
             zoomed: false,
             zoom_from: crate::focus::Pane::Org,
             give_sent: None,

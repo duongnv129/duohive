@@ -488,19 +488,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     }
     match m.focus.pane {
         Pane::Org => org_action(m, a),
-        Pane::NeedsYou => {
-            match a {
-                Action::Up | Action::Down => panes::needs_you_move(m, a == Action::Down),
-                Action::Enter => {
-                    return panes::needs_you_enter(m)
-                        .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
-                        .into_iter()
-                        .collect();
-                }
-                _ => {}
-            }
-            Vec::new()
-        }
+        Pane::NeedsYou => panes::needs_you_action(m, a),
         Pane::Agent => agent::agent_action(m, a),
         Pane::Chat => chat_action(m, a),
     }

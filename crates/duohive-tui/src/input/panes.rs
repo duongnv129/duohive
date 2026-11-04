@@ -1,10 +1,11 @@
 //! Keys for the main screen's panes: focus, folding and Needs you (UI §4.11, P2-D9).
 
 use crossterm::event::{KeyCode, KeyEvent};
+use duohive_core::command::Command;
 use duohive_core::names::AgentName;
 use duohive_core::org::{NodeKey, RoleKey};
 
-use super::{Action, bind_action};
+use super::{Action, UiEffect, bind_action};
 use crate::focus::{AgentMode, Pane};
 use crate::keymap::{Context, Keymap};
 use crate::model::UiModel;
@@ -102,8 +103,9 @@ pub(super) fn unfold(m: &mut UiModel) {
     m.folded.remove(&m.selected);
 }
 
-/// `enter` in the org pane: on an agent or Duo it focuses the agent pane; on a team or
-/// role it folds or unfolds (P2-D9).
+/// `enter` in the org pane: on an agent or Duo it focuses the agent pane and starts
+/// Typing when the agent takes input (CT-D1, CT-D3); on a team or role it folds or
+/// unfolds (P2-D9).
 pub(super) fn enter(m: &mut UiModel) {
     match &m.selected {
         NodeKey::Team(_) | NodeKey::Role(_) => {
@@ -114,6 +116,7 @@ pub(super) fn enter(m: &mut UiModel) {
         NodeKey::Agent(_) | NodeKey::Duo => {
             m.focus.pane = Pane::Agent;
             m.focus.agent_mode = AgentMode::Selected;
+            super::agent::request_typing(m);
         }
     }
 }
@@ -127,6 +130,23 @@ pub(super) fn needs_you_move(m: &mut UiModel, down: bool) {
     } else {
         at.saturating_sub(1)
     };
+}
+
+/// An action in the Needs you list: `↑↓` move, `enter` goes to the agent and starts
+/// Typing when it takes input (CT-D1), or focuses the card.
+pub(super) fn needs_you_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    match a {
+        Action::Up | Action::Down => needs_you_move(m, a == Action::Down),
+        Action::Enter => {
+            let Some(agent) = needs_you_enter(m) else {
+                return Vec::new();
+            };
+            super::agent::request_typing(m);
+            return vec![UiEffect::Send(Command::ViewAgent { agent })];
+        }
+        _ => {}
+    }
+    Vec::new()
 }
 
 /// `enter` in Needs you: selects the agent under the cursor, unfolds its team and role,

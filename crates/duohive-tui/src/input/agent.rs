@@ -69,6 +69,25 @@ fn start_typing(m: &mut UiModel) {
     }
 }
 
+/// A click or `enter` on an agent row asks to type into the selected agent (CT-D3, CT-D4):
+/// Typing starts now when its live terminal shows, and once it does when it doesn't yet.
+/// A stopped or errored agent, a team and a role leave the mode as it is.
+pub(super) fn request_typing(m: &mut UiModel) {
+    m.typing_wanted = None;
+    let Some(agent) = agent_of(m, &m.selected) else {
+        return;
+    };
+    if !m.view(&agent).status.state.is_running() {
+        return;
+    }
+    if m.live_agent.as_ref() == Some(&agent) {
+        m.focus.agent_mode = AgentMode::Typing;
+        m.scrolled = false;
+    } else {
+        m.typing_wanted = Some(agent);
+    }
+}
+
 /// Focusing the agent pane on a finished agent marks it seen (UI §2.1).
 pub(super) fn view_if_finished(m: &UiModel) -> Vec<UiEffect> {
     if m.focus.pane != Pane::Agent {
