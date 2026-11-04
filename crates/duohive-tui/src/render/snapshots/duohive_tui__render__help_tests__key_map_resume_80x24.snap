@@ -3,14 +3,14 @@ source: crates/duohive-tui/src/render/help_tests.rs
 expression: narrow
 ---
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────┐
-│  click     select / focus                                                    │
+│  click     select + type                                                     │
 │  right     node menu                                                         │
 │  wheel     scroll                                                            │
 │  drag      move node                                                         │
 │Org pane                                                                      │
 │  ↑↓        move                                                              │
 │  ←→        fold / unfold                                                     │
-│  enter     open agent pane                                                   │
+│  enter     type to agent                                                     │
 │  space     give work                                                         │
 │  s         start / stop                                                      │
 │  r         resume                                                            │

@@ -59,7 +59,7 @@ fn groups(km: &Keymap) -> Vec<Group> {
         Group {
             title: "Mouse",
             rows: vec![
-                pair("click", "select / focus"),
+                pair("click", "select + type"),
                 pair("right", "node menu"),
                 pair("wheel", "scroll"),
                 pair("drag", "move node"),
@@ -70,7 +70,7 @@ fn groups(km: &Keymap) -> Vec<Group> {
             rows: vec![
                 pair("↑↓", "move"),
                 pair("←→", "fold / unfold"),
-                pair("enter", "open agent pane"),
+                pair("enter", "type to agent"),
                 pair(&key(km, ActionId::GiveWork), "give work"),
                 pair(&key(km, ActionId::StartStop), "start / stop"),
                 pair(&key(km, ActionId::Resume), "resume"),
