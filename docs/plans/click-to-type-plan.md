@@ -1,6 +1,6 @@
 # Click to type — Implementation Plan
 
-**Status:** Plan, drafted 2026-11-03 · not started · branch `feat/click-to-type`
+**Status:** Plan, drafted 2026-11-03 · tasks CT.1 to CT.5 built on the branch `feat/click-to-type-impl` (2026-11-05), not merged · CT.6 step 2, the hand check, is open (for the author)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
