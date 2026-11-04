@@ -24,7 +24,7 @@ From [AGENTS.md](../../AGENTS.md) and Phase 0's [Global Constraints](phase-0-pla
 |---|---|
 | CT-D1 | **Reverses P2-D25's "a click never starts typing".** Decided by the author, 2026-11-03 (option A of three: click and `enter` straight to Typing; `enter` only, and a setting, were rejected). The rest of P2-D25 stands: the wheel never moves focus and a click is never sent to the agent. |
 | CT-D2 | **Typing starts on button release**, only if the press did not become a drag (moving a node, resizing the chat) or a text selection. A press still selects and focuses as today (an org or Needs you press leaves focus on that pane); the release then moves focus to the agent pane and requests Typing, because `UiModel::typing()` needs `focus.pane == Agent` and Typing without it would leave the keys on the tree. |
-| CT-D3 | **Only a running agent** (`AgentState::is_running`) goes to Typing, Duo included. Stopped, errored and finished agents land in Selected, as today. |
+| CT-D3 | **Only a running agent** (`AgentState::is_running`) goes to Typing, Duo included. This is the predicate the pane's own `enter` already uses, so it covers starting, working, waiting, quiet, idle and finished agents (a finished agent's session is alive and takes input; focusing it marks it seen, UI §2.1). Only stopped and errored agents land in Selected, as today. |
 | CT-D4 | **Typing waits for the live terminal.** `start_typing` needs `live_agent == agent`, and a freshly selected agent's stream arrives later. A click or `enter` on a running agent that isn't live yet sets `UiModel.typing_wanted`; `LiveView` turns it into Typing when that agent becomes `live_agent`. Selection, focus or mode changes drop it; the focus check is against the agent pane, which a click or `enter` has already set. |
 | CT-D5 | `tab`, `shift+tab`, arrows and `esc` never start Typing. Teams and roles keep fold/select. The Worktrees list's `enter` ("open in agent") also stays in Selected mode: it is a dialog action, and the row may belong to a stopped agent. |
 
@@ -71,7 +71,7 @@ crates/duohive-tui/src/
 
 **Files:** `input/panes.rs`, `input/mod.rs` (the Needs you path), `input/panes_tests.rs`.
 
-- [ ] **Step 1: Tests first.** `enter_on_running_agent_row_starts_typing`, `enter_on_duo_row_starts_typing`, `enter_on_stopped_agent_row_focuses_pane_in_selected`, `enter_on_team_still_folds`, `enter_in_needs_you_on_running_agent_starts_typing`, `enter_in_needs_you_on_card_focuses_card`, `tab_into_agent_pane_stays_selected`, `arrow_never_starts_typing`.
+- [ ] **Step 1: Tests first.** `enter_on_running_agent_row_starts_typing`, `enter_on_duo_row_starts_typing`, `enter_on_stopped_agent_row_focuses_pane_in_selected`, `enter_on_errored_agent_row_focuses_pane_in_selected`, `enter_on_finished_agent_row_starts_typing_and_marks_it_seen`, `enter_on_team_still_folds`, `enter_in_needs_you_on_running_agent_starts_typing`, `enter_in_needs_you_on_card_focuses_card`, `tab_into_agent_pane_stays_selected`, `arrow_never_starts_typing`.
 - [ ] **Step 2:** In `panes::enter` for `Agent | Duo`: focus the agent pane in Selected, then `request_typing`. Do the same for `needs_you_enter`'s agent case. Leave `tab` and the arrows alone (CT-D5).
 - [ ] **Step 3:** Run, then commit `feat: enter on an agent row starts typing`.
 
@@ -82,7 +82,8 @@ crates/duohive-tui/src/
 - [ ] **Step 1: Tests first.** Invert `click_agent_pane_does_not_start_typing` (`mouse_tests.rs:429`) into `click_agent_pane_starts_typing_on_release`; keep `click_never_reaches_agent` and `click_inside_while_typing_keeps_typing` unchanged. Add:
   - `press_alone_does_not_start_typing` (before release, mode is Selected);
   - `click_org_row_of_running_agent_starts_typing_on_release`;
-  - `click_org_row_of_stopped_agent_stays_selected`;
+  - `click_org_row_of_stopped_agent_stays_selected`, `click_org_row_of_errored_agent_stays_selected`;
+  - `click_finished_agent_marks_it_seen_and_starts_typing`;
   - `drag_from_org_row_does_not_start_typing` (press, drag over another row, release: no Typing);
   - `drag_in_agent_pane_selects_and_does_not_start_typing`;
   - `chat_edge_resize_does_not_start_typing`;
@@ -104,8 +105,8 @@ crates/duohive-tui/src/
 
 **Files:** `live.rs`, `live_tests.rs` (or the existing tests module in `live.rs`).
 
-- [ ] **Step 1: Tests first.** `wanted_typing_starts_when_stream_goes_live`; `wanted_typing_dropped_when_selection_moves`; `wanted_typing_dropped_when_focus_leaves_agent_pane`; `wanted_typing_dropped_when_agent_stops`; `wanted_typing_for_other_agent_does_not_start_typing_on_this_one`; `wanted_typing_survives_a_resize_reopen_once`.
-- [ ] **Step 2:** Where `live.rs` sets `m.live_agent` (after `sync`, after the first `Reset`, and on `end`), if `typing_wanted == live_agent`, set the mode to Typing, clear `scrolled` and the wanted flag. Clear the flag in `end`, and when `m.selected` or `m.focus.pane` no longer match it.
+- [ ] **Step 1: Tests first.** `wanted_typing_starts_when_stream_goes_live`; `wanted_typing_dropped_when_selection_moves`; `wanted_typing_dropped_when_focus_leaves_agent_pane`; `wanted_typing_dropped_when_agent_stops`; `wanted_typing_for_other_agent_does_not_start_typing_on_this_one`; `wanted_typing_survives_a_resize_reopen_once`; `switching_from_live_agent_a_to_b_keeps_wanted_typing_for_b` (A live, click B: `end(A)` runs, B's request stays, Typing starts when B goes live); `switching_from_typing_in_a_to_b_types_in_b`.
+- [ ] **Step 2:** Where `live.rs` sets `m.live_agent` (after `sync`, after the first `Reset`, and on `end`), if `typing_wanted == live_agent`, set the mode to Typing, clear `scrolled` and the wanted flag. In `end`, clear the flag only when it names the agent whose stream is closing: switching from agent A to agent B closes A's stream before B's opens, and B's request must survive that. Also clear it when `m.selected` or `m.focus.pane` no longer match it.
 - [ ] **Step 3:** Run, then commit `feat: start typing when a clicked agent's terminal is live`.
 
 ### Task CT.5: wording, key map and snapshots
