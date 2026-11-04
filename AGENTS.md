@@ -7,6 +7,12 @@ DuoHive is a Rust/Ratatui terminal app that manages standing AI coding agents as
 1. `docs/README.md`, then the doc it points to for your task.
 2. The task in the current phase's plan in `docs/plans/` (see the roadmap) and its Global Constraints section. Phase 0's [Global Constraints](docs/plans/phase-0-plan.md#global-constraints) apply to every phase.
 
+## Where features are specified
+
+- Every feature and behaviour change lives in the three living documents, edited in place: the PRD (what), the UI/UX spec (how it looks and behaves) and the technical design (how it is built). Update them in the same change as the code.
+- Do not write a separate spec or design document for a feature or a change (no `docs/superpowers/specs/`, no per-feature design files). Brainstorming and design conversations end in edits to those three documents.
+- A file in `docs/plans/` is only an implementation plan: tasks, tests and order. It argues from the three documents and records decisions that supersede older ones (with an id), and it never holds the feature's specification.
+
 ## The gate
 
 `make check` (format check, clippy, tests, `cargo deny`, `typos`) must pass before every commit. CI runs the same commands.

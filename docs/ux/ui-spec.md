@@ -224,8 +224,8 @@ The agent pane has two modes.
 
 | Mode | Enter / leave | Keys |
 |---|---|---|
-| **Selected** | Default when the pane has focus | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` or the wheel scroll the agent's scrollback, `enter` starts typing, `esc` goes back to the org pane |
-| **Typing** | `enter` starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent), except while scrolled back (below). The wheel still scrolls. The title shows `TYPING` and the border is heavy |
+| **Selected** | The pane has focus without typing: reached with `tab`, with `ctrl+q` from Typing, and by a click or `enter` on a stopped or errored agent | DuoHive's keys work: `z` zoom, `tab`, `space` Give work, `PgUp` / `PgDn` or the wheel scroll the agent's scrollback, `enter` starts typing (not for a stopped or errored agent), `esc` goes back to the org pane |
+| **Typing** | `enter` in the pane, `enter` on a running agent's row, or one click on a running agent's row or in its pane starts it; `ctrl+q` leaves it | Every key goes to the agent, `ctrl+c` included (it interrupts the agent), except while scrolled back (below). The wheel still scrolls. The title shows `TYPING` and the border is heavy |
 
 To zoom while typing, press `ctrl+q`, then `z`.
 
@@ -238,7 +238,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 **Right-click and drag in Typing mode** are ignored (P4-Q4's default); the wheel and clicks are as below.
 
-**Clicks:** a click on the agent pane focuses it in Selected mode and never starts typing. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts. Clicks are DuoHive's and never reach the agent. Clicks do nothing while zoomed, and the mouse, wheel included, does nothing on the too-small screen. While a dialog, a confirmation, Settings or Worktrees is open, the wheel does nothing; clicks there do what their key does (§5). Right-click and drag come with §4.4.2.
+**Clicks:** a click on an agent's row (org pane or Needs you), or inside the agent pane while it shows an agent, unless the agent is stopped or errored, selects and focuses it and starts Typing. It takes effect when the button is released, and only if the press did not become a drag (moving a node) or a text selection, so those still work. On a stopped or errored agent a click focuses the pane in Selected mode; a finished agent takes input, so a click on it starts Typing (and marks it seen). If the agent's live terminal isn't showing yet, Typing starts when it appears (about half a second at most). Until then the typed keys that would otherwise be DuoHive's (`space`, `z`, `r` and the like) are ignored rather than buffered, so a fast typist cannot give work or zoom by accident, and the footer says `opening <agent>…`. `esc`, `tab`, `shift+tab`, the arrows, a different click, a dialog or a menu cancel the request instead; zoom cannot be pressed in that window (`z` is ignored), but a zoom by other means cancels it. While typing, a click inside the pane keeps Typing, and a click elsewhere leaves Typing (as `ctrl+q`), then acts, so a click on another agent's row moves Typing to that agent. `tab`, `shift+tab` and the arrow keys never start Typing, and a key pressed while the button is held cancels the click. The Worktrees list's `enter` (open in agent) goes to the agent in Selected mode. Clicks are DuoHive's own: the click is not sent to the agent. Clicks do nothing while zoomed, and the mouse, wheel included, does nothing on the too-small screen. While a dialog, a confirmation, Settings or Worktrees is open, the wheel does nothing; clicks there do what their key does (§5). Right-click and drag come with §4.4.2.
 
 ```
 ┏━ auth-service · Claude · worktree retry-loop · TYPING ━━━━━━━━━━━━━━━┓
@@ -334,7 +334,7 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 - **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval  1m  Add pay-web`, §4.6).
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
-  - `enter` or a click on an agent row selects the agent and focuses the agent pane in Selected mode. A click elsewhere in the pane focuses it.
+  - `enter` or a click on an agent row selects the agent and starts Typing in the agent pane (Selected mode if the agent is stopped or errored). A click elsewhere in the pane focuses it.
   - On a card row, it focuses that card in the chat.
 
 #### 4.1.4 Desktop alerts
@@ -911,7 +911,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │ Everywhere                       Org pane                         Agent pane                     │
 │  tab       next pane/field        ↑↓        move                   enter     start typing        │
 │  shift+tab previous pane          ←→        fold / unfold          ctrl+q    stop typing         │
-│  ?         this help              enter     open agent pane        z         zoom / restore      │
+│  ?         this help              enter     type to agent          z         zoom / restore      │
 │  ,         settings               space     give work              space     give work           │
 │  w         worktrees              s         start / stop           PgUp/Dn   scroll back         │
 │  f         filter tree by state   n         new here…                                            │
@@ -921,7 +921,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  ctrl+↑↓   resize chat            z         zoom agent             @ /       agents / commands   │
 │                                   v         last reply on/off      ↑         newest card         │
 │ Mouse                             o         open org.toml          y e n     approve/edit/reject │
-│  click     select / focus                                          PgUp/Dn   scroll history      │
+│  click     select + type                                           PgUp/Dn   scroll history      │
 │  right     node menu             Needs you                                                       │
 │  wheel     scroll                 ↑↓        move                                                 │
 │  drag      move node              enter     go to agent or card                                  │
@@ -956,7 +956,7 @@ Below 100 columns it becomes one scrolling column:
 | | `ctrl+↑` / `ctrl+↓` | Resize the chat pane |
 | Org pane | `↑` `↓` | Move |
 | | `←` `→` | Fold / unfold |
-| | `enter` | Agent or Duo: focus the agent pane. Team or role: fold / unfold |
+| | `enter` | Agent or Duo: start typing in the agent pane (Selected mode if it is stopped or errored). Team or role: fold / unfold |
 | | `space` | Give work (agent or role) |
 | | `s` | Stopped agent: start it with no task (it waits, idle). Running agent: stop it (asks first) |
 | | `r` | v1.1: resume an old session of a stopped or errored agent (§4.13); a running agent says to stop it first. Also in the agent pane's Selected mode |
@@ -967,8 +967,8 @@ Below 100 columns it becomes one scrolling column:
 | | `z` | Zoom the selected agent |
 | | `v` | Last reply on / off |
 | | `o` | Open `org.toml` in `$EDITOR` |
-| Needs you | `↑` `↓`, `enter` | Move; go to the agent or card |
-| Agent pane | `enter` / `ctrl+q` | Start / stop typing |
+| Needs you | `↑` `↓`, `enter` | Move; go to the agent (start typing) or the card |
+| Agent pane | `enter` / `ctrl+q` | Start / stop typing (a click on a running agent also starts it) |
 | | `z` | Zoom / restore |
 | | `space` | Give work |
 | | `r` | v1.1: resume an old session (§4.13), as in the org pane; not while typing |
@@ -980,7 +980,7 @@ Below 100 columns it becomes one scrolling column:
 | | `PgUp` / `PgDn` | Scroll the chat history |
 | Dialogs and forms | `enter`, `esc`, `ctrl+s` | Act on the focused button, cancel, save |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
-| Mouse | click, right-click, wheel, drag | Select and focus; node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
+| Mouse | click, right-click, wheel, drag | Select and focus, and type to a running agent (§4.1.2); node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
 
 ### 4.12 Errors and empty states
 
@@ -1100,7 +1100,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
 | Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
-| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane, and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. |
+| Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane; a click on an agent that is not stopped or errored, or in the agent pane showing one, also starts Typing on release, as `enter` does (§4.1.2), and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of starting, working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |
 | Calm | No animation except the working spinner (on-screen rows only; off with Reduce motion); no sound |
