@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Resume an old session: `r` on a stopped or errored agent (or *Resume…* in its right-click menu) opens a picker of that agent's earlier Claude Code or OpenCode sessions, from its directory and its kept worktrees, including sessions started outside DuoHive. The agent continues the one you pick with its full context. A session another agent is using is refused. `r` is a rebindable key.
+- Click to type: one click on an agent in the org tree, in *Needs you* or in the agent pane, or `enter` on its row, starts typing into it. A click counts only if the pointer did not move, so dragging a node and selecting text work as before. When the agent's terminal is still opening, typing starts as soon as it shows, and until then DuoHive's own keys are ignored so a fast typist cannot give work or zoom by accident.
+
+### Changed
+
+- `enter` on an agent row now starts typing; it used to focus the agent pane and need a second `enter`. `tab` and the arrow keys still never start typing. Stopped and errored agents are unchanged, and a click on one only selects it.
+- Dependencies: `rusqlite` 0.41, `vt100` 0.18 and the minor and patch group. GitHub Actions are pinned to commit SHAs.
+- The macOS jobs in CI and the Apple-silicon release build run on `macos-15`; GitHub no longer provides the `macos-14` image.
+
 ## [0.1.0-alpha.2] - 2026-10-25
 
 ### Added
