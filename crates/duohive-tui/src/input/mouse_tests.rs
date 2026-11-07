@@ -866,3 +866,19 @@ fn a_new_press_cancels_a_pending_request_so_a_text_drag_never_starts_typing() {
     on_mouse(&mut m, release(live.x + 9, live.y + 1));
     assert!(!m.typing());
 }
+
+#[test]
+fn an_unmapped_key_between_press_and_release_cancels_the_click_as_the_app_loop_dispatches_it() {
+    let mut m = model();
+    m.live_agent = Some(n("billing-api"));
+    let (x, y) = org_cell(&m, "billing-api");
+    on_mouse(&mut m, press(x, y));
+    assert!(m.click.is_some());
+    // 'x' is bound to nothing in the org pane, so `map_key` answers None.
+    let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+    assert_eq!(super::map_key(&m, key), None);
+    assert_eq!(super::handle_key(&mut m, key), []);
+    assert!(m.click.is_none());
+    on_mouse(&mut m, release(x, y));
+    assert!(!m.typing());
+}

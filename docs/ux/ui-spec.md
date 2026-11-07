@@ -951,8 +951,8 @@ Below 100 columns it becomes one scrolling column:
 | | `w` | Worktrees |
 | | `f` | Filter the tree by state |
 | | `esc` | Back one level: from Needs you, the agent pane or the chat to the org pane (the chat keeps its draft); zoomed, restores; in the org pane, clears a filter, else nothing. Never quits (step 1 of first run asks). In Typing mode it goes to the agent; `ctrl+q` leaves Typing |
-| | `q` | Quit; agents keep running. Not while typing in the chat, a form or the agent pane |
-| | `ctrl+c` | Quit, when not typing |
+| | `q` | Quit; agents keep running. Not while typing in the chat, a form or the agent pane, and not in the half second a click or `enter` waits for an agent's terminal (§4.1.2) |
+| | `ctrl+c` | Quit, when not typing and not waiting for an agent's terminal (§4.1.2) |
 | | `ctrl+↑` / `ctrl+↓` | Resize the chat pane |
 | Org pane | `↑` `↓` | Move |
 | | `←` `→` | Fold / unfold |
@@ -1099,7 +1099,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 |---|---|
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
 | Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
-| Quit | `q`, or `ctrl+c` when not typing. Agents keep running |
+| Quit | `q`, or `ctrl+c` when not typing. Agents keep running. Both are ignored for the half second after a click or `enter` on an agent whose terminal isn't showing yet (§4.1.2) |
 | Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane; a click on an agent that is not stopped or errored, or in the agent pane showing one, also starts Typing on release, as `enter` does (§4.1.2), and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of starting, working or waiting agents, come as approval cards |
 | Attention is earned | Amber appears only for waiting, quiet and approval cards; red only for errors. Desktop alerts only for Needs you entries and finished agents (each can be turned off) |

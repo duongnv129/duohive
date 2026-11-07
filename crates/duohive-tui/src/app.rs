@@ -32,7 +32,7 @@ pub use terminal::{restore_terminal, run_app, show_blocking};
 
 use crate::format::age_of;
 use crate::input::mouse::on_mouse;
-use crate::input::{UiEffect, map_key, paste, selected_text, unmapped_key, update};
+use crate::input::{UiEffect, handle_key, paste, selected_text};
 use crate::live::{Live, next_chunk, next_scrollback};
 use crate::model::{SharedDirs, UiModel};
 use crate::render::{RenderCtx, chat_extra_limit, render_live};
@@ -451,13 +451,7 @@ pub(crate) async fn run_loop<B: Backend>(
                 InputEvent::Key(k) => {
                     m.now = wall_now();
                     let before = m.clone();
-                    let effects = match map_key(&m, k) {
-                        Some(a) => update(&mut m, a),
-                        None => {
-                            unmapped_key(&mut m, k);
-                            Vec::new()
-                        }
-                    };
+                    let effects = handle_key(&mut m, k);
                     clock.dirty |= m != before;
                     for effect in effects {
                         match effect {

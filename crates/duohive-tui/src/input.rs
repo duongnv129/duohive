@@ -343,6 +343,18 @@ fn form_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
+/// One key event: the action it maps to, or the unmapped-key path. The app loop calls
+/// this and nothing else for a key, so the loop's dispatch is the tested one.
+pub fn handle_key(m: &mut UiModel, k: KeyEvent) -> Vec<UiEffect> {
+    match map_key(m, k) {
+        Some(a) => update(m, a),
+        None => {
+            unmapped_key(m, k);
+            Vec::new()
+        }
+    }
+}
+
 /// A key that maps to no action (the app loop's `None` from [`map_key`]): clears the click
 /// and the footer note. While a typing request is pending (CT-D6) the note stays, and an
 /// arrow, `esc` or `tab` cancels it; the agent pane maps neither `←` nor `→`, so they

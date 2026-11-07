@@ -431,3 +431,18 @@ fn an_unmapped_key_clears_the_click_and_the_footer_note_when_nothing_is_pending(
     assert_eq!(m.footer_note, None);
     assert!(m.click.is_none());
 }
+
+#[test]
+fn handle_key_keeps_the_opening_note_through_an_unmapped_key_and_cancels_on_left() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    assert_eq!(super::handle_key(&mut m, plain(KeyCode::Char('x'))), []);
+    assert_eq!(
+        (m.typing_wanted.is_some(), m.footer_note.clone()),
+        (true, note)
+    );
+    assert_eq!(super::handle_key(&mut m, plain(KeyCode::Left)), []);
+    assert_eq!((m.typing_wanted, m.footer_note), (None, None));
+}
