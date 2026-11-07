@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-11-07
+
 ### Added
 
 - Resume an old session: `r` on a stopped or errored agent (or *Resume…* in its right-click menu) opens a picker of that agent's earlier Claude Code or OpenCode sessions, from its directory and its kept worktrees, including sessions started outside DuoHive. The agent continues the one you pick with its full context. A session another agent is using is refused. `r` is a rebindable key.
