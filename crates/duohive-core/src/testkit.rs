@@ -652,6 +652,7 @@ struct FakePaneState {
     streams: HashMap<StreamId, tokio::sync::mpsc::Sender<PaneChunk>>,
     scrollback: Vec<u8>,
     not_ready: bool,
+    open_fails: bool,
 }
 
 /// Chunks a [`FakePaneView`] stream holds before a push is dropped.
@@ -673,6 +674,11 @@ impl FakePaneView {
     /// What later `ready` calls answer (`true` until set).
     pub fn set_ready(&self, ready: bool) {
         self.state.lock().unwrap().not_ready = !ready;
+    }
+
+    /// Whether later `open` calls fail (`true`) or succeed (`false`, the default).
+    pub fn set_open_fails(&self, fails: bool) {
+        self.state.lock().unwrap().open_fails = fails;
     }
 
     /// What every later `scrollback` answers.
@@ -720,6 +726,9 @@ impl PaneView for FakePaneView {
     fn open(&self, agent: &AgentName, size: PaneSize) -> Result<PaneStream, ViewError> {
         let mut st = self.state.lock().unwrap();
         st.calls.push(PaneCall::Open(agent.clone(), size));
+        if st.open_fails {
+            return Err(ViewError::Closed);
+        }
         for (_, tx) in st.streams.drain() {
             tx.try_send(PaneChunk::Closed {
                 reason: "another stream opened".to_owned(),

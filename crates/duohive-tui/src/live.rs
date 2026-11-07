@@ -155,6 +155,7 @@ impl Live {
     /// queued, closes a stream no longer wanted, schedules opens, and follows the pane's
     /// size. `true` when the screen changed.
     pub(crate) fn sync(&mut self, m: &mut UiModel, now: Instant) -> bool {
+        m.drop_stale_typing_wanted();
         if !m.scrolled {
             self.snapshot = None;
         }
@@ -162,6 +163,11 @@ impl Live {
         // A view still attaching is asked again shortly; nothing else would wake us.
         self.recheck = (!self.view.ready()).then(|| now + READY_POLL);
         let want = self.wanted(m);
+        if want.is_none() {
+            // Nothing can open for the selected agent (blocked, reconnecting, not ready,
+            // hidden), so a pending request would never complete: keys stay yours.
+            m.drop_typing_wanted();
+        }
         if let Some(open) = &self.stream
             && want.as_ref().map(|w| &w.0) != Some(&open.agent)
         {
@@ -178,7 +184,7 @@ impl Live {
             Some((agent, size)) => self.follow(agent, size, m, now),
             None => self.pending = None,
         }
-        m.live_agent = self.shown_agent().cloned();
+        self.publish_live_agent(m);
         dirty
     }
 
@@ -270,10 +276,13 @@ impl Live {
             Err(_) => {
                 self.term = None;
                 let status = m.view(&p.agent).status.clone();
+                if m.typing_wanted.as_ref() == Some(&p.agent) {
+                    m.drop_typing_wanted();
+                }
                 self.blocked = Some((p.agent, status));
             }
         }
-        m.live_agent = self.shown_agent().cloned();
+        self.publish_live_agent(m);
         dirty
     }
 
@@ -328,7 +337,7 @@ impl Live {
                 true
             }
         };
-        m.live_agent = self.shown_agent().cloned();
+        self.publish_live_agent(m);
         changed
     }
 
@@ -345,6 +354,9 @@ impl Live {
         self.reopen_deferred = false;
         m.scrolled = false;
         m.live_agent = None;
+        if m.typing_wanted.as_ref() == Some(&open.agent) {
+            m.drop_typing_wanted();
+        }
         if m.focus.agent_mode == AgentMode::Typing {
             m.focus.agent_mode = AgentMode::Selected;
         }
@@ -361,6 +373,13 @@ impl Live {
     }
 
     /// The agent whose live terminal shows: its stream has delivered a `Reset`.
+    /// Tells the model which agent's terminal shows, and starts the Typing a click or
+    /// `enter` asked for once it is that agent's.
+    fn publish_live_agent(&self, m: &mut UiModel) {
+        m.live_agent = self.shown_agent().cloned();
+        m.start_wanted_typing();
+    }
+
     fn shown_agent(&self) -> Option<&AgentName> {
         let open = self.stream.as_ref()?;
         (open.had_reset && self.term.is_some()).then_some(&open.agent)
@@ -535,6 +554,9 @@ fn snapshot_term(bytes: &[u8], cols: u16) -> TermView {
 }
 
 #[cfg(test)]
+mod typing_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use duohive_core::org::NodeKey;
@@ -544,7 +566,7 @@ mod tests {
     use crate::fixtures::spec_model;
 
     /// auth-service (working) selected on a 120×36 screen, its stream open with a `Reset`.
-    fn opened() -> (Live, FakePaneView, UiModel, Instant) {
+    pub(super) fn opened() -> (Live, FakePaneView, UiModel, Instant) {
         let view = FakePaneView::default();
         let mut live = Live::new(Arc::new(view.clone()), false);
         let mut m = spec_model();

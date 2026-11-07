@@ -1,6 +1,6 @@
 # Click to type — Implementation Plan
 
-**Status:** Plan, drafted 2026-11-03 · not started · branch `feat/click-to-type`
+**Status:** Plan, drafted 2026-11-03 · tasks CT.1 to CT.5 built on the branch `feat/click-to-type-impl` (2026-11-05), not merged · CT.6 step 2, the hand check, is open (for the author)
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 
@@ -28,6 +28,7 @@ From [AGENTS.md](../../AGENTS.md) and Phase 0's [Global Constraints](phase-0-pla
 | CT-D4 | **Typing waits for the live terminal.** `start_typing` needs `live_agent == agent`, and a freshly selected agent's stream arrives later. A click or `enter` on a running agent that isn't live yet sets `UiModel.typing_wanted`; `LiveView` turns it into Typing when that agent becomes `live_agent`. Selection, focus pane, zoom, dialog, menu or the agent stopping drop it; the focus check is against the agent pane, which a click or `enter` has already set. |
 | CT-D6 | **While a request is pending (at most `SETTLE` + the first frame, about 0.1 to 0.5 s) DuoHive's own single-key actions are inert**, not buffered: otherwise a fast typist after `enter` would hit `space` (Give work), `z` (zoom) or `r` (resume) before the terminal is live. The footer reads `opening <agent>…`. `esc`, `tab`, `shift+tab` and the arrows cancel the request and act as usual. Decided by the author, 2026-11-04: drop the keys (buffering and no guard were rejected); one behaviour, no option. |
 | CT-D5 | `tab`, `shift+tab`, arrows and `esc` never start Typing. Teams and roles keep fold/select. The Worktrees list's `enter` ("open in agent") also stays in Selected mode: it is a dialog action, and the row may belong to a stopped agent. |
+| CT-D7 | **Built as:** (a) a click on a stopped or errored agent's org row only selects it and the org pane keeps focus, as before; (b) a click that starts Typing keeps a scrolled-back snapshot (`TYPING · scrolled`), while `enter` returns to live; (c) the agent pane's own `enter` keeps its `<agent> isn't ready yet` note and does not wait; (d) `q` and `ctrl+c` are also ignored while a request is pending (CT-D6), for at most about half a second, and UI §4.1.2 and the TD say so; any new mouse press, `←` and `→` cancel it, and `Live::sync` drops it when no stream can open; (e) a click inside the pane while already Typing asks for nothing. Rulings made by the implementer on 2026-11-05; UI §4.1.2 says (a) and (b). |
 
 ## Review Focus
 

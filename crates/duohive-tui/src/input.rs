@@ -343,10 +343,61 @@ fn form_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
+/// One key event: the action it maps to, or the unmapped-key path. The app loop calls
+/// this and nothing else for a key, so the loop's dispatch is the tested one.
+pub fn handle_key(m: &mut UiModel, k: KeyEvent) -> Vec<UiEffect> {
+    match map_key(m, k) {
+        Some(a) => update(m, a),
+        None => {
+            unmapped_key(m, k);
+            Vec::new()
+        }
+    }
+}
+
+/// A key that maps to no action (the app loop's `None` from [`map_key`]): clears the click
+/// and the footer note. While a typing request is pending (CT-D6) the note stays, and an
+/// arrow, `esc` or `tab` cancels it; the agent pane maps neither `←` nor `→`, so they
+/// arrive here.
+pub fn unmapped_key(m: &mut UiModel, k: KeyEvent) {
+    m.click = None;
+    if m.typing_wanted.is_none() {
+        m.footer_note = None;
+    } else if k.kind != KeyEventKind::Release
+        && matches!(
+            k.code,
+            KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Esc
+                | KeyCode::Tab
+                | KeyCode::BackTab
+        )
+    {
+        m.drop_typing_wanted();
+    }
+}
+
 /// Applies an action to the model; pure. Any key clears the footer note. A card keeps
 /// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
+    m.click = None;
     m.selection = None;
+    if m.typing_wanted.is_some() && m.focus.agent_mode != crate::focus::AgentMode::Typing {
+        // CT-D6: until the agent's terminal is live, DuoHive's own keys are ignored (not
+        // buffered), so a fast typist cannot give work or zoom by accident; these cancel.
+        match a {
+            Action::Esc
+            | Action::Tab
+            | Action::BackTab
+            | Action::Up
+            | Action::Down
+            | Action::Left
+            | Action::Right => m.drop_typing_wanted(),
+            _ => return Vec::new(),
+        }
+    }
     let out = apply(m, a);
     if m.focus.pane != Pane::Chat {
         m.focus.card = None;
@@ -488,19 +539,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     }
     match m.focus.pane {
         Pane::Org => org_action(m, a),
-        Pane::NeedsYou => {
-            match a {
-                Action::Up | Action::Down => panes::needs_you_move(m, a == Action::Down),
-                Action::Enter => {
-                    return panes::needs_you_enter(m)
-                        .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
-                        .into_iter()
-                        .collect();
-                }
-                _ => {}
-            }
-            Vec::new()
-        }
+        Pane::NeedsYou => panes::needs_you_action(m, a),
         Pane::Agent => agent::agent_action(m, a),
         Pane::Chat => chat_action(m, a),
     }

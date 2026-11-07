@@ -4,6 +4,7 @@
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use duohive_core::command::Command;
+use duohive_core::names::AgentName;
 use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
@@ -12,7 +13,7 @@ use super::{UiEffect, agent, agent_of, cards, drag, menu, panes, select};
 use crate::chat;
 use crate::filter::Filter;
 use crate::focus::{AgentMode, Pane};
-use crate::model::UiModel;
+use crate::model::{ClickIntent, UiModel};
 use crate::render::{
     PaneAreas, chat_card_at, chat_extra_limit, header_count_at, needs_you_item_at, needs_you_wheel,
     org_key_at, org_wheel, pane_areas,
@@ -28,10 +29,17 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
     if !m.screen.contains(at) {
         return Vec::new();
     }
+    if matches!(ev.kind, MouseEventKind::Drag(MouseButton::Left))
+        && let Some(click) = m.click.as_mut()
+    {
+        click.moved = true;
+    }
     if m.menu.is_some() {
+        m.click = None;
         return on_menu(m, ev, at);
     }
     if m.dialog.is_some() || m.wizard.is_some() {
+        m.click = None;
         return on_dialog(m, ev, at);
     }
     let Some(areas) = pane_areas(m) else {
@@ -46,19 +54,30 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
         return Vec::new();
     }
     match ev.kind {
-        MouseEventKind::ScrollUp => on_wheel(m, &areas, at, true),
-        MouseEventKind::ScrollDown => on_wheel(m, &areas, at, false),
+        MouseEventKind::ScrollUp => {
+            m.click = None;
+            on_wheel(m, &areas, at, true)
+        }
+        MouseEventKind::ScrollDown => {
+            m.click = None;
+            on_wheel(m, &areas, at, false)
+        }
         MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => {
             m.selection = None;
+            m.click = None;
+            m.drop_typing_wanted();
             on_press(m, &areas, at)
         }
         // Zoomed, a press does nothing else; text in the agent pane can still be selected.
         MouseEventKind::Down(MouseButton::Left) => {
             m.selection = None;
+            m.click = None;
+            m.drop_typing_wanted();
             select::start(m, &areas, at);
             Vec::new()
         }
         MouseEventKind::Down(MouseButton::Right) if !areas.zoomed && !m.typing() => {
+            m.click = None;
             on_right_click(m, &areas, at)
         }
         MouseEventKind::Drag(MouseButton::Left) if !areas.zoomed && !m.typing() => {
@@ -67,12 +86,17 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
         }
         MouseEventKind::Up(MouseButton::Left) => {
             m.edge_drag = None;
+            let click = m.click.take();
             let dropped = drag::drop_it(m);
-            if dropped.is_empty() && m.selection.is_some() {
+            let out = if dropped.is_empty() && m.selection.is_some() {
                 select::finish(m)
             } else {
                 dropped
+            };
+            if out.is_empty() {
+                click_to_type(m, click);
             }
+            out
         }
         _ => Vec::new(),
     }
@@ -138,13 +162,52 @@ fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         .contains(at)
         .then(|| org_key_at(m, at.y))
         .flatten();
+    let target = press_target(m, areas, at);
     let out = on_click(m, areas, at);
+    m.click = target.map(|agent| ClickIntent {
+        agent,
+        moved: false,
+    });
     if let Some(key) = key {
         drag::start(m, key);
     } else if m.edge_drag.is_none() {
         select::start(m, areas, at);
     }
     out
+}
+
+/// The agent a press at `at` lands on: an org row, a Needs you agent row, or the agent
+/// pane (the selected agent). Read before the press moves the selection.
+fn press_target(m: &UiModel, areas: &PaneAreas, at: Position) -> Option<AgentName> {
+    if areas.agent.contains(at) {
+        return agent_of(m, &m.selected);
+    }
+    if areas.org.contains(at) {
+        return org_key_at(m, at.y).and_then(|key| agent_of(m, &key));
+    }
+    if areas.needs_you.contains(at) {
+        let item = m.needs_you.get(needs_you_item_at(m, at.y)?)?;
+        return item.card.is_none().then(|| item.agent.clone());
+    }
+    None
+}
+
+/// The button came up on a click that never moved: a running agent that is still the
+/// selection gets the agent pane's focus and Typing (CT-D2, CT-D3). A stopped or errored
+/// one keeps the focus the press gave it.
+fn click_to_type(m: &mut UiModel, click: Option<ClickIntent>) {
+    let Some(click) = click else {
+        return;
+    };
+    let still_selected = agent_of(m, &m.selected).as_ref() == Some(&click.agent);
+    // A click inside the pane while Typing keeps Typing and asks for nothing.
+    let blocked = click.moved || m.dialog.is_some() || m.menu.is_some() || m.typing();
+    if blocked || !still_selected || !m.view(&click.agent).status.state.is_running() {
+        return;
+    }
+    m.focus.pane = Pane::Agent;
+    m.focus.card = None;
+    agent::request_typing(m, true);
 }
 
 /// A right press on a row: select it and open its menu at the pointer.

@@ -116,6 +116,15 @@ impl DirProbe for NoProbe {
     }
 }
 
+/// The agent a left press landed on, until the button comes up (click-to-type, CT-D2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClickIntent {
+    /// The agent the press targeted.
+    pub agent: AgentName,
+    /// The pointer moved with the button held: a drag or a selection, not a click.
+    pub moved: bool,
+}
+
 /// Everything the main screen draws.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UiModel {
@@ -176,6 +185,13 @@ pub struct UiModel {
     /// The agent whose live terminal the pane shows (its stream has delivered a `Reset`);
     /// kept by the app loop. Typing needs it.
     pub live_agent: Option<AgentName>,
+    /// A click or `enter` asked to type into this agent, whose live terminal isn't showing
+    /// yet; Typing starts when it is (click-to-type, CT-D4).
+    pub typing_wanted: Option<AgentName>,
+    /// A left press on an agent (row or pane) that may become a click and start Typing on
+    /// release (CT-D2); dropped by a drag, a key, another press, a wheel tick, a menu or a
+    /// dialog.
+    pub click: Option<ClickIntent>,
     /// `z`: the selected agent's pane fills the screen (UI §4.2).
     pub zoomed: bool,
     /// The pane that had focus when zoom started; restoring goes back to it.
@@ -242,6 +258,8 @@ impl UiModel {
             screen: Rect::default(),
             scrolled: false,
             live_agent: None,
+            typing_wanted: None,
+            click: None,
             zoomed: false,
             zoom_from: crate::focus::Pane::Org,
             give_sent: None,
@@ -585,6 +603,49 @@ impl UiModel {
         self.dialog.is_none()
             && self.focus.pane == crate::focus::Pane::Agent
             && self.focus.agent_mode == crate::focus::AgentMode::Typing
+    }
+
+    /// The footer note while a click or `enter` waits for an agent's terminal (CT-D6).
+    pub fn opening_note(agent: &AgentName) -> String {
+        format!("opening {agent}…")
+    }
+
+    /// Forgets a pending typing request, and the footer note that announced it.
+    pub fn drop_typing_wanted(&mut self) {
+        if let Some(agent) = self.typing_wanted.take()
+            && self.footer_note.as_deref() == Some(Self::opening_note(&agent).as_str())
+        {
+            self.footer_note = None;
+        }
+    }
+
+    /// Drops a pending typing request nothing supports any more: the selection moved,
+    /// focus left the agent pane, a dialog or menu opened, or the agent stopped (CT-D4).
+    pub fn drop_stale_typing_wanted(&mut self) {
+        let Some(agent) = &self.typing_wanted else {
+            return;
+        };
+        let supported = self.selected_agent() == Some(agent)
+            && self.focus.pane == crate::focus::Pane::Agent
+            && self.dialog.is_none()
+            && self.menu.is_none()
+            && self.view(agent).status.state.is_running();
+        if !supported {
+            self.drop_typing_wanted();
+        }
+    }
+
+    /// Starts Typing when the agent a click or `enter` asked for now shows its live
+    /// terminal. Both must be `Some`: no request and no live agent never match.
+    pub fn start_wanted_typing(&mut self) {
+        if self.typing_wanted.is_some()
+            && self.typing_wanted == self.live_agent
+            && self.focus.pane == crate::focus::Pane::Agent
+        {
+            self.drop_typing_wanted();
+            self.focus.agent_mode = crate::focus::AgentMode::Typing;
+            self.scrolled = false;
+        }
     }
 
     /// The agent whose pane fills the screen: the selected agent while `z` has zoomed.

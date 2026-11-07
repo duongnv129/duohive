@@ -6,7 +6,7 @@ expression: "render_lines(&help_model(), &ctx(), 160, 48).join(\"\\n\")"
 │Everywhere                                           Org pane                                             Agent pane                                          │
 │  tab       next pane/field                            ↑↓    move                                           enter     start typing                            │
 │  shift+tab previous pane                              ←→    fold / unfold                                  ctrl+q    stop typing                             │
-│  ?         this help                                  enter open agent pane                                z         zoom / restore                          │
+│  ?         this help                                  enter type to agent                                  z         zoom / restore                          │
 │  ,         settings                                   space give work                                      space     give work                               │
 │  w         worktrees                                  s     start / stop                                   PgUp/Dn   scroll back                             │
 │  f         filter tree by state                       r     resume                                                                                           │
@@ -16,7 +16,7 @@ expression: "render_lines(&help_model(), &ctx(), 160, 48).join(\"\\n\")"
 │  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /       agents / commands                       │
 │                                                       z     zoom agent                                     ↑         newest card                             │
 │Mouse                                                  v     last reply on/off                              y e n     approve/edit/reject                     │
-│  click     select / focus                             o     open org.toml                                  PgUp/Dn   scroll history                          │
+│  click     select + type                              o     open org.toml                                  PgUp/Dn   scroll history                          │
 │  right     node menu                                                                                                                                         │
 │  wheel     scroll                                   Needs you                                                                                                │
 │  drag      move node                                  ↑↓    move                                                                                             │

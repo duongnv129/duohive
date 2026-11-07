@@ -8,7 +8,8 @@ use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 use duohive_core::view::{PaneInput, PaneKey};
 
-use super::{UiEffect, map_key, paste, update};
+use super::agent::request_typing;
+use super::{UiEffect, map_key, paste, unmapped_key, update};
 use crate::fixtures::{mins, spec_model, status};
 use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
@@ -177,4 +178,271 @@ fn focusing_finished_agent_sends_view() {
     m.focus.pane = Pane::NeedsYou;
     assert_eq!(press(&mut m, plain(KeyCode::Tab)), []);
     assert_eq!(m.focus.pane, Pane::Agent);
+}
+
+#[test]
+fn request_typing_starts_typing_when_live() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    m.live_agent = Some(n("auth-service"));
+    m.scrolled = true;
+    request_typing(&mut m, false);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert!(!m.scrolled);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn request_typing_waits_when_not_live() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    for live in [None, Some(n("billing-api"))] {
+        m.live_agent = live;
+        request_typing(&mut m, false);
+        assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+        assert_eq!(m.typing_wanted, Some(n("auth-service")));
+    }
+}
+
+#[test]
+fn request_typing_takes_a_finished_agent() {
+    let mut m = spec_model();
+    m.selected = NodeKey::Agent(n("squad-2"));
+    m.live_agent = Some(n("squad-2"));
+    request_typing(&mut m, false);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+}
+
+#[test]
+fn request_typing_ignores_stopped_and_errored_agents() {
+    let mut m = spec_model();
+    m.selected = NodeKey::Agent(n("pay-qa"));
+    m.live_agent = Some(n("pay-qa"));
+    m.typing_wanted = Some(n("auth-service"));
+    request_typing(&mut m, false);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+    assert_eq!(m.footer_note, None);
+    m.agents.get_mut(&n("squad-2")).unwrap().status = status(AgentState::Errored, mins(1));
+    m.selected = NodeKey::Agent(n("squad-2"));
+    request_typing(&mut m, false);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn request_typing_on_a_team_does_nothing() {
+    let mut m = spec_model();
+    m.selected = NodeKey::Team(duohive_core::names::NodeName::parse("Payments").unwrap());
+    request_typing(&mut m, false);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+}
+
+/// The org pane has focus with `node` selected and its live terminal showing.
+fn org_row(node: NodeKey, live: Option<&str>) -> UiModel {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Org;
+    m.selected = node;
+    m.live_agent = live.map(n);
+    m
+}
+
+#[test]
+fn enter_on_a_running_agent_row_starts_typing() {
+    let mut m = org_row(NodeKey::Agent(n("auth-service")), Some("auth-service"));
+    assert_eq!(press(&mut m, plain(KeyCode::Enter)), []);
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert!(m.typing());
+}
+
+#[test]
+fn enter_on_an_agent_row_not_live_yet_asks_to_type_once_it_is() {
+    let mut m = org_row(NodeKey::Agent(n("auth-service")), None);
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, Some(n("auth-service")));
+}
+
+#[test]
+fn enter_on_the_duo_row_starts_typing() {
+    let mut m = org_row(NodeKey::Duo, Some("Duo"));
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+}
+
+#[test]
+fn enter_on_a_stopped_or_errored_agent_row_focuses_the_pane_in_selected() {
+    let mut m = org_row(NodeKey::Agent(n("pay-qa")), Some("pay-qa"));
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+    let mut m = org_row(NodeKey::Agent(n("squad-2")), Some("squad-2"));
+    m.agents.get_mut(&n("squad-2")).unwrap().status = status(AgentState::Errored, mins(1));
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn enter_on_a_finished_agent_row_starts_typing_and_marks_it_seen() {
+    let mut m = org_row(NodeKey::Agent(n("squad-2")), Some("squad-2"));
+    let effects = press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert_eq!(
+        effects,
+        [UiEffect::Send(Command::ViewAgent {
+            agent: n("squad-2")
+        })]
+    );
+}
+
+#[test]
+fn enter_on_a_team_row_still_folds() {
+    let team = NodeKey::Team(duohive_core::names::NodeName::parse("Payments").unwrap());
+    let mut m = org_row(team.clone(), None);
+    press(&mut m, plain(KeyCode::Enter));
+    assert!(m.folded.contains(&team));
+    assert_eq!(m.focus.pane, Pane::Org);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn enter_in_needs_you_on_a_running_agent_starts_typing() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::NeedsYou;
+    m.focus.needs_you_cursor = 0;
+    let agent = m.needs_you[0].agent.clone();
+    m.live_agent = Some(agent.clone());
+    press(&mut m, plain(KeyCode::Enter));
+    assert_eq!(m.selected, NodeKey::Agent(agent));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+}
+
+#[test]
+fn tab_and_arrows_never_start_typing() {
+    let mut m = spec_model();
+    m.live_agent = Some(n("auth-service"));
+    m.focus.pane = Pane::NeedsYou;
+    press(&mut m, plain(KeyCode::Tab));
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    m.focus.pane = Pane::Org;
+    press(&mut m, plain(KeyCode::Down));
+    press(&mut m, plain(KeyCode::Up));
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn keys_are_inert_while_typing_is_pending() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    assert_eq!(note.as_deref(), Some("opening auth-service…"));
+    for c in [' ', 'z', 'r', 's', 'q', 'o', 'w'] {
+        assert_eq!(press(&mut m, plain(KeyCode::Char(c))), [], "{c}");
+        assert!(m.dialog.is_none() && !m.zoomed, "{c}");
+        assert_eq!(m.typing_wanted, Some(n("auth-service")), "{c}");
+        assert_eq!(m.footer_note, note, "{c}");
+    }
+    assert_eq!(
+        press(&mut m, with(KeyCode::Char('c'), KeyModifiers::CONTROL)),
+        []
+    );
+}
+
+#[test]
+fn esc_tab_and_arrows_cancel_a_pending_request_and_act() {
+    for code in [
+        KeyCode::Esc,
+        KeyCode::Tab,
+        KeyCode::BackTab,
+        KeyCode::Up,
+        KeyCode::Down,
+    ] {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        request_typing(&mut m, false);
+        press(&mut m, plain(code));
+        assert_eq!(m.typing_wanted, None, "{code:?}");
+        assert_eq!(m.footer_note, None, "{code:?}");
+    }
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    press(&mut m, plain(KeyCode::Esc));
+    assert_eq!(
+        m.focus.pane,
+        Pane::Org,
+        "esc still goes back to the org pane"
+    );
+}
+
+#[test]
+fn request_typing_can_keep_a_scrolled_snapshot() {
+    let mut m = spec_model();
+    m.live_agent = Some(n("auth-service"));
+    m.scrolled = true;
+    request_typing(&mut m, true);
+    assert_eq!(m.focus.agent_mode, AgentMode::Typing);
+    assert!(m.scrolled);
+}
+
+#[test]
+fn left_and_right_arrows_cancel_a_pending_request_in_the_agent_pane() {
+    for code in [KeyCode::Left, KeyCode::Right] {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        request_typing(&mut m, false);
+        // The agent pane maps neither arrow, so the app loop takes the unmapped path.
+        assert_eq!(map_key(&m, plain(code)), None);
+        unmapped_key(&mut m, plain(code));
+        assert_eq!(m.typing_wanted, None, "{code:?}");
+        assert_eq!(m.footer_note, None, "{code:?}");
+    }
+}
+
+#[test]
+fn another_unmapped_key_keeps_the_opening_note_and_the_request() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    unmapped_key(&mut m, plain(KeyCode::Char('x')));
+    assert_eq!(m.typing_wanted, Some(n("auth-service")));
+    assert_eq!(m.footer_note, note);
+}
+
+#[test]
+fn an_unmapped_key_clears_the_click_and_the_footer_note_when_nothing_is_pending() {
+    let mut m = spec_model();
+    m.footer_note = Some("something".to_owned());
+    m.click = Some(crate::model::ClickIntent {
+        agent: n("auth-service"),
+        moved: false,
+    });
+    unmapped_key(&mut m, plain(KeyCode::Char('x')));
+    assert_eq!(m.footer_note, None);
+    assert!(m.click.is_none());
+}
+
+#[test]
+fn handle_key_keeps_the_opening_note_through_an_unmapped_key_and_cancels_on_left() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    assert_eq!(super::handle_key(&mut m, plain(KeyCode::Char('x'))), []);
+    assert_eq!(
+        (m.typing_wanted.is_some(), m.footer_note.clone()),
+        (true, note)
+    );
+    assert_eq!(super::handle_key(&mut m, plain(KeyCode::Left)), []);
+    assert_eq!((m.typing_wanted, m.footer_note), (None, None));
 }
