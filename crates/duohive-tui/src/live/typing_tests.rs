@@ -115,3 +115,14 @@ fn wanted_typing_and_its_footer_are_cleared_when_the_open_fails() {
     assert_eq!(m.footer_note, None);
     assert_eq!(m.focus.agent_mode, AgentMode::Selected);
 }
+
+#[test]
+fn wanted_typing_is_dropped_when_the_stream_cannot_open() {
+    let (mut live, _view, mut m, t) = clicked_billing();
+    let status = m.view(&n("billing-api")).status.clone();
+    live.blocked = Some((n("billing-api"), status));
+    m.footer_note = Some("opening billing-api…".to_owned());
+    live.sync(&mut m, t);
+    assert_eq!(m.typing_wanted, None);
+    assert_eq!(m.footer_note, None);
+}

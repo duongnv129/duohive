@@ -9,7 +9,7 @@ use duohive_core::testkit::n;
 use duohive_core::view::{PaneInput, PaneKey};
 
 use super::agent::request_typing;
-use super::{UiEffect, map_key, paste, update};
+use super::{UiEffect, map_key, paste, unmapped_key, update};
 use crate::fixtures::{mins, spec_model, status};
 use crate::focus::{AgentMode, Pane};
 use crate::model::UiModel;
@@ -392,4 +392,42 @@ fn request_typing_can_keep_a_scrolled_snapshot() {
     request_typing(&mut m, true);
     assert_eq!(m.focus.agent_mode, AgentMode::Typing);
     assert!(m.scrolled);
+}
+
+#[test]
+fn left_and_right_arrows_cancel_a_pending_request_in_the_agent_pane() {
+    for code in [KeyCode::Left, KeyCode::Right] {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Agent;
+        request_typing(&mut m, false);
+        // The agent pane maps neither arrow, so the app loop takes the unmapped path.
+        assert_eq!(map_key(&m, plain(code)), None);
+        unmapped_key(&mut m, plain(code));
+        assert_eq!(m.typing_wanted, None, "{code:?}");
+        assert_eq!(m.footer_note, None, "{code:?}");
+    }
+}
+
+#[test]
+fn another_unmapped_key_keeps_the_opening_note_and_the_request() {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Agent;
+    request_typing(&mut m, false);
+    let note = m.footer_note.clone();
+    unmapped_key(&mut m, plain(KeyCode::Char('x')));
+    assert_eq!(m.typing_wanted, Some(n("auth-service")));
+    assert_eq!(m.footer_note, note);
+}
+
+#[test]
+fn an_unmapped_key_clears_the_click_and_the_footer_note_when_nothing_is_pending() {
+    let mut m = spec_model();
+    m.footer_note = Some("something".to_owned());
+    m.click = Some(crate::model::ClickIntent {
+        agent: n("auth-service"),
+        moved: false,
+    });
+    unmapped_key(&mut m, plain(KeyCode::Char('x')));
+    assert_eq!(m.footer_note, None);
+    assert!(m.click.is_none());
 }

@@ -848,3 +848,21 @@ fn a_click_inside_while_typing_never_leaves_a_pending_request_that_eats_keys() {
         "a typed key still reaches the agent: {effects:?}"
     );
 }
+
+#[test]
+fn a_new_press_cancels_a_pending_request_so_a_text_drag_never_starts_typing() {
+    let mut m = model();
+    m.live_agent = None;
+    let at = org_cell(&m, "billing-api");
+    click(&mut m, at);
+    assert_eq!(m.typing_wanted, Some(n("billing-api")));
+    // The user presses in the pane to select text; the terminal goes live mid-drag.
+    let live = areas(&m).live;
+    on_mouse(&mut m, press(live.x + 2, live.y + 1));
+    assert_eq!(m.typing_wanted, None);
+    m.live_agent = Some(n("billing-api"));
+    m.start_wanted_typing();
+    on_mouse(&mut m, drag_to(live.x + 9, live.y + 1));
+    on_mouse(&mut m, release(live.x + 9, live.y + 1));
+    assert!(!m.typing());
+}

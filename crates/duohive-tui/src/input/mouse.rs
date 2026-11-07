@@ -65,12 +65,14 @@ pub(crate) fn on_mouse(m: &mut UiModel, ev: MouseEvent) -> Vec<UiEffect> {
         MouseEventKind::Down(MouseButton::Left) if !areas.zoomed => {
             m.selection = None;
             m.click = None;
+            m.drop_typing_wanted();
             on_press(m, &areas, at)
         }
         // Zoomed, a press does nothing else; text in the agent pane can still be selected.
         MouseEventKind::Down(MouseButton::Left) => {
             m.selection = None;
             m.click = None;
+            m.drop_typing_wanted();
             select::start(m, &areas, at);
             Vec::new()
         }

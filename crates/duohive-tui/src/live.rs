@@ -163,6 +163,11 @@ impl Live {
         // A view still attaching is asked again shortly; nothing else would wake us.
         self.recheck = (!self.view.ready()).then(|| now + READY_POLL);
         let want = self.wanted(m);
+        if want.is_none() {
+            // Nothing can open for the selected agent (blocked, reconnecting, not ready,
+            // hidden), so a pending request would never complete: keys stay yours.
+            m.drop_typing_wanted();
+        }
         if let Some(open) = &self.stream
             && want.as_ref().map(|w| &w.0) != Some(&open.agent)
         {

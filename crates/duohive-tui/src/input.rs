@@ -343,6 +343,30 @@ fn form_key(k: KeyEvent) -> Option<Action> {
     })
 }
 
+/// A key that maps to no action (the app loop's `None` from [`map_key`]): clears the click
+/// and the footer note. While a typing request is pending (CT-D6) the note stays, and an
+/// arrow, `esc` or `tab` cancels it; the agent pane maps neither `←` nor `→`, so they
+/// arrive here.
+pub fn unmapped_key(m: &mut UiModel, k: KeyEvent) {
+    m.click = None;
+    if m.typing_wanted.is_none() {
+        m.footer_note = None;
+    } else if k.kind != KeyEventKind::Release
+        && matches!(
+            k.code,
+            KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Esc
+                | KeyCode::Tab
+                | KeyCode::BackTab
+        )
+    {
+        m.drop_typing_wanted();
+    }
+}
+
 /// Applies an action to the model; pure. Any key clears the footer note. A card keeps
 /// focus only while the chat has it.
 pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
