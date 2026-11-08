@@ -83,7 +83,6 @@ pub(super) fn draw(
         let cursor = m.typing() && !m.scrolled;
         s.term
             .render_from(live_area(r), buf, s.first_row, cursor, s.no_color);
-        super::dock::draw(buf, r, m, ctx);
         return;
     }
     // From the border's inside; each line starts with `PAD` itself.
@@ -96,7 +95,6 @@ pub(super) fn draw(
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .render(inner, buf);
-    super::dock::draw(buf, r, m, ctx);
 }
 
 /// Where the live terminal goes in the pane `r`: inside the border and the padding cell
@@ -127,7 +125,11 @@ fn waiting_hint(m: &UiModel, room: usize) -> Option<String> {
 /// The agent whose pane is shown: none while reconnecting, with an empty org, or with a
 /// team or role selected.
 fn shown_agent(m: &UiModel) -> Option<&AgentName> {
-    crate::dock::shown_agent(m)
+    let empty = m.org.teams.is_empty() && m.org.roles.is_empty();
+    if m.reconnecting > 0 || empty {
+        return None;
+    }
+    m.selected_agent()
 }
 
 /// The pane's title and body for the current state and selection.

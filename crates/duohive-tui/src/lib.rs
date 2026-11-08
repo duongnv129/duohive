@@ -1,8 +1,8 @@
 //! The terminal UI: renders the engine's events and sends its commands.
 
 pub mod app;
+pub mod card_dialog;
 pub mod chat;
-mod dock;
 pub mod filter;
 pub mod first_run;
 pub mod focus;

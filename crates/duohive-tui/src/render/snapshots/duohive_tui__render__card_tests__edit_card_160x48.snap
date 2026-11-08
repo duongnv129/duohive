@@ -2,51 +2,51 @@
 source: crates/duohive-tui/src/render/card_tests.rs
 expression: text
 ---
- DuoHive   6 agents · ● 2 working · ◆ 3 need you · ? help                                                                                                       
-┌─ Org ──────────────────────────────────────────┐┏━ ⬢ Duo · Claude · your manager agent ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│▌⬢ Duo · your manager agent    ◦ idle       1m  │┃ ┏━ ◆ Proposed change ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                                         ┃
-│ ├─ ▣ Payments                 ● 1 ◆ 1          │┃ ┃ ~ Edit role Payments › QA                                      ┃                                         ┃
-│ │  ├─ ◇ Backend               ● 1 ◆ 1          │┃ ┃   ~ flags: inherit → --dangerously-skip-permissions            ┃                                         ┃
-│ │  │  ├─ auth-service         ● working    2m  │┃ ┃   ~ prompt: inherit → You test payments. (3 lines)             ┃                                         ┃
-│ │  │  │   "Running go test ./..."              │┃ ┃ [y] Approve   [e] Edit   [n] Reject                            ┃                                         ┃
-│ │  │  └─ billing-api          ◆ waiting    4m  │┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                         ┃
-│ │  │      "Allow edit to api.go?"              │┃                                                                                                            ┃
-│ │  └─ ◇ QA                                     │┃                                                                                                            ┃
-│ │     └─ pay-qa               ○ stopped    1d  │┃                                                                                                            ┃
-│ └─ ◇ Generalist               ● 1 ◷ 1          │┃                                                                                                            ┃
-│    ├─ squad-1                 ● working   12m  │┃                                                                                                            ┃
-│    ├─ squad-2                 ✓ finished   3m  │┃                                                                                                            ┃
-│    └─ squad-3                 ◷ quiet      6m  │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-├─ Needs you (3) ────────────────────────────────┤┃                                                                                                            ┃
-│ ◷ squad-3      quiet      6m                   │┃                                                                                                            ┃
-│ ◆ billing-api  waiting    4m  "Allow edit to…" │┃                                                                                                            ┃
-│ ◆ Duo          approval   1m  Edit role Payme… │┃                                                                                                            ┃
-└────────────────────────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ DuoHive   6 agents · ● 2 working · ◆ 3 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                                                                               │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
+┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist               ● 1 ◷ 1          ┃│                                                                                                            │
+┃    ├─ squad-1                 ● working   12m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                              ┌─ ◆ Proposed change ────────────────────────────────────────────┐                                              │
+┃                                              │                                                                │                                              │
+┃                                              │  ~ Edit role Payments › QA                                     │                                              │
+┃                                              │    ~ flags: inherit → --dangerously-skip-permissions           │                                              │
+┃                                              │    ~ prompt: inherit → You test payments. (3 lines)            │                                              │
+┃                                              │                                                                │                                              │
+┃                                              │               [ y Approve ]    [ e Edit ]   ▌[ n Reject ]      │                                              │
+┃                                              └────────────────────────────────────────────────────────────────┘                                              │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (3) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
+┃ ◆ Duo          approval   1m  Edit role Payme… ┃│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                                                                                │
 │             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            │
 │             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           │
 │ ❯                                                                                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- y approve · e edit · n reject · esc back
+ y approve · e edit · n reject · ←→ choose · enter press · esc close

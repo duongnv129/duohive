@@ -4,25 +4,25 @@ expression: "render_lines(&help_model(), &ctx(), 80, 24).join(\"\\n\")"
 ---
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────┐
 │Everywhere                                                                    │
-│  tab       next pane/field                                                   │
-│  shift+tab previous pane                                                     │
-│  ?         this help                                                         │
-│  ,         settings                                                          │
-│  w         worktrees                                                         │
-│  f         filter tree by state                                              │
-│  esc       back one level                                                    │
-│  q         quit (agents run on)                                              │
-│  ctrl+c    quit if not typing                                                │
-│  ctrl+↑↓   resize chat                                                       │
+│  tab        next pane/field                                                  │
+│  shift+tab  previous pane                                                    │
+│  ?          this help                                                        │
+│  ,          settings                                                         │
+│  w          worktrees                                                        │
+│  f          filter tree by state                                             │
+│  esc        back one level                                                   │
+│  q          quit (agents run on)                                             │
+│  ctrl+c     quit if not typing                                               │
+│  ctrl+↑↓    resize chat                                                      │
 │Mouse                                                                         │
-│  click     select + type                                                     │
-│  right     node menu                                                         │
-│  wheel     scroll                                                            │
-│  drag      move node                                                         │
+│  click      select + type                                                    │
+│  right      node menu                                                        │
+│  wheel      scroll                                                           │
+│  drag       move node                                                        │
 │Org pane                                                                      │
-│  ↑↓        move                                                              │
-│  ←→        fold / unfold                                                     │
-│  enter     type to agent                                                     │
-│  space     give work                                                         │
+│  ↑↓         move                                                             │
+│  ←→         fold / unfold                                                    │
+│  enter      type to agent                                                    │
+│  space      give work                                                        │
 │↓ more · PgUp/PgDn scroll                                                     │
 └──────────────────────────────────────────────────────────────────────────────┘

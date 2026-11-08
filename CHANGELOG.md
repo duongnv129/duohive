@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Changed
+
+- Approval cards open in a centred dialog drawn like the forms, instead of docking over the agent pane. A card never opens by itself: `enter` or a click on its *Needs you* row opens it, `y` / `e` / `n` or the buttons answer it, `esc` closes it and the card stays pending. Several cards are answered one after another in the same dialog.
+- `↑` `↓` move between fields and buttons in every form, and `←` `→` move between a form's `Save` and `Cancel` and between the buttons of a confirmation and of a card.
+
 ## [0.1.0-alpha.3] - 2026-11-07
 
 ### Added

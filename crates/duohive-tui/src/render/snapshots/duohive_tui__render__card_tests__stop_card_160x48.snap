@@ -2,51 +2,51 @@
 source: crates/duohive-tui/src/render/card_tests.rs
 expression: text
 ---
- DuoHive   6 agents · ● 2 working · ◆ 3 need you · ? help                                                                                                       
-┌─ Org ──────────────────────────────────────────┐┏━ squad-1 · Claude ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-│ ⬢ Duo · your manager agent    ◦ idle       1m  │┃ ┏━ ◆ Stop squad-1 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                                         ┃
-│ ├─ ▣ Payments                 ● 1 ◆ 1          │┃ ┃ squad-1 is ● working 12m                                       ┃                                         ┃
-│ │  ├─ ◇ Backend               ● 1 ◆ 1          │┃ ┃ [y] Approve   [n] Reject                                       ┃                                         ┃
-│ │  │  ├─ auth-service         ● working    2m  │┃ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                         ┃
-│ │  │  │   "Running go test ./..."              │┃                                                                                                            ┃
-│ │  │  └─ billing-api          ◆ waiting    4m  │┃                                                                                                            ┃
-│ │  │      "Allow edit to api.go?"              │┃                                                                                                            ┃
-│ │  └─ ◇ QA                                     │┃                                                                                                            ┃
-│ │     └─ pay-qa               ○ stopped    1d  │┃                                                                                                            ┃
-│ └─ ◇ Generalist               ● 1 ◷ 1          │┃                                                                                                            ┃
-│▌   ├─ squad-1                 ● working   12m  │┃                                                                                                            ┃
-│    ├─ squad-2                 ✓ finished   3m  │┃                                                                                                            ┃
-│    └─ squad-3                 ◷ quiet      6m  │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-│                                                │┃                                                                                                            ┃
-├─ Needs you (3) ────────────────────────────────┤┃                                                                                                            ┃
-│ ◷ squad-3      quiet      6m                   │┃                                                                                                            ┃
-│ ◆ billing-api  waiting    4m  "Allow edit to…" │┃                                                                                                            ┃
-│ ◆ Duo          approval   1m  Stop squad-1     │┃                                                                                                            ┃
-└────────────────────────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+ DuoHive   6 agents · ● 2 working · ◆ 3 need you                                                                                                                
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ────────────────────────────────────────────────────────────────────────────────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                                                                            │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│    ● working                                                                                               │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                                                                            │
+┃▌│  │  ├─ auth-service         ● working    2m  ┃│                                                                                                            │
+┃ │  │  │   "Running go test ./..."              ┃│                                                                                                            │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                                                                            │
+┃ │  │      "Allow edit to api.go?"              ┃│                                                                                                            │
+┃ │  └─ ◇ QA                                     ┃│                                                                                                            │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                                                                            │
+┃ └─ ◇ Generalist               ● 1 ◷ 1          ┃│                                                                                                            │
+┃    ├─ squad-1                 ● working   12m  ┃│                                                                                                            │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                              ┌─ ◆ Stop squad-1 ───────────────────────────────────────────────┐                                              │
+┃                                              │                                                                │                                              │
+┃                                              │  squad-1 is ● working 12m                                      │                                              │
+┃                                              │                                                                │                                              │
+┃                                              │               [ y Approve ]    [ e Edit ]   ▌[ n Reject ]      │                                              │
+┃                                              └────────────────────────────────────────────────────────────────┘                                              │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┃                                                ┃│                                                                                                            │
+┣━ Needs you (3) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                                                                            │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                                                                            │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                                                                            │
+┃ ◆ Duo          approval   1m  Stop squad-1     ┃│                                                                                                            │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                                                                                │
 │             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            │
 │             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           │
 │ ❯                                                                                                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
- y approve · n reject · esc back
+ y approve · n reject · ←→ choose · enter press · esc close

@@ -1,6 +1,5 @@
 //! Which pane has focus, and where each pane goes on screen (UI §3, P2-D3, P2-D19).
 
-use duohive_core::card::CardId;
 use ratatui::layout::Rect;
 
 /// A pane of the main screen, in `tab` order.
@@ -36,9 +35,6 @@ pub struct Focus {
     pub agent_mode: AgentMode,
     /// The highlighted Needs you row.
     pub needs_you_cursor: usize,
-    /// The docked approval card that takes `y`, `e` and `n` (UI §4.6); `Some` only while
-    /// the agent pane has focus in Selected mode.
-    pub card: Option<CardId>,
 }
 
 impl Focus {

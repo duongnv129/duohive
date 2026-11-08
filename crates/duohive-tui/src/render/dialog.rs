@@ -18,9 +18,9 @@ const MARGIN: u16 = 4;
 /// Cells between the border and the text, on each side.
 const PAD: u16 = 2;
 /// Cells after the last button, as in the mock-ups.
-const BUTTONS_RIGHT: u16 = 6;
-const FOCUS: &str = "▌";
-const GAP: &str = "   ";
+pub(super) const BUTTONS_RIGHT: u16 = 6;
+pub(super) const FOCUS: &str = "▌";
+pub(super) const GAP: &str = "   ";
 
 /// Draws the open dialog centred over `area`; returns where the terminal cursor goes.
 pub(super) fn draw(
@@ -34,6 +34,7 @@ pub(super) fn draw(
     match d {
         Dialog::Confirm(c) => draw_confirm(buf, area, c, p),
         Dialog::Form(f) => return super::form::draw_form(buf, area, f, p),
+        Dialog::Card(d) => super::card_dialog::draw(buf, area, d, m, now, p),
         Dialog::Chooser(c) => super::form::draw_chooser(buf, area, c, p),
         Dialog::GiveWork(g) => return super::give_work::draw(buf, area, g, now, p),
         Dialog::Settings(s) => return super::settings::draw(buf, area, s, m, p),

@@ -10,7 +10,7 @@ use duohive_core::org::{Fields, NodeKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
-use super::card::{CARD_WIDTH, Look, card_lines, card_rows, card_title};
+use super::card::{CARD_WIDTH, card_body, card_lines, card_title};
 use crate::fixtures::{
     action_entry, add_agent_card, card, chat_entry, clock, ctx, mins, new_agent_card, qa_role,
     raise, render_lines, spec_model, status, stop_card,
@@ -20,7 +20,7 @@ use crate::model::UiModel;
 use crate::theme::Palette;
 
 /// UI §4.6's screen: a stop already answered, a split story and Duo's two action lines in
-/// the chat, and `card` pending, docked on its agent's pane with the keys.
+/// the chat, and `card` pending, open in its dialog.
 fn with_card(c: duohive_core::card::Card) -> UiModel {
     let mut m = spec_model();
     m.agents.get_mut(&n("squad-1")).unwrap().status = status(AgentState::Working, mins(12));
@@ -62,15 +62,12 @@ fn with_card(c: duohive_core::card::Card) -> UiModel {
         ),
     ];
     let id = c.id;
-    let agent = crate::dock::dock_agent(&c, &m.org);
     raise(&mut m, c, mins(1));
-    assert!(m.reveal_agent(&agent));
-    m.focus.card = Some(id);
+    assert!(crate::card_dialog::open(&mut m, id));
     m
 }
 
 fn snap(name: &str, m: &UiModel, w: u16, h: u16) -> String {
-    // The footer offers a card's keys only while the pane can draw it, by `m.screen`.
     let mut m = m.clone();
     m.screen = ratatui::layout::Rect::new(0, 0, w, h);
     let m = &m;
@@ -81,30 +78,23 @@ fn snap(name: &str, m: &UiModel, w: u16, h: u16) -> String {
 }
 
 #[test]
-fn card_focused_snapshots() {
+fn card_dialog_snapshots() {
     let m = with_card(add_agent_card(2, clock(10, 21)));
     snap("card_focused_80x24", &m, 80, 24);
     let wide = snap("card_focused_160x48", &m, 160, 48);
     for want in [
-        "┏━ ◆ Proposed change ━",
-        "┃ + Add agent pay-web in Payments › QA",
-        "┃   + cli: Claude Code",
-        "┃   + directory: ~/code/web",
-        "┃   + worktree: on",
-        "┃ [y] Approve   [e] Edit   [n] Reject",
-        " y approve · e edit · n reject · esc back",
+        "◆ Proposed change",
+        "+ Add agent pay-web in Payments › QA",
+        "  + cli: Claude Code",
+        "  + directory: ~/code/web",
+        "  + worktree: on",
+        "[ y Approve ]",
+        "[ e Edit ]",
+        "▌[ n Reject ]",
+        " y approve · e edit · n reject · ←→ choose · enter press · esc close",
     ] {
         assert!(wide.contains(want), "{want}\n{wide}");
     }
-}
-
-#[test]
-fn card_unfocused_snapshot() {
-    let mut m = with_card(add_agent_card(2, clock(10, 21)));
-    m.focus.card = None;
-    let text = snap("card_unfocused_160x48", &m, 160, 48);
-    assert!(text.contains("┃ ┌─ ◆ Proposed change ─"), "{text}");
-    assert!(!text.contains("┏━ ◆"), "{text}");
 }
 
 #[test]
@@ -112,14 +102,15 @@ fn stop_card_snapshot() {
     let m = with_card(stop_card(2, clock(10, 21)));
     let text = snap("stop_card_160x48", &m, 160, 48);
     for want in [
-        "┏━ ◆ Stop squad-1 ━",
-        "┃ squad-1 is ● working 12m",
-        "┃ [y] Approve   [n] Reject",
-        " y approve · n reject · esc back",
+        "◆ Stop squad-1",
+        "squad-1 is ● working 12m",
+        "[ y Approve ]",
+        "▌[ n Reject ]",
+        " y approve · n reject · ←→ choose · enter press · esc close",
     ] {
         assert!(text.contains(want), "{want}\n{text}");
     }
-    assert!(!text.contains("[e] Edit"), "{text}");
+    assert!(!text.contains(" e edit"), "{text}");
 }
 
 #[test]
@@ -127,10 +118,10 @@ fn new_agent_card_snapshot() {
     let m = with_card(new_agent_card(2, clock(10, 21)));
     let text = snap("new_agent_card_160x48", &m, 160, 48);
     for want in [
-        "┏━ ◆ No free agent in Generalist ━",
-        "┃ + Add agent squad-4 in Generalist (clone of squad-1)",
-        "┃   Task  PAY-88d docs: retry guide",
-        "┃ [y] Approve   [e] Edit   [n] Reject",
+        "◆ No free agent in Generalist",
+        "+ Add agent squad-4 in Generalist (clone of squad-1)",
+        "  Task  PAY-88d docs: retry guide",
+        "[ y Approve ]",
     ] {
         assert!(text.contains(want), "{want}\n{text}");
     }
@@ -148,15 +139,11 @@ fn card_titles_and_lines() {
             "  + cli: Claude Code",
             "  + directory: ~/code/web",
             "  + worktree: on",
-            "[y] Approve   [e] Edit   [n] Reject",
         ]
     );
     let s = stop_card(4, clock(10, 22));
     assert_eq!(card_title(&s, &m.org), "◆ Stop squad-1");
-    assert_eq!(
-        card_lines(&s, &m, m.now),
-        ["squad-1 is ● working 12m", "[y] Approve   [n] Reject"]
-    );
+    assert_eq!(card_lines(&s, &m, m.now), ["squad-1 is ● working 12m"]);
     let a = new_agent_card(5, clock(10, 22));
     assert_eq!(card_title(&a, &m.org), "◆ No free agent in Generalist");
 }
@@ -178,7 +165,7 @@ fn answered_card_collapses_to_line() {
         "approved: stop squad-1",
     )));
     assert!(m.cards.is_empty());
-    assert_eq!(m.focus.card, None);
+    assert_eq!(m.dialog, None);
     let text = render_lines(&m, &ctx(), 160, 48).join("\n");
     assert!(text.contains("→ approved: stop squad-1   10:22"), "{text}");
     assert!(!text.contains("◆ Stop squad-1"), "{text}");
@@ -224,12 +211,13 @@ fn org_card(edit: OrgEdit) -> Card {
     card(2, clock(10, 21), CardChange::Org(edit))
 }
 
-/// The card's body, buttons dropped.
+/// The card's body lines.
 fn body_of(c: &Card, m: &UiModel) -> Vec<String> {
-    let mut lines = card_lines(c, m, m.now);
-    lines.pop();
-    lines
+    card_lines(c, m, m.now)
 }
+
+/// Cells a dialog's body is wide.
+const BODY: usize = CARD_WIDTH - 6;
 
 #[test]
 fn edit_role_card_lists_changed_fields() {
@@ -297,23 +285,11 @@ fn flags_change_is_shown_and_marked() {
         ]
     );
     let p = Palette::dark();
-    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
-    let row = rows
-        .iter()
-        .find(|r| r.iter().any(|(t, _)| t.contains("~ flags:")))
-        .expect("a flags row");
-    let text = row.iter().find(|(t, _)| t.contains("~ flags:")).unwrap();
-    assert_eq!(text.1, p.attention, "{row:?}");
-    assert_eq!(row[0].1, p.border, "{row:?}");
-    assert_eq!(row[row.len() - 1].1, p.border, "{row:?}");
-    let other = rows
-        .iter()
-        .find(|r| r.iter().any(|(t, _)| t.contains("Edit agent")))
-        .unwrap();
-    assert!(
-        other.iter().all(|(_, col)| *col != p.attention),
-        "{other:?}"
-    );
+    let rows = card_body(&c, &m, m.now, BODY, usize::MAX, &p);
+    let flagged = rows.iter().find(|(r, _)| r.contains("~ flags:")).unwrap();
+    assert_eq!(flagged.1, p.attention, "{flagged:?}");
+    let other = rows.iter().find(|(r, _)| r.contains("Edit agent")).unwrap();
+    assert_ne!(other.1, p.attention, "{other:?}");
 
     // A flags value wider than the card is shown in full, hanging under itself.
     let long = format!("{flags} --allowed-tools Bash,Edit,Write --model opus --verbose");
@@ -327,18 +303,15 @@ fn flags_change_is_shown_and_marked() {
             },
         },
     });
-    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
+    let rows = card_body(&c, &m, m.now, BODY, usize::MAX, &p);
     let flag_text: String = rows
         .iter()
-        .filter(|r| r.iter().any(|(_, col)| *col == p.attention) && r.len() == 3)
-        .map(|r| r[1].0.trim().to_owned())
+        .filter(|(_, col)| *col == p.attention)
+        .map(|(r, _)| r.trim().to_owned())
         .collect::<Vec<_>>()
         .join(" ");
     assert!(flag_text.contains(&long), "{flag_text}");
-    for r in &rows {
-        let w: usize = r.iter().map(|(t, _)| width(t)).sum();
-        assert_eq!(w, CARD_WIDTH, "{r:?}");
-    }
+    assert!(rows.iter().all(|(r, _)| width(r) <= BODY), "{rows:?}");
 }
 
 #[test]
@@ -372,20 +345,14 @@ fn prompt_change_shows_first_line_and_count() {
     );
     // A long first line is cut so the line count still shows, inside the card.
     let long = edit(&format!("{}\nsecond", "Rewrite everything ".repeat(8)));
-    let rows = card_rows(
-        &long,
-        &m,
-        m.now,
-        Look::whole(true, CARD_WIDTH),
-        &Palette::dark(),
-    );
-    let row: String = rows
+    let rows = card_body(&long, &m, m.now, BODY, usize::MAX, &Palette::dark());
+    let row = rows
         .iter()
-        .map(|r| r.iter().map(|(t, _)| t.as_str()).collect::<String>())
+        .map(|(r, _)| r.as_str())
         .find(|r| r.contains("~ prompt:"))
         .unwrap();
     assert!(row.contains("… (2 lines)"), "{row}");
-    assert_eq!(width(&row), CARD_WIDTH, "{row}");
+    assert!(width(row) <= BODY, "{row}");
 }
 
 #[test]
@@ -506,9 +473,9 @@ fn edit_card_snapshot() {
     let m = with_card(c);
     let text = snap("edit_card_160x48", &m, 160, 48);
     for want in [
-        "┃ ~ Edit role Payments › QA",
-        "┃   ~ flags: inherit → --dangerously-skip-permissions",
-        "┃   ~ prompt: inherit → You test payments. (3 lines)",
+        "~ Edit role Payments › QA",
+        "  ~ flags: inherit → --dangerously-skip-permissions",
+        "  ~ prompt: inherit → You test payments. (3 lines)",
     ] {
         assert!(text.contains(want), "{want}\n{text}");
     }

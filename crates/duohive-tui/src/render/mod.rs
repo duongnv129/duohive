@@ -2,10 +2,10 @@
 
 mod agent_pane;
 pub(crate) mod card;
+mod card_dialog;
 mod card_fields;
 pub(crate) mod chat_pane;
 mod dialog;
-mod dock;
 mod first_run;
 mod form;
 mod give_work;
@@ -264,24 +264,6 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
     needs_you::item_at(pane_areas(m)?.needs_you, m, y)
 }
 
-/// Whether the agent pane is big enough to draw a docked card now: a card that is not
-/// drawn takes no keys and no clicks (UI §4.6).
-pub(crate) fn dock_visible(m: &UiModel) -> bool {
-    pane_areas(m).is_some_and(|a| dock::fits(a.agent))
-}
-
-/// The docked card under `at` and the button under it (UI §4.6), zoomed too.
-pub(crate) fn agent_card_at(
-    m: &UiModel,
-    at: ratatui::layout::Position,
-) -> Option<(duohive_core::card::CardId, Option<crate::keymap::ActionId>)> {
-    let a = pane_areas(m)?;
-    a.agent
-        .contains(at)
-        .then(|| dock::card_at(m, a.agent, at))
-        .flatten()
-}
-
 /// The chat history's rows and the rows it can show, as drawn now.
 pub(crate) fn chat_history_fit(m: &UiModel) -> Option<(usize, usize)> {
     chat_history(m).map(|f| (f.len, f.room))
@@ -476,8 +458,6 @@ mod card_tests;
 mod chat_tests;
 #[cfg(test)]
 mod colour_tests;
-#[cfg(test)]
-mod dock_tests;
 #[cfg(test)]
 mod filter_tests;
 #[cfg(test)]

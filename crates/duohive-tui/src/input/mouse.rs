@@ -3,18 +3,16 @@
 //! reaches the agent.
 
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
-use duohive_core::card::CardId;
 use duohive_core::command::Command;
 use duohive_core::names::AgentName;
 use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
-use super::{UiEffect, agent, agent_of, cards, drag, menu, panes, select};
+use super::{UiEffect, agent, agent_of, drag, menu, panes, select};
 use crate::chat;
 use crate::filter::Filter;
 use crate::focus::{AgentMode, Pane};
-use crate::keymap::ActionId;
 use crate::model::{ClickIntent, UiModel};
 use crate::render::{
     PaneAreas, chat_extra_limit, header_count_at, needs_you_item_at, needs_you_wheel, org_key_at,
@@ -156,9 +154,6 @@ fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         crate::filter::set(m, if m.filter == f { Filter::Off } else { f });
         return Vec::new();
     }
-    if let Some((card, button)) = crate::render::agent_card_at(m, at) {
-        return on_card(m, areas, at, card, button);
-    }
     if areas.chat.contains(at) && at.y == areas.chat.y {
         m.edge_drag = Some((at.y, m.chat_rows_extra));
     }
@@ -177,26 +172,6 @@ fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         drag::start(m, key);
     } else if m.edge_drag.is_none() {
         select::start(m, areas, at);
-    }
-    out
-}
-
-/// A press on the docked card: it takes the focus (leaving Typing) and never starts
-/// click-to-type; a button acts as its key, the body can still start a text selection
-/// (UI §4.6, CD-D8).
-fn on_card(
-    m: &mut UiModel,
-    areas: &PaneAreas,
-    at: Position,
-    card: CardId,
-    button: Option<ActionId>,
-) -> Vec<UiEffect> {
-    crate::dock::focus_card(m, card);
-    // Focusing the pane on a finished agent marks it seen, as any click in it does.
-    let mut out = agent::view_if_finished(m);
-    match button {
-        Some(id) => out.extend(cards::press_button(m, id)),
-        None => select::start(m, areas, at),
     }
     out
 }
@@ -231,7 +206,6 @@ fn click_to_type(m: &mut UiModel, click: Option<ClickIntent>) {
         return;
     }
     m.focus.pane = Pane::Agent;
-    m.focus.card = None;
     agent::request_typing(m, true);
 }
 
@@ -273,7 +247,6 @@ fn on_drag(m: &mut UiModel, areas: &PaneAreas, at: Position) {
 fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     if areas.agent.contains(at) {
         m.focus.pane = Pane::Agent;
-        m.focus.card = None;
         return agent::view_if_finished(m);
     }
     let (pane, key, item) = if areas.org.contains(at) {
@@ -287,7 +260,6 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     };
     m.focus.agent_mode = AgentMode::Selected;
     m.focus.pane = pane;
-    m.focus.card = None;
     if let Some(key) = key {
         return select(m, key);
     }
@@ -305,7 +277,6 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
 fn on_chat(m: &mut UiModel) -> Vec<UiEffect> {
     m.focus.agent_mode = AgentMode::Selected;
     m.focus.pane = Pane::Chat;
-    m.focus.card = None;
     Vec::new()
 }
 

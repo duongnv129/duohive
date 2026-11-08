@@ -10,7 +10,7 @@ use super::form::{CHOOSER_HINT, HINT};
 use super::{RenderCtx, fg, put};
 use crate::focus::Pane;
 use crate::format::{truncate_end, width, wrap_capped};
-use crate::forms::{FieldKind, SettingsRow, SettingsState, card_editable};
+use crate::forms::{FieldKind, SettingsRow, SettingsState};
 use crate::keymap::{ActionId, Keymap};
 use crate::model::{Dialog, SPACE_RETRY, UiModel};
 use crate::theme::Palette;
@@ -195,13 +195,14 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
         }
         (None, Some(Dialog::GiveWork(g))) => format!(" {}", g.hint()),
         (None, Some(Dialog::Confirm(c))) => confirm_keys(&c.yes_label),
+        (None, Some(Dialog::Card(d))) => card_dialog_keys(m, d),
         (None, Some(Dialog::Settings(s))) => settings_keys(s).to_owned(),
         (None, _) => match m.focus.pane {
             Pane::Org if compact => org_keys_compact(&m.keymap),
             Pane::Org => org_keys(&m.keymap),
             Pane::NeedsYou => needs_you_keys(&m.keymap),
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
-            Pane::Agent => card_keys(m).unwrap_or_else(|| agent_keys(m)),
+            Pane::Agent => agent_keys(m),
             Pane::Chat => CHAT_KEYS.to_owned(),
         }
         .clone(),
@@ -241,25 +242,19 @@ fn needs_you_keys(km: &Keymap) -> String {
     )
 }
 
-/// A focused docked card's keys (UI §4.6), when one has focus.
-fn card_keys(m: &UiModel) -> Option<String> {
+/// The card dialog's keys (UI §4.6).
+fn card_dialog_keys(m: &UiModel, d: &crate::card_dialog::CardDialog) -> String {
     let k = |a| m.keymap.key(a).label();
-    let id = m.focus.card.filter(|id| crate::dock::is_shown(m, *id))?;
-    let card = m.cards.get(&id)?;
-    Some(if card_editable(card) {
-        format!(
-            " {} approve · {} edit · {} reject · esc back",
-            k(ActionId::CardApprove),
-            k(ActionId::CardEdit),
-            k(ActionId::CardReject)
-        )
+    let edit = if crate::card_dialog::focusable(m, d.card).contains(&ActionId::CardEdit) {
+        format!(" · {} edit", k(ActionId::CardEdit))
     } else {
-        format!(
-            " {} approve · {} reject · esc back",
-            k(ActionId::CardApprove),
-            k(ActionId::CardReject)
-        )
-    })
+        String::new()
+    };
+    format!(
+        " {} approve{edit} · {} reject · ←→ choose · enter press · esc close",
+        k(ActionId::CardApprove),
+        k(ActionId::CardReject)
+    )
 }
 
 /// The agent pane's keys for what it shows: a running agent's terminal, a stopped

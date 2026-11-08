@@ -131,8 +131,8 @@ pub enum Context {
     AgentPane,
     /// The chat input.
     Chat,
-    /// A docked approval card with focus (UI §4.6).
-    DockedCard,
+    /// The approval card dialog while it is open (UI §4.6).
+    CardDialog,
 }
 
 /// One key and its modifiers.
@@ -416,7 +416,7 @@ impl Keymap {
         })
     }
 
-    /// The card action `k` presses while a docked card has focus.
+    /// The card action `k` presses while the card dialog is open.
     pub fn card_action(&self, k: &KeyEvent) -> Option<ActionId> {
         [
             ActionId::CardApprove,
@@ -489,7 +489,7 @@ pub fn contexts(action: ActionId) -> &'static [Context] {
         ActionId::Settings | ActionId::Worktrees | ActionId::Filter | ActionId::KeyMap => {
             &[Context::Everywhere]
         }
-        ActionId::CardApprove | ActionId::CardEdit | ActionId::CardReject => &[Context::DockedCard],
+        ActionId::CardApprove | ActionId::CardEdit | ActionId::CardReject => &[Context::CardDialog],
     }
 }
 
@@ -672,7 +672,7 @@ mod tests {
             Some(ActionId::Edit)
         );
         assert_eq!(
-            k.action_for(Context::DockedCard, &key('e')),
+            k.action_for(Context::CardDialog, &key('e')),
             Some(ActionId::CardEdit)
         );
     }

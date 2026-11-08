@@ -1,6 +1,6 @@
 # Card dialog — Implementation Plan
 
-**Status:** Plan, 2026-11-08. Supersedes [the docked cards plan](card-dock-plan.md) (CD-D1 to CD-D11) for where a card is shown; its queue, height-cut and "not drawn, no keys" ideas are re-decided below.
+**Status:** CDL.1 to CDL.3 built on the branch `feat/card-dialog` (2026-11-08), not merged (CDL.2 and CDL.3 landed in one commit, so no commit has two card UIs) · CDL.4's hand check is open (for the author). Plan 2026-11-08. Supersedes [the docked cards plan](card-dock-plan.md) (CD-D1 to CD-D11) for where a card is shown; its queue, height-cut and "not drawn, no keys" ideas are re-decided below.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans. Steps use checkbox syntax.
 
