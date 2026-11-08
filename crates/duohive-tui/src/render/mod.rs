@@ -264,6 +264,12 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
     needs_you::item_at(pane_areas(m)?.needs_you, m, y)
 }
 
+/// Whether the agent pane is big enough to draw a docked card now: a card that is not
+/// drawn takes no keys and no clicks (UI §4.6).
+pub(crate) fn dock_visible(m: &UiModel) -> bool {
+    pane_areas(m).is_some_and(|a| dock::fits(a.agent))
+}
+
 /// The docked card under `at` and the button under it (UI §4.6), zoomed too.
 pub(crate) fn agent_card_at(
     m: &UiModel,

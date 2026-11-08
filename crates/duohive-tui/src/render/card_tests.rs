@@ -70,6 +70,10 @@ fn with_card(c: duohive_core::card::Card) -> UiModel {
 }
 
 fn snap(name: &str, m: &UiModel, w: u16, h: u16) -> String {
+    // The footer offers a card's keys only while the pane can draw it, by `m.screen`.
+    let mut m = m.clone();
+    m.screen = ratatui::layout::Rect::new(0, 0, w, h);
+    let m = &m;
     let lines = render_lines(m, &ctx(), w, h);
     let text = lines.join("\n");
     insta::assert_snapshot!(name, text);

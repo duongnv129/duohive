@@ -192,13 +192,13 @@ fn on_card(
     button: Option<ActionId>,
 ) -> Vec<UiEffect> {
     crate::dock::focus_card(m, card);
+    // Focusing the pane on a finished agent marks it seen, as any click in it does.
+    let mut out = agent::view_if_finished(m);
     match button {
-        Some(id) => cards::press_button(m, id),
-        None => {
-            select::start(m, areas, at);
-            Vec::new()
-        }
+        Some(id) => out.extend(cards::press_button(m, id)),
+        None => select::start(m, areas, at),
     }
+    out
 }
 
 /// The agent a press at `at` lands on: an org row, a Needs you agent row, or the agent

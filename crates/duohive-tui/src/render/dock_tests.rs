@@ -294,3 +294,86 @@ fn zoomed_pane_hits_the_card_too() {
         Some((1, Some(crate::keymap::ActionId::CardApprove)))
     );
 }
+
+/// An add-agent card whose flags wrap into many rows.
+fn long_flags_card(id: u64) -> Card {
+    let flags = (0..12)
+        .map(|i| format!("--add-dir ../shared-{i}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let edit = OrgEdit::AddAgent {
+        role: qa_role(),
+        agent: AgentDraft {
+            name: n("pay-web"),
+            fields: Fields {
+                flags: Some(flags),
+                ..Fields::default()
+            },
+        },
+    };
+    card(id, ago(mins(1)), CardChange::Org(edit))
+}
+
+#[test]
+fn long_flags_never_push_the_buttons_out_of_the_card() {
+    let mut m = spec_model();
+    m.screen = Rect::new(0, 0, 80, 24);
+    m.selected = NodeKey::Duo;
+    raise(&mut m, long_flags_card(1), Duration::from_secs(60));
+    let area = pane_areas(&m).unwrap().agent;
+    let pane = pane_text(&lines(&m), area);
+    let top = pane
+        .iter()
+        .position(|l| l.contains("◆ Proposed change"))
+        .unwrap();
+    let bottom = pane[top..].iter().position(|l| l.contains("└─")).unwrap();
+    let cap = ((usize::from(area.height) - 2) / 2).max(5);
+    assert!(bottom < cap, "card is {} rows, cap {cap}", bottom + 1);
+    let text = pane.join("\n");
+    assert!(text.contains("[y] Approve"), "{text}");
+    assert!(text.contains("more rows"), "{text}");
+    // The summary line stays, and the button row is hit-testable.
+    assert!(text.contains("+ Add agent pay-web"), "{text}");
+    let (x, y) = find(&m, "[y] Approve");
+    assert_eq!(
+        hit(&m, x, y),
+        Some((1, Some(crate::keymap::ActionId::CardApprove)))
+    );
+}
+
+#[test]
+fn card_text_does_not_inherit_the_terminals_bold_or_reverse() {
+    use ratatui::style::Modifier;
+    let m = docked(120, 36);
+    let area = pane_areas(&m).unwrap();
+    let screen = "\x1b[1;7mBOLDREVERSE".repeat(40);
+    let term = term_for(&m, 120, 36, screen.as_bytes(), (0, 0));
+    let live = LiveScreen {
+        agent: &n("squad-1"),
+        term: &term,
+        first_row: 0,
+        no_color: false,
+    };
+    let mut t = ratatui::Terminal::new(ratatui::backend::TestBackend::new(120, 36)).unwrap();
+    t.draw(|f| super::render_live(f, &m, &ctx(), Some(live)))
+        .unwrap();
+    let buf = t.backend().buffer().clone();
+    let cell = &buf[(area.live.x + 4, area.live.y + 1)];
+    assert!(
+        !cell
+            .modifier
+            .intersects(Modifier::BOLD | Modifier::REVERSED),
+        "{:?} {:?}",
+        cell.symbol(),
+        cell.modifier
+    );
+}
+
+#[test]
+fn a_card_hidden_by_a_small_pane_has_no_hit() {
+    let mut m = docked(120, 36);
+    let (x, y) = find(&m, "[y] Approve");
+    assert!(hit(&m, x, y).is_some());
+    m.chat_rows_extra = 100;
+    assert_eq!(hit(&m, x, y), None);
+}

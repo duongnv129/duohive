@@ -263,12 +263,24 @@ To zoom while typing, press `ctrl+q`, then `z`.
 - **A pending approval card:** whatever the pane shows, the oldest pending card for that agent sits over the top of the pane (§4.6).
 
 ```
-┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────┐
-│ opencode wants to run: gh pr list --state open           │
-│ Allow? (y) yes  (n) no                                   │
-│                                                          │
-│ (Duo's own terminal: answer its CLI's prompts here)      │
-└──────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────────────────────────────────────────────┐
+│ ┏━ ◆ Proposed change · 1 of 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                       │
+│ ┃ + Add agent pay-web in Payments › Frontend (new role)                   ┃                       │
+│ ┃   + cli: Claude Code                                                    ┃                       │
+│ ┃   + directory: ~/code/web                                               ┃                       │
+│ ┃   + worktree: on                                                        ┃                       │
+│ ┃ [y] Approve   [e] Edit   [n] Reject                                     ┃                       │
+│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                       │
+│ opencode · ready                                                                                 │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ ⬢ Duo · ● working ──────────────────────────────────────────────────────────────────────────────┐
+│ 10:15 Duo   squad-1 has been quiet 12m. Proposed: stop it.                                       │
+│             → approved: stop squad-1                                 10:16                       │
+│ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                    │
+│             → give work pay-qa "PAY-88c QA: retry cases"                started                  │
+│ ❯ _                                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **A Claude agent waiting on its folder-trust dialog** (a new worktree path, P2-D23): its live terminal, with the pane's bottom edge saying how to answer. `No, exit` is highlighted, so `enter` alone ends the agent. The hint clears when the agent's state changes; narrow panes get `To trust: ↓ then enter · enter alone exits`.
@@ -725,7 +737,7 @@ When Duo proposes an org change, or wants to stop a starting, working or waiting
   - **Approve** (`y`) applies the change.
   - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the agent pane. On a stop card `e` is disabled, and the footer says `nothing to edit · y or n`. On a new-agent card it opens the agent form; the task the card holds is kept unchanged. On a new-agent card the form shows the task under the fields (`Task  <first line>`).
   - **Reject** (`n`) tells Duo it was declined.
-- **Height:** the card is at most half the pane's rows. Rows past that are cut with `… <n> more rows`; the `flags` row is never cut, and `e` opens the form for the whole change. The agent's terminal is not resized: the card covers its top rows, and the prompt at the bottom stays visible.
+- **Size:** the card is at most 66 cells wide, at the top left of the pane's terminal area, and at most half the pane's rows (never fewer than 5). Rows past that are cut: the first line, then the `flags` rows, then the rest are kept, and one `… <n> more rows` stands for the cut; the title, the buttons and the bottom edge always stay. `flags` are cut only when they alone do not fit, and `e` opens the form for the whole change. The agent's terminal is not resized: the card covers its top rows, and the prompt at the bottom stays visible. A pane under 7 rows draws no card, and then the card takes no keys and no clicks (`ctrl+↓` gives the pane its rows back).
 - **Zoomed:** a zoomed agent shows its docked card in the same place, so a zoom never hides an approval (§4.2). A click does nothing while zoomed (§4.1.2), so a card answers there by key only if it already had focus when you zoomed; otherwise `z` restores first.
 - **What a change sets:** under its first line, an org-change card lists every field the change sets or changes, one row each, so nothing is approved unseen. An add shows `+ <field>: <value>` for each field it sets (`every field inherited` when none). An edit shows `~ <field>: <old> → <new>` for each field that differs, including a rename (`~ name: QA → Testing`); `inherit` stands for unset (`unset` for org defaults), unchanged fields are left out, and `no changes` stands alone. Editing the org defaults also lists Duo's name and CLI. A move shows `from <place> → <place>`; a remove shows what goes with it (`with 2 roles, 3 agents`). A prompt shows its first line and, when it has more, `(<n> lines)`. A `flags` row is drawn in `status.attention` and shown in full, wrapping inside the card; other long values are cut with `…`.
 - **Several cards:** each is its own Needs you row, oldest first. A row's `enter` or click goes to that card's agent and focuses the oldest card there, which may be an earlier one than the row's.

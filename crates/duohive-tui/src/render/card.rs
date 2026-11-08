@@ -167,27 +167,35 @@ pub(crate) fn card_rows(
             body.push((truncate_end(&line.text, inner), false));
         }
     }
-    let fixed = 3 + body.iter().filter(|(_, marked)| *marked).count();
-    let room = look.max_rows.saturating_sub(fixed);
-    let loose = body.iter().filter(|(_, marked)| !*marked).count();
-    // Rows past the room are cut, and one `… N more rows` stands for them.
-    let keep = if loose <= room {
-        loose
+    // The title, the buttons and the bottom edge always stay; the body gets what is left.
+    // When it does not all fit, the first line, then the `flags` rows, then the rest are
+    // kept, and one `… N more rows` stands for the cut (UI §4.6 *Height*).
+    let slots = look.max_rows.saturating_sub(3);
+    let cut = if body.len() <= slots {
+        Vec::new()
     } else {
-        room.saturating_sub(1)
+        let marked = body
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, m))| *m)
+            .map(|(i, _)| i);
+        let rest = (1..body.len()).filter(|i| !body[*i].1);
+        let priority: Vec<usize> = std::iter::once(0)
+            .chain(marked.filter(|i| *i != 0))
+            .chain(rest)
+            .collect();
+        let kept: Vec<usize> = priority.into_iter().take(slots.saturating_sub(1)).collect();
+        (0..body.len()).filter(|i| !kept.contains(i)).collect()
     };
-    let mut seen = 0;
-    for (text, marked) in body {
-        if marked {
-            rows.push(side(&text, p.attention));
+    let mut ellipsis = !cut.is_empty();
+    for (i, (text, marked)) in body.into_iter().enumerate() {
+        if cut.contains(&i) {
+            if std::mem::take(&mut ellipsis) {
+                rows.push(side(&format!("… {} more rows", cut.len()), p.fg_muted));
+            }
             continue;
         }
-        seen += 1;
-        if seen <= keep {
-            rows.push(side(&text, p.fg));
-        } else if seen == keep + 1 {
-            rows.push(side(&format!("… {} more rows", loose - keep), p.fg_muted));
-        }
+        rows.push(side(&text, if marked { p.attention } else { p.fg }));
     }
     rows.push(side(
         &truncate_end(&button_row(card, &m.keymap), inner),

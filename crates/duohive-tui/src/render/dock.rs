@@ -19,6 +19,11 @@ const MIN_PANE_ROWS: usize = 7;
 /// Fewest rows a card is allowed, however small the pane is.
 const MIN_CARD_ROWS: usize = 5;
 
+/// Whether a pane `pane` is big enough for a card to be drawn (CD-D7).
+pub(super) fn fits(pane: Rect) -> bool {
+    usize::from(pane.height.saturating_sub(2)) >= MIN_PANE_ROWS && pane.width >= 8
+}
+
 /// Where the card goes in the pane `pane`: the live terminal's top-left, as wide as a
 /// card is, at most.
 pub(super) fn dock_rect(pane: Rect, rows: usize) -> Rect {
@@ -36,10 +41,10 @@ pub(super) fn dock_rect(pane: Rect, rows: usize) -> Rect {
 /// The card's rows for the pane `pane`: the first of the shown agent's queue, cut to half
 /// the pane; none when the pane is too small.
 pub(super) fn dock_rows(m: &UiModel, now: Millis, p: &Palette, pane: Rect) -> Option<Vec<Row>> {
-    let inner = usize::from(pane.height.saturating_sub(2));
-    if inner < MIN_PANE_ROWS || pane.width < 8 {
+    if !fits(pane) {
         return None;
     }
+    let inner = usize::from(pane.height.saturating_sub(2));
     let dock = shown_dock(m)?;
     let card = m.cards.get(&dock.card)?;
     let look = Look {
@@ -68,7 +73,7 @@ pub(super) fn draw(buf: &mut Buffer, pane: Rect, m: &UiModel, ctx: &RenderCtx) {
                 y,
                 text,
                 room,
-                Style::default().fg(*colour).bg(ctx.palette.bg),
+                Style::reset().fg(*colour).bg(ctx.palette.bg),
             );
         }
     }

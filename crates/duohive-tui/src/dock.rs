@@ -75,9 +75,10 @@ pub(crate) fn shown_dock(m: &UiModel) -> Option<Dock> {
     dock_for(m, m.selected_agent()?)
 }
 
-/// Whether `id` is the card drawn now: only that card may take the keys.
+/// Whether `id` is the card drawn now: only that card may take the keys, and only while
+/// the pane is big enough to draw it.
 pub(crate) fn is_shown(m: &UiModel, id: CardId) -> bool {
-    shown_dock(m).is_some_and(|d| d.card == id)
+    shown_dock(m).is_some_and(|d| d.card == id) && crate::render::dock_visible(m)
 }
 
 /// Selects the agent card `id` docks on and gives its oldest pending card the keys (UI
@@ -100,8 +101,8 @@ pub(crate) fn pass_focus(m: &mut UiModel, answered: &Card) {
         return;
     }
     let agent = dock_agent(answered, &m.org);
-    m.focus.card = dock_for(m, &agent)
-        .filter(|_| shown_agent(m) == Some(&agent))
+    m.focus.card = shown_dock(m)
+        .filter(|_| m.selected_agent() == Some(&agent))
         .map(|d| d.card);
 }
 

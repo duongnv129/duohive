@@ -33,8 +33,11 @@ From [AGENTS.md](../../AGENTS.md) and Phase 0's [Global Constraints](phase-0-pla
 | CD-D4 | **Focus passes to the next card** when the focused card is answered and the agent has another, so a queue is answered without clicking again. *Author's call to confirm:* the risk is a repeated `y` approving a card unseen; the next card is drawn in the same frame the answer is applied, so it is on screen before the next key. |
 | CD-D5 | **Zoom:** the card is drawn zoomed too, and keeps the focus it had; a click does nothing while zoomed (§4.1.2), so a card with no focus can't be answered until `z` restores. In UI §4.6 *Zoomed*. |
 | CD-D6 | **`esc` on a focused card** clears `focus.card` and moves focus to the org pane; the card stays docked (UI §4.6). |
-| CD-D7 | **Height cap:** at most `max(inner_rows / 2, 5)` rows; below 7 inner rows no card is drawn (the layout's smallest agent pane at 80×24 has more; CD.2 pins it). Rows past the cap are replaced by one `… N more rows` row; a `flags` row is never cut. |
+| CD-D7 | **Height cap:** at most `max(inner_rows / 2, 5)` rows; below 7 inner rows no card is drawn (the layout's smallest agent pane at 80×24 has more; CD.2 pins it). Rows past the cap are replaced by one `… N more rows` row; a `flags` row is never cut (superseded by CD-D11). |
 | CD-D8 | **A click on a docked card** focuses it, leaves Typing (as any click outside the typed pane's text does) and, on `[y]` `[e]` `[n]`, acts as the key. It never starts click-to-type. |
+| CD-D9 | **An empty org still docks Duo's cards** (found in the final review, 2026-11-08): Duo sets an empty org up through cards, so hiding them left a pending card unreachable. Amends the CD.1 rule. |
+| CD-D10 | **A card that is not drawn takes no keys or clicks** (PR review, 2026-11-08): a pane under 7 rows (the chat grown with `ctrl+↑`) draws no card, so `y`/`n` are inert there. Only the card drawn takes keys, whatever moved the selection. |
+| CD-D11 | **Height cap keeps the buttons** (PR review, 2026-11-08): the title, buttons and bottom edge always stay; the body keeps its first line, then the `flags` rows, then the rest, with `… N more rows` for the cut. This supersedes CD-D7's "a `flags` row is never cut": flags are cut only when they alone do not fit. |
 
 ## Review Focus
 
@@ -59,14 +62,14 @@ Most likely to go wrong first; each has a test in the owning task.
   - `pub(crate) fn dock_agent(card: &Card, org: &Org) -> AgentName`
   - `pub(crate) struct Dock { pub card: CardId, pub position: usize, pub total: usize }` (`position` is 1-based)
   - `pub(crate) fn dock_for(m: &UiModel, agent: &AgentName) -> Option<Dock>`: the oldest pending card whose `dock_agent` is `agent`.
-  - `pub(crate) fn shown_dock(m: &UiModel) -> Option<Dock>`: `dock_for` for the agent pane's agent, `None` while `m.reconnecting > 0`, with an empty org, or with a team or role selected (the rule `agent_pane::shown_agent` uses; make that function `pub(crate)` and call it).
+  - `pub(crate) fn shown_dock(m: &UiModel) -> Option<Dock>`: `dock_for` for the agent pane's agent, `None` while `m.reconnecting > 0` or with a team or role selected. An empty org still shows Duo's cards, because they are how Duo sets one up (CD-D9); `shown_agent`, which `agent_pane` uses, stays `None` for an empty org.
 
 - [ ] **Step 1: Write the failing tests** in `dock/tests.rs`, using the fixtures in `fixtures.rs` and `Card` builders as `cards/tests.rs` in core does:
   - `stop_card_docks_on_its_agent`, `edit_agent_card_docks_on_that_agent`, `delete_agent_card_docks_on_that_agent`
   - `new_agent_and_team_and_role_and_defaults_cards_dock_on_duo`
   - `card_for_an_agent_not_in_the_org_docks_on_duo`
   - `queue_is_oldest_first_with_position_and_total` (three stop cards on one agent, raised out of id order: position 1 is the earliest `raised_at`, ties by id)
-  - `shown_dock_is_none_for_team_role_reconnecting_and_empty_org`
+  - `shown_dock_follows_the_selection_and_is_none_for_team_role_and_reconnecting` (an empty org still shows Duo's card)
 - [ ] **Step 2: Run** `cargo test -p duohive-tui dock` — expect FAIL (module not defined).
 - [ ] **Step 3: Implement** the four items above. `dock_agent` matches `CardChange::Stop { agent }` and the `OrgEdit` variants that name one agent (`EditAgent { key, .. }`, `Delete(NodeKey::Agent(a))`, `Move` of a `NodeKey::Agent`); everything else is Duo's name (`org.duo.name`).
 - [ ] **Step 4: Run** the same command — expect PASS.

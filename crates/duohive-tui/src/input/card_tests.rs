@@ -515,3 +515,65 @@ fn a_card_raised_with_an_empty_org_is_reachable_on_duo() {
     );
     assert_eq!(press(&mut m, key('y')), approve(2, None));
 }
+
+#[test]
+fn a_card_hidden_by_a_small_pane_takes_no_keys() {
+    let mut m = focused(add_agent_card(2, clock(10, 21)));
+    // `ctrl+↑` grows the chat until the agent pane is too small to draw the card.
+    m.chat_rows_extra = 100;
+    assert!(
+        !render_lines(&m, &ctx(), W, H)
+            .join("\n")
+            .contains("◆ Proposed change")
+    );
+    let out = press(&mut m, key('y'));
+    assert!(
+        !out.iter().any(|e| matches!(
+            e,
+            UiEffect::Send(Command::ApproveCard { .. } | Command::RejectCard { .. })
+        )),
+        "{out:?}"
+    );
+    assert!(!footer(&m).contains("approve"), "{}", footer(&m));
+}
+
+#[test]
+fn rejecting_the_first_of_two_cards_in_an_empty_org_focuses_the_next() {
+    let mut m = with_cards(vec![
+        new_agent_card(1, clock(10, 15)),
+        add_agent_card(2, clock(10, 21)),
+    ]);
+    m.org.teams.clear();
+    m.org.roles.clear();
+    m.selected = NodeKey::Duo;
+    enter_row(&mut m, 1);
+    assert_eq!(m.focus.card, Some(CardId(1)));
+    m.apply(answered(1));
+    assert_eq!(m.focus.card, Some(CardId(2)));
+}
+
+#[test]
+fn click_on_the_docked_card_of_a_finished_agent_marks_it_seen() {
+    let draft = duohive_core::command::AgentDraft {
+        name: n("squad-2"),
+        fields: duohive_core::org::Fields::default(),
+    };
+    let edit = card(
+        1,
+        clock(10, 21),
+        CardChange::Org(OrgEdit::EditAgent {
+            key: n("squad-2"),
+            draft,
+        }),
+    );
+    let mut m = with_cards(vec![edit]);
+    m.selected = NodeKey::Agent(n("squad-2"));
+    let at = find(&m, "~ Edit agent squad-2");
+    let out = click(&mut m, at);
+    assert!(
+        out.contains(&UiEffect::Send(Command::ViewAgent {
+            agent: n("squad-2")
+        })),
+        "{out:?}"
+    );
+}
