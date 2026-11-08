@@ -6,10 +6,12 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4] - 2026-11-08
+
 ### Changed
 
-- Approval cards open in a centred dialog drawn like the forms, instead of docking over the agent pane. A card never opens by itself: `enter` or a click on its *Needs you* row opens it, `y` / `e` / `n` or the buttons answer it, `esc` closes it and the card stays pending. Several cards are answered one after another in the same dialog.
-- `↑` `↓` move between fields and buttons in every form, and `←` `→` move between a form's `Save` and `Cancel` and between the buttons of a confirmation and of a card.
+- Approval cards open in a centred dialog drawn like the forms, instead of sitting in the chat strip where their buttons were cut off. A card never opens by itself: `enter` or a click on its *Needs you* row opens it, `y` / `e` / `n` or the buttons answer it, and `esc` closes it with the card still pending. Several cards are answered one after another in the same dialog, oldest first, and a card's edit form returns to it on `esc`. The card keys stay rebindable.
+- `↑` `↓` move between fields and buttons in every form, `←` `→` move between a form's `Save` and `Cancel`, and both pairs move between the buttons of a confirmation and of a card. Inside a text field `←` `→` still move the cursor, and inside an open model or effort list `↑` `↓` still choose.
 
 ## [0.1.0-alpha.3] - 2026-11-07
 
