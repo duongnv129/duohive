@@ -83,6 +83,7 @@ pub(super) fn draw(
         let cursor = m.typing() && !m.scrolled;
         s.term
             .render_from(live_area(r), buf, s.first_row, cursor, s.no_color);
+        super::dock::draw(buf, r, m, ctx);
         return;
     }
     // From the border's inside; each line starts with `PAD` itself.
@@ -95,6 +96,7 @@ pub(super) fn draw(
     Paragraph::new(lines)
         .wrap(Wrap { trim: false })
         .render(inner, buf);
+    super::dock::draw(buf, r, m, ctx);
 }
 
 /// Where the live terminal goes in the pane `r`: inside the border and the padding cell

@@ -10,7 +10,7 @@ use duohive_core::org::{Fields, NodeKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
-use super::card::{CARD_WIDTH, card_lines, card_rows, card_title};
+use super::card::{CARD_WIDTH, Look, card_lines, card_rows, card_title};
 use crate::fixtures::{
     action_entry, add_agent_card, card, chat_entry, clock, ctx, mins, new_agent_card, qa_role,
     raise, render_lines, spec_model, status, stop_card,
@@ -305,7 +305,7 @@ fn flags_change_is_shown_and_marked() {
         ]
     );
     let p = Palette::dark();
-    let rows = card_rows(&c, &m, m.now, true, CARD_WIDTH, &p);
+    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
     let row = rows
         .iter()
         .find(|r| r.iter().any(|(t, _)| t.contains("~ flags:")))
@@ -335,7 +335,7 @@ fn flags_change_is_shown_and_marked() {
             },
         },
     });
-    let rows = card_rows(&c, &m, m.now, true, CARD_WIDTH, &p);
+    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
     let flag_text: String = rows
         .iter()
         .filter(|r| r.iter().any(|(_, col)| *col == p.attention) && r.len() == 3)
@@ -380,7 +380,13 @@ fn prompt_change_shows_first_line_and_count() {
     );
     // A long first line is cut so the line count still shows, inside the card.
     let long = edit(&format!("{}\nsecond", "Rewrite everything ".repeat(8)));
-    let rows = card_rows(&long, &m, m.now, true, CARD_WIDTH, &Palette::dark());
+    let rows = card_rows(
+        &long,
+        &m,
+        m.now,
+        Look::whole(true, CARD_WIDTH),
+        &Palette::dark(),
+    );
     let row: String = rows
         .iter()
         .map(|r| r.iter().map(|(t, _)| t.as_str()).collect::<String>())

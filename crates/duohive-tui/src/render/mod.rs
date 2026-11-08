@@ -5,6 +5,7 @@ pub(crate) mod card;
 mod card_fields;
 pub(crate) mod chat_pane;
 mod dialog;
+mod dock;
 mod first_run;
 mod form;
 mod give_work;
@@ -481,6 +482,8 @@ mod card_tests;
 mod chat_tests;
 #[cfg(test)]
 mod colour_tests;
+#[cfg(test)]
+mod dock_tests;
 #[cfg(test)]
 mod filter_tests;
 #[cfg(test)]

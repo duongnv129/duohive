@@ -206,14 +206,20 @@ fn card_rows(c: &Card, rc: &RowCtx<'_>) -> Vec<Row> {
     let indent = card_indent(rc);
     let focused = rc.m.focus.pane == Pane::Chat && rc.m.focus.card == Some(c.id);
     let cells = rc.cells.saturating_sub(indent);
-    super::card::card_rows(c, rc.m, rc.now, focused, cells, rc.p)
-        .into_iter()
-        .map(|row| {
-            std::iter::once((" ".repeat(indent), rc.p.fg))
-                .chain(row)
-                .collect()
-        })
-        .collect()
+    super::card::card_rows(
+        c,
+        rc.m,
+        rc.now,
+        super::card::Look::whole(focused, cells),
+        rc.p,
+    )
+    .into_iter()
+    .map(|row| {
+        std::iter::once((" ".repeat(indent), rc.p.fg))
+            .chain(row)
+            .collect()
+    })
+    .collect()
 }
 
 /// Cards and action lines start under the message column.

@@ -2,7 +2,6 @@
 
 pub mod app;
 pub mod chat;
-#[cfg_attr(not(test), expect(dead_code, reason = "drawn and focused from CD.2"))]
 mod dock;
 pub mod filter;
 pub mod first_run;
