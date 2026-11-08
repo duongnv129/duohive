@@ -417,7 +417,7 @@ fn an_empty_org_still_opens_duos_card() {
 
 /// A card's edit form waiting for its answer, as the confirmation path leaves it.
 fn saving_form(m: &mut UiModel, id: u64) {
-    let card = m.cards.get(&CardId(id)).unwrap().clone();
+    let card = m.cards[&CardId(id)].clone();
     let mut f = crate::forms::form_for_card(&card, m).unwrap();
     f.saving = true;
     m.dialog = Some(Dialog::Form(Box::new(f)));
