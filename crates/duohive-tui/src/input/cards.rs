@@ -1,5 +1,5 @@
-//! Keys on a focused approval card (UI §4.6, §4.11; P3-D7, P3-D22): `y` approves, `e`
-//! edits where it can, `n` rejects, `esc` returns to the input. Saving a card's form
+//! Keys on a focused, docked approval card (UI §4.6, §4.11; P3-D7, P3-D22): `y` approves, `e`
+//! edits where it can, `n` rejects, `esc` returns to the org pane. Saving a card's form
 //! approves the edited change.
 
 use duohive_core::card::{CardChange, CardId};
@@ -24,9 +24,10 @@ pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
         Action::CardEdit => edit(m, id),
         Action::Esc => {
             m.focus.card = None;
+            m.focus.pane = Pane::Org;
             Vec::new()
         }
-        Action::Up | Action::Down | Action::Enter => Vec::new(),
+        Action::Up | Action::Down => Vec::new(),
         Action::ChatGrow | Action::ChatShrink | Action::PageUp | Action::PageDown => return None,
         _ => {
             m.focus.card = None;
@@ -36,6 +37,7 @@ pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
 }
 
 /// A press on one of a card's buttons: its action.
+#[expect(dead_code, reason = "a click on the docked card presses it from CD.5")]
 pub(super) fn press_button(m: &mut UiModel, id: ActionId) -> Vec<UiEffect> {
     let action = match id {
         ActionId::CardApprove => Action::CardApprove,
@@ -91,11 +93,12 @@ pub(super) fn edited(m: &UiModel, id: CardId, edit: OrgEdit) -> CardChange {
     }
 }
 
-/// Saving a card's form approves the edited change and returns focus to the chat.
+/// Saving a card's form approves the edited change and returns to the agent pane; the card
+/// keeps the focus until its answer comes, which passes it on (CD-D4).
 pub(super) fn approve_edited(m: &mut UiModel, id: CardId, edit: OrgEdit) -> Vec<UiEffect> {
     let change = edited(m, id, edit);
-    m.focus.pane = Pane::Chat;
-    m.focus.card = None;
+    m.focus.pane = Pane::Agent;
+    m.focus.card = Some(id);
     vec![UiEffect::Send(Command::ApproveCard {
         card: id,
         edited: Some(Box::new(change)),

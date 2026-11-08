@@ -9,14 +9,14 @@ use duohive_core::org::NodeKey;
 use duohive_core::status::AgentState;
 use ratatui::layout::{Position, Rect};
 
-use super::{UiEffect, agent, agent_of, cards, drag, menu, panes, select};
+use super::{UiEffect, agent, agent_of, drag, menu, panes, select};
 use crate::chat;
 use crate::filter::Filter;
 use crate::focus::{AgentMode, Pane};
 use crate::model::{ClickIntent, UiModel};
 use crate::render::{
-    PaneAreas, chat_card_at, chat_extra_limit, header_count_at, needs_you_item_at, needs_you_wheel,
-    org_key_at, org_wheel, pane_areas,
+    PaneAreas, chat_extra_limit, header_count_at, needs_you_item_at, needs_you_wheel, org_key_at,
+    org_wheel, pane_areas,
 };
 
 /// Lines one wheel tick scrolls DuoHive's own views (the snapshot, the chat history).
@@ -256,7 +256,7 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     } else if areas.needs_you.contains(at) {
         (Pane::NeedsYou, None, needs_you_item_at(m, at.y))
     } else if areas.chat.contains(at) {
-        return on_chat(m, at);
+        return on_chat(m);
     } else {
         return Vec::new();
     };
@@ -276,22 +276,12 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         .collect()
 }
 
-/// A press in the chat: on a card it focuses that card, and on `[y]`, `[e]` or `[n]` acts
-/// as the key (UI §4.6); elsewhere it focuses the input. The card is read before focus
-/// moves (the chat grows with focus).
-fn on_chat(m: &mut UiModel, at: Position) -> Vec<UiEffect> {
-    let hit = chat_card_at(m, at);
+/// A press in the chat focuses the input.
+fn on_chat(m: &mut UiModel) -> Vec<UiEffect> {
     m.focus.agent_mode = AgentMode::Selected;
     m.focus.pane = Pane::Chat;
     m.focus.card = None;
-    let Some((card, button)) = hit else {
-        return Vec::new();
-    };
-    chat::focus_card(m, card);
-    match button {
-        Some(key) => cards::press_button(m, key),
-        None => Vec::new(),
-    }
+    Vec::new()
 }
 
 /// Selects `key`, as `↑↓` onto it would (a finished agent is marked seen); a team or

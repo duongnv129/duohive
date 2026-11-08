@@ -264,18 +264,6 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
     needs_you::item_at(pane_areas(m)?.needs_you, m, y)
 }
 
-/// The card a press at `at` hits in the chat, as drawn now, and the button under it.
-pub(crate) fn chat_card_at(
-    m: &UiModel,
-    at: ratatui::layout::Position,
-) -> Option<(duohive_core::card::CardId, Option<crate::keymap::ActionId>)> {
-    let a = pane_areas(m)?;
-    if !a.chat.contains(at) || a.zoomed {
-        return None;
-    }
-    chat_pane::card_at(a.chat, m, a.compact, at)
-}
-
 /// The docked card under `at` and the button under it (UI §4.6), zoomed too.
 #[cfg_attr(not(test), expect(dead_code, reason = "the mouse reads it from CD.4"))]
 pub(crate) fn agent_card_at(
@@ -287,18 +275,6 @@ pub(crate) fn agent_card_at(
         .contains(at)
         .then(|| dock::card_at(m, a.agent, at))
         .flatten()
-}
-
-/// Card `id`'s first history row and row count, as drawn now.
-pub(crate) fn chat_card_span(
-    m: &UiModel,
-    id: duohive_core::card::CardId,
-) -> Option<(usize, usize)> {
-    let a = pane_areas(m)?;
-    chat_pane::card_spans(a.chat, m, a.compact)
-        .into_iter()
-        .find(|(c, _, _)| *c == id)
-        .map(|(_, start, len)| (start, len))
 }
 
 /// The chat history's rows and the rows it can show, as drawn now.

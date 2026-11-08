@@ -111,6 +111,7 @@ pub(crate) struct Look {
 
 impl Look {
     /// A card that takes whatever room it needs.
+    #[cfg(test)]
     pub(crate) fn whole(focused: bool, cells: usize) -> Self {
         Self {
             focused,

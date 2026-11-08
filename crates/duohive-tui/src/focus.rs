@@ -36,8 +36,8 @@ pub struct Focus {
     pub agent_mode: AgentMode,
     /// The highlighted Needs you row.
     pub needs_you_cursor: usize,
-    /// The approval card that takes `y`, `e` and `n` (UI §4.6); `Some` only while the
-    /// chat has focus.
+    /// The docked approval card that takes `y`, `e` and `n` (UI §4.6); `Some` only while
+    /// the agent pane has focus in Selected mode.
     pub card: Option<CardId>,
 }
 

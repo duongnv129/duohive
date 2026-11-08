@@ -71,5 +71,30 @@ pub(crate) fn shown_dock(m: &UiModel) -> Option<Dock> {
     dock_for(m, shown_agent(m)?)
 }
 
+/// Selects the agent card `id` docks on and gives its oldest pending card the keys (UI
+/// §4.6): the agent pane, Selected mode, `y`, `e` and `n` live. Returns the agent for the
+/// `ViewAgent` effect; `None` when no pane shows a card (reconnecting, an unknown card).
+pub(crate) fn focus_card(m: &mut UiModel, id: CardId) -> Option<AgentName> {
+    let agent = dock_agent(m.cards.get(&id)?, &m.org);
+    if !m.reveal_agent(&agent) {
+        return None;
+    }
+    m.suggest = None;
+    m.focus.card = shown_dock(m).map(|d| d.card);
+    m.focus.card.map(|_| agent)
+}
+
+/// After a card is answered: its agent's next card takes the focus the answered one had
+/// (CD-D4), when it had it.
+pub(crate) fn pass_focus(m: &mut UiModel, answered: &Card) {
+    if m.focus.card != Some(answered.id) {
+        return;
+    }
+    let agent = dock_agent(answered, &m.org);
+    m.focus.card = dock_for(m, &agent)
+        .filter(|_| shown_agent(m) == Some(&agent))
+        .map(|d| d.card);
+}
+
 #[cfg(test)]
 mod tests;

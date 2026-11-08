@@ -16,7 +16,7 @@ pub use select::TextSel;
 pub(crate) use select::{paint as paint_selection, text as selected_text};
 
 use crate::chat::{chat_action, chat_key};
-use crate::focus::Pane;
+use crate::focus::{AgentMode, Pane};
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
 use crate::keymap::{ActionId, Context, Keymap};
@@ -197,13 +197,17 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             (true, KeyCode::Down) => return Some(Action::ChatShrink),
             _ => {}
         }
-        // The chat input always takes typed text (UI §5), card keys aside.
+        // A docked card with focus takes `y`, `e` and `n` (UI §4.6); never while Typing.
+        if m.focus.pane == Pane::Agent
+            && m.focus.agent_mode == AgentMode::Selected
+            && m.focus.card.is_some()
+            && crate::dock::shown_dock(m).is_some()
+            && let Some(id) = m.keymap.card_action(&k)
+        {
+            return Some(mapped(id));
+        }
+        // The chat input always takes typed text (UI §5).
         if m.focus.pane == Pane::Chat {
-            if m.focus.card.is_some()
-                && let Some(id) = m.keymap.card_action(&k)
-            {
-                return Some(mapped(id));
-            }
             return chat_key(k);
         }
     }
@@ -399,7 +403,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
     }
     let out = apply(m, a);
-    if m.focus.pane != Pane::Chat {
+    if m.focus.pane != Pane::Agent || m.typing() || crate::dock::shown_dock(m).is_none() {
         m.focus.card = None;
     }
     out
@@ -481,7 +485,8 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
         None => {}
     }
-    if m.focus.pane == Pane::Chat
+    if m.focus.pane == Pane::Agent
+        && !m.typing()
         && let Some(out) = cards::card_action(m, a)
     {
         return out;
@@ -657,7 +662,7 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
         FormOutcome::Cancel => {
             // A card's form goes back to the card, unanswered (UI §4.6).
             if let FormPurpose::Card(id) = f.purpose {
-                crate::chat::focus_card(m, id);
+                crate::dock::focus_card(m, id);
             }
             Vec::new()
         }

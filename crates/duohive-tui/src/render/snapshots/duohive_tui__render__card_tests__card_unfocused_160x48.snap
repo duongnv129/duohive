@@ -2,16 +2,51 @@
 source: crates/duohive-tui/src/render/card_tests.rs
 expression: text
 ---
-┏━ ⬢ Duo · ◦ idle ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            ┃
-┃             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           ┃
-┃             ┌─ ◆ Proposed change ────────────────────────────────────────────┐                                                                               ┃
-┃             │ + Add agent pay-web in Payments › QA                           │                                                                               ┃
-┃             │   + cli: Claude Code                                           │                                                                               ┃
-┃             │   + directory: ~/code/web                                      │                                                                               ┃
-┃             │   + worktree: on                                               │                                                                               ┃
-┃             │ [y] Approve   [e] Edit   [n] Reject                            │                                                                               ┃
-┃             └────────────────────────────────────────────────────────────────┘                                                                               ┃
-┃ ❯                                                                                                                                                            ┃
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
- enter send · alt+enter new line · tab pane
+ DuoHive   6 agents · ● 2 working · ◆ 3 need you · ? help                                                                                                       
+┌─ Org ──────────────────────────────────────────┐┏━ ⬢ Duo · Claude · your manager agent ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+│▌⬢ Duo · your manager agent    ◦ idle       1m  │┃ ┌─ ◆ Proposed change ────────────────────────────────────────────┐                                         ┃
+│ ├─ ▣ Payments                 ● 1 ◆ 1          │┃ │ + Add agent pay-web in Payments › QA                           │                                         ┃
+│ │  ├─ ◇ Backend               ● 1 ◆ 1          │┃ │   + cli: Claude Code                                           │                                         ┃
+│ │  │  ├─ auth-service         ● working    2m  │┃ │   + directory: ~/code/web                                      │                                         ┃
+│ │  │  │   "Running go test ./..."              │┃ │   + worktree: on                                               │                                         ┃
+│ │  │  └─ billing-api          ◆ waiting    4m  │┃ │ [y] Approve   [e] Edit   [n] Reject                            │                                         ┃
+│ │  │      "Allow edit to api.go?"              │┃ └────────────────────────────────────────────────────────────────┘                                         ┃
+│ │  └─ ◇ QA                                     │┃                                                                                                            ┃
+│ │     └─ pay-qa               ○ stopped    1d  │┃                                                                                                            ┃
+│ └─ ◇ Generalist               ● 1 ◷ 1          │┃                                                                                                            ┃
+│    ├─ squad-1                 ● working   12m  │┃                                                                                                            ┃
+│    ├─ squad-2                 ✓ finished   3m  │┃                                                                                                            ┃
+│    └─ squad-3                 ◷ quiet      6m  │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+│                                                │┃                                                                                                            ┃
+├─ Needs you (3) ────────────────────────────────┤┃                                                                                                            ┃
+│ ◷ squad-3      quiet      6m                   │┃                                                                                                            ┃
+│ ◆ billing-api  waiting    4m  "Allow edit to…" │┃                                                                                                            ┃
+│ ◆ Duo          approval   1m  Add pay-web      │┃                                                                                                            ┃
+└────────────────────────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ 10:21 Duo   PAY-88 splits into 3 subtasks. No Frontend agent in Payments yet.                                                                                │
+│             → give work auth-service "PAY-88a backend: retry endpoint"   typed in                                                                            │
+│             → give work pay-qa "PAY-88c QA: retry cases"   started                                                                                           │
+│ ❯                                                                                                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+ enter type · z zoom · PgUp/PgDn scroll · space give work

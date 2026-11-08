@@ -138,10 +138,17 @@ pub(super) fn needs_you_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match a {
         Action::Up | Action::Down => needs_you_move(m, a == Action::Down),
         Action::Enter => {
+            let on_card = m
+                .needs_you
+                .get(m.focus.needs_you_cursor)
+                .is_some_and(|i| i.card.is_some());
             let Some(agent) = needs_you_enter(m) else {
                 return Vec::new();
             };
-            super::agent::request_typing(m, false);
+            // A card's row goes to the card; it never starts Typing.
+            if !on_card {
+                super::agent::request_typing(m, false);
+            }
             return vec![UiEffect::Send(Command::ViewAgent { agent })];
         }
         _ => {}
@@ -150,13 +157,12 @@ pub(super) fn needs_you_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 }
 
 /// `enter` in Needs you: selects the agent under the cursor, unfolds its team and role,
-/// and focuses the agent pane in Selected mode; on a card row, focuses that card in the
-/// chat (UI §4.1.3).
+/// and focuses the agent pane in Selected mode; on a card row, selects the agent the card
+/// docks on and focuses the oldest card there (UI §4.1.3, §4.6).
 pub(super) fn needs_you_enter(m: &mut UiModel) -> Option<AgentName> {
     let item = m.needs_you.get(m.focus.needs_you_cursor)?;
     if let Some(card) = item.card {
-        crate::chat::focus_card(m, card);
-        return None;
+        return crate::dock::focus_card(m, card);
     }
     let agent = item.agent.clone();
     m.reveal_agent(&agent).then_some(agent)

@@ -44,9 +44,9 @@ expression: "org.join(\"\\n\")"
 ┃ ◆ Duo          approval   1m  Add pay-web      ┃
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ┌─ ⬢ Duo · ◦ idle ────────────────────────────────
-│             ┌─ ◆ Proposed change ───────────────
-│             │ + Add agent pay-web in Payments › 
-│             │   + cli: Claude Code              
+│                                                 
+│                                                 
+│                                                 
 │ ❯                                               
 └─────────────────────────────────────────────────
  tab pane · ↑↓ move · space give work · s start/st

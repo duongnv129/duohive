@@ -103,9 +103,14 @@ fn groups(km: &Keymap) -> Vec<Group> {
                 pair("enter", "send"),
                 pair("alt+enter", "new line"),
                 pair("@ /", "agents / commands"),
-                pair("↑", "newest card"),
-                pair(&format!("{approve} {edit} {reject}"), "approve/edit/reject"),
                 pair("PgUp/Dn", "scroll history"),
+            ],
+        },
+        Group {
+            title: "Docked card",
+            rows: vec![
+                pair(&format!("{approve} {edit} {reject}"), "approve/edit/reject"),
+                pair("esc", "back to the org pane"),
             ],
         },
     ]
@@ -150,11 +155,11 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, st: KeyMapState, m: &UiModel, p
     }
 }
 
-/// Three columns: Everywhere and Mouse; Org pane and Needs you; Agent pane and Chat.
+/// Three columns: Everywhere and Mouse; Org pane and Needs you; Agent pane, Chat and Docked card.
 fn wide(buf: &mut Buffer, area: Rect, groups: &[Group], p: &Palette, inside: Style) {
     let room = usize::from(area.width - 2);
     let col_w = (room.saturating_sub(2 * usize::from(COLUMN_GAP))) / 3;
-    let columns: [&[usize]; 3] = [&[0, 1], &[2, 3], &[4, 5]];
+    let columns: [&[usize]; 3] = [&[0, 1], &[2, 3], &[4, 5, 6]];
     let muted = Style::default().fg(p.fg_muted).bg(p.bg_panel);
     for (i, take) in columns.iter().enumerate() {
         let x = area.x + 1 + u16::try_from(i * (col_w + usize::from(COLUMN_GAP))).unwrap_or(0);
