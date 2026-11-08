@@ -244,7 +244,8 @@ fn needs_you_keys(km: &Keymap) -> String {
 /// A focused docked card's keys (UI §4.6), when one has focus.
 fn card_keys(m: &UiModel) -> Option<String> {
     let k = |a| m.keymap.key(a).label();
-    let card = m.focus.card.and_then(|id| m.cards.get(&id))?;
+    let id = m.focus.card.filter(|id| crate::dock::is_shown(m, *id))?;
+    let card = m.cards.get(&id)?;
     Some(if card_editable(card) {
         format!(
             " {} approve · {} edit · {} reject · esc back",

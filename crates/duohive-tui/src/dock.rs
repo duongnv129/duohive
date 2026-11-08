@@ -66,9 +66,18 @@ pub(crate) fn shown_agent(m: &UiModel) -> Option<&AgentName> {
     m.selected_agent()
 }
 
-/// The card docked on the agent pane now.
+/// The card docked on the agent pane now. An empty org still shows Duo's cards: they are
+/// how Duo sets one up. Nothing shows while reconnecting or with a team or role selected.
 pub(crate) fn shown_dock(m: &UiModel) -> Option<Dock> {
-    dock_for(m, shown_agent(m)?)
+    if m.reconnecting > 0 {
+        return None;
+    }
+    dock_for(m, m.selected_agent()?)
+}
+
+/// Whether `id` is the card drawn now: only that card may take the keys.
+pub(crate) fn is_shown(m: &UiModel, id: CardId) -> bool {
+    shown_dock(m).is_some_and(|d| d.card == id)
 }
 
 /// Selects the agent card `id` docks on and gives its oldest pending card the keys (UI

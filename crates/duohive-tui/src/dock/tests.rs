@@ -124,7 +124,7 @@ fn queue_is_oldest_first_with_position_and_total() {
 }
 
 #[test]
-fn shown_dock_follows_the_selection_and_is_none_for_team_role_reconnecting_and_empty_org() {
+fn shown_dock_follows_the_selection_and_is_none_for_team_role_and_reconnecting() {
     let mut m = spec_model();
     raise(&mut m, stop(1, 1, "squad-1"), Duration::from_secs(60));
     raise(
@@ -143,8 +143,9 @@ fn shown_dock_follows_the_selection_and_is_none_for_team_role_reconnecting_and_e
     m.selected = NodeKey::Duo;
     m.reconnecting = 1;
     assert_eq!(shown_dock(&m), None);
+    // An empty org still shows Duo's cards: they are how Duo sets one up.
     m.reconnecting = 0;
     m.org.teams.clear();
     m.org.roles.clear();
-    assert_eq!(shown_dock(&m), None);
+    assert_eq!(shown_dock(&m).map(|d| d.card.0), Some(2));
 }

@@ -18,7 +18,15 @@ const NOTHING_TO_EDIT: &str = "nothing to edit · y or n";
 /// types returns focus to the input first.
 pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
     let id = m.focus.card?;
+    // Only the card drawn takes the keys, whatever moved the selection since.
+    if !crate::dock::is_shown(m, id) {
+        m.focus.card = None;
+        return None;
+    }
     Some(match a {
+        // Zoom, and `esc` out of a zoom, are the pane's: the card keeps its focus.
+        Action::Zoom => return None,
+        Action::Esc if m.zoomed_agent().is_some() => return None,
         Action::CardApprove => answer(id, true),
         Action::CardReject => answer(id, false),
         Action::CardEdit => edit(m, id),

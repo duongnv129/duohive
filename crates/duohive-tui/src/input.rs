@@ -200,8 +200,7 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         // A docked card with focus takes `y`, `e` and `n` (UI §4.6); never while Typing.
         if m.focus.pane == Pane::Agent
             && m.focus.agent_mode == AgentMode::Selected
-            && m.focus.card.is_some()
-            && crate::dock::shown_dock(m).is_some()
+            && m.focus.card.is_some_and(|c| crate::dock::is_shown(m, c))
             && let Some(id) = m.keymap.card_action(&k)
         {
             return Some(mapped(id));
@@ -403,7 +402,8 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         }
     }
     let out = apply(m, a);
-    if m.focus.pane != Pane::Agent || m.typing() || crate::dock::shown_dock(m).is_none() {
+    let drawn = m.focus.card.is_some_and(|c| crate::dock::is_shown(m, c));
+    if m.focus.pane != Pane::Agent || m.typing() || !drawn {
         m.focus.card = None;
     }
     out

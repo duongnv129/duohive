@@ -461,3 +461,57 @@ fn click_in_the_chat_never_focuses_a_card() {
     assert_eq!(m.focus.pane, Pane::Chat);
     assert_eq!(m.focus.card, None);
 }
+
+#[test]
+fn z_keeps_card_focus_and_esc_restores_the_zoom_first() {
+    let mut m = focused(stop_card(1, clock(10, 21)));
+    press(&mut m, key('z'));
+    assert!(m.zoomed, "z zooms");
+    assert_eq!(m.focus.card, Some(CardId(1)));
+    // A zoomed, focused card answers by key.
+    assert_eq!(
+        press(&mut m, key('n')),
+        [UiEffect::Send(Command::RejectCard { card: CardId(1) })]
+    );
+    assert_eq!(press(&mut m, code(KeyCode::Esc)), []);
+    assert!(!m.zoomed, "esc restores the zoom first");
+    assert_eq!(m.focus.card, Some(CardId(1)));
+}
+
+#[test]
+fn a_card_that_is_not_the_one_drawn_never_takes_the_keys() {
+    // Card 1 (stop squad-1) has focus; the selection moves to Duo, whose own card 2 is
+    // the one drawn now.
+    let mut m = with_cards(vec![
+        stop_card(1, clock(10, 15)),
+        add_agent_card(2, clock(10, 21)),
+    ]);
+    enter_row(&mut m, 1);
+    assert_eq!(m.focus.card, Some(CardId(1)));
+    m.selected = NodeKey::Duo;
+    let out = press(&mut m, key('y'));
+    assert!(
+        !out.iter().any(|e| matches!(
+            e,
+            UiEffect::Send(Command::ApproveCard { .. } | Command::RejectCard { .. })
+        )),
+        "{out:?}"
+    );
+    assert!(!footer(&m).contains("approve"), "{}", footer(&m));
+}
+
+#[test]
+fn a_card_raised_with_an_empty_org_is_reachable_on_duo() {
+    let mut m = with_cards(vec![add_agent_card(2, clock(10, 21))]);
+    m.org.teams.clear();
+    m.org.roles.clear();
+    m.selected = NodeKey::Duo;
+    enter_row(&mut m, 2);
+    assert_eq!(m.focus.card, Some(CardId(2)));
+    assert!(
+        render_lines(&m, &ctx(), W, H)
+            .join("\n")
+            .contains("┏━ ◆ Proposed change")
+    );
+    assert_eq!(press(&mut m, key('y')), approve(2, None));
+}
