@@ -125,11 +125,7 @@ fn waiting_hint(m: &UiModel, room: usize) -> Option<String> {
 /// The agent whose pane is shown: none while reconnecting, with an empty org, or with a
 /// team or role selected.
 fn shown_agent(m: &UiModel) -> Option<&AgentName> {
-    let empty = m.org.teams.is_empty() && m.org.roles.is_empty();
-    if m.reconnecting > 0 || empty {
-        return None;
-    }
-    m.selected_agent()
+    crate::dock::shown_agent(m)
 }
 
 /// The pane's title and body for the current state and selection.
