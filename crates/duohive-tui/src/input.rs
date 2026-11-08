@@ -16,7 +16,7 @@ pub use select::TextSel;
 pub(crate) use select::{paint as paint_selection, text as selected_text};
 
 use crate::chat::{chat_action, chat_key};
-use crate::focus::{AgentMode, Pane};
+use crate::focus::Pane;
 use crate::format::{age_of, format_age, status_word};
 use crate::forms::{Chooser, Form, FormOutcome, FormPurpose};
 use crate::keymap::{ActionId, Context, Keymap};
@@ -173,6 +173,10 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if m.typing() {
         return Some(agent::typing_key(k));
     }
+    // The card dialog reads its own bindings first, modified ones (`ctrl+y`) included.
+    if matches!(m.dialog, Some(Dialog::Card(_))) {
+        return crate::card_dialog::map_key(m, k);
+    }
     if matches!(m.dialog, Some(Dialog::GiveWork(_))) && k.modifiers.is_empty() {
         // `↑↓` pick a role's agent (UI §4.5).
         match k.code {
@@ -196,14 +200,6 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             (true, KeyCode::Up) => return Some(Action::ChatGrow),
             (true, KeyCode::Down) => return Some(Action::ChatShrink),
             _ => {}
-        }
-        // A docked card with focus takes `y`, `e` and `n` (UI §4.6); never while Typing.
-        if m.focus.pane == Pane::Agent
-            && m.focus.agent_mode == AgentMode::Selected
-            && m.focus.card.is_some_and(|c| crate::dock::is_shown(m, c))
-            && let Some(id) = m.keymap.card_action(&k)
-        {
-            return Some(mapped(id));
         }
         // The chat input always takes typed text (UI §5).
         if m.focus.pane == Pane::Chat {
@@ -243,6 +239,10 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             KeyCode::Char('y') => Some(Action::DialogYes),
             KeyCode::Char('n') => Some(Action::DialogNo),
             KeyCode::Enter => Some(Action::DialogEnter),
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Left => Some(Action::Left),
+            KeyCode::Right => Some(Action::Right),
             _ => None,
         },
         Dialog::Worktrees(_) => match k.code {
@@ -290,7 +290,7 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             _ => None,
         },
         // Forms and Give work took their keys above, before `common`.
-        Dialog::Form(_) | Dialog::GiveWork(_) | Dialog::Resume(_) => None,
+        Dialog::Form(_) | Dialog::GiveWork(_) | Dialog::Resume(_) | Dialog::Card(_) => None,
     }
 }
 
@@ -334,6 +334,8 @@ fn form_key(k: KeyEvent) -> Option<Action> {
         KeyCode::Esc => Action::Esc,
         KeyCode::Tab => Action::Tab,
         KeyCode::BackTab => Action::BackTab,
+        KeyCode::Up => Action::Up,
+        KeyCode::Down => Action::Down,
         KeyCode::Enter => Action::DialogEnter,
         KeyCode::Left => Action::Left,
         KeyCode::Right => Action::Right,
@@ -401,12 +403,7 @@ pub fn update(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             _ => return Vec::new(),
         }
     }
-    let out = apply(m, a);
-    let drawn = m.focus.card.is_some_and(|c| crate::dock::is_shown(m, c));
-    if m.focus.pane != Pane::Agent || m.typing() || !drawn {
-        m.focus.card = None;
-    }
-    out
+    apply(m, a)
 }
 
 /// The first-run wizard's keys (UI §4.3); Create org sends `Command::CreateOrg`, and
@@ -472,6 +469,7 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
     match m.dialog.take() {
         Some(Dialog::Confirm(c)) => return confirm_action(m, c, a),
         Some(Dialog::Form(f)) => return form_action(m, f, a),
+        Some(Dialog::Card(d)) => return crate::card_dialog::action(m, d, a),
         Some(Dialog::Chooser(c)) => {
             chooser_action(m, c, a);
             return Vec::new();
@@ -484,12 +482,6 @@ fn apply(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         Some(Dialog::KeyMap(s)) => return keymap::map_action(m, s, a),
         Some(Dialog::Keys(s)) => return keymap::editor_action(m, s, a),
         None => {}
-    }
-    if m.focus.pane == Pane::Agent
-        && !m.typing()
-        && let Some(out) = cards::card_action(m, a)
-    {
-        return out;
     }
     if m.zoomed_agent().is_some()
         && matches!(
@@ -619,7 +611,12 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
         Action::DialogYes => true,
         Action::DialogEnter => c.focus_yes,
         Action::DialogNo | Action::Esc => false,
-        Action::Tab | Action::BackTab => {
+        Action::Tab
+        | Action::BackTab
+        | Action::Up
+        | Action::Down
+        | Action::Left
+        | Action::Right => {
             c.focus_yes = !c.focus_yes;
             m.dialog = Some(Dialog::Confirm(c));
             return Vec::new();
@@ -662,12 +659,12 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
         FormOutcome::Cancel => {
             // A card's form goes back to the card, unanswered (UI §4.6).
             if let FormPurpose::Card(id) = f.purpose {
-                crate::dock::focus_card(m, id);
+                crate::card_dialog::open(m, id);
             }
             Vec::new()
         }
         FormOutcome::Edit(edit) => match f.purpose {
-            FormPurpose::Card(id) => cards::approve_edited(m, id, edit),
+            FormPurpose::Card(id) => crate::card_dialog::approve_edited(m, id, edit),
             FormPurpose::Edit => {
                 f.saving = true;
                 m.dialog = Some(Dialog::Form(f));
@@ -676,7 +673,7 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
         },
         FormOutcome::Confirm(c) => {
             let on_yes = match f.purpose {
-                FormPurpose::Card(id) => cards::approve_command(m, id, c.on_yes),
+                FormPurpose::Card(id) => crate::card_dialog::approve_command(m, id, c.on_yes),
                 FormPurpose::Edit => c.on_yes,
             };
             let c = Confirm {
@@ -932,7 +929,6 @@ fn confirm(title: &str, lines: Vec<String>, yes: &str, on_yes: Command) -> Dialo
 }
 
 mod agent;
-mod cards;
 mod drag;
 pub(crate) mod give_work;
 mod keymap;
@@ -947,8 +943,6 @@ mod worktrees;
 
 #[cfg(test)]
 mod agent_tests;
-#[cfg(test)]
-mod card_tests;
 #[cfg(test)]
 mod chat_tests;
 #[cfg(test)]

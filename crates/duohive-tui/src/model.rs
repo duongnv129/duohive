@@ -22,10 +22,13 @@ use duohive_core::worktree::{RunIn, WorktreeRow};
 
 use ratatui::layout::Rect;
 
+use crate::card_dialog::CardDialog;
 use crate::chat::{self, ChatLines};
 use crate::first_run::FirstRun;
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, ResumePicker, SettingsState};
+use crate::forms::{
+    Chooser, Form, FormPurpose, GiveWork, LineEdit, MoveTo, ResumePicker, SettingsState,
+};
 use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
@@ -46,6 +49,8 @@ pub enum Dialog {
     MoveTo(Box<MoveTo>),
     /// An agent's past sessions (UI §4.13).
     Resume(Box<ResumePicker>),
+    /// A pending approval card (UI §4.6).
+    Card(CardDialog),
     /// Personal settings (UI §4.10).
     Settings(SettingsState),
     /// The key map (UI §4.11).
@@ -299,8 +304,10 @@ impl UiModel {
             Event::Snapshot(s) => self.apply_snapshot(*s),
             Event::OrgChanged { org, problems } => {
                 self.apply_org(*org, problems);
-                // The edit a form was waiting for (or another) is in: the form is done.
-                if matches!(&self.dialog, Some(Dialog::Form(f)) if f.saving) {
+                // The edit a form was waiting for (or another) is in: the form is done. A
+                // card's form waits for the card's answer, which comes next and moves on.
+                if matches!(&self.dialog, Some(Dialog::Form(f)) if f.saving && f.purpose == FormPurpose::Edit)
+                {
                     self.dialog = None;
                 }
             }
@@ -323,15 +330,7 @@ impl UiModel {
                 if self.reject_wizard(&reason) {
                     return true;
                 }
-                match &mut self.dialog {
-                    Some(Dialog::Form(f)) if f.saving => f.reject(reason),
-                    _ => match self.give_sent.clone() {
-                        Some((agent, task, run)) => {
-                            self.reopen_give_work(&agent, &task, Some(run), &reason, "");
-                        }
-                        None => self.footer_note = Some(reason),
-                    },
-                }
+                self.command_rejected(reason);
             }
             Event::GiveWorkRefused {
                 agent,
@@ -381,15 +380,14 @@ impl UiModel {
                 return self.update_view(&agent, |v| v.inbox = waiting);
             }
             Event::MessageRefused { reason, .. } => chat::refused(self, reason),
-            // The agent pane docks a pending card on the agent it concerns (UI §4.6).
+            // A pending card waits in Needs you until it is opened (UI §4.6).
             Event::CardRaised(card) => {
                 self.cards.insert(card.id, *card);
             }
             // Its `CardResult` chat line follows and takes its place.
             Event::CardAnswered { card, .. } => {
-                if let Some(answered) = self.cards.remove(&card) {
-                    crate::dock::pass_focus(self, &answered);
-                }
+                self.cards.remove(&card);
+                crate::card_dialog::advance(self, card);
             }
             e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
             // The wizard's org is saved: the main screen takes over (UI §4.3).
@@ -402,6 +400,24 @@ impl UiModel {
             Event::SessionsUnreadable { agent, reason } => self.sessions_failed(&agent, &reason),
         }
         true
+    }
+
+    /// The engine refused a command: whatever was waiting on it says so.
+    fn command_rejected(&mut self, reason: String) {
+        match &mut self.dialog {
+            Some(Dialog::Form(f)) if f.saving => f.reject(reason),
+            // The answer was refused: the card can be answered again.
+            Some(Dialog::Card(d)) if d.sent => {
+                d.sent = false;
+                self.footer_note = Some(reason);
+            }
+            _ => match self.give_sent.clone() {
+                Some((agent, task, run)) => {
+                    self.reopen_give_work(&agent, &task, Some(run), &reason, "");
+                }
+                None => self.footer_note = Some(reason),
+            },
+        }
     }
 
     /// A CLI's lists arrived: kept, and handed to the open form's popups.
@@ -725,13 +741,7 @@ impl UiModel {
             Some(_) => {}
             None => self.wizard = None,
         }
-        if self
-            .focus
-            .card
-            .is_some_and(|c| !self.cards.contains_key(&c))
-        {
-            self.focus.card = None;
-        }
+        crate::card_dialog::keep_valid(self);
         self.keep_selection_valid();
     }
 

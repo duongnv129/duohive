@@ -107,10 +107,11 @@ fn groups(km: &Keymap) -> Vec<Group> {
             ],
         },
         Group {
-            title: "Docked card",
+            title: "Card dialog",
             rows: vec![
                 pair(&format!("{approve} {edit} {reject}"), "approve/edit/reject"),
-                pair("esc", "back to the org pane"),
+                pair("←→↑↓ enter", "choose a button, press it"),
+                pair("esc", "close; the card stays"),
             ],
         },
     ]
@@ -155,7 +156,7 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, st: KeyMapState, m: &UiModel, p
     }
 }
 
-/// Three columns: Everywhere and Mouse; Org pane and Needs you; Agent pane, Chat and Docked card.
+/// Three columns: Everywhere and Mouse; Org pane and Needs you; Agent pane, Chat and Card dialog.
 fn wide(buf: &mut Buffer, area: Rect, groups: &[Group], p: &Palette, inside: Style) {
     let room = usize::from(area.width - 2);
     let col_w = (room.saturating_sub(2 * usize::from(COLUMN_GAP))) / 3;

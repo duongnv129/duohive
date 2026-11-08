@@ -11,21 +11,14 @@ use duohive_core::time::Millis;
 use ratatui::style::Color;
 
 use super::card_fields::{BodyLine, detail, find_role};
-use super::{HEAVY, LIGHT, Lines};
 use crate::format::{
-    age_of, chunk_cells, format_age, pad_right, status_glyph, status_word, truncate_end, width,
+    age_of, chunk_cells, format_age, status_glyph, status_word, truncate_end, width,
 };
-use crate::forms::card_editable;
-use crate::keymap::{ActionId, Keymap};
 use crate::model::UiModel;
 use crate::theme::Palette;
 
 /// UI §4.6's card is 66 cells wide; narrower where the chat is.
 pub(crate) const CARD_WIDTH: usize = 66;
-/// `┃ ` before a line and ` ┃` after it.
-const SIDE: usize = 2;
-/// Between buttons.
-const BUTTON_GAP: &str = "   ";
 /// The attention glyph in the title (P3-D4).
 const DIAMOND: char = '◆';
 /// A second line hangs under the first's text.
@@ -47,130 +40,38 @@ pub(crate) fn card_title(card: &Card, org: &Org) -> String {
     format!("{DIAMOND} {what}")
 }
 
-/// The card's body lines, then its button row, as text (tests read cards this way).
+/// The card's body lines as text (tests read cards this way).
 #[cfg(test)]
 pub(crate) fn card_lines(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
-    let mut lines: Vec<String> = body_lines(card, m, now)
+    body_lines(card, m, now)
         .into_iter()
         .map(|l| l.text)
-        .collect();
-    lines.push(button_row(card, &m.keymap));
-    lines
+        .collect()
 }
 
-/// The buttons, by action: approve, then edit where the card can be edited, then reject.
-pub(crate) fn buttons(card: &Card) -> Vec<(ActionId, &'static str)> {
-    let mut out = vec![(ActionId::CardApprove, "Approve")];
-    if card_editable(card) {
-        out.push((ActionId::CardEdit, "Edit"));
-    }
-    out.push((ActionId::CardReject, "Reject"));
-    out
-}
-
-/// The key that asks for `id`, as the card shows it.
-fn key_label(km: &Keymap, id: ActionId) -> String {
-    km.key(id).label()
-}
-
-/// `[k] Label`, one button's text.
-pub(crate) fn button_text(key: &str, label: &str) -> String {
-    format!("[{key}] {label}")
-}
-
-/// Which button covers `col`, counted from the first button's first cell.
-pub(crate) fn button_at(km: &Keymap, card: &Card, col: usize) -> Option<ActionId> {
-    let mut x = 0;
-    for (id, label) in buttons(card) {
-        let w = width(&button_text(&key_label(km, id), label));
-        if (x..x + w).contains(&col) {
-            return Some(id);
-        }
-        x += w + BUTTON_GAP.len();
-    }
-    None
-}
-
-/// Cells from the card's left edge to its text.
-pub(crate) fn text_offset() -> usize {
-    SIDE
-}
-
-/// How a card is drawn: focus, width, its place in its queue and its height.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Look {
-    /// Heavy outline when focused.
-    pub focused: bool,
-    /// The most cells wide.
-    pub cells: usize,
-    /// `(position, total)` in the agent's queue; shown only when `total` is more than 1.
-    pub queue: Option<(usize, usize)>,
-    /// The most rows, outline included (UI §4.6 *Height*).
-    pub max_rows: usize,
-}
-
-impl Look {
-    /// A card that takes whatever room it needs.
-    #[cfg(test)]
-    pub(crate) fn whole(focused: bool, cells: usize) -> Self {
-        Self {
-            focused,
-            cells,
-            queue: None,
-            max_rows: usize::MAX,
-        }
-    }
-}
-
-/// The card: its rows, outline included.
-pub(crate) fn card_rows(
+/// The card's body for a dialog `cells` wide, in at most `slots` rows. When it does not
+/// all fit, the first line, then the `flags` rows, then the rest are kept, and one
+/// `… N more rows` stands for the cut (UI §4.6 *Size*).
+pub(crate) fn card_body(
     card: &Card,
     m: &UiModel,
     now: Millis,
-    look: Look,
+    cells: usize,
+    slots: usize,
     p: &Palette,
-) -> Vec<Row> {
-    let w = look.cells.min(CARD_WIDTH);
-    let lines: &Lines = if look.focused { &HEAVY } else { &LIGHT };
-    let inner = w.saturating_sub(2 * SIDE);
-    let title = card_title(card, &m.org);
-    let mut rest = title.trim_start_matches(DIAMOND).trim_start().to_owned();
-    if let Some((position, total)) = look.queue.filter(|(_, total)| *total > 1) {
-        rest = format!("{rest} · {position} of {total}");
-    }
-    // `┏━ ◆ ` before the title, then ` ` and `┓`; at least one `━` fills.
-    let frame = 7;
-    let shown = truncate_end(&rest, w.saturating_sub(frame + 1));
-    let fill = lines.h.repeat(w.saturating_sub(width(&shown) + frame));
-    let mut rows = vec![vec![
-        (format!("{}{} ", lines.top[0], lines.h), p.border),
-        (DIAMOND.to_string(), p.attention),
-        (format!(" {shown} "), p.fg),
-        (format!("{fill}{}", lines.top[1]), p.border),
-    ]];
-    let side = |piece: &str, colour| -> Row {
-        vec![
-            (format!("{} ", lines.v), p.border),
-            (pad_right(piece, inner), colour),
-            (format!(" {}", lines.v), p.border),
-        ]
-    };
+) -> Vec<(String, Color)> {
     let mut body = Vec::new();
     for line in body_lines(card, m, now) {
         if line.marked {
             body.extend(
-                wrap_hanging(&line.text, inner)
+                wrap_hanging(&line.text, cells)
                     .into_iter()
                     .map(|t| (t, true)),
             );
         } else {
-            body.push((truncate_end(&line.text, inner), false));
+            body.push((truncate_end(&line.text, cells), false));
         }
     }
-    // The title, the buttons and the bottom edge always stay; the body gets what is left.
-    // When it does not all fit, the first line, then the `flags` rows, then the rest are
-    // kept, and one `… N more rows` stands for the cut (UI §4.6 *Height*).
-    let slots = look.max_rows.saturating_sub(3);
     let cut = if body.len() <= slots {
         Vec::new()
     } else {
@@ -188,24 +89,16 @@ pub(crate) fn card_rows(
         (0..body.len()).filter(|i| !kept.contains(i)).collect()
     };
     let mut ellipsis = !cut.is_empty();
+    let mut rows = Vec::new();
     for (i, (text, marked)) in body.into_iter().enumerate() {
         if cut.contains(&i) {
             if std::mem::take(&mut ellipsis) {
-                rows.push(side(&format!("… {} more rows", cut.len()), p.fg_muted));
+                rows.push((format!("… {} more rows", cut.len()), p.fg_muted));
             }
             continue;
         }
-        rows.push(side(&text, if marked { p.attention } else { p.fg }));
+        rows.push((text, if marked { p.attention } else { p.fg }));
     }
-    rows.push(side(
-        &truncate_end(&button_row(card, &m.keymap), inner),
-        p.fg,
-    ));
-    let bottom = lines.h.repeat(w.saturating_sub(2));
-    rows.push(vec![(
-        format!("{}{bottom}{}", lines.bottom[0], lines.bottom[1]),
-        p.border,
-    )]);
     rows
 }
 
@@ -253,14 +146,6 @@ fn wrap_words_whole(text: &str, cells: usize) -> Vec<String> {
         .enumerate()
         .map(|(i, r)| if i == 0 { r } else { format!("{hang}{r}") })
         .collect()
-}
-
-fn button_row(card: &Card, km: &Keymap) -> String {
-    buttons(card)
-        .into_iter()
-        .map(|(id, l)| button_text(&key_label(km, id), l))
-        .collect::<Vec<_>>()
-        .join(BUTTON_GAP)
 }
 
 /// The change in UI §4.6's style: `+` adds, `~` changes or moves, `-` removes; the rows

@@ -4,22 +4,22 @@ expression: wide
 ---
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │Everywhere                                           Org pane                                             Agent pane                                          │
-│  tab       next pane/field                            ↑↓    move                                           enter     start typing                            │
-│  shift+tab previous pane                              ←→    fold / unfold                                  ctrl+q    stop typing                             │
-│  ?         this help                                  enter type to agent                                  z         zoom / restore                          │
-│  ,         settings                                   space give work                                      space     give work                               │
-│  w         worktrees                                  s     start / stop                                   PgUp/Dn   scroll back                             │
+│  tab       next pane/field                            ↑↓    move                                           enter      start typing                           │
+│  shift+tab previous pane                              ←→    fold / unfold                                  ctrl+q     stop typing                            │
+│  ?         this help                                  enter type to agent                                  z          zoom / restore                         │
+│  ,         settings                                   space give work                                      space      give work                              │
+│  w         worktrees                                  s     start / stop                                   PgUp/Dn    scroll back                            │
 │  f         filter tree by state                       r     resume                                                                                           │
 │  esc       back one level                             n     new here…                                    Chat (Duo)                                          │
-│  q         quit (agents run on)                       e     edit (Duo: Edit org)                           enter     send                                    │
-│  ctrl+c    quit if not typing                         m     move to…                                       alt+enter new line                                │
-│  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /       agents / commands                       │
-│                                                       z     zoom agent                                     PgUp/Dn   scroll history                          │
+│  q         quit (agents run on)                       e     edit (Duo: Edit org)                           enter      send                                   │
+│  ctrl+c    quit if not typing                         m     move to…                                       alt+enter  new line                               │
+│  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /        agents / commands                      │
+│                                                       z     zoom agent                                     PgUp/Dn    scroll history                         │
 │Mouse                                                  v     last reply on/off                                                                                │
-│  click     select + type                              o     open org.toml                                Docked card                                         │
-│  right     node menu                                                                                       y e n     approve/edit/reject                     │
-│  wheel     scroll                                   Needs you                                              esc       back to the org pane                    │
-│  drag      move node                                  ↑↓    move                                                                                             │
+│  click     select + type                              o     open org.toml                                Card dialog                                         │
+│  right     node menu                                                                                       y e n      approve/edit/reject                    │
+│  wheel     scroll                                   Needs you                                              ←→↑↓ enter choose a button, press it              │
+│  drag      move node                                  ↑↓    move                                           esc        close; the card stays                  │
 │                                                       enter go to agent or card                                                                              │
 │                                                                                                                                                              │
 │                                                                                                                                                              │

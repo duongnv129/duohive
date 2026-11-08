@@ -3,26 +3,26 @@ source: crates/duohive-tui/src/render/help_tests.rs
 expression: narrow
 ---
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────┐
-│  click     select + type                                                     │
-│  right     node menu                                                         │
-│  wheel     scroll                                                            │
-│  drag      move node                                                         │
+│  click      select + type                                                    │
+│  right      node menu                                                        │
+│  wheel      scroll                                                           │
+│  drag       move node                                                        │
 │Org pane                                                                      │
-│  ↑↓        move                                                              │
-│  ←→        fold / unfold                                                     │
-│  enter     type to agent                                                     │
-│  space     give work                                                         │
-│  s         start / stop                                                      │
-│  r         resume                                                            │
-│  n         new here…                                                         │
-│  e         edit (Duo: Edit org)                                              │
-│  m         move to…                                                          │
-│  d         delete (stopped)                                                  │
-│  z         zoom agent                                                        │
-│  v         last reply on/off                                                 │
-│  o         open org.toml                                                     │
+│  ↑↓         move                                                             │
+│  ←→         fold / unfold                                                    │
+│  enter      type to agent                                                    │
+│  space      give work                                                        │
+│  s          start / stop                                                     │
+│  r          resume                                                           │
+│  n          new here…                                                        │
+│  e          edit (Duo: Edit org)                                             │
+│  m          move to…                                                         │
+│  d          delete (stopped)                                                 │
+│  z          zoom agent                                                       │
+│  v          last reply on/off                                                │
+│  o          open org.toml                                                    │
 │Needs you                                                                     │
-│  ↑↓        move                                                              │
-│  enter     go to agent or card                                               │
+│  ↑↓         move                                                             │
+│  enter      go to agent or card                                              │
 │↓ more · PgUp/PgDn scroll                                                     │
 └──────────────────────────────────────────────────────────────────────────────┘
