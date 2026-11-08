@@ -1,14 +1,18 @@
 //! The approval card docked over the top of the agent pane (UI §4.6; CD-D1 to CD-D7).
 
+use duohive_core::card::CardId;
+use duohive_core::time::Millis;
 use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
 
 use super::agent_pane::live_area;
-use super::card::{CARD_WIDTH, Look, Row, card_rows};
+use super::card::{CARD_WIDTH, Look, Row, button_at, card_rows, text_offset};
 use super::{RenderCtx, put};
 use crate::dock::shown_dock;
+use crate::keymap::ActionId;
 use crate::model::UiModel;
+use crate::theme::Palette;
 
 /// Fewest inner rows a pane needs for a card to be drawn (CD-D7).
 const MIN_PANE_ROWS: usize = 7;
@@ -31,7 +35,7 @@ pub(super) fn dock_rect(pane: Rect, rows: usize) -> Rect {
 
 /// The card's rows for the pane `pane`: the first of the shown agent's queue, cut to half
 /// the pane; none when the pane is too small.
-pub(super) fn dock_rows(m: &UiModel, ctx: &RenderCtx, pane: Rect) -> Option<Vec<Row>> {
+pub(super) fn dock_rows(m: &UiModel, now: Millis, p: &Palette, pane: Rect) -> Option<Vec<Row>> {
     let inner = usize::from(pane.height.saturating_sub(2));
     if inner < MIN_PANE_ROWS || pane.width < 8 {
         return None;
@@ -44,12 +48,12 @@ pub(super) fn dock_rows(m: &UiModel, ctx: &RenderCtx, pane: Rect) -> Option<Vec<
         queue: Some((dock.position, dock.total)),
         max_rows: (inner / 2).max(MIN_CARD_ROWS),
     };
-    Some(card_rows(card, m, ctx.now, look, &ctx.palette))
+    Some(card_rows(card, m, now, look, p))
 }
 
 /// Draws the card over the pane's top rows; the terminal underneath keeps its size.
 pub(super) fn draw(buf: &mut Buffer, pane: Rect, m: &UiModel, ctx: &RenderCtx) {
-    let Some(rows) = dock_rows(m, ctx, pane) else {
+    let Some(rows) = dock_rows(m, ctx.now, &ctx.palette, pane) else {
         return;
     };
     let at = dock_rect(pane, rows.len());
@@ -68,4 +72,22 @@ pub(super) fn draw(buf: &mut Buffer, pane: Rect, m: &UiModel, ctx: &RenderCtx) {
             );
         }
     }
+}
+
+/// What a press at `at` hits in the agent pane `pane`: the docked card, and the button
+/// under it (the card's last row but one is its button row).
+#[cfg_attr(not(test), expect(dead_code, reason = "the mouse reads it from CD.4"))]
+pub(super) fn card_at(m: &UiModel, pane: Rect, at: Position) -> Option<(CardId, Option<ActionId>)> {
+    let rows = dock_rows(m, m.now, &Palette::dark(), pane)?;
+    let rect = dock_rect(pane, rows.len());
+    if !rect.contains(at) {
+        return None;
+    }
+    let id = shown_dock(m)?.card;
+    let row = usize::from(at.y - rect.y);
+    let button = (row + 2 == rows.len())
+        .then(|| usize::from(at.x - rect.x).checked_sub(text_offset()))
+        .flatten()
+        .and_then(|col| button_at(&m.keymap, m.cards.get(&id)?, col));
+    Some((id, button))
 }

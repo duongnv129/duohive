@@ -276,6 +276,19 @@ pub(crate) fn chat_card_at(
     chat_pane::card_at(a.chat, m, a.compact, at)
 }
 
+/// The docked card under `at` and the button under it (UI §4.6), zoomed too.
+#[cfg_attr(not(test), expect(dead_code, reason = "the mouse reads it from CD.4"))]
+pub(crate) fn agent_card_at(
+    m: &UiModel,
+    at: ratatui::layout::Position,
+) -> Option<(duohive_core::card::CardId, Option<crate::keymap::ActionId>)> {
+    let a = pane_areas(m)?;
+    a.agent
+        .contains(at)
+        .then(|| dock::card_at(m, a.agent, at))
+        .flatten()
+}
+
 /// Card `id`'s first history row and row count, as drawn now.
 pub(crate) fn chat_card_span(
     m: &UiModel,

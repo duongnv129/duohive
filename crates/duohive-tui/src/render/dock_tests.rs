@@ -206,3 +206,91 @@ fn new_agent_card_docks_on_duo_pane() {
         pane[1]
     );
 }
+
+/// The cell where the card's `[y]` button starts, found by drawing it.
+fn find(m: &UiModel, needle: &str) -> (u16, u16) {
+    let out = lines(m);
+    for (y, line) in out.iter().enumerate() {
+        if let Some(byte) = line.find(needle) {
+            let col = line[..byte].chars().count();
+            return (u16::try_from(col).unwrap(), u16::try_from(y).unwrap());
+        }
+    }
+    panic!("{needle} not drawn:\n{}", out.join("\n"));
+}
+
+fn at(x: u16, y: u16) -> ratatui::layout::Position {
+    ratatui::layout::Position { x, y }
+}
+
+fn hit(m: &UiModel, x: u16, y: u16) -> Option<(u64, Option<crate::keymap::ActionId>)> {
+    super::agent_card_at(m, at(x, y)).map(|(c, b)| (c.0, b))
+}
+
+#[test]
+fn click_on_each_button_hits_it() {
+    use crate::keymap::ActionId::{CardApprove, CardEdit, CardReject};
+    let mut m = spec_model();
+    m.screen = Rect::new(0, 0, 120, 36);
+    m.selected = NodeKey::Duo;
+    raise(
+        &mut m,
+        add_agent_card(1, ago(mins(1))),
+        Duration::from_secs(60),
+    );
+    let (x, y) = find(&m, "[y] Approve");
+    assert_eq!(hit(&m, x, y), Some((1, Some(CardApprove))));
+    let (ex, _) = find(&m, "[e] Edit");
+    assert_eq!(hit(&m, ex, y), Some((1, Some(CardEdit))));
+    let (nx, _) = find(&m, "[n] Reject");
+    assert_eq!(hit(&m, nx, y), Some((1, Some(CardReject))));
+}
+
+#[test]
+fn stop_card_has_no_edit_button_to_hit() {
+    let m = docked(120, 36);
+    let (x, y) = find(&m, "[y] Approve");
+    let (nx, _) = find(&m, "[n] Reject");
+    assert_eq!(hit(&m, x, y).map(|h| h.1.is_some()), Some(true));
+    assert_eq!(hit(&m, nx, y).map(|h| h.1.is_some()), Some(true));
+    assert!(!lines(&m).join("\n").contains("[e] Edit"));
+}
+
+#[test]
+fn click_on_the_card_body_hits_no_button() {
+    let m = docked(120, 36);
+    let (x, y) = find(&m, "squad-1 is");
+    assert_eq!(hit(&m, x, y), Some((1, None)));
+}
+
+#[test]
+fn click_outside_the_card_hits_nothing() {
+    let m = docked(120, 36);
+    let area = pane_areas(&m).unwrap().agent;
+    assert_eq!(hit(&m, area.x + 2, area.bottom() - 2), None);
+    assert_eq!(hit(&m, 2, 2), None);
+}
+
+#[test]
+fn button_hit_survives_the_height_cap() {
+    let mut m = spec_model();
+    m.screen = Rect::new(0, 0, 80, 24);
+    m.selected = NodeKey::Duo;
+    raise(&mut m, tall_card(1), Duration::from_secs(60));
+    let (x, y) = find(&m, "[y] Approve");
+    assert_eq!(
+        hit(&m, x, y),
+        Some((1, Some(crate::keymap::ActionId::CardApprove)))
+    );
+}
+
+#[test]
+fn zoomed_pane_hits_the_card_too() {
+    let mut m = docked(120, 36);
+    m.zoomed = true;
+    let (x, y) = find(&m, "[y] Approve");
+    assert_eq!(
+        hit(&m, x, y),
+        Some((1, Some(crate::keymap::ActionId::CardApprove)))
+    );
+}
