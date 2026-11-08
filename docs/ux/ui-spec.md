@@ -17,7 +17,7 @@ Living document, updated in place. It is the source of truth for what every scre
 
 **Anti-patterns:**
 
-- **No decoration:** no borders inside borders, no ASCII art, no banners. Two stated exceptions: approval cards (docked over the agent pane, §4.6), and the `@` / `/` suggestion popup.
+- **No decoration:** no borders inside borders, no ASCII art, no banners. One stated exception: the `@` / `/` suggestion popup.
 - **No motion except the working spinner.**
 - **No feature descriptions on screen:** the controls and the `?` map speak for themselves.
 
@@ -260,7 +260,7 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 - **A running agent:** its live terminal (§4.1).
 - **Duo:** Duo's own live terminal. When Duo's CLI asks a question, Duo is waiting and joins Needs you; you answer here.
-- **A pending approval card:** whatever the pane shows, the oldest pending card for that agent sits over the top of the pane (§4.6).
+- **A pending approval card:** nothing is drawn over the pane; the card waits in Needs you until you open it (§4.6).
 
 ```
 ┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────────────────────────────────────────────┐
@@ -348,7 +348,7 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
   - `enter` or a click on an agent row selects the agent and starts Typing in the agent pane (Selected mode if the agent is stopped or errored). A click elsewhere in the pane focuses it.
-  - On a card row, `enter` or a click selects the agent the card is docked on (§4.6) and focuses the card there.
+  - On a card row, `enter` or a click opens that card's dialog (§4.6). The selection does not change.
 
 #### 4.1.4 Desktop alerts
 
@@ -504,6 +504,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 
 - **Inherited values:** shown as `inherit: <value>` in `fg.muted`; typing overrides them, and clearing a field restores inheritance.
 - **Stacked prompts:** the prompts this agent stacks under are shown read-only above its own prompt, one line per level; empty levels show "(none)".
+- **Moving:** `tab` / `shift+tab` and `↑` / `↓` move to the next and previous field, then `Save`, then `Cancel` (read-only fields are skipped). On the `Save` / `Cancel` row `←` and `→` move between the two. In a text field `←` / `→` move the cursor and in a choice they change it, so they never leave the field; inside an open popup `↑↓` choose in it. The same keys move between the buttons of a confirmation and of a card (§4.6).
 - **Validation:** checked as you type, with an error line under the field. `Save` stays disabled until the form is valid.
 - **Flags:** error under Flags: `--dangerously-skip-permissions is never allowed` (or the `--allow-…` twin); the form can't be saved (P3-D31).
 - **Renaming:** only while the agent is stopped and has no worktrees; otherwise the name field is read-only with the reason under it.
@@ -728,17 +729,18 @@ The Run row follows the picked agent: radios, preset from its default, for a sto
 
 ### 4.6 Duo's approval cards and actions
 
-When Duo proposes an org change, or wants to stop a starting, working or waiting agent, a card is raised. It does not sit in the chat: it is **docked over the top of the agent pane**, on the agent it concerns, so you decide with that agent's terminal in view. Its outline is `border` (heavy when focused), and its title starts with an amber `◆` (`status.attention`; P3-D4, P2-D27).
+When Duo proposes an org change, or wants to stop a starting, working or waiting agent, a card is raised. It is answered in a **dialog**: the same centred box as a form (§4.4.1) with the same border, `border.focus` outline, button row and focus marker, so a card is answered the way a form is filled. Its title starts with an amber `◆` (`status.attention`; P3-D4, P2-D27) and reads `◆ Stop billing-api · 1 of 3` (`· 1 of N` only when N is more than 1).
 
-- **Which agent:** a stop card docks on the agent it stops, and an edit, move or remove of one agent docks on that agent. Every other card docks on Duo's pane: a new-agent card (the agent doesn't exist yet) and a change to a team, a role or the org defaults. Duo's pane is also where a card goes whose agent has since been removed.
-- **The queue:** the pane shows only the oldest pending card of the agent it is showing, titled `◆ Stop billing-api · 1 of 3` (`· 1 of N` only when N is more than 1). Answering it shows the next. This holds however the agent was selected; nothing switches the pane on its own when a card is raised (the `◆`, the header count, Needs you and the alert say it is waiting).
-- **Getting there:** `enter` or a click on the card's row in Needs you selects the agent and focuses the card (heavy outline). A click on a docked card focuses it, and leaves Typing as any click elsewhere does (§4.1.2).
-- **Keys:** `y`, `e` and `n` act only while a card has focus; `esc` takes focus off it (to the org pane) and the card stays docked. While you are Typing to an agent a docked card is shown but takes no keys: they go to the agent. The buttons are clickable.
-  - **Approve** (`y`) applies the change.
-  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the agent pane. On a stop card `e` is disabled, and the footer says `nothing to edit · y or n`. On a new-agent card it opens the agent form; the task the card holds is kept unchanged. On a new-agent card the form shows the task under the fields (`Task  <first line>`).
+- **It never opens by itself.** A modal would take the keys you are typing to an agent. A raised card shows as a `◆` row in Needs you, in the header count and in the alert, and waits there. The dialog opens from `enter` or a click on the card's row in Needs you; the selection and the agent pane do not change.
+- **The queue:** the dialog shows the card you opened; `1 of N` counts all pending cards, oldest first. Answering one shows the next oldest in the same dialog, so a queue is cleared without going back to Needs you. `esc` closes the dialog and every pending card stays pending.
+- **Body:** the card's title line and its change rows (below), then the button row `[ Approve ]  [ Edit ]  [ Reject ]` with the keys beside each as `y`, `e`, `n`. The focused button has the form's focus marker. Focus starts on `Reject` so a second `enter` can't approve what you haven't read (a call of the plan, not the author's).
+- **Keys:** `←` `→` and `↑` `↓` move between the buttons (the same as in a form's Save and Cancel row, §4.4.1); `enter` presses the focused one; `y`, `e` and `n` press theirs at once; `esc` closes the dialog. The keys are those of a dialog (§4.11); they are not rebindable here except `y` / `e` / `n`, which stay rebindable (card actions, §4.11).
+  - **Approve** (`y`) applies the change and shows the next card, or closes the dialog when it was the last.
+  - **Edit** (`e`) opens the form pre-filled. Save there approves the edited change and returns to the next card or the screen; `esc` in that form returns to the card, unanswered. On a stop card `e` is disabled and its button is dimmed; it is skipped by the arrow keys. On a new-agent card it opens the agent form; the task the card holds is kept unchanged, and the form shows it under the fields (`Task  <first line>`).
   - **Reject** (`n`) tells Duo it was declined.
-- **Size:** the card is at most 66 cells wide, at the top left of the pane's terminal area, and at most half the pane's rows (never fewer than 5). Rows past that are cut: the first line, then the `flags` rows, then the rest are kept, and one `… <n> more rows` stands for the cut; the title, the buttons and the bottom edge always stay. `flags` are cut only when they alone do not fit, and `e` opens the form for the whole change. The agent's terminal is not resized: the card covers its top rows, and the prompt at the bottom stays visible. A pane under 7 rows draws no card, and then the card takes no keys and no clicks (`ctrl+↓` gives the pane its rows back).
-- **Zoomed:** a zoomed agent shows its docked card in the same place, so a zoom never hides an approval (§4.2). A click does nothing while zoomed (§4.1.2), so a card answers there by key only if it already had focus when you zoomed; otherwise `z` restores first.
+- **Size:** the form's: centred, at most 66 cells wide, as tall as its rows, clipped to the screen with the rows cut as a form's are (first line, then the `flags` rows, then the rest, with `… <n> more rows`; the title and the button row always stay). A screen too small for the buttons draws the dialog anyway, since it is modal: `esc` always closes it.
+- **Mouse:** a click on a button presses it; a click outside the box does nothing (as for a form).
+- **While you are Typing:** a dialog, once opened, takes every key as a form does; Typing resumes when it closes.
 - **What a change sets:** under its first line, an org-change card lists every field the change sets or changes, one row each, so nothing is approved unseen. An add shows `+ <field>: <value>` for each field it sets (`every field inherited` when none). An edit shows `~ <field>: <old> → <new>` for each field that differs, including a rename (`~ name: QA → Testing`); `inherit` stands for unset (`unset` for org defaults), unchanged fields are left out, and `no changes` stands alone. Editing the org defaults also lists Duo's name and CLI. A move shows `from <place> → <place>`; a remove shows what goes with it (`with 2 roles, 3 agents`). A prompt shows its first line and, when it has more, `(<n> lines)`. A `flags` row is drawn in `status.attention` and shown in full, wrapping inside the card; other long values are cut with `…`.
 - **Several cards:** each is its own Needs you row, oldest first. A row's `enter` or click goes to that card's agent and focuses the oldest card there, which may be an earlier one than the row's.
 - **Answered cards** become one `→` line in the chat with the result ("→ approved: stop squad-1"). The line shows the answer's time at its right (`→ approved: stop squad-1   10:16`) and sits where the answer came in. The chat holds no pending card.
@@ -919,7 +921,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 - **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, Resume (v1.1), New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
 - **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
-- **Conflicts:** a key is unique within its context (the docked card's keys apply while a card is focused, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane, Chat and Docked card; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card on a docked card). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
+- **Conflicts:** a key is unique within its context (the card dialog's keys apply only while it is open, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane, Chat and Card dialog; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the card dialog). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
 - **Storage:** `settings.toml` `[keys]` (TD §7). An unknown action id or a key that doesn't parse is ignored, and the default applies; the Keys screen shows one line above its footer, `ignored in settings.toml: <id> · using the default` (one line per entry, above the list's footer, with the list keeping room for them).
 
 ### 4.11 Key map
@@ -941,7 +943,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  ctrl+↑↓   resize chat            z         zoom agent             @ /       agents / commands   │
 │                                   v         last reply on/off      PgUp/Dn   scroll history      │
 │ Mouse                             o         open org.toml                                        │
-│  click     select + type                                           Docked card                   │
+│  click     select + type                                           Card dialog                   │
 │  right     node menu             Needs you                                                       │
 │  wheel     scroll                 ↑↓        move                                                 │
 │  drag      move node              enter     go to agent or card      y e n     approve/edit/reject │
@@ -987,7 +989,7 @@ Below 100 columns it becomes one scrolling column:
 | | `z` | Zoom the selected agent |
 | | `v` | Last reply on / off |
 | | `o` | Open `org.toml` in `$EDITOR` |
-| Needs you | `↑` `↓`, `enter` | Move; go to the agent (start typing) or to its docked card (§4.6) |
+| Needs you | `↑` `↓`, `enter` | Move; go to the agent (start typing) or open its card (§4.6) |
 | Agent pane | `enter` / `ctrl+q` | Start / stop typing (a click on a running agent also starts it) |
 | | `z` | Zoom / restore |
 | | `space` | Give work |
@@ -996,8 +998,8 @@ Below 100 columns it becomes one scrolling column:
 | Chat | `enter` / `alt+enter` | Send / new line |
 | | `@` / `/` | Agent / command suggestions |
 | | `PgUp` / `PgDn` | Scroll the chat history |
-| Docked card | `y` / `e` / `n`, `esc` | Approve / edit / reject the focused card; take focus off it (§4.6) |
-| Dialogs and forms | `enter`, `esc`, `ctrl+s` | Act on the focused button, cancel, save |
+| Card dialog | `y` / `e` / `n`, `←→↑↓`, `enter`, `esc` | Approve / edit / reject; move between buttons; press the focused one; close (§4.6) |
+| Dialogs and forms | `↑` `↓`, `tab` / `shift+tab`, `enter`, `esc`, `ctrl+s` | Move between fields and buttons (`↑↓` and `tab` everywhere; `←→` on a button row), act on the focused button, cancel, save. `↑↓` are the popup's inside an open Model or Effort popup; `←→` stay a text field's cursor and a choice's options |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus, and type to a running agent (§4.1.2); node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
 
