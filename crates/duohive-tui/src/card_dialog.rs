@@ -1,11 +1,11 @@
 //! The approval card dialog (UI §4.6; CDL-D1 to CDL-D6): a pending card is answered in a
 //! centred dialog like a form. The queue is every pending card, oldest first.
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use duohive_core::card::{CardChange, CardId};
 use duohive_core::command::{Command, OrgEdit};
 
-use crate::forms::{card_editable, form_for_card};
+use crate::forms::{FormPurpose, card_editable, form_for_card};
 use crate::input::{Action, UiEffect};
 use crate::keymap::ActionId;
 use crate::model::{Dialog, UiModel};
@@ -75,18 +75,35 @@ fn next(m: &mut UiModel) {
     }
 }
 
+/// Whether the open dialog is on `id`: the card itself, or the form saving its edit (whose
+/// confirmation put the form back, so the card dialog is not the one waiting).
+fn shows(m: &UiModel, id: CardId) -> bool {
+    match &m.dialog {
+        Some(Dialog::Card(d)) => d.card == id,
+        Some(Dialog::Form(f)) => f.saving && f.purpose == FormPurpose::Card(id),
+        _ => false,
+    }
+}
+
 /// `answered` left the pending cards: if the dialog showed it, it moves on.
 pub(crate) fn advance(m: &mut UiModel, answered: CardId) {
-    if matches!(&m.dialog, Some(Dialog::Card(d)) if d.card == answered) {
+    if shows(m, answered) {
         next(m);
     }
 }
 
 /// A card the dialog shows that is no longer pending (a reconnect's snapshot) moves on.
 pub(crate) fn keep_valid(m: &mut UiModel) {
-    if let Some(Dialog::Card(d)) = &m.dialog
-        && !m.cards.contains_key(&d.card)
-    {
+    let gone = match &m.dialog {
+        Some(Dialog::Card(d)) => Some(d.card),
+        Some(Dialog::Form(f)) if f.saving => match f.purpose {
+            FormPurpose::Card(id) => Some(id),
+            FormPurpose::Edit => None,
+        },
+        _ => None,
+    }
+    .filter(|id| !m.cards.contains_key(id));
+    if gone.is_some() {
         next(m);
     }
 }
@@ -100,7 +117,17 @@ pub(crate) fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
             _ => Action::CardReject,
         });
     }
+    if k.modifiers.contains(KeyModifiers::CONTROL) {
+        return (k.code == KeyCode::Char('c')).then_some(Action::Quit);
+    }
+    if k.modifiers.contains(KeyModifiers::ALT) {
+        return None;
+    }
     match k.code {
+        KeyCode::Esc => Some(Action::Esc),
+        KeyCode::Tab => Some(Action::Tab),
+        KeyCode::BackTab => Some(Action::BackTab),
+        KeyCode::Char('q') => Some(Action::Quit),
         KeyCode::Up => Some(Action::Up),
         KeyCode::Down => Some(Action::Down),
         KeyCode::Left => Some(Action::Left),

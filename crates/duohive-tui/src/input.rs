@@ -173,6 +173,10 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
     if m.typing() {
         return Some(agent::typing_key(k));
     }
+    // The card dialog reads its own bindings first, modified ones (`ctrl+y`) included.
+    if matches!(m.dialog, Some(Dialog::Card(_))) {
+        return crate::card_dialog::map_key(m, k);
+    }
     if matches!(m.dialog, Some(Dialog::GiveWork(_))) && k.modifiers.is_empty() {
         // `↑↓` pick a role's agent (UI §4.5).
         match k.code {
@@ -223,7 +227,6 @@ pub fn map_key(m: &UiModel, k: KeyEvent) -> Option<Action> {
         return common;
     }
     match &m.dialog {
-        Some(Dialog::Card(_)) => crate::card_dialog::map_key(m, k),
         Some(d) => dialog_key(d, k),
         None => panes::pane_key(&m.keymap, m.focus.pane, &k),
     }

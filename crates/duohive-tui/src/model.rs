@@ -26,7 +26,9 @@ use crate::card_dialog::CardDialog;
 use crate::chat::{self, ChatLines};
 use crate::first_run::FirstRun;
 use crate::focus::Focus;
-use crate::forms::{Chooser, Form, GiveWork, LineEdit, MoveTo, ResumePicker, SettingsState};
+use crate::forms::{
+    Chooser, Form, FormPurpose, GiveWork, LineEdit, MoveTo, ResumePicker, SettingsState,
+};
 use crate::keymap::{KeyMapState, Keymap, KeysState};
 use crate::suggest::Suggest;
 
@@ -302,8 +304,10 @@ impl UiModel {
             Event::Snapshot(s) => self.apply_snapshot(*s),
             Event::OrgChanged { org, problems } => {
                 self.apply_org(*org, problems);
-                // The edit a form was waiting for (or another) is in: the form is done.
-                if matches!(&self.dialog, Some(Dialog::Form(f)) if f.saving) {
+                // The edit a form was waiting for (or another) is in: the form is done. A
+                // card's form waits for the card's answer, which comes next and moves on.
+                if matches!(&self.dialog, Some(Dialog::Form(f)) if f.saving && f.purpose == FormPurpose::Edit)
+                {
                     self.dialog = None;
                 }
             }

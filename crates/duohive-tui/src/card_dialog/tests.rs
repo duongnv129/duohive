@@ -414,3 +414,58 @@ fn an_empty_org_still_opens_duos_card() {
     assert_eq!(shown(&m).card, CardId(2));
     assert!(text(&m).contains("[ y Approve ]"));
 }
+
+/// A card's edit form waiting for its answer, as the confirmation path leaves it.
+fn saving_form(m: &mut UiModel, id: u64) {
+    let card = m.cards.get(&CardId(id)).unwrap().clone();
+    let mut f = crate::forms::form_for_card(&card, m).unwrap();
+    f.saving = true;
+    m.dialog = Some(Dialog::Form(Box::new(f)));
+}
+
+#[test]
+fn a_confirmed_edit_moves_on_to_the_next_card() {
+    let mut m = with_cards(vec![
+        new_agent_card(1, clock(10, 15)),
+        add_agent_card(2, clock(10, 21)),
+    ]);
+    saving_form(&mut m, 2);
+    // The edit lands first and must not close the form that waits for the answer.
+    m.apply(Event::OrgChanged {
+        org: Box::new(m.org.clone()),
+        problems: Default::default(),
+    });
+    assert!(matches!(m.dialog, Some(Dialog::Form(_))), "{:?}", m.dialog);
+    answered(&mut m, 2);
+    assert_eq!(shown(&m).card, CardId(1));
+}
+
+#[test]
+fn a_confirmed_edit_of_the_last_card_closes() {
+    let mut m = with_cards(vec![add_agent_card(2, clock(10, 21))]);
+    saving_form(&mut m, 2);
+    m.apply(Event::OrgChanged {
+        org: Box::new(m.org.clone()),
+        problems: Default::default(),
+    });
+    answered(&mut m, 2);
+    assert_eq!(m.dialog, None);
+}
+
+#[test]
+fn a_rebound_card_key_with_a_modifier_still_answers() {
+    let mut m = opened(add_agent_card(2, clock(10, 21)));
+    let ctrl_y = crate::keymap::parse_binding("ctrl+y").unwrap();
+    m.keymap
+        .rebind(crate::keymap::ActionId::CardApprove, ctrl_y)
+        .unwrap();
+    let k = KeyEvent::new(KeyCode::Char('y'), KeyModifiers::CONTROL);
+    assert_eq!(press(&mut m, k), approve(2, None));
+    let mut m = opened(add_agent_card(2, clock(10, 21)));
+    let alt_n = crate::keymap::parse_binding("alt+n").unwrap();
+    m.keymap
+        .rebind(crate::keymap::ActionId::CardReject, alt_n)
+        .unwrap();
+    let k = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::ALT);
+    assert_eq!(press(&mut m, k), reject(2));
+}

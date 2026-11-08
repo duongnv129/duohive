@@ -264,13 +264,6 @@ To zoom while typing, press `ctrl+q`, then `z`.
 
 ```
 ┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────────────────────────────────────────────┐
-│ ┏━ ◆ Proposed change · 1 of 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓                       │
-│ ┃ + Add agent pay-web in Payments › Frontend (new role)                   ┃                       │
-│ ┃   + cli: Claude Code                                                    ┃                       │
-│ ┃   + directory: ~/code/web                                               ┃                       │
-│ ┃   + worktree: on                                                        ┃                       │
-│ ┃ [y] Approve   [e] Edit   [n] Reject                                     ┃                       │
-│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                       │
 │ opencode · ready                                                                                 │
 │ ❯                                                                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -742,25 +735,23 @@ When Duo proposes an org change, or wants to stop a starting, working or waiting
 - **Mouse:** a click on a button presses it; a click outside the box does nothing (as for a form).
 - **While you are Typing:** a dialog, once opened, takes every key as a form does; Typing resumes when it closes.
 - **What a change sets:** under its first line, an org-change card lists every field the change sets or changes, one row each, so nothing is approved unseen. An add shows `+ <field>: <value>` for each field it sets (`every field inherited` when none). An edit shows `~ <field>: <old> → <new>` for each field that differs, including a rename (`~ name: QA → Testing`); `inherit` stands for unset (`unset` for org defaults), unchanged fields are left out, and `no changes` stands alone. Editing the org defaults also lists Duo's name and CLI. A move shows `from <place> → <place>`; a remove shows what goes with it (`with 2 roles, 3 agents`). A prompt shows its first line and, when it has more, `(<n> lines)`. A `flags` row is drawn in `status.attention` and shown in full, wrapping inside the card; other long values are cut with `…`.
-- **Several cards:** each is its own Needs you row, oldest first. A row's `enter` or click goes to that card's agent and focuses the oldest card there, which may be an earlier one than the row's.
+- **Several cards:** each is its own Needs you row, oldest first. A row's `enter` or click opens the dialog on that card, which may be a later one than the oldest; answering it shows the oldest pending card next.
 - **Answered cards** become one `→` line in the chat with the result ("→ approved: stop squad-1"). The line shows the answer's time at its right (`→ approved: stop squad-1   10:16`) and sits where the answer came in. The chat holds no pending card.
 - **Duo isn't blocked:** Duo keeps working while a card waits; your answer reaches Duo later as a message from you. Each card is its own Needs you row.
 - **Action lines:** each of Duo's tool calls shows as one `→` line with its result: `typed in`, `queued (… is working)`, `started`, `stopped`, `refused (…)` or `card raised`. Delivery stays visible through `message_status` and the `✉` count. Each action line is `→ <text>   <result>`, with three spaces before the result, in `fg.muted`. If the line wraps, it hangs under the text.
 
-The mock shows the card focused (heavy outline) on Duo's pane, with the chat below it; unfocused, its outline is the light `border`. The chat holds only the results.
+The mock shows the dialog, with focus on `Reject`, and Duo's chat, which holds only the results.
 
 ```
-┌─ ⬢ Duo · OpenCode · your manager agent ──────────────────────────────────────────────────────────┐
-│ ┏━ ◆ Proposed change · 1 of 2 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓ │
-│ ┃ + Add agent pay-web in Payments › Frontend (new role)                                      ┃ │
-│ ┃   + cli: Claude Code                                                                       ┃ │
-│ ┃   + directory: ~/code/web                                                                  ┃ │
-│ ┃   + worktree: on                                                                           ┃ │
-│ ┃ [y] Approve   [e] Edit   [n] Reject                                                        ┃ │
-│ ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛ │
-│ opencode · ready                                                                                 │
-│ ❯                                                                                                │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+          ┌─ ◆ Proposed change · 1 of 2 ───────────────────────────────────┐
+          │                                                                │
+          │  + Add agent pay-web in Payments › Frontend (new role)         │
+          │    + cli: Claude Code                                          │
+          │    + directory: ~/code/web                                     │
+          │    + worktree: on                                              │
+          │                                                                │
+          │            [ y Approve ]    [ e Edit ]   ▌[ n Reject ]         │
+          └────────────────────────────────────────────────────────────────┘
 ┌─ ⬢ Duo · ● working ──────────────────────────────────────────────────────────────────────────────┐
 │ 10:15 Duo   squad-1 has been quiet 12m. Proposed: stop it.                                       │
 │             → approved: stop squad-1                                 10:16                       │
@@ -1119,7 +1110,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | Rule | Detail |
 |---|---|
 | One meaning per key | `enter` acts on the selection or the focused button; `esc` backs out one level and never quits; `tab` moves focus between panes and fields only; lists use `↑↓`; `?` opens help |
-| Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while it has focus |
+| Typing goes where focus is | In the agent pane's Typing mode, every key goes to the agent, `ctrl+c` included, until `ctrl+q`; while scrolled back in DuoHive's snapshot, `PgUp` / `PgDn` page it and `ctrl+q` leaves Typing and stays scrolled (§4.1.2). The chat input always takes typed text; `y` / `e` / `n` answer a card only while its dialog is open |
 | Quit | `q`, or `ctrl+c` when not typing. Agents keep running. Both are ignored for the half second after a click or `enter` on an agent whose terminal isn't showing yet (§4.1.2) |
 | Mouse parity | Every click does what a key does. A click on a pane focuses it (`tab`); on an org row it selects that row (`↑↓`), so an agent's terminal shows in the agent pane; a click on an agent that is not stopped or errored, or in the agent pane showing one, also starts Typing on release, as `enter` does (§4.1.2), and a team or role is selected without folding. Right-click opens the node's menu. The wheel scrolls the pane under the pointer, in Typing mode too (§4.1.2). Dragging a node moves it, and dragging the chat edge resizes it. Clicking a header count filters. In dialogs, forms, lists (Worktrees, Settings, Move to…, pickers, key bindings) and first run, a click on a button or row does what its key does. Dragging across text in the agent pane (zoomed too), the chat or Needs you selects it, drawn reversed, and the release copies it to the clipboard with a `copied N characters` note; the next click or key clears it. A drag that starts on an org row moves the node and one on the chat's top edge resizes it. |
 | Nothing destructive by surprise | Stop, delete, remove-unmerged-worktree and replace-org ask first, with focus on Cancel; Duo's org changes, and its stops of starting, working or waiting agents, come as approval cards |
