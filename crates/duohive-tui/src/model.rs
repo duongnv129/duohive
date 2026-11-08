@@ -294,7 +294,6 @@ impl UiModel {
     }
 
     /// Applies an engine event; `true` when the screen needs a redraw.
-    #[expect(clippy::too_many_lines, reason = "one arm per engine event")]
     pub fn apply(&mut self, e: Event) -> bool {
         match e {
             Event::Snapshot(s) => self.apply_snapshot(*s),
@@ -382,15 +381,14 @@ impl UiModel {
                 return self.update_view(&agent, |v| v.inbox = waiting);
             }
             Event::MessageRefused { reason, .. } => chat::refused(self, reason),
-            // The chat draws a pending card at its place (UI §4.6).
+            // The agent pane docks a pending card on the agent it concerns (UI §4.6).
             Event::CardRaised(card) => {
                 self.cards.insert(card.id, *card);
             }
             // Its `CardResult` chat line follows and takes its place.
             Event::CardAnswered { card, .. } => {
-                self.cards.remove(&card);
-                if self.focus.card == Some(card) {
-                    self.focus.card = None;
+                if let Some(answered) = self.cards.remove(&card) {
+                    crate::dock::pass_focus(self, &answered);
                 }
             }
             e @ (Event::RoleAssigned { .. } | Event::AssignRefused { .. }) => self.apply_role(e),
@@ -821,7 +819,7 @@ const NOT_TAKEN_RETRY: &str = " · enter to try again";
 /// goes to the agent.
 pub(crate) const SPACE_RETRY: &str = " · space to try again";
 /// The footer note when a role's task raised a clone card (UI §4.5, P3-D3).
-const NO_FREE_CARD: &str = "No free agent · a card in the chat proposes one";
+const NO_FREE_CARD: &str = "No free agent · a card on Duo proposes one";
 
 /// The footer note when the system has no desktop notifier (UI §4.1.4).
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";

@@ -1,5 +1,5 @@
-//! Keys on a focused approval card (UI §4.6, §4.11; P3-D7, P3-D22): `y` approves, `e`
-//! edits where it can, `n` rejects, `esc` returns to the input. Saving a card's form
+//! Keys on a focused, docked approval card (UI §4.6, §4.11; P3-D7, P3-D22): `y` approves, `e`
+//! edits where it can, `n` rejects, `esc` returns to the org pane. Saving a card's form
 //! approves the edited change.
 
 use duohive_core::card::{CardChange, CardId};
@@ -18,15 +18,24 @@ const NOTHING_TO_EDIT: &str = "nothing to edit · y or n";
 /// types returns focus to the input first.
 pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
     let id = m.focus.card?;
+    // Only the card drawn takes the keys, whatever moved the selection since.
+    if !crate::dock::is_shown(m, id) {
+        m.focus.card = None;
+        return None;
+    }
     Some(match a {
+        // Zoom, and `esc` out of a zoom, are the pane's: the card keeps its focus.
+        Action::Zoom => return None,
+        Action::Esc if m.zoomed_agent().is_some() => return None,
         Action::CardApprove => answer(id, true),
         Action::CardReject => answer(id, false),
         Action::CardEdit => edit(m, id),
         Action::Esc => {
             m.focus.card = None;
+            m.focus.pane = Pane::Org;
             Vec::new()
         }
-        Action::Up | Action::Down | Action::Enter => Vec::new(),
+        Action::Up | Action::Down => Vec::new(),
         Action::ChatGrow | Action::ChatShrink | Action::PageUp | Action::PageDown => return None,
         _ => {
             m.focus.card = None;
@@ -91,11 +100,12 @@ pub(super) fn edited(m: &UiModel, id: CardId, edit: OrgEdit) -> CardChange {
     }
 }
 
-/// Saving a card's form approves the edited change and returns focus to the chat.
+/// Saving a card's form approves the edited change and returns to the agent pane; the card
+/// keeps the focus until its answer comes, which passes it on (CD-D4).
 pub(super) fn approve_edited(m: &mut UiModel, id: CardId, edit: OrgEdit) -> Vec<UiEffect> {
     let change = edited(m, id, edit);
-    m.focus.pane = Pane::Chat;
-    m.focus.card = None;
+    m.focus.pane = Pane::Agent;
+    m.focus.card = Some(id);
     vec![UiEffect::Send(Command::ApproveCard {
         card: id,
         edited: Some(Box::new(change)),

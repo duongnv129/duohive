@@ -712,7 +712,7 @@ fn no_free_proposes_clone_card() {
     assert_eq!(m.dialog, None);
     assert_eq!(
         m.footer_note.as_deref(),
-        Some("No free agent · a card in the chat proposes one")
+        Some("No free agent · a card on Duo proposes one")
     );
 }
 

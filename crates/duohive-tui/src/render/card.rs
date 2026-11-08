@@ -50,7 +50,10 @@ pub(crate) fn card_title(card: &Card, org: &Org) -> String {
 /// The card's body lines, then its button row, as text (tests read cards this way).
 #[cfg(test)]
 pub(crate) fn card_lines(card: &Card, m: &UiModel, now: Millis) -> Vec<String> {
-    let mut lines: Vec<String> = body(card, m, now).into_iter().map(|l| l.text).collect();
+    let mut lines: Vec<String> = body_lines(card, m, now)
+        .into_iter()
+        .map(|l| l.text)
+        .collect();
     lines.push(button_row(card, &m.keymap));
     lines
 }
@@ -93,23 +96,51 @@ pub(crate) fn text_offset() -> usize {
     SIDE
 }
 
-/// The card `cells` wide at most: its rows, outline included.
+/// How a card is drawn: focus, width, its place in its queue and its height.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Look {
+    /// Heavy outline when focused.
+    pub focused: bool,
+    /// The most cells wide.
+    pub cells: usize,
+    /// `(position, total)` in the agent's queue; shown only when `total` is more than 1.
+    pub queue: Option<(usize, usize)>,
+    /// The most rows, outline included (UI §4.6 *Height*).
+    pub max_rows: usize,
+}
+
+impl Look {
+    /// A card that takes whatever room it needs.
+    #[cfg(test)]
+    pub(crate) fn whole(focused: bool, cells: usize) -> Self {
+        Self {
+            focused,
+            cells,
+            queue: None,
+            max_rows: usize::MAX,
+        }
+    }
+}
+
+/// The card: its rows, outline included.
 pub(crate) fn card_rows(
     card: &Card,
     m: &UiModel,
     now: Millis,
-    focused: bool,
-    cells: usize,
+    look: Look,
     p: &Palette,
 ) -> Vec<Row> {
-    let w = cells.min(CARD_WIDTH);
-    let lines: &Lines = if focused { &HEAVY } else { &LIGHT };
+    let w = look.cells.min(CARD_WIDTH);
+    let lines: &Lines = if look.focused { &HEAVY } else { &LIGHT };
     let inner = w.saturating_sub(2 * SIDE);
     let title = card_title(card, &m.org);
-    let rest = title.trim_start_matches(DIAMOND).trim_start();
+    let mut rest = title.trim_start_matches(DIAMOND).trim_start().to_owned();
+    if let Some((position, total)) = look.queue.filter(|(_, total)| *total > 1) {
+        rest = format!("{rest} · {position} of {total}");
+    }
     // `┏━ ◆ ` before the title, then ` ` and `┓`; at least one `━` fills.
     let frame = 7;
-    let shown = truncate_end(rest, w.saturating_sub(frame + 1));
+    let shown = truncate_end(&rest, w.saturating_sub(frame + 1));
     let fill = lines.h.repeat(w.saturating_sub(width(&shown) + frame));
     let mut rows = vec![vec![
         (format!("{}{} ", lines.top[0], lines.h), p.border),
@@ -117,22 +148,59 @@ pub(crate) fn card_rows(
         (format!(" {shown} "), p.fg),
         (format!("{fill}{}", lines.top[1]), p.border),
     ]];
-    let mut body = body(card, m, now);
-    body.push(BodyLine::plain(button_row(card, &m.keymap)));
-    for line in body {
-        let (pieces, colour) = if line.marked {
-            (wrap_hanging(&line.text, inner), p.attention)
+    let side = |piece: &str, colour| -> Row {
+        vec![
+            (format!("{} ", lines.v), p.border),
+            (pad_right(piece, inner), colour),
+            (format!(" {}", lines.v), p.border),
+        ]
+    };
+    let mut body = Vec::new();
+    for line in body_lines(card, m, now) {
+        if line.marked {
+            body.extend(
+                wrap_hanging(&line.text, inner)
+                    .into_iter()
+                    .map(|t| (t, true)),
+            );
         } else {
-            (vec![truncate_end(&line.text, inner)], p.fg)
-        };
-        for piece in pieces {
-            rows.push(vec![
-                (format!("{} ", lines.v), p.border),
-                (pad_right(&piece, inner), colour),
-                (format!(" {}", lines.v), p.border),
-            ]);
+            body.push((truncate_end(&line.text, inner), false));
         }
     }
+    // The title, the buttons and the bottom edge always stay; the body gets what is left.
+    // When it does not all fit, the first line, then the `flags` rows, then the rest are
+    // kept, and one `… N more rows` stands for the cut (UI §4.6 *Height*).
+    let slots = look.max_rows.saturating_sub(3);
+    let cut = if body.len() <= slots {
+        Vec::new()
+    } else {
+        let marked = body
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, m))| *m)
+            .map(|(i, _)| i);
+        let rest = (1..body.len()).filter(|i| !body[*i].1);
+        let priority: Vec<usize> = std::iter::once(0)
+            .chain(marked.filter(|i| *i != 0))
+            .chain(rest)
+            .collect();
+        let kept: Vec<usize> = priority.into_iter().take(slots.saturating_sub(1)).collect();
+        (0..body.len()).filter(|i| !kept.contains(i)).collect()
+    };
+    let mut ellipsis = !cut.is_empty();
+    for (i, (text, marked)) in body.into_iter().enumerate() {
+        if cut.contains(&i) {
+            if std::mem::take(&mut ellipsis) {
+                rows.push(side(&format!("… {} more rows", cut.len()), p.fg_muted));
+            }
+            continue;
+        }
+        rows.push(side(&text, if marked { p.attention } else { p.fg }));
+    }
+    rows.push(side(
+        &truncate_end(&button_row(card, &m.keymap), inner),
+        p.fg,
+    ));
     let bottom = lines.h.repeat(w.saturating_sub(2));
     rows.push(vec![(
         format!("{}{bottom}{}", lines.bottom[0], lines.bottom[1]),
@@ -197,7 +265,7 @@ fn button_row(card: &Card, km: &Keymap) -> String {
 
 /// The change in UI §4.6's style: `+` adds, `~` changes or moves, `-` removes; the rows
 /// under it hang with every field the change sets, or the new agent's task (P3-D15).
-fn body(card: &Card, m: &UiModel, now: Millis) -> Vec<BodyLine> {
+fn body_lines(card: &Card, m: &UiModel, now: Millis) -> Vec<BodyLine> {
     let org = &m.org;
     let plain = |lines: Vec<String>| lines.into_iter().map(BodyLine::plain).collect();
     match &card.change {

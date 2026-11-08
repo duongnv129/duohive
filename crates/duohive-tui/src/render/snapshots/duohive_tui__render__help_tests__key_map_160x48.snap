@@ -14,11 +14,11 @@ expression: "render_lines(&help_model(), &ctx(), 160, 48).join(\"\\n\")"
 │  q         quit (agents run on)                       e     edit (Duo: Edit org)                           enter     send                                    │
 │  ctrl+c    quit if not typing                         m     move to…                                       alt+enter new line                                │
 │  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /       agents / commands                       │
-│                                                       z     zoom agent                                     ↑         newest card                             │
-│Mouse                                                  v     last reply on/off                              y e n     approve/edit/reject                     │
-│  click     select + type                              o     open org.toml                                  PgUp/Dn   scroll history                          │
-│  right     node menu                                                                                                                                         │
-│  wheel     scroll                                   Needs you                                                                                                │
+│                                                       z     zoom agent                                     PgUp/Dn   scroll history                          │
+│Mouse                                                  v     last reply on/off                                                                                │
+│  click     select + type                              o     open org.toml                                Docked card                                         │
+│  right     node menu                                                                                       y e n     approve/edit/reject                     │
+│  wheel     scroll                                   Needs you                                              esc       back to the org pane                    │
 │  drag      move node                                  ↑↓    move                                                                                             │
 │                                                       enter go to agent or card                                                                              │
 │                                                                                                                                                              │

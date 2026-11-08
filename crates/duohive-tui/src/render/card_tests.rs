@@ -10,18 +10,17 @@ use duohive_core::org::{Fields, NodeKey};
 use duohive_core::status::AgentState;
 use duohive_core::testkit::n;
 
-use super::card::{CARD_WIDTH, card_lines, card_rows, card_title};
+use super::card::{CARD_WIDTH, Look, card_lines, card_rows, card_title};
 use crate::fixtures::{
     action_entry, add_agent_card, card, chat_entry, clock, ctx, mins, new_agent_card, qa_role,
     raise, render_lines, spec_model, status, stop_card,
 };
-use crate::focus::Pane;
 use crate::format::width;
 use crate::model::UiModel;
 use crate::theme::Palette;
 
-/// UI §4.6's chat: a stop already answered, a split story and Duo's two action lines,
-/// then `card` raised at 10:21; the chat has focus.
+/// UI §4.6's screen: a stop already answered, a split story and Duo's two action lines in
+/// the chat, and `card` pending, docked on its agent's pane with the keys.
 fn with_card(c: duohive_core::card::Card) -> UiModel {
     let mut m = spec_model();
     m.agents.get_mut(&n("squad-1")).unwrap().status = status(AgentState::Working, mins(12));
@@ -63,24 +62,20 @@ fn with_card(c: duohive_core::card::Card) -> UiModel {
         ),
     ];
     let id = c.id;
+    let agent = crate::dock::dock_agent(&c, &m.org);
     raise(&mut m, c, mins(1));
-    m.focus.pane = Pane::Chat;
+    assert!(m.reveal_agent(&agent));
     m.focus.card = Some(id);
     m
 }
 
-/// The chat pane and the footer.
-fn chat_and_footer(lines: &[String]) -> Vec<String> {
-    let top = lines
-        .iter()
-        .position(|l| l.starts_with("┌─ ⬢") || l.starts_with("┏━ ⬢"))
-        .unwrap();
-    lines[top..].to_vec()
-}
-
 fn snap(name: &str, m: &UiModel, w: u16, h: u16) -> String {
+    // The footer offers a card's keys only while the pane can draw it, by `m.screen`.
+    let mut m = m.clone();
+    m.screen = ratatui::layout::Rect::new(0, 0, w, h);
+    let m = &m;
     let lines = render_lines(m, &ctx(), w, h);
-    let text = chat_and_footer(&lines).join("\n");
+    let text = lines.join("\n");
     insta::assert_snapshot!(name, text);
     text
 }
@@ -91,13 +86,13 @@ fn card_focused_snapshots() {
     snap("card_focused_80x24", &m, 80, 24);
     let wide = snap("card_focused_160x48", &m, 160, 48);
     for want in [
-        "┃             ┏━ ◆ Proposed change ━",
-        "┃             ┃ + Add agent pay-web in Payments › QA",
-        "┃             ┃   + cli: Claude Code",
-        "┃             ┃   + directory: ~/code/web",
-        "┃             ┃   + worktree: on",
-        "┃             ┃ [y] Approve   [e] Edit   [n] Reject",
-        " y approve · e edit · n reject · esc input",
+        "┏━ ◆ Proposed change ━",
+        "┃ + Add agent pay-web in Payments › QA",
+        "┃   + cli: Claude Code",
+        "┃   + directory: ~/code/web",
+        "┃   + worktree: on",
+        "┃ [y] Approve   [e] Edit   [n] Reject",
+        " y approve · e edit · n reject · esc back",
     ] {
         assert!(wide.contains(want), "{want}\n{wide}");
     }
@@ -108,10 +103,7 @@ fn card_unfocused_snapshot() {
     let mut m = with_card(add_agent_card(2, clock(10, 21)));
     m.focus.card = None;
     let text = snap("card_unfocused_160x48", &m, 160, 48);
-    assert!(
-        text.contains("┃             ┌─ ◆ Proposed change ─"),
-        "{text}"
-    );
+    assert!(text.contains("┃ ┌─ ◆ Proposed change ─"), "{text}");
     assert!(!text.contains("┏━ ◆"), "{text}");
 }
 
@@ -123,7 +115,7 @@ fn stop_card_snapshot() {
         "┏━ ◆ Stop squad-1 ━",
         "┃ squad-1 is ● working 12m",
         "┃ [y] Approve   [n] Reject",
-        " y approve · n reject · esc input",
+        " y approve · n reject · esc back",
     ] {
         assert!(text.contains(want), "{want}\n{text}");
     }
@@ -305,7 +297,7 @@ fn flags_change_is_shown_and_marked() {
         ]
     );
     let p = Palette::dark();
-    let rows = card_rows(&c, &m, m.now, true, CARD_WIDTH, &p);
+    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
     let row = rows
         .iter()
         .find(|r| r.iter().any(|(t, _)| t.contains("~ flags:")))
@@ -335,7 +327,7 @@ fn flags_change_is_shown_and_marked() {
             },
         },
     });
-    let rows = card_rows(&c, &m, m.now, true, CARD_WIDTH, &p);
+    let rows = card_rows(&c, &m, m.now, Look::whole(true, CARD_WIDTH), &p);
     let flag_text: String = rows
         .iter()
         .filter(|r| r.iter().any(|(_, col)| *col == p.attention) && r.len() == 3)
@@ -380,7 +372,13 @@ fn prompt_change_shows_first_line_and_count() {
     );
     // A long first line is cut so the line count still shows, inside the card.
     let long = edit(&format!("{}\nsecond", "Rewrite everything ".repeat(8)));
-    let rows = card_rows(&long, &m, m.now, true, CARD_WIDTH, &Palette::dark());
+    let rows = card_rows(
+        &long,
+        &m,
+        m.now,
+        Look::whole(true, CARD_WIDTH),
+        &Palette::dark(),
+    );
     let row: String = rows
         .iter()
         .map(|r| r.iter().map(|(t, _)| t.as_str()).collect::<String>())
