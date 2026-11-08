@@ -221,6 +221,21 @@ fn enter_on_cancel_and_esc_close_without_command() {
 }
 
 #[test]
+fn arrow_keys_move_confirm_focus_like_tab() {
+    let mut m = stop_dialog_open();
+    for (code, yes) in [
+        (KeyCode::Right, true),
+        (KeyCode::Left, false),
+        (KeyCode::Down, true),
+        (KeyCode::Up, false),
+    ] {
+        let a = map_key(&m, KeyEvent::new(code, KeyModifiers::NONE)).unwrap();
+        assert_eq!(update(&mut m, a), []);
+        assert_eq!(confirm(&m).focus_yes, yes, "{code:?}");
+    }
+}
+
+#[test]
 fn tab_moves_focus_and_enter_acts_on_it() {
     let mut m = stop_dialog_open();
     assert_eq!(update(&mut m, Action::Tab), []);

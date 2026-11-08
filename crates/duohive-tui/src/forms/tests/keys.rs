@@ -223,3 +223,51 @@ fn footer_shows_the_open_dialog_keys() {
     update(&mut m, Action::New);
     assert_eq!(footer(&m), " ↑↓ choose · enter open form · esc");
 }
+
+#[test]
+fn up_down_move_between_fields_like_tab() {
+    let org = org();
+    let mut f = edit_billing(&org, &stopped());
+    assert_eq!(f.fields[f.focus].id, FieldId::Name);
+    press(&mut f, &org, Action::Down);
+    assert_eq!(f.fields[f.focus].id, FieldId::Cli);
+    press(&mut f, &org, Action::Up);
+    assert_eq!(f.fields[f.focus].id, FieldId::Name);
+    press(&mut f, &org, Action::Up);
+    assert!(f.on_cancel(), "up from the first field wraps to Cancel");
+}
+
+#[test]
+fn left_right_on_the_button_row_move_between_save_and_cancel() {
+    let org = org();
+    let mut f = edit_billing(&org, &stopped());
+    f.focus = f.fields.len();
+    assert!(f.on_save());
+    press(&mut f, &org, Action::Right);
+    assert!(f.on_cancel());
+    press(&mut f, &org, Action::Left);
+    assert!(f.on_save());
+    press(&mut f, &org, Action::Left);
+    assert!(f.on_cancel(), "left from Save wraps to Cancel");
+}
+
+#[test]
+fn left_right_in_a_text_field_still_move_the_cursor() {
+    let org = org();
+    let mut f = edit_billing(&org, &stopped());
+    f.focus_field(FieldId::Flags);
+    typed(&mut f, &org, "ab");
+    press(&mut f, &org, Action::Left);
+    assert_eq!(f.fields[f.focus].id, FieldId::Flags);
+    press(&mut f, &org, Action::Char('X'));
+    assert_eq!(text(&f, FieldId::Flags), "aXb");
+}
+
+#[test]
+fn arrow_keys_reach_the_form() {
+    let mut m = model();
+    update(&mut m, Action::Edit);
+    let k = |c| KeyEvent::new(c, KeyModifiers::NONE);
+    assert_eq!(map_key(&m, k(KeyCode::Up)), Some(Action::Up));
+    assert_eq!(map_key(&m, k(KeyCode::Down)), Some(Action::Down));
+}

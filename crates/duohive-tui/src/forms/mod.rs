@@ -311,8 +311,16 @@ impl Form {
         match a {
             Action::Esc => return FormOutcome::Cancel,
             Action::Save => return self.save(org),
-            Action::Tab => self.step(true),
-            Action::BackTab => self.step(false),
+            Action::Tab | Action::Down => self.step(true),
+            Action::BackTab | Action::Up => self.step(false),
+            // On the button row `←→` swap Save and Cancel; in a field they edit it.
+            Action::Left | Action::Right if self.on_save() || self.on_cancel() => {
+                self.focus = if self.on_save() {
+                    self.fields.len() + 1
+                } else {
+                    self.fields.len()
+                };
+            }
             Action::DialogEnter if self.on_save() => return self.save(org),
             Action::DialogEnter if self.on_cancel() => return FormOutcome::Cancel,
             Action::DialogEnter => self.step(true),

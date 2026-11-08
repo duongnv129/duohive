@@ -243,6 +243,10 @@ fn dialog_key(d: &Dialog, k: KeyEvent) -> Option<Action> {
             KeyCode::Char('y') => Some(Action::DialogYes),
             KeyCode::Char('n') => Some(Action::DialogNo),
             KeyCode::Enter => Some(Action::DialogEnter),
+            KeyCode::Up => Some(Action::Up),
+            KeyCode::Down => Some(Action::Down),
+            KeyCode::Left => Some(Action::Left),
+            KeyCode::Right => Some(Action::Right),
             _ => None,
         },
         Dialog::Worktrees(_) => match k.code {
@@ -334,6 +338,8 @@ fn form_key(k: KeyEvent) -> Option<Action> {
         KeyCode::Esc => Action::Esc,
         KeyCode::Tab => Action::Tab,
         KeyCode::BackTab => Action::BackTab,
+        KeyCode::Up => Action::Up,
+        KeyCode::Down => Action::Down,
         KeyCode::Enter => Action::DialogEnter,
         KeyCode::Left => Action::Left,
         KeyCode::Right => Action::Right,
@@ -619,7 +625,12 @@ fn confirm_action(m: &mut UiModel, mut c: Box<Confirm>, a: Action) -> Vec<UiEffe
         Action::DialogYes => true,
         Action::DialogEnter => c.focus_yes,
         Action::DialogNo | Action::Esc => false,
-        Action::Tab | Action::BackTab => {
+        Action::Tab
+        | Action::BackTab
+        | Action::Up
+        | Action::Down
+        | Action::Left
+        | Action::Right => {
             c.focus_yes = !c.focus_yes;
             m.dialog = Some(Dialog::Confirm(c));
             return Vec::new();
