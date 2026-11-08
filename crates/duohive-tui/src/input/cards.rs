@@ -37,7 +37,6 @@ pub(super) fn card_action(m: &mut UiModel, a: Action) -> Option<Vec<UiEffect>> {
 }
 
 /// A press on one of a card's buttons: its action.
-#[expect(dead_code, reason = "a click on the docked card presses it from CD.5")]
 pub(super) fn press_button(m: &mut UiModel, id: ActionId) -> Vec<UiEffect> {
     let action = match id {
         ActionId::CardApprove => Action::CardApprove,

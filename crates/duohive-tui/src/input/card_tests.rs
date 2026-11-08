@@ -378,3 +378,86 @@ fn zoom_keeps_card_focus_and_card_keys_work_zoomed() {
     assert_eq!(press(&mut m, key('y')), approve(2, None));
     assert_eq!(m.focus.card, Some(CardId(2)));
 }
+
+fn up(m: &mut UiModel, (x, y): (u16, u16)) -> Vec<UiEffect> {
+    let ev = MouseEvent {
+        kind: MouseEventKind::Up(MouseButton::Left),
+        column: x,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    };
+    on_mouse(m, ev)
+}
+
+/// squad-1 selected, a stop card for it docked, the org pane focused.
+fn docked_stop() -> UiModel {
+    let mut m = with_cards(vec![stop_card(1, clock(10, 21))]);
+    m.selected = NodeKey::Agent(n("squad-1"));
+    m.live_agent = Some(n("squad-1"));
+    m
+}
+
+#[test]
+fn click_on_the_docked_card_focuses_it_and_does_not_start_typing() {
+    let mut m = docked_stop();
+    let at = find(&m, "squad-1 is");
+    assert_eq!(click(&mut m, at), []);
+    assert_eq!(m.focus.pane, Pane::Agent);
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+    assert_eq!(m.focus.card, Some(CardId(1)));
+    assert_eq!(up(&mut m, at), []);
+    assert!(!m.typing());
+    assert_eq!(m.typing_wanted, None);
+}
+
+#[test]
+fn click_on_each_docked_button_acts() {
+    let mut m = with_cards(vec![add_agent_card(2, clock(10, 21))]);
+    m.selected = NodeKey::Duo;
+    let at = find(&m, "[n] Reject");
+    assert_eq!(
+        click(&mut m, at),
+        [UiEffect::Send(Command::RejectCard { card: CardId(2) })]
+    );
+    let at = find(&m, "[y] Approve");
+    assert_eq!(click(&mut m, (at.0 + 2, at.1)), approve(2, None));
+    let at = find(&m, "[e] Edit");
+    assert_eq!(click(&mut m, at), []);
+    assert!(
+        matches!(&m.dialog, Some(Dialog::Form(f)) if f.purpose == FormPurpose::Card(CardId(2)))
+    );
+}
+
+#[test]
+fn click_on_the_card_while_typing_leaves_typing_then_acts() {
+    let mut m = docked_stop();
+    m.focus.pane = Pane::Agent;
+    m.focus.agent_mode = AgentMode::Typing;
+    let at = find(&m, "[n] Reject");
+    assert_eq!(
+        click(&mut m, at),
+        [UiEffect::Send(Command::RejectCard { card: CardId(1) })]
+    );
+    assert_eq!(m.focus.agent_mode, AgentMode::Selected);
+}
+
+#[test]
+fn click_in_the_agent_pane_below_the_card_still_starts_typing() {
+    let mut m = docked_stop();
+    m.focus.pane = Pane::Org;
+    let a = crate::render::pane_areas(&m).unwrap();
+    let at = (a.live.x + 2, a.live.bottom() - 2);
+    click(&mut m, at);
+    up(&mut m, at);
+    assert_eq!(m.focus.card, None);
+    assert!(m.typing() || m.typing_wanted.is_some());
+}
+
+#[test]
+fn click_in_the_chat_never_focuses_a_card() {
+    let mut m = docked_stop();
+    let a = crate::render::pane_areas(&m).unwrap();
+    click(&mut m, (a.chat.x + 3, a.chat.y + 1));
+    assert_eq!(m.focus.pane, Pane::Chat);
+    assert_eq!(m.focus.card, None);
+}

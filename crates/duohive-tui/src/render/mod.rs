@@ -265,7 +265,6 @@ pub(crate) fn needs_you_item_at(m: &UiModel, y: u16) -> Option<usize> {
 }
 
 /// The docked card under `at` and the button under it (UI §4.6), zoomed too.
-#[cfg_attr(not(test), expect(dead_code, reason = "the mouse reads it from CD.4"))]
 pub(crate) fn agent_card_at(
     m: &UiModel,
     at: ratatui::layout::Position,

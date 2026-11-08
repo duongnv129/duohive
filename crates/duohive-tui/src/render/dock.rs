@@ -76,7 +76,6 @@ pub(super) fn draw(buf: &mut Buffer, pane: Rect, m: &UiModel, ctx: &RenderCtx) {
 
 /// What a press at `at` hits in the agent pane `pane`: the docked card, and the button
 /// under it (the card's last row but one is its button row).
-#[cfg_attr(not(test), expect(dead_code, reason = "the mouse reads it from CD.4"))]
 pub(super) fn card_at(m: &UiModel, pane: Rect, at: Position) -> Option<(CardId, Option<ActionId>)> {
     let rows = dock_rows(m, m.now, &Palette::dark(), pane)?;
     let rect = dock_rect(pane, rows.len());
