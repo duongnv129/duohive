@@ -819,7 +819,7 @@ const NOT_TAKEN_RETRY: &str = " · enter to try again";
 /// goes to the agent.
 pub(crate) const SPACE_RETRY: &str = " · space to try again";
 /// The footer note when a role's task raised a clone card (UI §4.5, P3-D3).
-const NO_FREE_CARD: &str = "No free agent · a card in the chat proposes one";
+const NO_FREE_CARD: &str = "No free agent · a card on Duo proposes one";
 
 /// The footer note when the system has no desktop notifier (UI §4.1.4).
 const ALERTS_UNAVAILABLE: &str = "desktop alerts unavailable";

@@ -1,6 +1,6 @@
 # Docked approval cards — Implementation Plan
 
-**Status:** Plan, drafted 2026-11-08 · not started
+**Status:** Plan, drafted 2026-11-08 · tasks CD.1 to CD.6 built on the branch `feat/card-dock-impl` (2026-11-08), not merged · CD.7, the hand check, is open (for the author). Built as: removing cards from the chat landed in CD.4 with the focus switch (so no commit has two live card UIs), CD.3 only added the hit test, and CD.5 is mouse only; a button acts on press, so a drag from a button is not a text selection.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax.
 

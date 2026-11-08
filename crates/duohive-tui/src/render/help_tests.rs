@@ -39,6 +39,16 @@ fn key_map_160x48() {
 }
 
 #[test]
+fn key_map_lists_the_docked_card_keys_not_a_newest_card_key() {
+    for (w, h) in [(160, 48), (100, 30)] {
+        let text = render_lines(&help_model(), &ctx(), w, h).join("\n");
+        assert!(text.contains("Docked card"), "{w}x{h}\n{text}");
+        assert!(text.contains("y e n"), "{w}x{h}\n{text}");
+        assert!(!text.contains("newest card"), "{w}x{h}\n{text}");
+    }
+}
+
+#[test]
 fn key_map_100x30() {
     insta::assert_snapshot!(
         "key_map_100x30",

@@ -109,4 +109,6 @@ Phases 0 to 3 have no open task boxes.
 
 Click to type (a click on an agent, or `enter` on its row, starts typing) is built on the branch `feat/click-to-type-impl` (2026-11-05; plan: [click-to-type-plan](click-to-type-plan.md), tasks CT.1 to CT.5; specified in the PRD, UI §4.1.2 and TD `PaneView`). It is not merged; the hand check (CT.6 step 2: iTerm2, Claude Code and OpenCode, 80x24 and 160x48) is **Open: author**.
 
+Docked approval cards (a card docks over the top of the agent pane it concerns, one at a time per agent, instead of sitting in the chat; plan: [card-dock-plan](card-dock-plan.md), tasks CD.1 to CD.6; specified in the PRD, UI §4.6 and TD §6.5) are built on the branch `feat/card-dock-impl` (2026-11-08), not merged. The hand check (CD.7: a real session, 80x24 and 120x36) is **Open: author**.
+
 Resume an old session is built on the branch `feat/resume-session` (2026-11-01; plan: [v1.1-resume-plan](v1.1-resume-plan.md), tasks R.1 to R.13; designed in TD §5.6; the three spikes are in the [spike report](spike-report.md)). It is not released: the hand check and the author decisions are pending, see [Open items before merge](v1.1-roadmap.md#open-items-before-merge); Codex as a third CLI and alert clicks that select the agent are candidates, not agreed. See [v1.1-roadmap](v1.1-roadmap.md).
