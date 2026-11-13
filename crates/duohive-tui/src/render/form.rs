@@ -21,6 +21,10 @@ const CHOOSER_WIDTH: u16 = 40;
 pub(super) const CHOOSER_HINT: &str = "↑↓ choose · enter open form · esc";
 const INHERIT: &str = "inherit: ";
 const POPUP_HINT: &str = "type to filter · ↑↓ · enter choose · esc close";
+/// The hint under a Directory field's folder popup.
+const SUGGEST_HINT: &str = "↑↓ · tab or enter take · esc close";
+/// After a git repository's name in the folder popup.
+const GIT_TAIL: &str = "   git";
 /// The popup is at least this wide inside its border.
 const POPUP_MIN: usize = 24;
 
@@ -232,7 +236,7 @@ fn draw_fields<'a>(
         if focused {
             line.put(cx.saturating_sub(1), FOCUS, fg(p.border_focus), buf);
         }
-        if focused && fld.drop.open {
+        if focused && (fld.drop.open || fld.suggest.open) {
             *popup = Some((cx, line.y, fld));
         }
         let (next, at) = draw_control(buf, line, cx, fld, focused, p);
@@ -363,20 +367,65 @@ fn draw_control(
 
 /// The popup under a Model or Effort field (UI §4.4.1): at most six rows, `… N more` when
 /// the list goes on, and a key hint under it. It is clipped to the screen.
-fn draw_popup(
+fn draw_popup(buf: &mut Buffer, area: Rect, at: (u16, u16), fld: &Field, right: u16, p: &Palette) {
+    let popup = if fld.suggest.open {
+        let rows = fld.suggest.rows.iter().map(|r| PopRow {
+            text: r.label.clone(),
+            tail: if r.is_git { GIT_TAIL } else { "" }.to_owned(),
+        });
+        Popup {
+            rows: rows.collect(),
+            cursor: fld.suggest.cursor,
+            hint: SUGGEST_HINT,
+        }
+    } else {
+        let rows = fld.drop_rows();
+        Popup {
+            rows: rows
+                .iter()
+                .map(|r| PopRow {
+                    text: r.label(),
+                    tail: String::new(),
+                })
+                .collect(),
+            cursor: fld.drop.cursor,
+            hint: POPUP_HINT,
+        }
+    };
+    draw_rows_popup(buf, area, at, &popup, right, p);
+}
+
+/// One popup row: its text, and a muted tail after it (`git`).
+struct PopRow {
+    text: String,
+    tail: String,
+}
+
+/// What a popup shows: its rows, the highlighted one and the key hint under it.
+struct Popup {
+    rows: Vec<PopRow>,
+    cursor: usize,
+    hint: &'static str,
+}
+
+/// A popup of rows under a field, shared by the Model, Effort and Directory popups.
+fn draw_rows_popup(
     buf: &mut Buffer,
     area: Rect,
     (x, y): (u16, u16),
-    fld: &Field,
+    popup: &Popup,
     right: u16,
     p: &Palette,
 ) {
-    let rows = fld.drop_rows();
-    let first = (fld.drop.cursor + 1).saturating_sub(VISIBLE_ROWS);
+    let (rows, cursor, hint) = (&popup.rows, popup.cursor, popup.hint);
+    let first = (cursor + 1).saturating_sub(VISIBLE_ROWS);
     let shown: Vec<_> = rows.iter().skip(first).take(VISIBLE_ROWS).collect();
     let more = rows.len().saturating_sub(first + shown.len());
-    let longest = rows.iter().map(|r| width(&r.label())).max().unwrap_or(0);
-    let hint = POPUP_HINT;
+    let longest = rows
+        .iter()
+        .map(|r| width(&r.text) + width(&r.tail))
+        .max()
+        .unwrap_or(0);
     let inner = longest.max(POPUP_MIN);
     let w = u16::try_from(inner + 4).unwrap_or(u16::MAX).min(area.width);
     let lines = shown.len() + usize::from(more > 0);
@@ -396,9 +445,8 @@ fn draw_popup(
     draw_box(buf, r, "", &LIGHT, fg(p.border_focus), inside);
     for (i, row) in shown.iter().enumerate() {
         let ry = r.y + 1 + u16::try_from(i).unwrap_or(0);
-        let focused = first + i == fld.drop.cursor;
-        let delta =
-            isize::try_from(first + i).unwrap_or(0) - isize::try_from(fld.drop.cursor).unwrap_or(0);
+        let focused = first + i == cursor;
+        let delta = isize::try_from(first + i).unwrap_or(0) - isize::try_from(cursor).unwrap_or(0);
         super::hits::record(
             Rect {
                 x: r.x + 1,
@@ -413,7 +461,7 @@ fn draw_popup(
         } else {
             inside
         };
-        let text = format!("{}{}", if focused { FOCUS } else { " " }, row.label());
+        let text = format!("{}{}", if focused { FOCUS } else { " " }, row.text);
         put(
             buf,
             r.x + 1,
@@ -422,6 +470,11 @@ fn draw_popup(
             usize::from(w) - 2,
             style,
         );
+        if !row.tail.is_empty() {
+            let tail_x = r.x + 1 + u16::try_from(width(&text)).unwrap_or(0);
+            let room = usize::from(r.right().saturating_sub(1).saturating_sub(tail_x));
+            put(buf, tail_x, ry, &row.tail, room, style.fg(p.fg_muted));
+        }
     }
     if more > 0 {
         let ry = r.y + 1 + u16::try_from(shown.len()).unwrap_or(0);

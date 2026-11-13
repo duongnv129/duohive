@@ -6,6 +6,7 @@
 
 mod agent;
 mod chooser;
+mod dir_keys;
 mod dropdown;
 mod field;
 mod give_work;
@@ -268,6 +269,7 @@ impl Form {
     fn ready(mut self, org: &Org, dirs: &dyn DirProbe, home: &Path) -> Self {
         self.revalidate(org);
         self.probe_dir(org, dirs, home);
+        self.reset_suggest();
         self
     }
 
@@ -306,6 +308,9 @@ impl Form {
     /// Applies a key. Tab order skips read-only fields and ends on Save, then Cancel.
     pub fn handle(&mut self, a: Action, org: &Org) -> FormOutcome {
         if let Some(out) = self.dropdown_key(a, org) {
+            return out;
+        }
+        if let Some(out) = self.dir_key(a, org) {
             return out;
         }
         match a {

@@ -101,6 +101,8 @@ pub struct Field {
     pub drop: super::dropdown::Dropdown,
     /// Shown but not focusable now (OpenCode's Effort before a model is known).
     pub locked: bool,
+    /// A Directory field's folder popup (UI §4.4.1).
+    pub suggest: crate::dir_suggest::DirSuggest,
 }
 
 impl Field {
@@ -121,6 +123,7 @@ impl Field {
             look,
             drop: super::dropdown::Dropdown::default(),
             locked: false,
+            suggest: crate::dir_suggest::DirSuggest::default(),
         }
     }
 

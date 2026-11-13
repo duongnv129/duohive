@@ -1,0 +1,34 @@
+---
+source: crates/duohive-tui/src/forms/tests/dir_suggest.rs
+expression: screen
+---
+ DuoHive   6 agents · ● 1 working · ◆ 0 need you                                                    
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ billing-api · Claude · ~/code/billing ────────┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│                                                │
+┃ ├─ ▣ Payments                 ● 1              ┃│    ● working                                   │
+┃ │  ├─ ◇ Backend               ● 1              ┃│                                                │
+┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                │
+┃▌│  │  └─┌─ Edit agent · Payments › Backend › billing-api ──────────────────────────────┐         │
+┃ │  └─ ◇ │                                                                              │         │
+┃ │     └─│  Name        [ billing-api_________ ]                                        │         │
+┃ └─ ◇ Gen│  CLI         [ inherit: Claude Code ▾ ]                                      │         │
+┃    ├─ sq│  Directory  ▌[ ~/code/bil__________________ ]  ✓ found                       │         │
+┃    ├─ sq│  Model       ┌──────────────────────────┐   Effort  [ inherit: high___ ▾ ]   │         │
+┃    └─ sq│  Flags       │▌~/code/billing-api   git │____ ]                              │         │
+┃         │  Worktrees   │ ~/code/billing-docs      │                                    │         │
+┃         │              └──────────────────────────┘o; ~/code/bil isn't one             │         │
+┃         │              ↑↓ · tab or enter take · esc close                              │         │
+┃         │  Prompt  (stacks under: Org › Payments › Backend)                            │         │
+┃         │  ┊ Org       Ask before you delete anything.                                 │         │
+┃         │  ┊ Payments  (none)                                                          │         │
+┃         │  ┊ Backend   API URLs use hyphens. Run make test before done.                │         │
+┃         │  [ Own: Owns the billing service; invoices and retries.        ]             │         │
+┣━ Needs y│                                                                              │         │
+┗━━━━━━━━━│  tab next field · ctrl+s save · esc cancel       [ Save ]  [ Cancel ]        │─────────┘
+┌─ ⬢ Duo ·└──────────────────────────────────────────────────────────────────────────────┘─────────┐
+│                                                                                                  │
+│                                                                                                  │
+│                                                                                                  │
+│ ❯                                                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ tab next field · ctrl+s save · esc cancel
