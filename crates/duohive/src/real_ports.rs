@@ -9,7 +9,7 @@ use duohive_core::launch::Token;
 use duohive_core::names::AgentName;
 use duohive_core::ports::{Clock, Ids, NoPaneView, PaneView};
 use duohive_core::time::Millis;
-use duohive_core::validate::{DirProbe, DirStatus};
+use duohive_core::validate::{DirEntry, DirProbe, DirStatus, LIST_READ_MAX, LIST_RETURN_MAX};
 use duohive_core::view::{PaneInput, PaneSize, PaneStream, StreamId, ViewError};
 use tokio::sync::oneshot;
 
@@ -132,6 +132,32 @@ impl DirProbe for FsDirProbe {
             DirStatus::Found
         }
     }
+
+    fn list(&self, parent: &Path, prefix: &str) -> Vec<DirEntry> {
+        let Ok(read) = std::fs::read_dir(parent) else {
+            return Vec::new();
+        };
+        let needle = prefix.to_lowercase();
+        let show_hidden = prefix.starts_with('.');
+        let mut found: Vec<DirEntry> = read
+            .take(LIST_READ_MAX)
+            .filter_map(Result::ok)
+            .filter_map(|e| {
+                let name = e.file_name().into_string().ok()?;
+                let listed = (show_hidden || !name.starts_with('.'))
+                    && name.to_lowercase().starts_with(&needle);
+                // `metadata` follows symlinks, so a link to a folder is a folder.
+                let is_dir = listed && std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir());
+                is_dir.then(|| DirEntry {
+                    is_git: e.path().join(".git").exists(),
+                    name,
+                })
+            })
+            .collect();
+        found.sort_by_cached_key(|e| e.name.to_lowercase());
+        found.truncate(LIST_RETURN_MAX);
+        found
+    }
 }
 
 #[cfg(test)]
@@ -202,5 +228,74 @@ mod tests {
         }
         assert_eq!(FsDirProbe.probe(&p.join("file.txt")), DirStatus::Missing);
         assert_eq!(FsDirProbe.probe(&p.join("none")), DirStatus::Missing);
+    }
+
+    fn names(entries: &[duohive_core::validate::DirEntry]) -> Vec<&str> {
+        entries.iter().map(|e| e.name.as_str()).collect()
+    }
+
+    #[test]
+    fn list_returns_folders_matching_prefix_ignoring_case_sorted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        for d in ["billing-docs", "Billing-api", "web", "bill"] {
+            fs::create_dir(p.join(d)).unwrap();
+        }
+        let got = FsDirProbe.list(p, "bil");
+        assert_eq!(names(&got), ["bill", "Billing-api", "billing-docs"]);
+        assert_eq!(names(&FsDirProbe.list(p, "")).len(), 4);
+    }
+
+    #[test]
+    fn list_skips_files_and_hidden_unless_prefix_starts_with_dot() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        fs::create_dir(p.join(".config")).unwrap();
+        fs::create_dir(p.join("code")).unwrap();
+        fs::write(p.join("notes.txt"), "x").unwrap();
+        assert_eq!(names(&FsDirProbe.list(p, "")), ["code"]);
+        assert_eq!(names(&FsDirProbe.list(p, ".")), [".config"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn list_follows_symlinked_folders() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        fs::create_dir(p.join("real")).unwrap();
+        std::os::unix::fs::symlink(p.join("real"), p.join("link")).unwrap();
+        assert_eq!(names(&FsDirProbe.list(p, "")), ["link", "real"]);
+    }
+
+    #[test]
+    fn list_marks_git_repos() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        fs::create_dir_all(p.join("clone/.git")).unwrap();
+        fs::create_dir(p.join("wt")).unwrap();
+        fs::write(p.join("wt/.git"), "gitdir: /elsewhere\n").unwrap();
+        fs::create_dir(p.join("plain")).unwrap();
+        let got = FsDirProbe.list(p, "");
+        let git: Vec<(&str, bool)> = got.iter().map(|e| (e.name.as_str(), e.is_git)).collect();
+        assert_eq!(git, [("clone", true), ("plain", false), ("wt", true)]);
+    }
+
+    #[test]
+    fn list_reads_at_most_500_and_returns_at_most_50() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path();
+        for i in 0..600 {
+            fs::create_dir(p.join(format!("d{i:03}"))).unwrap();
+        }
+        let got = FsDirProbe.list(p, "d");
+        assert_eq!(got.len(), duohive_core::validate::LIST_RETURN_MAX);
+    }
+
+    #[test]
+    fn list_of_missing_or_unreadable_parent_is_empty() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(FsDirProbe.list(&tmp.path().join("none"), "").is_empty());
+        fs::write(tmp.path().join("f"), "x").unwrap();
+        assert!(FsDirProbe.list(&tmp.path().join("f"), "").is_empty());
     }
 }

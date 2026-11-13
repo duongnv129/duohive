@@ -41,10 +41,32 @@ pub enum DirStatus {
     Missing,
 }
 
+/// Most directory entries [`DirProbe::list`] reads.
+pub const LIST_READ_MAX: usize = 500;
+/// Most entries [`DirProbe::list`] returns.
+pub const LIST_RETURN_MAX: usize = 50;
+
+/// One sub-directory found by [`DirProbe::list`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DirEntry {
+    /// The folder's name.
+    pub name: String,
+    /// It is a git repository (a `.git` directory or file inside).
+    pub is_git: bool,
+}
+
 /// Looks at directories; implemented outside the core, which does no I/O.
 pub trait DirProbe: Send + Sync {
     /// The status of `dir`.
     fn probe(&self, dir: &Path) -> DirStatus;
+
+    /// The sub-directories of `parent` whose name starts with `prefix` (ignoring case),
+    /// sorted by name: hidden ones only when `prefix` starts with `.`, at most
+    /// [`LIST_READ_MAX`] entries read and [`LIST_RETURN_MAX`] returned, and none when
+    /// the parent can't be read (DSP-D1).
+    fn list(&self, _parent: &Path, _prefix: &str) -> Vec<DirEntry> {
+        Vec::new()
+    }
 }
 
 fn err(path: String, message: String) -> FieldError {
@@ -612,5 +634,21 @@ mod tests {
         org.duo.name = n("duo-1");
         let got = next_agent_names(&org, None, &nn("Duo"), 1);
         assert_eq!(got[0].as_str(), "duo-2");
+    }
+
+    #[test]
+    fn fake_listing_filters_by_prefix() {
+        let dirs = FakeDirs::new(HashMap::new()).with_listing(
+            "/h/code",
+            &[
+                ("billing-api", true),
+                ("Billing-docs", false),
+                ("web", false),
+            ],
+        );
+        let got = dirs.list(Path::new("/h/code"), "bil");
+        let names: Vec<(&str, bool)> = got.iter().map(|e| (e.name.as_str(), e.is_git)).collect();
+        assert_eq!(names, [("billing-api", true), ("Billing-docs", false)]);
+        assert!(dirs.list(Path::new("/h/other"), "").is_empty());
     }
 }
