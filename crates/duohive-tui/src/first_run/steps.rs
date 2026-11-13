@@ -132,7 +132,74 @@ fn template_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -
     Outcome::Continue
 }
 
+/// Step 3's keys, with the folder popup of the focused directory box on top (UI §4.4.1).
 fn form_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Outcome {
+    if let Some(out) = popup_key(w, a, dirs, home) {
+        return out;
+    }
+    let before = w.focus;
+    let out = form_key_plain(w, a, dirs, home);
+    sync_suggest(w, before, dirs, home);
+    out
+}
+
+/// While the popup is open: `↑↓` move the highlight, `tab` and `enter` take the row, and
+/// `esc` closes only the popup. Any other key is the form's (`None`).
+fn popup_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Option<Outcome> {
+    if !w.suggest.open {
+        return None;
+    }
+    match a {
+        Action::Esc => w.suggest.close(),
+        Action::Up => w.suggest.step(false),
+        Action::Down => w.suggest.step(true),
+        Action::Tab | Action::DialogEnter => {
+            let taken = w.suggest.take()?;
+            *focused_dir_mut(w)? = LineEdit::new(&taken);
+            refresh_suggest(w, dirs, home);
+        }
+        _ => return None,
+    }
+    Some(Outcome::Continue)
+}
+
+/// The directory box that has focus on step 3: Agent Squad's, one of Product Team's three,
+/// or an Engineering Org row's repo (not its name).
+fn focused_dir_mut(w: &mut FirstRun) -> Option<&mut LineEdit> {
+    if w.step != Step::Form {
+        return None;
+    }
+    let focus = w.focus;
+    match w.template() {
+        TemplateChoice::AgentSquad => (focus == 1).then_some(&mut w.squad.directory),
+        TemplateChoice::ProductTeam => w.product.directories.get_mut(focus.checked_sub(2)?),
+        TemplateChoice::EngineeringOrg if focus > 0 && focus.is_multiple_of(2) => w
+            .engineering
+            .rows
+            .get_mut((focus - 1) / 2)
+            .map(|row| &mut row.repo),
+        TemplateChoice::EngineeringOrg | TemplateChoice::Blank => None,
+    }
+}
+
+/// Lists folders for the focused directory box when its text changed; a focus that moved
+/// (or no directory box) closes the popup instead (DSP-D3).
+fn sync_suggest(w: &mut FirstRun, before: usize, dirs: &dyn DirProbe, home: &Path) {
+    let typed = focused_dir_mut(w).map(|e| e.text().to_owned());
+    match typed {
+        Some(t) if w.focus == before => w.suggest.refresh(&t, dirs, home),
+        Some(t) => w.suggest.reset(&t),
+        None => w.suggest.reset(""),
+    }
+}
+
+/// Lists folders after a paste, which never moves focus.
+pub fn refresh_suggest(w: &mut FirstRun, dirs: &dyn DirProbe, home: &Path) {
+    let focus = w.focus;
+    sync_suggest(w, focus, dirs, home);
+}
+
+fn form_key_plain(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Outcome {
     let controls = w.controls();
     match a {
         Action::Esc => return back(w),

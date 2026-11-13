@@ -9,6 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 
+use super::form::{draw_rows_popup, suggest_popup};
 use super::{LIGHT, RenderCtx, draw_box, fg, put};
 use crate::first_run::{FirstRun, Step, TemplateChoice, errors, form_error, trimmed};
 use crate::format::width;
@@ -45,12 +46,19 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, m: &UiModel, ctx: &RenderCtx) -
         x0: r.x + 1,
         y: r.y + 1,
         right: r.right() - 1,
+        popup_at: None,
     };
-    match w.step {
+    let cursor = match w.step {
         Step::You => you(&mut line, w, p),
         Step::Template => template(&mut line, w, p),
         Step::Form => form(&mut line, w, m, p),
+    };
+    // The folder popup goes last, over the rows under its box.
+    if let (true, Some(at)) = (w.suggest.open, line.popup_at) {
+        let popup = suggest_popup(&w.suggest);
+        draw_rows_popup(line.buf, area, at, &popup, line.right, p);
     }
+    cursor
 }
 
 struct Line<'a> {
@@ -58,6 +66,8 @@ struct Line<'a> {
     x0: u16,
     y: u16,
     right: u16,
+    /// Where the focused directory box is, for its folder popup.
+    popup_at: Option<(u16, u16)>,
 }
 
 impl Line<'_> {
@@ -436,6 +446,9 @@ fn engineering(
             w.focus == 2 + 2 * i,
             p,
         ));
+        if w.focus == 2 + 2 * i {
+            line.popup_at = Some((line.x0 + ENG_REPO_DX, line.y));
+        }
         let error = errs.get(&(1 + 2 * i)).or(errs.get(&(2 + 2 * i)));
         let status = match error {
             Some(e) => format!("✕ {e}"),
@@ -507,6 +520,9 @@ fn dir_field(
         fg(p.fg),
     );
     let at = boxed(line, 2 + LABEL_W, edit, focused, p);
+    if focused {
+        line.popup_at = Some((line.x0 + 2 + LABEL_W, line.y));
+    }
     let text = match error {
         Some(e) => format!("✕ {e}"),
         None => dir_suffix(edit, m),
@@ -702,6 +718,7 @@ fn blocked(buf: &mut Buffer, area: Rect, p: &Palette) {
         x0: r.x + 1,
         y: r.y + 2,
         right: r.right() - 1,
+        popup_at: None,
     };
     for text in rows {
         line.text(text, p.fg);

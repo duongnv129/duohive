@@ -583,6 +583,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
     if let Some(w) = m.wizard.as_mut() {
         crate::first_run::paste(w, text);
+        crate::first_run::refresh_suggest(w, m.dirs.probe(), &m.home);
         return Vec::new();
     }
     if m.typing() {

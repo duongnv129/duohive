@@ -5,6 +5,7 @@ use ratatui::layout::{Position, Rect};
 use ratatui::style::{Color, Style};
 
 use super::{LIGHT, draw_box, fg, put};
+use crate::dir_suggest::DirSuggest;
 use crate::format::{one_line, pad_right, truncate_end, width};
 use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, VISIBLE_ROWS};
 use crate::input::Action;
@@ -369,15 +370,7 @@ fn draw_control(
 /// the list goes on, and a key hint under it. It is clipped to the screen.
 fn draw_popup(buf: &mut Buffer, area: Rect, at: (u16, u16), fld: &Field, right: u16, p: &Palette) {
     let popup = if fld.suggest.open {
-        let rows = fld.suggest.rows.iter().map(|r| PopRow {
-            text: r.label.clone(),
-            tail: if r.is_git { GIT_TAIL } else { "" }.to_owned(),
-        });
-        Popup {
-            rows: rows.collect(),
-            cursor: fld.suggest.cursor,
-            hint: SUGGEST_HINT,
-        }
+        suggest_popup(&fld.suggest)
     } else {
         let rows = fld.drop_rows();
         Popup {
@@ -402,14 +395,27 @@ struct PopRow {
 }
 
 /// What a popup shows: its rows, the highlighted one and the key hint under it.
-struct Popup {
+pub(super) struct Popup {
     rows: Vec<PopRow>,
     cursor: usize,
     hint: &'static str,
 }
 
+/// A Directory field's folder popup, as the forms and the first-run wizard both draw it.
+pub(super) fn suggest_popup(s: &DirSuggest) -> Popup {
+    let rows = s.rows.iter().map(|r| PopRow {
+        text: r.label.clone(),
+        tail: if r.is_git { GIT_TAIL } else { "" }.to_owned(),
+    });
+    Popup {
+        rows: rows.collect(),
+        cursor: s.cursor,
+        hint: SUGGEST_HINT,
+    }
+}
+
 /// A popup of rows under a field, shared by the Model, Effort and Directory popups.
-fn draw_rows_popup(
+pub(super) fn draw_rows_popup(
     buf: &mut Buffer,
     area: Rect,
     (x, y): (u16, u16),

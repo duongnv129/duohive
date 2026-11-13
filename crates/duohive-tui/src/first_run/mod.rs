@@ -10,10 +10,11 @@ use duohive_core::adapter::CliPresence;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 
+use crate::dir_suggest::DirSuggest;
 use crate::forms::LineEdit;
 
 pub use forms::{EngineeringForm, ProductForm, SquadForm, TeamRow};
-pub use steps::{Outcome, build_input, errors, form_error, key, map_key, paste};
+pub use steps::{Outcome, build_input, errors, form_error, key, map_key, paste, refresh_suggest};
 
 /// Which step the wizard shows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,6 +114,8 @@ pub struct FirstRun {
     pub inventory: Vec<(CliKind, CliPresence)>,
     /// Replacing the org from Settings (UI §4.3): steps 2 and 3 only.
     pub replace: bool,
+    /// The folder popup of the focused directory box (UI §4.4.1).
+    pub suggest: DirSuggest,
 }
 
 impl FirstRun {
@@ -133,6 +136,7 @@ impl FirstRun {
             write_error: None,
             inventory,
             replace: false,
+            suggest: DirSuggest::default(),
         }
     }
 
