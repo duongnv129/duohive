@@ -497,7 +497,14 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 
 - **Inherited values:** shown as `inherit: <value>` in `fg.muted`; typing overrides them, and clearing a field restores inheritance.
 - **Stacked prompts:** the prompts this agent stacks under are shown read-only above its own prompt, one line per level; empty levels show "(none)".
-- **Moving:** `tab` / `shift+tab` and `↑` / `↓` move to the next and previous field, then `Save`, then `Cancel` (read-only fields are skipped). On the `Save` / `Cancel` row `←` and `→` move between the two. In a text field `←` / `→` move the cursor and in a choice they change it, so they never leave the field; inside an open popup `↑↓` choose in it. The same keys move between the buttons of a confirmation and of a card (§4.6).
+- **Moving:** `tab` / `shift+tab` and `↑` / `↓` move to the next and previous field, then `Save`, then `Cancel` (read-only fields are skipped). On the `Save` / `Cancel` row `←` and `→` move between the two. In a text field `←` / `→` move the cursor and in a choice they change it, so they never leave the field; inside an open popup `↑↓` choose in it. **In the Own prompt** (a multi-line box) `↑` / `↓` move the cursor to the line above or below, wrapped lines counting as lines, and keep the column where they can; `↑` on the first line goes to the previous field and `↓` on the last line to the next, wherever the cursor is in that line. A one-line prompt therefore behaves as before, and `tab` / `shift+tab` always leave. **The box grows with its text:** one row while the text fits on one line (so every form looks as it does now), then one more row per line up to 4, wrapping long text at the box's width and showing line breaks as real breaks (no `↵`); past 4 rows it scrolls to keep the cursor in view. Unfocused, it shows the same rows. The form is taller by the extra rows; at the smallest screen (80×24) a form with a 4-row prompt still shows its Save and Cancel row (the form scrolls as it does today when it is too tall).
+
+```
+  Prompt  (stacks under: Org › Payments › Backend)
+  ┊ Org       Ask before you delete anything.
+  [ Own: Owns the billing service; invoices and retries. ]
+  [      Run make test before you say you are done.      ]
+``` The same keys move between the buttons of a confirmation and of a card (§4.6).
 - **Validation:** checked as you type, with an error line under the field. `Save` stays disabled until the form is valid.
 - **Flags:** error under Flags: `--dangerously-skip-permissions is never allowed` (or the `--allow-…` twin); the form can't be saved (P3-D31).
 - **Renaming:** only while the agent is stopped and has no worktrees; otherwise the name field is read-only with the reason under it.
@@ -543,6 +550,21 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 - **Loading, empty and failed:** while loading the field reads `loading models…` and typing still works; an empty or failed list shows only the `inherit` and `use "<typed>" as typed` rows, and a failure adds the `✕ couldn't list <cli>'s models · type a name or keep inherit` line.
 - **Effort:** the same popup, listing the chosen model's variants (OpenCode, when the CLI lists them; OpenCode 2.1.1 doesn't, so its Effort takes typed text) or the `--effort` choices (Claude Code). On OpenCode with a model of `inherit`, the list is the inherited model's variants when that model is known; when none is (no model set anywhere up the tree), effort is disabled with `OpenCode sets effort per model · choose a model`. Changing the model clears an effort the new model doesn't offer.
 - **Role form agent naming:** the New role form's `Agents` field names agents `<team>-<role>-N` (above); first-run templates use their own names (P4-Q6).
+
+**Directory suggestions.** Every Directory field (agent and role forms, first-run step 3 including Product Team's three directories and Engineering Org's repo column) opens a popup under it while you type a path that starts with `~` or `/`; a relative path gets none.
+
+```
+  Directory   [ ~/code/bi___________ ]  ✗ missing
+              ┌──────────────────────────────┐
+              │▌~/code/billing-api   git     │
+              │ ~/code/billing-docs          │
+              └──────────────────────────────┘
+              ↑↓ · tab or enter take · esc close
+```
+
+- **List:** the folders inside the typed path's parent whose names start with the typed last segment, ignoring case, sorted by name; folders only, `git` in `fg.muted` after a git repo's name. At most 6 rows, then `… N more`. Hidden folders (`.name`) are listed only once the segment starts with `.`. No match, an unreadable folder or a missing parent: no popup and no error (the `✓` / `✕` note after the field is unchanged).
+- **Keys:** the first row is highlighted. `↑↓` move the highlight, `tab` or `enter` take it: the path becomes `<folder>/` and the popup lists that folder's subfolders, so you can go down a level at a time. `esc` closes the popup and keeps the text (the form's `esc` cancels only when no popup is open). With the popup closed, `tab` and `enter` move to the next field as in any text field, and `↑↓` as well. A click on a row takes it.
+- **Opens** only when the text changes (a typed key, a paste, backspace), never on focus alone; it closes when the field loses focus.
 
 **Form errors:** a duplicate name; worktrees on a directory that isn't a git repo (that radio is disabled, with the reason); the model list failing (while it loads, the field shows "loading models…").
 
@@ -990,7 +1012,7 @@ Below 100 columns it becomes one scrolling column:
 | | `@` / `/` | Agent / command suggestions |
 | | `PgUp` / `PgDn` | Scroll the chat history |
 | Card dialog | `y` / `e` / `n`, `←→↑↓`, `enter`, `esc` | Approve / edit / reject; move between buttons; press the focused one; close (§4.6) |
-| Dialogs and forms | `↑` `↓`, `tab` / `shift+tab`, `enter`, `esc`, `ctrl+s` | Move between fields and buttons (`↑↓` and `tab` everywhere; `←→` on a button row), act on the focused button, cancel, save. `↑↓` are the popup's inside an open Model or Effort popup; `←→` stay a text field's cursor and a choice's options |
+| Dialogs and forms | `↑` `↓`, `tab` / `shift+tab`, `enter`, `esc`, `ctrl+s` | Move between fields and buttons (`↑↓` and `tab` everywhere; `←→` on a button row), act on the focused button, cancel, save. `↑↓` are the popup's inside an open Model, Effort or Directory popup (and `tab` / `enter` take the highlighted folder there), and in the Own prompt they move between its lines and leave only from the first or last line (§4.4.1); `←→` stay a text field's cursor and a choice's options |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus, and type to a running agent (§4.1.2); node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
 

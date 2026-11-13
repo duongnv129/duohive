@@ -116,6 +116,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 | **Should** | Give work to an agent with one key (`space`); type straight into an agent's pane | Fast steering without the chat |
 | **Should** | Worktree option when giving work: run the task in the agent's own directory, or in a fresh git worktree on a new branch, removed automatically once that branch is merged | Two agents on one repo don't collide; the manager picks per task |
 | **Should** | Model and effort picked from what each CLI offers | Choices stay current with the CLIs |
+| **Should** | Directory fields suggest folders as you type a path (git repos marked), in every form that asks for a directory; and in a form's multi-line prompt `↑` `↓` move the cursor between lines and leave the box only from its first or last line | A path is typed once and right; arrow keys never throw you out of the text you are writing |
 | **Should** | Every action by key and by mouse; `?` key map | Usable by everyone |
 | **Should** | Key bindings you can change: a Keys screen in Settings that refuses clashes | Fits your hands and your terminal's own keys |
 | **Must** | Setup templates: pick Agent Squad, Product Team, Engineering Org or Blank to get a ready-made org, then customise anything | Managers and task runners both start in seconds; advanced users build their own |
