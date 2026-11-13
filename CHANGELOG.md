@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- Directory fields suggest folders as you type a path starting with `~/` or `/`, in the agent and role forms and in first-run step 3 (Agent Squad, Product Team and Engineering Org). A popup lists the matching folders under the field, with `git` after a repository: `↑` `↓` move, `tab` or `enter` take a folder and list the ones inside it, `esc` closes the popup (a second `esc` cancels the form).
+
+### Changed
+
+- In a form's Own prompt, `↑` and `↓` move the cursor between its lines and leave the box only from its first or last line; they used to leave at once. The box now grows with its text, up to four rows, and wraps long lines instead of showing line breaks as `↵`.
+
 ## [0.1.0-alpha.4] - 2026-11-08
 
 ### Changed

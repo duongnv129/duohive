@@ -1,6 +1,6 @@
 # Directory suggestions and the Own prompt box — Implementation Plan
 
-**Status:** plan 2026-11-13, not started. Approved by the author 2026-11-13: directory suggestions as a popup under the field (option A), line-aware `↑↓` in the Own prompt (option A), and a prompt box that grows to 4 rows.
+**Status:** DSP.1 to DSP.6 built on the branch `feat/dir-suggest` (2026-11-13), not merged · DSP.7's hand check is open (for the author). Plan 2026-11-13. Approved by the author 2026-11-13: directory suggestions as a popup under the field (option A), line-aware `↑↓` in the Own prompt (option A), and a prompt box that grows to 4 rows.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox syntax.
 

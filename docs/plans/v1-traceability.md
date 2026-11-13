@@ -39,6 +39,7 @@ This matrix gives every requirement in the [PRD](../product/prd.md), every scree
 | Should | Type straight into an agent's pane | 2 | 2.7 |
 | Should | Worktree option when giving work; removed once merged | 2 | 2.11–2.16 |
 | Should | Model and effort picked from what each CLI offers | 4 | 4.5 (replaces D14) |
+| Should | Directory fields suggest folders as you type; `↑↓` move between an Own prompt's lines (v1.1) | after 4 | [Directory suggestions plan](dir-suggest-plan.md) DSP.1–DSP.6 |
 | Should | Every action by key and by mouse: the wheel and click to select (P2-D25) | 2 | 2.21 |
 | Should | Every action by key and by mouse: the rest; `?` key map | 4 | 4.6–4.9 |
 | Should | Key bindings you can change (Keys screen refuses clashes) | 4 | 4.6 |
