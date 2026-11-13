@@ -1,7 +1,11 @@
 //! One form field: what it holds, how keys and pastes change it, and where it is drawn.
 
+use crate::format::width;
 use crate::forms::line_edit::LineEdit;
 use crate::input::Action;
+
+/// Most rows an Own prompt shows; past it the box scrolls (UI §4.4.1).
+pub const PROMPT_MAX_ROWS: usize = 4;
 
 /// Which setting a field edits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -191,6 +195,26 @@ impl Field {
     pub fn value(&self) -> Option<String> {
         let t = self.edit.text().trim();
         (!t.is_empty()).then(|| t.to_owned())
+    }
+
+    /// The cells a prompt's text wraps at: the box's inner width less its `Own: ` label.
+    pub fn prompt_cells(&self) -> usize {
+        let label = if self.look.label_inside {
+            width(&format!("{}: ", self.label))
+        } else {
+            0
+        };
+        usize::from(self.look.inner).saturating_sub(label)
+    }
+
+    /// Rows the field takes: one, except a prompt, which grows with its text up to
+    /// [`PROMPT_MAX_ROWS`] (UI §4.4.1).
+    pub fn height(&self) -> u16 {
+        if self.kind != FieldKind::Prompt {
+            return 1;
+        }
+        let rows = self.edit.wrap(self.prompt_cells()).len();
+        u16::try_from(rows.clamp(1, PROMPT_MAX_ROWS)).unwrap_or(1)
     }
 
     /// Whether tab stops here.

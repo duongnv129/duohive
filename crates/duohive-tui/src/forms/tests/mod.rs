@@ -23,6 +23,7 @@ mod dropdown;
 mod give_work;
 mod groups;
 mod keys;
+mod prompt;
 
 use super::{Chooser, FieldId, FieldKind, Form, FormOutcome, LineEdit, Models};
 use crate::fixtures::{ctx, mins, model_for, render_buffer, status, view};

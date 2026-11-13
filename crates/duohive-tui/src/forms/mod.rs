@@ -13,6 +13,7 @@ mod give_work;
 mod line_edit;
 mod move_to;
 mod org;
+mod prompt_keys;
 mod resume_picker;
 mod role;
 mod settings;
@@ -32,7 +33,7 @@ use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
 pub use dropdown::{DropRow, Dropdown, EFFORT_NEEDS_MODEL, Models, VISIBLE_ROWS};
-pub use field::{Field, FieldId, FieldKind, Look};
+pub use field::{Field, FieldId, FieldKind, Look, PROMPT_MAX_ROWS};
 pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
 pub use move_to::{InheritedChange, MoveOption, MoveTo, node_name, valid_targets};
@@ -311,6 +312,9 @@ impl Form {
             return out;
         }
         if let Some(out) = self.dir_key(a, org) {
+            return out;
+        }
+        if let Some(out) = self.prompt_key(a) {
             return out;
         }
         match a {

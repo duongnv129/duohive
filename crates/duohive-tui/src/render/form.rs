@@ -7,7 +7,7 @@ use ratatui::style::{Color, Style};
 use super::{LIGHT, draw_box, fg, put};
 use crate::dir_suggest::DirSuggest;
 use crate::format::{one_line, pad_right, truncate_end, width};
-use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, VISIBLE_ROWS};
+use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, PROMPT_MAX_ROWS, VISIBLE_ROWS};
 use crate::input::Action;
 use crate::theme::Palette;
 
@@ -35,6 +35,8 @@ enum Row<'a> {
     Text(u16, String, Color),
     Stacked(&'a str, Option<&'a str>, usize),
     Fields(Vec<usize>),
+    /// Row `k` (1 or more) of the Own prompt box of field `i`.
+    Cont(usize, usize),
     Buttons,
 }
 
@@ -100,6 +102,11 @@ pub(super) fn draw_form(buf: &mut Buffer, area: Rect, f: &Form, p: &Palette) -> 
                     cursor = Some(c);
                 }
             }
+            Row::Cont(i, k) => {
+                if let Some(c) = draw_prompt_row(buf, line, (f, *i, *k), p) {
+                    cursor = Some(c);
+                }
+            }
             Row::Buttons => draw_buttons(buf, line, f, p),
         }
     }
@@ -159,7 +166,15 @@ fn rows<'a>(f: &'a Form, p: &Palette) -> Vec<Row<'a>> {
                 (None, None) => None,
             })
             .collect();
+        let extra: Vec<Row<'a>> = group
+            .iter()
+            .flat_map(|&i| {
+                let h = f.fields.get(i).map_or(1, |x| usize::from(x.height()));
+                (1..h).map(move |k| Row::Cont(i, k))
+            })
+            .collect();
         out.push(Row::Fields(group));
+        out.extend(extra);
         out.extend(lines);
     }
     out.push(Row::Blank);
@@ -332,6 +347,7 @@ fn draw_control(
     } else {
         "_"
     };
+    let mut cursor_row = 0;
     let (shown, color, col) = match &fld.placeholder {
         _ if arrow && fld.drop.loading && fld.edit.text().is_empty() => {
             ("loading models…".to_owned(), p.fg_muted, 0)
@@ -339,6 +355,13 @@ fn draw_control(
         Some(ph) if fld.edit.text().is_empty() => (truncate_end(ph, avail), p.fg_muted, 0),
         // A count is short and shown whole; the cursor may sit on the space after it.
         _ if fld.kind == FieldKind::Count => (fld.edit.text().to_owned(), p.fg, fld.edit.cursor()),
+        _ if fld.kind == FieldKind::Prompt => {
+            // A prompt shows its wrapped rows; this is the first, the rest follow (UI §4.4.1).
+            let (rows, (row, col)) = fld.edit.window_rows(avail, PROMPT_MAX_ROWS);
+            cursor_row = row;
+            let color = if read_only { p.fg_muted } else { p.fg };
+            (rows.into_iter().next().unwrap_or_default(), color, col)
+        }
         _ => {
             let (vis, col) = fld.edit.window(avail);
             let color = if read_only { p.fg_muted } else { p.fg };
@@ -359,7 +382,7 @@ fn draw_control(
     } else {
         x
     };
-    let cursor = (focused && !read_only).then(|| Position {
+    let cursor = (focused && !read_only && cursor_row == 0).then(|| Position {
         x: text_x + u16::try_from(col).unwrap_or(0),
         y: line.y,
     });
@@ -506,6 +529,40 @@ pub(super) fn draw_rows_popup(
         hint_w,
         hint_style,
     );
+}
+
+/// Row `k` of an Own prompt's box (UI §4.4.1): the brackets, a blank where `Own: ` stood, the
+/// row's text. Returns the cursor when it is on this row.
+fn draw_prompt_row(
+    buf: &mut Buffer,
+    line: Line,
+    (f, i, k): (&Form, usize, usize),
+    p: &Palette,
+) -> Option<Position> {
+    let fld = f.fields.get(i)?;
+    let focused = f.focus == i;
+    let bracket = if focused {
+        fg(p.border_focus)
+    } else {
+        fg(p.fg)
+    };
+    let avail = fld.prompt_cells();
+    let label_w = usize::from(fld.look.inner).saturating_sub(avail);
+    let (rows, (cursor_row, cursor_col)) = fld.edit.window_rows(avail, PROMPT_MAX_ROWS);
+    let shown = rows.get(k).cloned().unwrap_or_default();
+    let from = line.x0 + fld.look.indent;
+    let x = line.put(from, "[ ", bracket, buf);
+    let x = line.put(x, &" ".repeat(label_w), fg(p.fg), buf);
+    let text_x = x;
+    let x = line.put(x, &shown, fg(p.fg), buf);
+    let pad = " ".repeat(avail.saturating_sub(width(&shown)));
+    let x = line.put(x, &pad, fg(p.fg_muted), buf);
+    let end = line.put(x, " ]", bracket, buf);
+    record_field(f, i, fld, from, end, line.y);
+    (focused && cursor_row == k).then(|| Position {
+        x: text_x + u16::try_from(cursor_col).unwrap_or(0),
+        y: line.y,
+    })
 }
 
 /// `fix N errors to save` or the key hint, then `[ Save ]  [ Cancel ]` at the right.
