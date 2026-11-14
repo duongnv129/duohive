@@ -559,11 +559,11 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
               │▌~/code/billing-api   git     │
               │ ~/code/billing-docs          │
               └──────────────────────────────┘
-              ↑↓ · tab or enter take · esc close
+              ↑↓ · enter pick · tab into · esc close
 ```
 
 - **List:** the folders inside the typed path's parent whose names start with the typed last segment, ignoring case, sorted by name; folders only, `git` in `fg.muted` after a git repo's name. At most 6 rows, then `… N more`. Hidden folders (`.name`) are listed only once the segment starts with `.`. No match, an unreadable folder or a missing parent: no popup and no error (the `✓` / `✕` note after the field is unchanged).
-- **Keys:** the first row is highlighted. `↑↓` move the highlight, `tab` or `enter` take it: the path becomes `<folder>/` and the popup lists that folder's subfolders, so you can go down a level at a time. `esc` closes the popup and keeps the text (the form's `esc` cancels only when no popup is open). With the popup closed, `tab` and `enter` move to the next field as in any text field, and `↑↓` as well. A click on a row takes it.
+- **Keys:** the first row is highlighted. `↑↓` move the highlight. `enter` **picks** the highlighted folder: the path becomes `<parent>/<folder>` with no `/` after it, the popup closes, and it stays closed until the text changes again; type `/` to list what is inside (typing is how you go deeper). `tab` goes **into** it: the path becomes `<folder>/` and the popup lists that folder's subfolders, so you can go down a level at a time. `esc` closes the popup and keeps the text (the form's `esc` cancels only when no popup is open). With the popup closed, `tab` and `enter` move to the next field as in any text field, and `↑↓` as well. A click on a row picks it, as `enter` does.
 - **Opens** only when the text changes (a typed key, a paste, backspace), never on focus alone; it closes when the field loses focus.
 
 **Form errors:** a duplicate name; worktrees on a directory that isn't a git repo (that radio is disabled, with the reason); the model list failing (while it loads, the field shows "loading models…").
@@ -1012,7 +1012,7 @@ Below 100 columns it becomes one scrolling column:
 | | `@` / `/` | Agent / command suggestions |
 | | `PgUp` / `PgDn` | Scroll the chat history |
 | Card dialog | `y` / `e` / `n`, `←→↑↓`, `enter`, `esc` | Approve / edit / reject; move between buttons; press the focused one; close (§4.6) |
-| Dialogs and forms | `↑` `↓`, `tab` / `shift+tab`, `enter`, `esc`, `ctrl+s` | Move between fields and buttons (`↑↓` and `tab` everywhere; `←→` on a button row), act on the focused button, cancel, save. `↑↓` are the popup's inside an open Model, Effort or Directory popup (and `tab` / `enter` take the highlighted folder there), and in the Own prompt they move between its lines and leave only from the first or last line (§4.4.1); `←→` stay a text field's cursor and a choice's options |
+| Dialogs and forms | `↑` `↓`, `tab` / `shift+tab`, `enter`, `esc`, `ctrl+s` | Move between fields and buttons (`↑↓` and `tab` everywhere; `←→` on a button row), act on the focused button, cancel, save. `↑↓` are the popup's inside an open Model, Effort or Directory popup (and `enter` picks the highlighted folder there, `tab` goes into it), and in the Own prompt they move between its lines and leave only from the first or last line (§4.4.1); `←→` stay a text field's cursor and a choice's options |
 | Give work | `↑` `↓` | Pick the agent in "Goes to" |
 | Mouse | click, right-click, wheel, drag | Select and focus, and type to a running agent (§4.1.2); node menu; scroll the pane under the pointer, typing too (§4.1.2); move a node or resize the chat. A plain drag in the agent pane, the chat or Needs you selects text and copies it on release; a drag that starts on an org row moves the node, and one on the chat's top edge resizes it. |
 
