@@ -473,6 +473,8 @@ mod move_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]
+mod popup_tests;
+#[cfg(test)]
 mod prelaunch_tests;
 #[cfg(test)]
 mod resume_tests;

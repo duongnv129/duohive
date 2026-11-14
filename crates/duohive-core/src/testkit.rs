@@ -22,7 +22,7 @@ use crate::session_catalog::{CatalogError, SessionCatalog, SessionInfo};
 use crate::settings::Settings;
 use crate::status::WaitingOn;
 use crate::time::Millis;
-use crate::validate::{DirProbe, DirStatus};
+use crate::validate::{DirEntry, DirProbe, DirStatus};
 use crate::view::{PaneChunk, PaneInput, PaneSize, PaneStream, StreamId, ViewError};
 use crate::worktree::{TaskId, WorktreeRow};
 use std::collections::BTreeMap;
@@ -71,12 +71,30 @@ pub fn example_org() -> Org {
 
 /// A [`DirProbe`] with canned answers (a path not listed is `Found`) and a
 /// count of probe calls.
-pub struct FakeDirs(pub HashMap<PathBuf, DirStatus>, pub Arc<AtomicUsize>);
+pub struct FakeDirs(
+    pub HashMap<PathBuf, DirStatus>,
+    pub Arc<AtomicUsize>,
+    pub HashMap<PathBuf, Vec<DirEntry>>,
+);
 
 impl FakeDirs {
-    /// Fake with these statuses and no calls yet.
+    /// Fake with these statuses, no folder listings and no calls yet.
     pub fn new(statuses: HashMap<PathBuf, DirStatus>) -> Self {
-        Self(statuses, Arc::new(AtomicUsize::new(0)))
+        Self(statuses, Arc::new(AtomicUsize::new(0)), HashMap::new())
+    }
+
+    /// With `names` (`(name, is_git)`) as the folders inside `parent`.
+    #[must_use]
+    pub fn with_listing(mut self, parent: impl Into<PathBuf>, names: &[(&str, bool)]) -> Self {
+        let entries = names
+            .iter()
+            .map(|&(name, is_git)| DirEntry {
+                name: name.to_owned(),
+                is_git,
+            })
+            .collect();
+        self.2.insert(parent.into(), entries);
+        self
     }
 }
 
@@ -84,6 +102,20 @@ impl DirProbe for FakeDirs {
     fn probe(&self, dir: &Path) -> DirStatus {
         self.1.fetch_add(1, Ordering::SeqCst);
         self.0.get(dir).copied().unwrap_or(DirStatus::Found)
+    }
+
+    fn list(&self, parent: &Path, prefix: &str) -> Vec<DirEntry> {
+        let needle = prefix.to_lowercase();
+        let mut found: Vec<DirEntry> = self
+            .2
+            .get(parent)
+            .into_iter()
+            .flatten()
+            .filter(|e| e.name.to_lowercase().starts_with(&needle))
+            .cloned()
+            .collect();
+        found.sort_by_cached_key(|e| e.name.to_lowercase());
+        found
     }
 }
 

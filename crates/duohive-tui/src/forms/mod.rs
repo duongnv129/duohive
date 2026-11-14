@@ -6,12 +6,14 @@
 
 mod agent;
 mod chooser;
+mod dir_keys;
 mod dropdown;
 mod field;
 mod give_work;
 mod line_edit;
 mod move_to;
 mod org;
+mod prompt_keys;
 mod resume_picker;
 mod role;
 mod settings;
@@ -31,7 +33,7 @@ use duohive_core::validate::{DirProbe, DirStatus};
 
 pub use chooser::{Chooser, ChooserItem, NewKind};
 pub use dropdown::{DropRow, Dropdown, EFFORT_NEEDS_MODEL, Models, VISIBLE_ROWS};
-pub use field::{Field, FieldId, FieldKind, Look};
+pub use field::{Field, FieldId, FieldKind, Look, PROMPT_MAX_ROWS};
 pub use give_work::{GiveFocus, GiveOutcome, GiveWork, Variant};
 pub use line_edit::LineEdit;
 pub use move_to::{InheritedChange, MoveOption, MoveTo, node_name, valid_targets};
@@ -268,6 +270,7 @@ impl Form {
     fn ready(mut self, org: &Org, dirs: &dyn DirProbe, home: &Path) -> Self {
         self.revalidate(org);
         self.probe_dir(org, dirs, home);
+        self.reset_suggest();
         self
     }
 
@@ -306,6 +309,12 @@ impl Form {
     /// Applies a key. Tab order skips read-only fields and ends on Save, then Cancel.
     pub fn handle(&mut self, a: Action, org: &Org) -> FormOutcome {
         if let Some(out) = self.dropdown_key(a, org) {
+            return out;
+        }
+        if let Some(out) = self.dir_key(a, org) {
+            return out;
+        }
+        if let Some(out) = self.prompt_key(a) {
             return out;
         }
         match a {

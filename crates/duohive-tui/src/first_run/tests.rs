@@ -606,3 +606,148 @@ fn org_replaced_closes_the_wizard() {
     assert!(m.wizard.is_none());
     assert!(m.dialog.is_none());
 }
+
+// Folder suggestions under the directory boxes (UI §4.4.1, DSP.4).
+
+/// The wizard over a disk where `~/code` holds `app` (a repo), `plain` and `web`.
+fn listing_model(w: FirstRun) -> UiModel {
+    let mut m = model(w);
+    let disk = dirs().with_listing(
+        "/home/me/code",
+        &[("app", true), ("plain", false), ("web", false)],
+    );
+    m.dirs = SharedDirs(Arc::new(disk));
+    m
+}
+
+fn wiz(m: &UiModel) -> &FirstRun {
+    m.wizard.as_ref().unwrap()
+}
+
+fn focused_at(template: TemplateChoice, focus: usize) -> UiModel {
+    let mut w = at(template);
+    w.focus = focus;
+    listing_model(w)
+}
+
+#[test]
+fn squad_directory_popup_opens_and_tab_takes() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    assert!(wiz(&m).suggest.open);
+    let labels: Vec<&str> = wiz(&m)
+        .suggest
+        .rows
+        .iter()
+        .map(|r| r.label.as_str())
+        .collect();
+    assert_eq!(labels, ["~/code/app"]);
+    press(&mut m, KeyCode::Tab);
+    assert_eq!(wiz(&m).squad.directory.text(), "~/code/app/");
+    assert_eq!(wiz(&m).focus, 1, "taking a row stays in the box");
+    assert!(!wiz(&m).suggest.open, "no folders inside app");
+}
+
+#[test]
+fn product_third_directory_popup() {
+    let mut m = focused_at(TemplateChoice::ProductTeam, 4);
+    type_text(&mut m, "~/code/p");
+    assert!(wiz(&m).suggest.open);
+    press(&mut m, KeyCode::Enter);
+    assert_eq!(wiz(&m).product.directories[2].text(), "~/code/plain/");
+    assert_eq!(wiz(&m).focus, 4);
+}
+
+#[test]
+fn engineering_repo_column_popup_not_name_column() {
+    let mut m = focused_at(TemplateChoice::EngineeringOrg, 1);
+    type_text(&mut m, "~/code/p");
+    assert!(!wiz(&m).suggest.open, "the name column takes no folders");
+    let mut m = focused_at(TemplateChoice::EngineeringOrg, 2);
+    type_text(&mut m, "~/code/p");
+    assert!(wiz(&m).suggest.open);
+    press(&mut m, KeyCode::Enter);
+    assert_eq!(wiz(&m).engineering.rows[0].repo.text(), "~/code/plain/");
+}
+
+#[test]
+fn esc_closes_popup_before_going_back() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    press(&mut m, KeyCode::Esc);
+    assert!(!wiz(&m).suggest.open);
+    assert_eq!(wiz(&m).step, Step::Form);
+    assert_eq!(wiz(&m).squad.directory.text(), "~/code/a");
+    press(&mut m, KeyCode::Esc);
+    assert_eq!(wiz(&m).step, Step::Template);
+}
+
+#[test]
+fn focus_change_closes_the_popup() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    press(&mut m, KeyCode::BackTab);
+    assert_eq!(wiz(&m).focus, 0);
+    assert!(!wiz(&m).suggest.open);
+    press(&mut m, KeyCode::Tab);
+    assert!(
+        !wiz(&m).suggest.open,
+        "coming back alone does not reopen it"
+    );
+}
+
+#[test]
+fn popup_does_not_open_on_focus_alone() {
+    let mut w = at(TemplateChoice::AgentSquad);
+    w.squad.directory = LineEdit::new("~/code/a");
+    let mut m = listing_model(w);
+    press(&mut m, KeyCode::Tab);
+    assert_eq!(wiz(&m).focus, 1);
+    assert!(!wiz(&m).suggest.open);
+}
+
+#[test]
+fn paste_opens_the_popup() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    crate::input::paste(&mut m, "~/code/w");
+    assert!(wiz(&m).suggest.open);
+}
+
+#[test]
+fn squad_directory_popup_screen() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/");
+    let screen = render_lines(&m, &ctx(), 80, 24).join("\n");
+    assert!(
+        screen.contains("↑↓ · tab or enter take · esc close"),
+        "{screen}"
+    );
+    assert!(screen.contains("~/code/app   git"), "{screen}");
+    insta::assert_snapshot!("step3_squad_directory_popup_80x24", screen);
+}
+
+/// Presses whatever a click on `needle` stands for, as drawn at 80×24.
+fn click(m: &mut UiModel, needle: &str) {
+    m.screen = ratatui::layout::Rect::new(0, 0, 80, 24);
+    let rows = render_lines(m, &ctx(), 80, 24);
+    let (y, byte) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(y, r)| r.find(needle).map(|b| (y, b)))
+        .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{}", rows.join("\n")));
+    let x = rows[y][..byte].chars().count();
+    let at = ratatui::layout::Position::new(u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
+    for k in crate::render::keys_at(m, at).expect("clickable") {
+        update(m, k);
+    }
+}
+
+#[test]
+fn clicking_a_button_with_the_popup_open_leaves_the_path_alone() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    assert!(wiz(&m).suggest.open);
+    click(&mut m, "← Back");
+    assert_eq!(wiz(&m).squad.directory.text(), "~/code/a");
+    assert_eq!(wiz(&m).step, Step::Template);
+}

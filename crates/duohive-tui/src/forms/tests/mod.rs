@@ -18,10 +18,12 @@ use duohive_core::validate::{DirProbe, DirStatus};
 use ratatui::buffer::Buffer;
 
 mod agent;
+mod dir_suggest;
 mod dropdown;
 mod give_work;
 mod groups;
 mod keys;
+mod prompt;
 
 use super::{Chooser, FieldId, FieldKind, Form, FormOutcome, LineEdit, Models};
 use crate::fixtures::{ctx, mins, model_for, render_buffer, status, view};

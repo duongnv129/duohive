@@ -1,0 +1,21 @@
+---
+source: crates/duohive-tui/src/first_run/tests.rs
+expression: screen
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+    ┌─ Set up Agent Squad · step 3 of 3 ───────────────────────────────────┐    
+    │                                                                      │    
+    │  Agents        [3                           ]                        │    
+    │▌ Directory     [~/code/                     ] ✓ found                │    
+    │  CLI           ┌──────────────────────────┐de                        │    
+    │  Worktrees     │▌~/code/app   git         │ not a git repo           │    
+    │  Role prompt   │ ~/code/plain             │ ]                        │    
+    │  You can change│ ~/code/web               │                          │    
+    │  tab · enter · └──────────────────────────┘ate org ]   [ Quit ]      │    
+    │                ↑↓ · tab or enter take · esc close                    │    
+    └──────────────────────────────────────────────────────────────────────┘

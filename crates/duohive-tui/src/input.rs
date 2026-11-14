@@ -583,6 +583,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
 pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
     if let Some(w) = m.wizard.as_mut() {
         crate::first_run::paste(w, text);
+        crate::first_run::refresh_suggest(w, m.dirs.probe(), &m.home);
         return Vec::new();
     }
     if m.typing() {
@@ -594,6 +595,7 @@ pub fn paste(m: &mut UiModel, text: &str) -> Vec<UiEffect> {
         Some(Dialog::Form(f)) => {
             f.paste(text, &m.org);
             f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+            f.refresh_suggest(m.dirs.probe(), &m.home);
         }
         Some(Dialog::GiveWork(g)) => g.paste(text),
         None if m.focus.pane == Pane::Chat => {
@@ -653,6 +655,7 @@ fn form_action(m: &mut UiModel, mut f: Box<Form>, a: Action) -> Vec<UiEffect> {
     match out {
         FormOutcome::Continue => {
             f.probe_dir(&m.org, m.dirs.probe(), &m.home);
+            f.refresh_suggest(m.dirs.probe(), &m.home);
             m.dialog = Some(Dialog::Form(f));
             Vec::new()
         }

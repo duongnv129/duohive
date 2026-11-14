@@ -3,6 +3,7 @@
 pub mod app;
 pub mod card_dialog;
 pub mod chat;
+pub mod dir_suggest;
 pub mod filter;
 pub mod first_run;
 pub mod focus;
