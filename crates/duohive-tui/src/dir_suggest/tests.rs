@@ -102,18 +102,38 @@ fn step_clamps_at_both_ends() {
 }
 
 #[test]
-fn take_returns_path_with_trailing_slash_and_closes() {
+fn go_into_returns_path_with_trailing_slash_and_closes() {
     let mut s = refreshed("~/code/bil");
     s.step(true);
-    assert_eq!(s.take().as_deref(), Some("~/code/billing-docs/"));
+    assert_eq!(s.go_into().as_deref(), Some("~/code/billing-docs/"));
     assert!(!s.open);
-    assert_eq!(s.take(), None);
+    assert_eq!(s.go_into(), None);
 }
 
 #[test]
-fn refresh_after_take_lists_children() {
+fn pick_returns_the_folder_without_a_slash_and_stays_closed() {
     let mut s = refreshed("~/code/bil");
-    let taken = s.take().unwrap();
+    assert_eq!(s.pick().as_deref(), Some("~/code/billing-api"));
+    assert!(!s.open);
+    s.refresh("~/code/billing-api", &dirs(), Path::new(HOME));
+    assert!(!s.open, "picking does not list the folder's children");
+    assert_eq!(s.pick(), None);
+}
+
+#[test]
+fn typing_a_slash_after_a_pick_lists_the_children() {
+    let mut s = refreshed("~/code/bil");
+    let picked = s.pick().unwrap();
+    s.refresh(&format!("{picked}/"), &dirs(), Path::new(HOME));
+    assert!(s.open);
+    let labels: Vec<&str> = s.rows.iter().map(|r| r.label.as_str()).collect();
+    assert_eq!(labels, ["~/code/billing-api/src"]);
+}
+
+#[test]
+fn refresh_after_go_into_lists_children() {
+    let mut s = refreshed("~/code/bil");
+    let taken = s.go_into().unwrap();
     s.refresh(&taken, &dirs(), Path::new(HOME));
     assert!(s.open);
     let labels: Vec<&str> = s.rows.iter().map(|r| r.label.as_str()).collect();

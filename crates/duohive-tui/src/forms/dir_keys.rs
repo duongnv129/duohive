@@ -22,8 +22,13 @@ impl Form {
             Action::Up => f.suggest.step(false),
             Action::Down => f.suggest.step(true),
             Action::Tab | Action::DialogEnter => {
-                let taken = f.suggest.take()?;
-                f.edit = LineEdit::new(&taken);
+                // `tab` goes into the folder (its children are listed next); `enter` picks it.
+                let chosen = if a == Action::Tab {
+                    f.suggest.go_into()
+                } else {
+                    f.suggest.pick()
+                }?;
+                f.edit = LineEdit::new(&chosen);
                 f.touched = true;
                 self.revalidate(org);
             }

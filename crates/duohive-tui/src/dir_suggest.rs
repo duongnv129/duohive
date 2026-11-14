@@ -86,13 +86,29 @@ impl DirSuggest {
         };
     }
 
-    /// The highlighted row's path, closing the popup; `None` when it is closed.
-    pub fn take(&mut self) -> Option<String> {
+    /// `tab`: the highlighted folder's path with a `/` after it, closing the popup. The caller
+    /// puts it in the field and refreshes, which lists the folder's children. `None` when the
+    /// popup is closed.
+    pub fn go_into(&mut self) -> Option<String> {
         if !self.open {
             return None;
         }
         self.close();
         self.rows.get(self.cursor).map(|r| r.path.clone())
+    }
+
+    /// `enter`: the highlighted folder as typed, with no `/` after it, closing the popup. The
+    /// text counts as already listed, so the popup stays closed until the text changes and
+    /// the folder's children are not listed (typing `/` lists them, DSP-D8). `None` when the
+    /// popup is closed.
+    pub fn pick(&mut self) -> Option<String> {
+        if !self.open {
+            return None;
+        }
+        self.close();
+        let label = self.rows.get(self.cursor)?.label.clone();
+        self.listed_for.clone_from(&label);
+        Some(label)
     }
 }
 

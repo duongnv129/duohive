@@ -17,7 +17,7 @@ expression: screen
 ┃    └─ sq│  Flags       │▌~/code/billing-api   git │____ ]                              │         │
 ┃         │  Worktrees   │ ~/code/billing-docs      │                                    │         │
 ┃         │              └──────────────────────────┘o; ~/code/bil isn't one             │         │
-┃         │              ↑↓ · tab or enter take · esc close                              │         │
+┃         │              ↑↓ · enter pick · tab into · esc close                          │         │
 ┃         │  Prompt  (stacks under: Org › Payments › Backend)                            │         │
 ┃         │  ┊ Org       Ask before you delete anything.                                 │         │
 ┃         │  ┊ Payments  (none)                                                          │         │

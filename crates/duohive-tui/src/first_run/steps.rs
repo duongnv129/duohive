@@ -154,8 +154,13 @@ fn popup_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> O
         Action::Up => w.suggest.step(false),
         Action::Down => w.suggest.step(true),
         Action::Tab | Action::DialogEnter => {
-            let taken = w.suggest.take()?;
-            *focused_dir_mut(w)? = LineEdit::new(&taken);
+            // `tab` goes into the folder (its children are listed next); `enter` picks it.
+            let chosen = if a == Action::Tab {
+                w.suggest.go_into()
+            } else {
+                w.suggest.pick()
+            }?;
+            *focused_dir_mut(w)? = LineEdit::new(&chosen);
             refresh_suggest(w, dirs, home);
         }
         _ => return None,

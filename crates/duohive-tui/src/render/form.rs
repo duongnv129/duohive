@@ -23,7 +23,7 @@ pub(super) const CHOOSER_HINT: &str = "↑↓ choose · enter open form · esc";
 const INHERIT: &str = "inherit: ";
 const POPUP_HINT: &str = "type to filter · ↑↓ · enter choose · esc close";
 /// The hint under a Directory field's folder popup.
-const SUGGEST_HINT: &str = "↑↓ · tab or enter take · esc close";
+const SUGGEST_HINT: &str = "↑↓ · enter pick · tab into · esc close";
 /// After a git repository's name in the folder popup.
 const GIT_TAIL: &str = "   git";
 /// The popup is at least this wide inside its border.
