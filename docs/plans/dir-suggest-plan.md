@@ -21,7 +21,8 @@
 | DSP-D1 | `DirProbe::list` has a default body returning no entries, so other implementers (`NoProbe`, bench `NoDirs`) need no change. |
 | DSP-D2 | The popup state is computed by the caller after a key or paste (`refresh_suggest`), not inside `Form::handle`, which has no `DirProbe`. `handle` only moves, takes or closes rows already listed. |
 | DSP-D3 | `DirSuggest` remembers the text its rows were listed for (`listed_for`) and opens only when the text differs from it: focus alone never opens it, and `esc` stays closed until the text changes again. `reset(text)` (form open, focus change) closes it and sets `listed_for`. |
-| DSP-D4 | Taking a row gives the field `<typed parent><name>/`, so the next `refresh` lists that folder's children (text changed). |
+| DSP-D4 | Taking a row gives the field `<typed parent><name>/`, so the next `refresh` lists that folder's children (text changed). **Superseded 2026-11-14 for `enter` (DSP-D8):** `tab` still does this; `enter` picks without the slash and without re-listing. |
+| DSP-D8 | `enter` on a folder picks it: the field gets `<typed parent><name>` (no `/`), the popup closes, and `DirSuggest` remembers that text as already listed, so it reopens only when the text changes (typing `/` lists the folder's children). A click on a row presses `enter`, so it picks. Decided by the author 2026-11-14 (option A). |
 | DSP-D5 | Rows show the typed parent, not an expanded one (`~/code/app`, not `/Users/…/code/app`); `git` follows in `fg.muted`. |
 | DSP-D6 | The Own prompt's row count is derived from its text and the box's width on every draw; nothing is stored. A click on any of its rows focuses it. |
 | DSP-D7 | Give work's "Run in" is a choice, not a path field, and gets no popup; the team form has no Directory field. The popup is in the agent and role forms and first-run step 3. |

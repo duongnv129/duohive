@@ -612,10 +612,12 @@ fn org_replaced_closes_the_wizard() {
 /// The wizard over a disk where `~/code` holds `app` (a repo), `plain` and `web`.
 fn listing_model(w: FirstRun) -> UiModel {
     let mut m = model(w);
-    let disk = dirs().with_listing(
-        "/home/me/code",
-        &[("app", true), ("plain", false), ("web", false)],
-    );
+    let disk = dirs()
+        .with_listing(
+            "/home/me/code",
+            &[("app", true), ("plain", false), ("web", false)],
+        )
+        .with_listing("/home/me/code/app", &[("src", false)]);
     m.dirs = SharedDirs(Arc::new(disk));
     m
 }
@@ -631,7 +633,7 @@ fn focused_at(template: TemplateChoice, focus: usize) -> UiModel {
 }
 
 #[test]
-fn squad_directory_popup_opens_and_tab_takes() {
+fn squad_directory_popup_opens_and_tab_goes_into_the_folder() {
     let mut m = focused_at(TemplateChoice::AgentSquad, 1);
     type_text(&mut m, "~/code/a");
     assert!(wiz(&m).suggest.open);
@@ -645,7 +647,21 @@ fn squad_directory_popup_opens_and_tab_takes() {
     press(&mut m, KeyCode::Tab);
     assert_eq!(wiz(&m).squad.directory.text(), "~/code/app/");
     assert_eq!(wiz(&m).focus, 1, "taking a row stays in the box");
-    assert!(!wiz(&m).suggest.open, "no folders inside app");
+    assert!(wiz(&m).suggest.open, "tab lists what is inside app");
+    assert_eq!(wiz(&m).suggest.rows[0].label, "~/code/app/src");
+}
+
+#[test]
+fn enter_picks_without_listing_children_and_a_slash_lists_them() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    press(&mut m, KeyCode::Enter);
+    assert_eq!(wiz(&m).squad.directory.text(), "~/code/app");
+    assert!(!wiz(&m).suggest.open, "app has a src, still closed");
+    assert_eq!(wiz(&m).focus, 1);
+    type_text(&mut m, "/");
+    assert!(wiz(&m).suggest.open);
+    assert_eq!(wiz(&m).suggest.rows[0].label, "~/code/app/src");
 }
 
 #[test]
@@ -654,7 +670,7 @@ fn product_third_directory_popup() {
     type_text(&mut m, "~/code/p");
     assert!(wiz(&m).suggest.open);
     press(&mut m, KeyCode::Enter);
-    assert_eq!(wiz(&m).product.directories[2].text(), "~/code/plain/");
+    assert_eq!(wiz(&m).product.directories[2].text(), "~/code/plain");
     assert_eq!(wiz(&m).focus, 4);
 }
 
@@ -667,7 +683,7 @@ fn engineering_repo_column_popup_not_name_column() {
     type_text(&mut m, "~/code/p");
     assert!(wiz(&m).suggest.open);
     press(&mut m, KeyCode::Enter);
-    assert_eq!(wiz(&m).engineering.rows[0].repo.text(), "~/code/plain/");
+    assert_eq!(wiz(&m).engineering.rows[0].repo.text(), "~/code/plain");
 }
 
 #[test]
@@ -719,7 +735,7 @@ fn squad_directory_popup_screen() {
     type_text(&mut m, "~/code/");
     let screen = render_lines(&m, &ctx(), 80, 24).join("\n");
     assert!(
-        screen.contains("↑↓ · tab or enter take · esc close"),
+        screen.contains("↑↓ · enter pick · tab into · esc close"),
         "{screen}"
     );
     assert!(screen.contains("~/code/app   git"), "{screen}");

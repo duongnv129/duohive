@@ -8,7 +8,7 @@ use super::form::{draw_rows_popup, suggest_popup};
 use crate::dir_suggest::{DirSuggest, SuggestRow};
 use crate::theme::Palette;
 
-const HINT: &str = "↑↓ · tab or enter take · esc close";
+const HINT: &str = "↑↓ · enter pick · tab into · esc close";
 
 fn nine_folders() -> DirSuggest {
     let mut s = DirSuggest::default();

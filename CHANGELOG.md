@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Added
 
-- Directory fields suggest folders as you type a path starting with `~/` or `/`, in the agent and role forms and in first-run step 3 (Agent Squad, Product Team and Engineering Org). A popup lists the matching folders under the field, with `git` after a repository: `↑` `↓` move, `tab` or `enter` take a folder and list the ones inside it, `esc` closes the popup (a second `esc` cancels the form).
+- Directory fields suggest folders as you type a path starting with `~/` or `/`, in the agent and role forms and in first-run step 3 (Agent Squad, Product Team and Engineering Org). A popup lists the matching folders under the field, with `git` after a repository: `↑` `↓` move, `enter` picks the folder and closes the popup (type `/` to list what is inside), `tab` goes into the folder and lists the ones inside it, `esc` closes the popup (a second `esc` cancels the form).
 
 ### Changed
 

@@ -6,7 +6,7 @@ use super::*;
 use crate::forms::Field;
 use crate::render::keys_at;
 
-const HINT: &str = "↑↓ · tab or enter take · esc close";
+const HINT: &str = "↑↓ · enter pick · tab into · esc close";
 
 /// The fake disk: `~/code` holds three folders, one of them a repo with a `src` inside, and
 /// `~/many` holds nine.
@@ -88,7 +88,7 @@ fn opening_the_form_or_focusing_the_field_does_not_open_it() {
 }
 
 #[test]
-fn down_then_tab_takes_and_lists_children() {
+fn down_then_tab_goes_into_the_folder_and_lists_children() {
     let (mut f, org) = dir_form();
     typed_l(&mut f, &org, "~/code/bil");
     press_l(&mut f, &org, Action::Down);
@@ -102,15 +102,29 @@ fn down_then_tab_takes_and_lists_children() {
 }
 
 #[test]
-fn enter_takes_when_open_and_moves_on_when_closed() {
+fn enter_picks_when_open_and_moves_on_when_closed() {
     let (mut f, org) = dir_form();
     typed_l(&mut f, &org, "~/code/we");
     press_l(&mut f, &org, Action::DialogEnter);
-    assert_eq!(text(&f, FieldId::Directory), "~/code/web/");
+    assert_eq!(text(&f, FieldId::Directory), "~/code/web");
     assert!(f.focused_is(FieldId::Directory));
-    assert!(!dir_field(&f).suggest.open, "no folders inside web");
+    assert!(!dir_field(&f).suggest.open);
     press_l(&mut f, &org, Action::DialogEnter);
     assert!(!f.focused_is(FieldId::Directory));
+}
+
+#[test]
+fn enter_does_not_list_the_folders_children_but_typing_a_slash_does() {
+    let (mut f, org) = dir_form();
+    typed_l(&mut f, &org, "~/code/bil");
+    press_l(&mut f, &org, Action::DialogEnter);
+    assert_eq!(text(&f, FieldId::Directory), "~/code/billing-api");
+    assert!(
+        !dir_field(&f).suggest.open,
+        "billing-api has a src, still closed"
+    );
+    typed_l(&mut f, &org, "/");
+    assert_eq!(labels(&f), ["~/code/billing-api/src"]);
 }
 
 #[test]
@@ -166,6 +180,15 @@ fn popup_closes_when_focus_leaves() {
 }
 
 #[test]
+fn picking_a_row_updates_the_check_note() {
+    let (mut f, org) = dir_form();
+    typed_l(&mut f, &org, "~/code/billing-a");
+    press_l(&mut f, &org, Action::DialogEnter);
+    assert_eq!(text(&f, FieldId::Directory), "~/code/billing-api");
+    assert_eq!(dir_field(&f).suffix.as_deref(), Some("✓ git repo"));
+}
+
+#[test]
 fn taking_a_row_updates_the_check_note() {
     let (mut f, org) = dir_form();
     typed_l(&mut f, &org, "~/code/billing-a");
@@ -202,7 +225,7 @@ fn clicking_a_row_takes_it() {
     for k in keys_at(&ui, at).expect("the row is clickable") {
         update(&mut ui, k);
     }
-    assert_eq!(text(form(&ui), FieldId::Directory), "~/code/billing-docs/");
+    assert_eq!(text(form(&ui), FieldId::Directory), "~/code/billing-docs");
 }
 
 #[test]
