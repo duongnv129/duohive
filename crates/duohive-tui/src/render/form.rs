@@ -273,6 +273,15 @@ fn draw_fields<'a>(
     cursor
 }
 
+/// The keys of a click, led by `esc` while a folder popup is open: the click first closes the
+/// popup, so the `tab` or `enter` that follows moves on instead of taking a folder.
+fn after_popup(f: &Form, mut keys: Vec<Action>) -> Vec<Action> {
+    if f.dir_popup_open() {
+        keys.insert(0, Action::Esc);
+    }
+    keys
+}
+
 /// A click on a field focuses it; on a choice it also steps it, on a dropdown it opens it.
 fn record_field(f: &Form, i: usize, fld: &Field, from: u16, to: u16, y: u16) {
     if fld.locked || fld.kind == FieldKind::ReadOnly || to <= from {
@@ -294,7 +303,7 @@ fn record_field(f: &Form, i: usize, fld: &Field, from: u16, to: u16, y: u16) {
             width: to - from,
             height: 1,
         },
-        keys,
+        after_popup(f, keys),
     );
 }
 
@@ -607,7 +616,7 @@ fn draw_buttons(buf: &mut Buffer, line: Line, f: &Form, p: &Palette) {
         height: 1,
     };
     super::hits::record(button(start, &save), vec![Action::Save]);
-    super::hits::record(button(cancel_x, cancel), vec![Action::Esc]);
+    super::hits::record(button(cancel_x, cancel), after_popup(f, vec![Action::Esc]));
     line.put(cancel_x, cancel, style(f.on_cancel(), true), buf);
     if f.on_save() {
         line.put(start - 1, FOCUS, fg(p.border_focus), buf);

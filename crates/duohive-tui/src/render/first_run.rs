@@ -47,6 +47,7 @@ pub(super) fn draw(buf: &mut Buffer, area: Rect, m: &UiModel, ctx: &RenderCtx) -
         y: r.y + 1,
         right: r.right() - 1,
         popup_at: None,
+        popup_open: w.suggest.open,
     };
     let cursor = match w.step {
         Step::You => you(&mut line, w, p),
@@ -68,6 +69,8 @@ struct Line<'a> {
     right: u16,
     /// Where the focused directory box is, for its folder popup.
     popup_at: Option<(u16, u16)>,
+    /// The folder popup is open, so clicks start by closing it.
+    popup_open: bool,
 }
 
 impl Line<'_> {
@@ -91,6 +94,13 @@ impl Line<'_> {
             y: self.y,
             width: u16::try_from(width(text)).unwrap_or(0),
             height: 1,
+        };
+        // While the folder popup is open the click first closes it (`esc`), so the `tab` or
+        // `enter` after it moves on instead of taking a folder.
+        let keys = if self.popup_open {
+            [vec![Action::Esc], keys].concat()
+        } else {
+            keys
         };
         super::hits::record(area, keys);
     }
@@ -719,6 +729,7 @@ fn blocked(buf: &mut Buffer, area: Rect, p: &Palette) {
         y: r.y + 2,
         right: r.right() - 1,
         popup_at: None,
+        popup_open: false,
     };
     for text in rows {
         line.text(text, p.fg);

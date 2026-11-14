@@ -49,6 +49,13 @@ impl Form {
         }
     }
 
+    /// The focused Directory field's folder popup is showing.
+    pub fn dir_popup_open(&self) -> bool {
+        self.fields
+            .get(self.focus)
+            .is_some_and(|f| f.id == FieldId::Directory && f.suggest.open)
+    }
+
     /// Closes every popup and takes the text now in the fields as already seen, so focus
     /// alone never opens one.
     pub(super) fn reset_suggest(&mut self) {

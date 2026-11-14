@@ -725,3 +725,29 @@ fn squad_directory_popup_screen() {
     assert!(screen.contains("~/code/app   git"), "{screen}");
     insta::assert_snapshot!("step3_squad_directory_popup_80x24", screen);
 }
+
+/// Presses whatever a click on `needle` stands for, as drawn at 80×24.
+fn click(m: &mut UiModel, needle: &str) {
+    m.screen = ratatui::layout::Rect::new(0, 0, 80, 24);
+    let rows = render_lines(m, &ctx(), 80, 24);
+    let (y, byte) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(y, r)| r.find(needle).map(|b| (y, b)))
+        .unwrap_or_else(|| panic!("{needle:?} not on screen:\n{}", rows.join("\n")));
+    let x = rows[y][..byte].chars().count();
+    let at = ratatui::layout::Position::new(u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
+    for k in crate::render::keys_at(m, at).expect("clickable") {
+        update(m, k);
+    }
+}
+
+#[test]
+fn clicking_a_button_with_the_popup_open_leaves_the_path_alone() {
+    let mut m = focused_at(TemplateChoice::AgentSquad, 1);
+    type_text(&mut m, "~/code/a");
+    assert!(wiz(&m).suggest.open);
+    click(&mut m, "← Back");
+    assert_eq!(wiz(&m).squad.directory.text(), "~/code/a");
+    assert_eq!(wiz(&m).step, Step::Template);
+}

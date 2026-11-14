@@ -232,3 +232,29 @@ fn popup_not_drawn_when_it_cannot_fit_below() {
     let screen = screen_text_at(&dialog_model(f), 80, 14);
     assert!(!screen.contains(HINT), "{screen}");
 }
+
+#[test]
+fn clicking_another_field_with_the_popup_open_leaves_the_path_alone() {
+    let (mut f, org) = dir_form();
+    typed_l(&mut f, &org, "~/code/bil");
+    let mut ui = dialog_model(f);
+    let at = find(&ui, "[ billing-api");
+    for k in keys_at(&ui, at).expect("the Name box is clickable") {
+        update(&mut ui, k);
+    }
+    assert_eq!(text(form(&ui), FieldId::Directory), "~/code/bil");
+    assert!(form(&ui).focused_is(FieldId::Name));
+    assert!(!dir_field(form(&ui)).suggest.open);
+}
+
+#[test]
+fn clicking_cancel_with_the_popup_open_cancels_in_one_click() {
+    let (mut f, org) = dir_form();
+    typed_l(&mut f, &org, "~/code/bil");
+    let mut ui = dialog_model(f);
+    let at = find(&ui, "[ Cancel ]");
+    for k in keys_at(&ui, at).expect("Cancel is clickable") {
+        update(&mut ui, k);
+    }
+    assert!(ui.dialog.is_none());
+}
