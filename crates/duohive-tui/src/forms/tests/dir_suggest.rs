@@ -226,14 +226,6 @@ fn directory_popup_caps_at_six_rows_with_more_line() {
 }
 
 #[test]
-fn popup_not_drawn_when_it_cannot_fit_below() {
-    let (mut f, org) = dir_form();
-    typed_l(&mut f, &org, "~/code/bil");
-    let screen = screen_text_at(&dialog_model(f), 80, 14);
-    assert!(!screen.contains(HINT), "{screen}");
-}
-
-#[test]
 fn clicking_another_field_with_the_popup_open_leaves_the_path_alone() {
     let (mut f, org) = dir_form();
     typed_l(&mut f, &org, "~/code/bil");

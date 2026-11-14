@@ -510,7 +510,7 @@ pub(super) fn draw_rows_popup(
     let inside = Style::default().fg(p.fg).bg(p.bg_panel);
     draw_box(buf, r, "", &LIGHT, fg(p.border_focus), inside);
     let shown = popup.rows.iter().enumerate().skip(geo.first);
-    for (n, row) in shown.take(VISIBLE_ROWS) {
+    for (n, row) in shown.take(geo.shown) {
         let ry = r.y + 1 + u16::try_from(n - geo.first).unwrap_or(0);
         let row_area = Rect {
             x: r.x + 1,
@@ -556,16 +556,25 @@ struct PopupGeo {
     rect: Rect,
     /// The first row shown, so the highlight stays in view.
     first: usize,
+    /// How many rows show.
+    shown: usize,
     /// Rows left below the ones shown.
     more: usize,
 }
 
-/// The popup's box under the field at `(x, y)`, kept on screen; `None` when it can't fit
-/// below the field.
+/// The popup's box under the field at `(x, y)`, kept on screen and showing as many rows as
+/// the screen leaves below the field (the box's border and the hint line take three); `None`
+/// when not even one row fits.
 fn popup_geometry(popup: &Popup, area: Rect, (x, y): (u16, u16)) -> Option<PopupGeo> {
-    let first = (popup.cursor + 1).saturating_sub(VISIBLE_ROWS);
-    let shown = popup.rows.len().saturating_sub(first).min(VISIBLE_ROWS);
-    let more = popup.rows.len().saturating_sub(first + shown);
+    let top = y + 1;
+    let room = usize::from(area.bottom().saturating_sub(top)).saturating_sub(3);
+    let total = popup.rows.len();
+    let (first, shown, more) = (1..=VISIBLE_ROWS.min(total)).rev().find_map(|cap| {
+        let first = (popup.cursor + 1).saturating_sub(cap);
+        let shown = total.saturating_sub(first).min(cap);
+        let more = total.saturating_sub(first + shown);
+        (shown + usize::from(more > 0) <= room).then_some((first, shown, more))
+    })?;
     let longest = popup
         .rows
         .iter()
@@ -576,10 +585,6 @@ fn popup_geometry(popup: &Popup, area: Rect, (x, y): (u16, u16)) -> Option<Popup
         .unwrap_or(u16::MAX)
         .min(area.width);
     let h = u16::try_from(shown + usize::from(more > 0) + 2).unwrap_or(u16::MAX);
-    let top = y + 1;
-    if top + h + 1 > area.bottom() {
-        return None;
-    }
     let x = x.min(area.right().saturating_sub(w));
     let rect = Rect {
         x,
@@ -587,7 +592,12 @@ fn popup_geometry(popup: &Popup, area: Rect, (x, y): (u16, u16)) -> Option<Popup
         width: w,
         height: h,
     };
-    Some(PopupGeo { rect, first, more })
+    Some(PopupGeo {
+        rect,
+        first,
+        shown,
+        more,
+    })
 }
 
 /// One popup row: the focus mark and text padded to the box, then the muted tail; a click on
