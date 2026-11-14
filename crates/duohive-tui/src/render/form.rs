@@ -317,85 +317,133 @@ fn draw_control(
     p: &Palette,
 ) -> (u16, Option<Position>) {
     let read_only = fld.kind == FieldKind::ReadOnly;
-    let bracket = if focused {
-        fg(p.border_focus)
-    } else if read_only {
-        fg(p.fg_muted)
-    } else {
-        fg(p.fg)
-    };
+    let bracket = bracket_style(focused, read_only, p);
     let x = line.put(x, "[ ", bracket, buf);
     if let FieldKind::Choice(_) = &fld.kind {
-        let choice = fld.choice();
-        let color = if choice.starts_with(INHERIT) {
-            p.fg_muted
-        } else {
-            p.fg
-        };
-        let x = line.put(x, &format!("{choice} ▾"), fg(color), buf);
-        return (line.put(x, " ]", bracket, buf), None);
+        return (draw_choice(buf, line, x, fld, bracket, p), None);
     }
     let prefix = if fld.look.label_inside {
         format!("{}: ", fld.label)
     } else {
         String::new()
     };
-    let text_w = width(fld.edit.text());
-    let inner = match fld.kind {
-        FieldKind::Count => text_w.max(1),
-        _ => usize::from(fld.look.inner),
-    };
     let arrow = fld.kind == FieldKind::Dropdown;
-    // A dropdown keeps two cells for ` ▾` inside the brackets.
-    let avail = inner
-        .saturating_sub(width(&prefix))
-        .saturating_sub(if arrow { 2 } else { 0 });
+    let avail = control_avail(fld, width(&prefix));
     let x = line.put(x, &prefix, fg(p.fg), buf);
     let fill = if fld.kind == FieldKind::Prompt {
         " "
     } else {
         "_"
     };
-    let mut cursor_row = 0;
-    let (shown, color, col) = match &fld.placeholder {
-        _ if arrow && fld.drop.loading && fld.edit.text().is_empty() => {
-            ("loading models…".to_owned(), p.fg_muted, 0)
-        }
-        Some(ph) if fld.edit.text().is_empty() => (truncate_end(ph, avail), p.fg_muted, 0),
-        // A count is short and shown whole; the cursor may sit on the space after it.
-        _ if fld.kind == FieldKind::Count => (fld.edit.text().to_owned(), p.fg, fld.edit.cursor()),
-        _ if fld.kind == FieldKind::Prompt => {
-            // A prompt shows its wrapped rows; this is the first, the rest follow (UI §4.4.1).
-            let (rows, (row, col)) = fld.edit.window_rows(avail, PROMPT_MAX_ROWS);
-            cursor_row = row;
-            let color = if read_only { p.fg_muted } else { p.fg };
-            (rows.into_iter().next().unwrap_or_default(), color, col)
-        }
-        _ => {
-            let (vis, col) = fld.edit.window(avail);
-            let color = if read_only { p.fg_muted } else { p.fg };
-            (vis, color, col)
-        }
-    };
+    let text = control_text(fld, avail, p);
     let text_x = x;
-    let x = line.put(x, &shown, fg(color), buf);
-    let x = line.put(
-        x,
-        &fill.repeat(avail.saturating_sub(width(&shown))),
-        fg(p.fg_muted),
-        buf,
-    );
+    let x = line.put(x, &text.shown, fg(text.color), buf);
+    let pad = fill.repeat(avail.saturating_sub(width(&text.shown)));
+    let x = line.put(x, &pad, fg(p.fg_muted), buf);
     let x = if arrow {
         let mark = if fld.drop.open { " ▴" } else { " ▾" };
         line.put(x, mark, fg(p.fg_muted), buf)
     } else {
         x
     };
-    let cursor = (focused && !read_only && cursor_row == 0).then(|| Position {
-        x: text_x + u16::try_from(col).unwrap_or(0),
+    let cursor = (focused && !read_only && text.row == 0).then(|| Position {
+        x: text_x + u16::try_from(text.col).unwrap_or(0),
         y: line.y,
     });
     (line.put(x, " ]", bracket, buf), cursor)
+}
+
+/// The brackets' colour: the focus colour, muted when read-only.
+fn bracket_style(focused: bool, read_only: bool, p: &Palette) -> Style {
+    if focused {
+        fg(p.border_focus)
+    } else if read_only {
+        fg(p.fg_muted)
+    } else {
+        fg(p.fg)
+    }
+}
+
+/// `choice ▾ ]` of a choice field, after its opening bracket; returns the next x.
+fn draw_choice(
+    buf: &mut Buffer,
+    line: Line,
+    x: u16,
+    fld: &Field,
+    bracket: Style,
+    p: &Palette,
+) -> u16 {
+    let choice = fld.choice();
+    let color = if choice.starts_with(INHERIT) {
+        p.fg_muted
+    } else {
+        p.fg
+    };
+    let x = line.put(x, &format!("{choice} ▾"), fg(color), buf);
+    line.put(x, " ]", bracket, buf)
+}
+
+/// The cells a text control's text may use inside its brackets, after a label inside them.
+fn control_avail(fld: &Field, prefix_w: usize) -> usize {
+    let inner = match fld.kind {
+        FieldKind::Count => width(fld.edit.text()).max(1),
+        _ => usize::from(fld.look.inner),
+    };
+    // A dropdown keeps two cells for ` ▾` inside the brackets.
+    let arrow = if fld.kind == FieldKind::Dropdown {
+        2
+    } else {
+        0
+    };
+    inner.saturating_sub(prefix_w).saturating_sub(arrow)
+}
+
+/// What a text control shows on its first row: the text, its colour, and the cursor's column
+/// and row (a row below the first belongs to a prompt's later rows).
+struct ControlText {
+    shown: String,
+    color: Color,
+    col: usize,
+    row: usize,
+}
+
+fn control_text(fld: &Field, avail: usize, p: &Palette) -> ControlText {
+    let own = if fld.kind == FieldKind::ReadOnly {
+        p.fg_muted
+    } else {
+        p.fg
+    };
+    let at = |shown: String, color: Color, col: usize| ControlText {
+        shown,
+        color,
+        col,
+        row: 0,
+    };
+    let empty = fld.edit.text().is_empty();
+    match &fld.placeholder {
+        _ if fld.kind == FieldKind::Dropdown && fld.drop.loading && empty => {
+            at("loading models…".to_owned(), p.fg_muted, 0)
+        }
+        Some(ph) if empty => at(truncate_end(ph, avail), p.fg_muted, 0),
+        // A count is short and shown whole; the cursor may sit on the space after it.
+        _ if fld.kind == FieldKind::Count => {
+            at(fld.edit.text().to_owned(), p.fg, fld.edit.cursor())
+        }
+        _ if fld.kind == FieldKind::Prompt => {
+            // A prompt shows its wrapped rows; this is the first, the rest follow (UI §4.4.1).
+            let (rows, (row, col)) = fld.edit.window_rows(avail, PROMPT_MAX_ROWS);
+            ControlText {
+                shown: rows.into_iter().next().unwrap_or_default(),
+                color: own,
+                col,
+                row,
+            }
+        }
+        _ => {
+            let (vis, col) = fld.edit.window(avail);
+            at(vis, own, col)
+        }
+    }
 }
 
 /// The popup under a Model or Effort field (UI §4.4.1): at most six rows, `… N more` when
@@ -455,89 +503,112 @@ pub(super) fn draw_rows_popup(
     right: u16,
     p: &Palette,
 ) {
-    let (rows, cursor, hint) = (&popup.rows, popup.cursor, popup.hint);
-    let first = (cursor + 1).saturating_sub(VISIBLE_ROWS);
-    let shown: Vec<_> = rows.iter().skip(first).take(VISIBLE_ROWS).collect();
-    let more = rows.len().saturating_sub(first + shown.len());
-    let longest = rows
-        .iter()
-        .map(|r| width(&r.text) + width(&r.tail))
-        .max()
-        .unwrap_or(0);
-    let inner = longest.max(POPUP_MIN);
-    let w = u16::try_from(inner + 4).unwrap_or(u16::MAX).min(area.width);
-    let lines = shown.len() + usize::from(more > 0);
-    let h = u16::try_from(lines + 2).unwrap_or(u16::MAX);
-    let x = x.min(area.right().saturating_sub(w));
-    let top = y + 1;
-    if top + h + 1 > area.bottom() {
+    let Some(geo) = popup_geometry(popup, area, (x, y)) else {
         return;
-    }
-    let r = Rect {
-        x,
-        y: top,
-        width: w,
-        height: h,
     };
+    let r = geo.rect;
     let inside = Style::default().fg(p.fg).bg(p.bg_panel);
     draw_box(buf, r, "", &LIGHT, fg(p.border_focus), inside);
-    for (i, row) in shown.iter().enumerate() {
-        let ry = r.y + 1 + u16::try_from(i).unwrap_or(0);
-        let focused = first + i == cursor;
-        let delta = isize::try_from(first + i).unwrap_or(0) - isize::try_from(cursor).unwrap_or(0);
-        super::hits::record(
-            Rect {
-                x: r.x + 1,
-                y: ry,
-                width: w - 2,
-                height: 1,
-            },
-            super::hits::row_keys(delta),
-        );
+    let shown = popup.rows.iter().enumerate().skip(geo.first);
+    for (n, row) in shown.take(VISIBLE_ROWS) {
+        let ry = r.y + 1 + u16::try_from(n - geo.first).unwrap_or(0);
+        let row_area = Rect {
+            x: r.x + 1,
+            y: ry,
+            width: r.width.saturating_sub(2),
+            height: 1,
+        };
+        let focused = n == popup.cursor;
+        let delta = isize::try_from(n).unwrap_or(0) - isize::try_from(popup.cursor).unwrap_or(0);
         let style = if focused {
             p.selected().fg(p.fg)
         } else {
             inside
         };
-        let text = format!("{}{}", if focused { FOCUS } else { " " }, row.text);
-        put(
-            buf,
-            r.x + 1,
-            ry,
-            &pad_right(&text, usize::from(w) - 2),
-            usize::from(w) - 2,
-            style,
-        );
-        if !row.tail.is_empty() {
-            let tail_x = r.x + 1 + u16::try_from(width(&text)).unwrap_or(0);
-            let room = usize::from(r.right().saturating_sub(1).saturating_sub(tail_x));
-            put(buf, tail_x, ry, &row.tail, room, style.fg(p.fg_muted));
-        }
+        draw_popup_row(buf, row_area, row, (focused, delta), style, p);
     }
-    if more > 0 {
-        let ry = r.y + 1 + u16::try_from(shown.len()).unwrap_or(0);
-        let text = format!(" … {more} more · ↓ scroll");
-        let inner_w = usize::from(w) - 2;
-        put(
-            buf,
-            r.x + 1,
-            ry,
-            &pad_right(&text, inner_w),
-            inner_w,
-            inside.fg(p.fg_muted),
-        );
+    if geo.more > 0 {
+        draw_more_line(buf, r, geo.more, inside.fg(p.fg_muted));
     }
     // Under the box, over whatever the form has there.
     let hint_w = usize::from(right.saturating_sub(r.x));
     let hint_style = Style::default().fg(p.fg_muted).bg(p.bg_panel);
+    let hint = pad_right(popup.hint, hint_w);
+    put(buf, r.x, r.bottom(), &hint, hint_w, hint_style);
+}
+
+/// `… N more · ↓ scroll`, the last line inside the box `r`.
+fn draw_more_line(buf: &mut Buffer, r: Rect, more: usize, style: Style) {
+    let w = usize::from(r.width.saturating_sub(2));
+    let text = format!(" … {more} more · ↓ scroll");
     put(
         buf,
-        r.x,
-        r.bottom(),
-        &pad_right(hint, hint_w),
-        hint_w,
-        hint_style,
+        r.x + 1,
+        r.y + r.height.saturating_sub(2),
+        &pad_right(&text, w),
+        w,
+        style,
     );
+}
+
+/// Where a popup goes and which of its rows show.
+struct PopupGeo {
+    rect: Rect,
+    /// The first row shown, so the highlight stays in view.
+    first: usize,
+    /// Rows left below the ones shown.
+    more: usize,
+}
+
+/// The popup's box under the field at `(x, y)`, kept on screen; `None` when it can't fit
+/// below the field.
+fn popup_geometry(popup: &Popup, area: Rect, (x, y): (u16, u16)) -> Option<PopupGeo> {
+    let first = (popup.cursor + 1).saturating_sub(VISIBLE_ROWS);
+    let shown = popup.rows.len().saturating_sub(first).min(VISIBLE_ROWS);
+    let more = popup.rows.len().saturating_sub(first + shown);
+    let longest = popup
+        .rows
+        .iter()
+        .map(|r| width(&r.text) + width(&r.tail))
+        .max()
+        .unwrap_or(0);
+    let w = u16::try_from(longest.max(POPUP_MIN) + 4)
+        .unwrap_or(u16::MAX)
+        .min(area.width);
+    let h = u16::try_from(shown + usize::from(more > 0) + 2).unwrap_or(u16::MAX);
+    let top = y + 1;
+    if top + h + 1 > area.bottom() {
+        return None;
+    }
+    let x = x.min(area.right().saturating_sub(w));
+    let rect = Rect {
+        x,
+        y: top,
+        width: w,
+        height: h,
+    };
+    Some(PopupGeo { rect, first, more })
+}
+
+/// One popup row: the focus mark and text padded to the box, then the muted tail; a click on
+/// it presses the keys that take it (`delta` rows from the highlight, then `enter`).
+fn draw_popup_row(
+    buf: &mut Buffer,
+    area: Rect,
+    row: &PopRow,
+    (focused, delta): (bool, isize),
+    style: Style,
+    p: &Palette,
+) {
+    super::hits::record(area, super::hits::row_keys(delta));
+    let text = format!("{}{}", if focused { FOCUS } else { " " }, row.text);
+    let w = usize::from(area.width);
+    put(buf, area.x, area.y, &pad_right(&text, w), w, style);
+    if !row.tail.is_empty() {
+        let tail_x = area.x + u16::try_from(width(&text)).unwrap_or(0);
+        let room = usize::from(area.right().saturating_sub(tail_x));
+        put(buf, tail_x, area.y, &row.tail, room, style.fg(p.fg_muted));
+    }
 }
 
 /// Row `k` of an Own prompt's box (UI §4.4.1): the brackets, a blank where `Own: ` stood, the
