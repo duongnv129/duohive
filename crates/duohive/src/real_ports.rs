@@ -1,7 +1,7 @@
 //! Real implementations of the core ports: wall clock, random tokens, directory probe,
 //! and the live pane view filled in once it has attached.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -137,27 +137,40 @@ impl DirProbe for FsDirProbe {
         let Ok(read) = std::fs::read_dir(parent) else {
             return Vec::new();
         };
-        let needle = prefix.to_lowercase();
-        let show_hidden = prefix.starts_with('.');
-        let mut found: Vec<DirEntry> = read
-            .take(LIST_READ_MAX)
-            .filter_map(Result::ok)
-            .filter_map(|e| {
-                let name = e.file_name().into_string().ok()?;
-                let listed = (show_hidden || !name.starts_with('.'))
-                    && name.to_lowercase().starts_with(&needle);
-                // `metadata` follows symlinks, so a link to a folder is a folder.
-                let is_dir = listed && std::fs::metadata(e.path()).is_ok_and(|m| m.is_dir());
-                is_dir.then(|| DirEntry {
-                    is_git: e.path().join(".git").exists(),
-                    name,
-                })
-            })
-            .collect();
-        found.sort_by_cached_key(|e| e.name.to_lowercase());
-        found.truncate(LIST_RETURN_MAX);
-        found
+        let entries = read.map(|e| {
+            let e = e.ok()?;
+            Some((e.file_name().into_string().ok()?, e.path()))
+        });
+        pick_dirs(entries, prefix)
     }
+}
+
+/// The folders among the first [`LIST_READ_MAX`] of `entries` (a name and its path, or `None`
+/// for one that can't be read) whose name starts with `prefix`, sorted, at most
+/// [`LIST_RETURN_MAX`]. The read bound counts every entry, readable or not.
+fn pick_dirs(
+    entries: impl Iterator<Item = Option<(String, PathBuf)>>,
+    prefix: &str,
+) -> Vec<DirEntry> {
+    let needle = prefix.to_lowercase();
+    let show_hidden = prefix.starts_with('.');
+    let mut found: Vec<DirEntry> = entries
+        .take(LIST_READ_MAX)
+        .flatten()
+        .filter_map(|(name, path)| {
+            let listed =
+                (show_hidden || !name.starts_with('.')) && name.to_lowercase().starts_with(&needle);
+            // `metadata` follows symlinks, so a link to a folder is a folder.
+            let is_dir = listed && std::fs::metadata(&path).is_ok_and(|m| m.is_dir());
+            is_dir.then(|| DirEntry {
+                is_git: path.join(".git").exists(),
+                name,
+            })
+        })
+        .collect();
+    found.sort_by_cached_key(|e| e.name.to_lowercase());
+    found.truncate(LIST_RETURN_MAX);
+    found
 }
 
 #[cfg(test)]
@@ -297,5 +310,16 @@ mod tests {
         assert!(FsDirProbe.list(&tmp.path().join("none"), "").is_empty());
         fs::write(tmp.path().join("f"), "x").unwrap();
         assert!(FsDirProbe.list(&tmp.path().join("f"), "").is_empty());
+    }
+
+    #[test]
+    fn list_reads_no_more_than_the_cap_from_the_directory_iterator() {
+        let seen = std::cell::Cell::new(0usize);
+        let entries = (0..1000).map(|i| {
+            seen.set(i + 1);
+            Some((format!("d{i}"), std::path::PathBuf::from("/nonexistent/x")))
+        });
+        let _ = pick_dirs(entries, "");
+        assert_eq!(seen.get(), LIST_READ_MAX);
     }
 }

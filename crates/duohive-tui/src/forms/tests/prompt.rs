@@ -187,3 +187,27 @@ fn click_on_a_later_prompt_row_focuses_it() {
 fn r_chars(buf: &Buffer, y: usize, byte: usize) -> usize {
     rows(buf, 0, 100)[y][..byte].chars().count()
 }
+
+#[test]
+fn role_prompt_rows_line_up_under_the_first() {
+    // The role form's prompt has its label outside the box, so every row starts after it.
+    let org = org();
+    let mut f = Form::edit_role(&org, &backend(), &dirs(), Path::new(HOME));
+    f.focus_field(FieldId::Prompt);
+    clear(&mut f, &org);
+    typed(&mut f, &org, "first line");
+    press(&mut f, &org, Action::NewLine);
+    typed(&mut f, &org, "second line");
+    let screen = screen_text(&prompt_model(f));
+    let lines: Vec<&str> = screen.lines().collect();
+    let first = lines
+        .iter()
+        .position(|l| l.contains("first line"))
+        .unwrap_or_else(|| panic!("{screen}"));
+    let col = |l: &str, needle: &str| l[..l.find(needle).unwrap()].chars().count();
+    assert_eq!(
+        col(lines[first], "first line"),
+        col(lines[first + 1], "second line"),
+        "{screen}"
+    );
+}

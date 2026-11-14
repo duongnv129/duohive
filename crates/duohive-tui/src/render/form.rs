@@ -559,7 +559,13 @@ fn draw_prompt_row(
     let label_w = usize::from(fld.look.inner).saturating_sub(avail);
     let (rows, (cursor_row, cursor_col)) = fld.edit.window_rows(avail, PROMPT_MAX_ROWS);
     let shown = rows.get(k).cloned().unwrap_or_default();
-    let from = line.x0 + fld.look.indent;
+    // A label outside the box (the role and team forms) takes the same room on every row.
+    let label_outside = if fld.look.label_inside {
+        0
+    } else {
+        fld.look.label_w
+    };
+    let from = line.x0 + fld.look.indent + label_outside;
     let x = line.put(from, "[ ", bracket, buf);
     let x = line.put(x, &" ".repeat(label_w), fg(p.fg), buf);
     let text_x = x;
