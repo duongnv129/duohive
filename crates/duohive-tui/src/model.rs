@@ -121,7 +121,8 @@ impl DirProbe for NoProbe {
     }
 }
 
-/// The agent a left press landed on, until the button comes up (click-to-type, CT-D2).
+/// The agent a left press inside the agent pane landed on, until the button comes up
+/// (click-to-type, CT-D2, OCS-D1).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClickIntent {
     /// The agent the press targeted.
