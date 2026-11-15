@@ -30,7 +30,7 @@ Choose the CLI and the directories, then select *Create org*. Everything can be 
 
 ## 3. The daily loop
 
-1. Select an agent and press **`space`**. Type the task and choose where it runs: its own directory or a fresh git worktree.
+1. Select an agent and press **`space`**. Type the task. For a stopped agent, choose where it runs: its own directory or a fresh git worktree. A finished or idle agent takes the task as the next turn of its current session, where it already runs; to start in a fresh worktree, stop it first.
 2. Watch the status. A click only selects a row, so the arrows keep working. Press **`enter`** to type into the agent, `ctrl+q` to stop typing, `z` to zoom.
 3. When something is waiting, it appears in **Needs you** and you get a desktop alert. Select it, answer, move on.
 4. Quit with `q`. Agents keep running in tmux; the next start reconnects.
@@ -43,7 +43,7 @@ Give each task to the **Generalist** role, not to a named agent. A free agent ta
 
 ### Ship a story with a team (Product Team)
 
-Paste the story into the Duo pane: *"Story: let users retry a failed payment. AC: …"*. Ask Duo to split it by role. Review the breakdown, then let Duo hand each subtask to the right agent. Each action shows as a `→` line. Commits, pushes and merges always wait for your approval in each agent's own prompt.
+Paste the story into the Duo pane: *"Story: let users retry a failed payment. AC: …"*. Ask Duo to split it by role. Review the breakdown, then let Duo hand each subtask to the right agent. Each action shows as a `→` line. DuoHive never approves anything for you: commits, pushes and merges follow each CLI's own permission prompts, so an approval you saved ("always allow") can let a matching command run without asking again.
 
 ### Find out who is stuck
 
@@ -55,7 +55,7 @@ In the Duo pane, `@auth-service run the tests again` goes straight to that agent
 
 ### Continue an old session
 
-Started work in Claude Code or OpenCode outside DuoHive? Select the stopped agent and press **`r`**. Pick the session and the agent continues it with its full context.
+Started work in Claude Code or OpenCode outside DuoHive? Select the stopped agent and press **`r`**. Pick the session and the agent continues it with its full context. The picker lists only sessions of that agent's CLI and directory (and its kept worktrees), so use an agent set to the same CLI and directory as the original work.
 
 ### Change the org
 
