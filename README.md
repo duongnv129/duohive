@@ -34,7 +34,7 @@ DuoHive is an open-source terminal app (TUI, written in Rust) that manages **Cla
 - **One glance answers "who needs me?"** Every agent shows working, waiting, finished, quiet or errored. The *Needs you* pane collects what is blocked on you.
 - **Duo, the manager agent.** Ask in plain language what is blocked, or hand work to a role. Anything that changes the org is a card you approve first.
 - **Watch and steer any agent.** Select one to see its live terminal, type into it, zoom it, or give it a task, optionally in its own git worktree. No `tmux attach`.
-- **Agents keep running.** Quit DuoHive and they carry on in tmux; the next start reconnects.
+- **Agents keep running.** Quit DuoHive and they carry on in tmux; the next start reconnects. To pick up work you started outside DuoHive, resume an old session (`r`).
 - **Keyboard and mouse.** Every action has a key (rebindable; press `?`) and a mouse path. Drag to select and copy text, drag a row to move it.
 - **Private.** No telemetry, and your global CLI configuration is never modified.
 
@@ -55,7 +55,9 @@ duohive
 
 On first run it checks for tmux and for Claude Code or OpenCode, then offers a template. Pick one, choose the CLI and directories, and select *Create org*.
 
-**3. Give work.** Select an agent and press `space`. Watch it in the agent pane (`enter` types into it, `z` zooms). When an agent needs you, it shows up in *Needs you*; ask Duo what is blocked.
+**3. Give work.** Select an agent and press `space`. Watch it in the agent pane (`enter` types into it, `ctrl+q` stops typing, `z` zooms). When an agent needs you, it shows up in *Needs you*; ask Duo what is blocked.
+
+New here? The [user guide](docs/guide.md) covers the screen, the daily loop and the common use cases on one page.
 
 ## Install
 
@@ -85,8 +87,8 @@ make uninstall                    # remove them; your org and data are kept
 | Key | Does |
 |---|---|
 | `↑` `↓` / `tab` | move in the tree / change pane |
-| `space` | give work to the selected agent |
-| `s` · `z` | start or stop · zoom the agent pane |
+| `space` · `enter` | give work to the selected agent · type into it |
+| `s` · `r` · `z` | start or stop · resume an old session · zoom the agent pane |
 | `n` · `e` · `m` | new · edit · move |
 | `w` · `,` · `o` | worktrees · settings · open `org.toml` |
 | `?` | the full key map (every key can be rebound in Settings) |
@@ -118,4 +120,4 @@ DuoHive is a pet project by Duong, a backend engineer who runs a handful of AI c
 
 Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md); `make check` runs the same checks as CI. Report security problems as described in [SECURITY.md](SECURITY.md).
 
-More: [docs](docs/README.md) (requirements, UI/UX spec, technical design, plans) · [CHANGELOG](CHANGELOG.md) · [release runbook](docs/release-runbook.md) · [Apache-2.0 licence](LICENSE)
+More: [user guide](docs/guide.md) · [docs](docs/README.md) (requirements, UI/UX spec, technical design, plans) · [CHANGELOG](CHANGELOG.md) · [release runbook](docs/release-runbook.md) · [Apache-2.0 licence](LICENSE)

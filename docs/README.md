@@ -2,6 +2,8 @@
 
 **Where we are:** Phases 0 and 1 are done (2026-10-04): the org, standing agents on Claude Code and OpenCode with live status, the minimal TUI and `duohive bench`. Phase 3 (Duo and messaging) is done (2026-10-18), accepted on Claude Code and OpenCode ([bench results](plans/bench-results.md#phase-3-acceptance)). Phase 2 (one screen) is done (2026-10-19): its code and the UI/UX pass (2026-10-17), then a three-day run without `tmux attach`. Phase 4 (scale and polish) is built (2026-10-22) and its benchmark is done in CI (2026-10-25: every 100-agent target passes), and the one-hour run and the screen walk are done; only the author's approvals, decisions and the sign-off are open. Phase 5 (open-source launch) has a full, reviewed plan ([plans/phase-5-plan.md](plans/phase-5-plan.md)); its release gate, README, name lookups and release builds are done, and alpha pre-releases for macOS and Linux are published from CI; the crates.io and Homebrew release, trials and the 30-day test are the author's steps. **Every item and what remains: [plans/status.md](plans/status.md).** See the [roadmap](plans/v1-roadmap.md).
 
+Using DuoHive rather than building it? Start with the [user guide](guide.md).
+
 Three living documents, each updated in place. Read them in this order.
 
 | Doc | Answers | Path |

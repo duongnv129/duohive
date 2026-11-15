@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Added
 
+- A one-page [user guide](docs/guide.md) (first run, the screen, the daily loop, common use cases, keys), linked from the README. The README's quick start and key table now match click to select, `enter` to type and `r` to resume.
 - Directory fields suggest folders as you type a path starting with `~/` or `/`, in the agent and role forms and in first-run step 3 (Agent Squad, Product Team and Engineering Org). A popup lists the matching folders under the field, with `git` after a repository: `↑` `↓` move, `enter` picks the folder and closes the popup (type `/` to list what is inside), `tab` goes into the folder and lists the ones inside it, `esc` closes the popup (a second `esc` cancels the form).
 
 ### Changed
