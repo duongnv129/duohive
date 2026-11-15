@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] - 2026-11-15
+
 ### Added
 
 - A one-page [user guide](docs/guide.md) (first run, the screen, the daily loop, common use cases, keys), linked from the README. The README's quick start and key table now match click to select, `enter` to type and `r` to resume.
