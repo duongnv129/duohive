@@ -176,24 +176,19 @@ fn on_press(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
     out
 }
 
-/// The agent a press at `at` lands on: an org row, a Needs you agent row, or the agent
-/// pane (the selected agent). Read before the press moves the selection.
+/// The agent a press inside the agent pane lands on (the selected one), read before the
+/// press moves anything. A press on an org or Needs you row targets nothing: it selects
+/// and keeps that pane's focus, so `↑↓` keep working (OCS-D1).
 fn press_target(m: &UiModel, areas: &PaneAreas, at: Position) -> Option<AgentName> {
-    if areas.agent.contains(at) {
-        return agent_of(m, &m.selected);
-    }
-    if areas.org.contains(at) {
-        return org_key_at(m, at.y).and_then(|key| agent_of(m, &key));
-    }
-    if areas.needs_you.contains(at) {
-        let item = m.needs_you.get(needs_you_item_at(m, at.y)?)?;
-        return item.card.is_none().then(|| item.agent.clone());
-    }
-    None
+    areas
+        .agent
+        .contains(at)
+        .then(|| agent_of(m, &m.selected))
+        .flatten()
 }
 
-/// The button came up on a click that never moved: a running agent that is still the
-/// selection gets the agent pane's focus and Typing (CT-D2, CT-D3). A stopped or errored
+/// The button came up on a click inside the agent pane that never moved: a running agent
+/// that is still the selection gets the pane's focus and Typing (CT-D2, CT-D3, OCS-D1). A stopped or errored
 /// one keeps the focus the press gave it.
 fn click_to_type(m: &mut UiModel, click: Option<ClickIntent>) {
     let Some(click) = click else {
@@ -267,10 +262,14 @@ fn on_click(m: &mut UiModel, areas: &PaneAreas, at: Position) -> Vec<UiEffect> {
         return Vec::new();
     };
     m.focus.needs_you_cursor = i;
-    panes::needs_you_enter(m)
+    let effects = panes::needs_you_enter(m)
         .map(|agent| UiEffect::Send(Command::ViewAgent { agent }))
         .into_iter()
-        .collect()
+        .collect();
+    // Revealing the agent moves focus to its pane (`enter`); a click only selects (OCS-D3).
+    m.focus.pane = pane;
+    m.focus.agent_mode = AgentMode::Selected;
+    effects
 }
 
 /// A press in the chat focuses the input.

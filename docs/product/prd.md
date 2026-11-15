@@ -261,7 +261,7 @@ The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); th
   - the last reply under each agent, which you can hide for a compact view;
   - roll-ups on teams and roles;
   - a **Needs you** list (waiting, quiet and errored agents, and pending approval cards), oldest first, so nothing waits unseen.
-- **Agent pane:** the selected agent's live terminal. One click on a running agent, or `enter` on its row, starts typing into it; `ctrl+q` stops typing, and `z` zooms it.
+- **Agent pane:** the selected agent's live terminal. One click inside the pane on a running agent, or `enter` on its row, starts typing into it (a click on its row only selects it); `ctrl+q` stops typing, and `z` zooms it.
 - **Desktop alerts:** for every Needs you entry, and when an agent other than Duo finishes.
 - **Duo pane:**
   - **plain text** goes to Duo;
@@ -269,7 +269,7 @@ The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); th
   - **commands:** `/help` and `/agents`;
   - **suggestions** on `/` and `@`;
   - the chat history survives restarts.
-- **Moving and sizing:** `tab` or a click moves between panes (a click on a running agent also starts typing; `tab` and the arrow keys never do). On a small terminal, the agent pane shrinks first.
+- **Moving and sizing:** `tab` or a click moves between panes (a click on a row selects it and keeps that pane's focus, so the arrow keys keep working; a click inside the agent pane on a running agent starts typing; `tab`, the arrow keys and a click on a row never do). On a small terminal, the agent pane shrinks first.
 
 ### Setup templates
 

@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ### Changed
 
+- A click on an agent's row in the org pane or Needs you now only selects it, so `↑` `↓` keep moving the selection (before, the click started typing to the agent and the arrows went to it). Press `enter`, or click inside the agent pane, to type; the org footer shows `enter type` when it would.
 - In a form's Own prompt, `↑` and `↓` move the cursor between its lines and leave the box only from its first or last line; they used to leave at once. The box now grows with its text, up to four rows, and wraps long lines instead of showing line breaks as `↵`.
 
 ## [0.1.0-alpha.4] - 2026-11-08

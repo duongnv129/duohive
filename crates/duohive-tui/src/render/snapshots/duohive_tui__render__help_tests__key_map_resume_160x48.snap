@@ -16,7 +16,7 @@ expression: wide
 │  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /        agents / commands                      │
 │                                                       z     zoom agent                                     PgUp/Dn    scroll history                         │
 │Mouse                                                  v     last reply on/off                                                                                │
-│  click     select + type                              o     open org.toml                                Card dialog                                         │
+│  click     select                                     o     open org.toml                                Card dialog                                         │
 │  right     node menu                                                                                       y e n      approve/edit/reject                    │
 │  wheel     scroll                                   Needs you                                              ←→↑↓ enter choose a button, press it              │
 │  drag      move node                                  ↑↓    move                                           esc        close; the card stays                  │

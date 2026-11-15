@@ -3,7 +3,7 @@ source: crates/duohive-tui/src/render/help_tests.rs
 expression: narrow
 ---
 ┌─ Keys · ? to close ──────────────────────────────────────────────────────────┐
-│  click      select + type                                                    │
+│  click      select                                                           │
 │  right      node menu                                                        │
 │  wheel      scroll                                                           │
 │  drag       move node                                                        │

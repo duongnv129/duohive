@@ -170,7 +170,7 @@ fn footer_matches_focused_pane() {
     let want = [
         (
             Pane::Org,
-            " tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help",
+            " tab pane · ↑↓ move · enter type · space give work · s start/stop · n new · e edit · z zoom · ? help",
         ),
         (Pane::NeedsYou, " ↑↓ move · enter go to agent · ? help"),
         (
@@ -184,12 +184,70 @@ fn footer_matches_focused_pane() {
     }
     assert_eq!(
         footer(Pane::Org, 80, 24),
-        " tab pane · ↑↓ move · space give work"
+        " tab pane · ↑↓ move · enter type · space give work"
     );
     assert_eq!(
         footer(Pane::Chat, 80, 24),
         " enter send · alt+enter new line · tab pane"
     );
+}
+
+/// The org pane's footer with `selected` chosen, at `w`×`h`.
+fn org_footer(selected: NodeKey, w: u16, h: u16) -> String {
+    let mut m = spec_model();
+    m.focus.pane = Pane::Org;
+    m.selected = selected;
+    render_lines(&m, &ctx(), w, h)
+        .last()
+        .unwrap()
+        .trim_end()
+        .to_owned()
+}
+
+#[test]
+fn org_footer_shows_enter_type_for_a_running_agent() {
+    let footer = org_footer(NodeKey::Agent(n("billing-api")), 120, 36);
+    assert!(
+        footer.starts_with(" tab pane · ↑↓ move · enter type · space give work"),
+        "{footer}"
+    );
+    assert!(org_footer(NodeKey::Duo, 120, 36).contains(" ↑↓ move · enter type · "));
+}
+
+#[test]
+fn org_footer_has_no_enter_type_for_team_role_stopped_and_errored() {
+    let role = NodeKey::Role(RoleKey {
+        team: Some(nn("Payments")),
+        role: nn("Backend"),
+    });
+    let mut errored = spec_model();
+    errored.focus.pane = Pane::Org;
+    errored.selected = NodeKey::Agent(n("billing-api"));
+    errored.agents.get_mut(&n("billing-api")).unwrap().status =
+        status(AgentState::Errored, mins(1));
+    let errored_footer = render_lines(&errored, &ctx(), 120, 36)
+        .last()
+        .unwrap()
+        .clone();
+    assert!(!errored_footer.contains("enter type"), "{errored_footer}");
+    assert!(
+        !errored.view(&n("pay-qa")).status.state.is_running(),
+        "fixture: pay-qa is stopped"
+    );
+    for key in [
+        NodeKey::Team(nn("Payments")),
+        role,
+        NodeKey::Agent(n("pay-qa")),
+    ] {
+        let footer = org_footer(key.clone(), 120, 36);
+        assert!(!footer.contains("enter type"), "{key:?}: {footer}");
+    }
+}
+
+#[test]
+fn compact_org_footer_keeps_enter_type() {
+    let footer = org_footer(NodeKey::Agent(n("billing-api")), 80, 24);
+    assert_eq!(footer, " tab pane · ↑↓ move · enter type · space give work");
 }
 
 #[test]

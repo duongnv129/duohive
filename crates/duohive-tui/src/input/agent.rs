@@ -69,7 +69,7 @@ fn start_typing(m: &mut UiModel) {
     }
 }
 
-/// A click or `enter` on an agent row asks to type into the selected agent (CT-D3, CT-D4):
+/// `enter` on an agent row, or a click in the agent pane, asks to type into the selected agent (CT-D3, CT-D4):
 /// Typing starts now when its live terminal shows, and once it does when it doesn't yet.
 /// A stopped or errored agent, a team and a role leave the mode as it is. `enter` returns
 /// a scrolled-back pane to live; a click keeps the snapshot (`keep_scroll`).

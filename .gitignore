@@ -10,3 +10,4 @@ spikes/**/out/*
 
 # Local agent working notes; never committed.
 .superpowers/
+*.snap.new

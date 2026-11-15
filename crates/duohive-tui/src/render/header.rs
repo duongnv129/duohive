@@ -1,5 +1,6 @@
 //! Banners, the header line and the footer (UI §4.1, §4.12, D29).
 
+use duohive_core::org::NodeKey;
 use duohive_core::ports::OrgFileError;
 use duohive_core::status::AgentState;
 use ratatui::buffer::Buffer;
@@ -198,8 +199,8 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
         (None, Some(Dialog::Card(d))) => card_dialog_keys(m, d),
         (None, Some(Dialog::Settings(s))) => settings_keys(s).to_owned(),
         (None, _) => match m.focus.pane {
-            Pane::Org if compact => org_keys_compact(&m.keymap),
-            Pane::Org => org_keys(&m.keymap),
+            Pane::Org if compact => org_keys_compact(&m.keymap, enter_types(m)),
+            Pane::Org => org_keys(&m.keymap, enter_types(m)),
             Pane::NeedsYou => needs_you_keys(&m.keymap),
             Pane::Agent if m.typing() => return typing_footer(buf, r, m, p),
             Pane::Agent => agent_keys(m),
@@ -212,11 +213,28 @@ pub(super) fn draw_footer(buf: &mut Buffer, r: Rect, m: &UiModel, p: &Palette, c
     put(buf, r.x, r.y, &text, usize::from(r.width), fg(color));
 }
 
+/// `enter` on the selected row would start Typing: an agent or Duo that takes input
+/// (CT-D3, OCS-D4). A team, a role, and a stopped or errored agent do not.
+fn enter_types(m: &UiModel) -> bool {
+    let agent = match &m.selected {
+        NodeKey::Agent(a) => a,
+        NodeKey::Duo => &m.org.duo.name,
+        NodeKey::Team(_) | NodeKey::Role(_) => return false,
+    };
+    m.view(agent).status.state.is_running()
+}
+
+/// The `enter type` hint, with its separator, when `enter` would type (OCS-D4).
+fn enter_hint(can_type: bool) -> &'static str {
+    if can_type { "enter type · " } else { "" }
+}
+
 /// The org pane's keys (P2-D9), with `? help` (UI §4.11).
-fn org_keys(km: &Keymap) -> String {
+fn org_keys(km: &Keymap, can_type: bool) -> String {
     let k = |a| km.key(a).label();
     format!(
-        " tab pane · ↑↓ move · {} give work · {} start/stop · {} new · {} edit · {} zoom · {} help",
+        " tab pane · ↑↓ move · {}{} give work · {} start/stop · {} new · {} edit · {} zoom · {} help",
+        enter_hint(can_type),
         k(ActionId::GiveWork),
         k(ActionId::StartStop),
         k(ActionId::New),
@@ -227,9 +245,10 @@ fn org_keys(km: &Keymap) -> String {
 }
 
 /// The org pane's keys in the compact layout (UI §4.1's compact mock).
-fn org_keys_compact(km: &Keymap) -> String {
+fn org_keys_compact(km: &Keymap, can_type: bool) -> String {
     format!(
-        " tab pane · ↑↓ move · {} give work",
+        " tab pane · ↑↓ move · {}{} give work",
+        enter_hint(can_type),
         km.key(ActionId::GiveWork).label()
     )
 }

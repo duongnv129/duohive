@@ -121,7 +121,8 @@ impl DirProbe for NoProbe {
     }
 }
 
-/// The agent a left press landed on, until the button comes up (click-to-type, CT-D2).
+/// The agent a left press inside the agent pane landed on, until the button comes up
+/// (click-to-type, CT-D2, OCS-D1).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClickIntent {
     /// The agent the press targeted.
@@ -193,7 +194,7 @@ pub struct UiModel {
     /// A click or `enter` asked to type into this agent, whose live terminal isn't showing
     /// yet; Typing starts when it is (click-to-type, CT-D4).
     pub typing_wanted: Option<AgentName>,
-    /// A left press on an agent (row or pane) that may become a click and start Typing on
+    /// A left press inside the agent pane that may become a click and start Typing on
     /// release (CT-D2); dropped by a drag, a key, another press, a wheel tick, a menu or a
     /// dialog.
     pub click: Option<ClickIntent>,
