@@ -114,7 +114,7 @@ make uninstall                    # remove them; your org and data are kept
 
 ## About
 
-DuoHive is a pet project by Duong, a backend engineer who runs a handful of AI coding agents every day and wanted to manage them like a team instead of a pile of terminals. Read the story in [Why I built DuoHive](https://duong.page/post/2026-11-13-why-i-built-duohive/), or find more at [duong.page](https://duong.page/).
+DuoHive is a pet project by a backend engineer who runs a handful of AI coding agents every day and wanted to manage them like a team instead of a pile of terminals. Read the story in [Why I built DuoHive](https://duong.page/post/2026-11-13-why-i-built-duohive/), or find more at [duong.page](https://duong.page/).
 
 ## Contributing
 
