@@ -25,4 +25,4 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 │ │  Reject card             n                                               │ │
 │ │  enter rebind (press the new key) · backspace default · esc back         │ │
 └─└──────────────────────────────────────────────────────────────────────────┘─┘
- tab pane · ↑↓ move · space give work
+ tab pane · ↑↓ move · enter type · space give work
