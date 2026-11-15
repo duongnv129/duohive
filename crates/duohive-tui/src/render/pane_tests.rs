@@ -230,6 +230,10 @@ fn org_footer_has_no_enter_type_for_team_role_stopped_and_errored() {
         .unwrap()
         .clone();
     assert!(!errored_footer.contains("enter type"), "{errored_footer}");
+    assert!(
+        !errored.view(&n("pay-qa")).status.state.is_running(),
+        "fixture: pay-qa is stopped"
+    );
     for key in [
         NodeKey::Team(nn("Payments")),
         role,

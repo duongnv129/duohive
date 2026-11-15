@@ -59,7 +59,7 @@ fn groups(km: &Keymap) -> Vec<Group> {
         Group {
             title: "Mouse",
             rows: vec![
-                pair("click", "select + type"),
+                pair("click", "select"),
                 pair("right", "node menu"),
                 pair("wheel", "scroll"),
                 pair("drag", "move node"),

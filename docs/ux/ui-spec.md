@@ -956,7 +956,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  ctrl+↑↓   resize chat            z         zoom agent             @ /       agents / commands   │
 │                                   v         last reply on/off      PgUp/Dn   scroll history      │
 │ Mouse                             o         open org.toml                                        │
-│  click     select (type: pane)                                         Card dialog                   │
+│  click     select                                                  Card dialog                   │
 │  right     node menu             Needs you                                                       │
 │  wheel     scroll                 ↑↓        move                                                 │
 │  drag      move node              enter     go to agent or card      y e n     approve/edit/reject │
