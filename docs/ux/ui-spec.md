@@ -93,7 +93,7 @@ There are three themes:
 | Box border | the hue at 65% over `bg`; at 100% on the selected box |
 | Chip (a selected team or role; the selected one only) | the hue as background, `bg` as text |
 | Selected agent row | `▌` in the hue, the name bold, the hue at 16% over `bg` across the row |
-| Typing row | the hue as background, `bg` as text, the state icon on a `bg` cell |
+| Typing row | the hue as background and `bg` as text, the state icon included: the glyph keeps its shape but takes the row's text colour, with no cell of its own |
 
 | Hue | `dark` | `light` | `auto` (the terminal's colour, and reverse video for chips and fills) |
 |---|---|---|---|
@@ -400,7 +400,7 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   |---|---|
   | A team or a role | A **solid border** in its hue and its name on a **solid chip** (the hue as the background). Only that box changes: the roles inside a selected team keep their dimmer border, so the level you are on is clear. No wash and no bar |
   | An agent | A `▌` bar in its hue at the start of the row, the name in bold, and a **soft wash** of the hue across the row |
-  | An agent you are typing into | The **whole row solid** in its hue with dark bold text, the state icon on a dark cell, and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go |
+  | An agent you are typing into | The **whole row solid** in its hue with dark bold text, the state icon in that same dark text (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go |
 
 - **Without colour:** the chip and the solid row are reverse video, so they show under `auto` and `NO_COLOR`; the bar and the bold name always show. Under `auto` the wash is not painted (§2.3), leaving the bar and the bold name.
 - **Needs you** (§4.1.3) follows the same rule for its rows: the icon, the name and the reason, with no state word and no time. The order, oldest first, is unchanged.
