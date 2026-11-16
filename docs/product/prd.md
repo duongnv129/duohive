@@ -140,6 +140,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
         └── web-app
 ```
 
+- **Colour:** each team (and each role directly under you) has one colour from a small fixed palette, given in order when it is created and changeable in its edit form; its roles and agents are drawn in it. It is saved in `org.toml`, so a shared org looks the same to everyone.
 - **Levels:** three fixed levels under you: team → role → agent.
   - Teams are optional: a role can sit directly under you.
   - Agents never sit under other agents.
@@ -221,45 +222,16 @@ Duo is a Claude Code or OpenCode session at the root of your org. "Duo" is the d
 
 ### One screen
 
-The exact visuals for every screen are in the [UI/UX spec](../ux/ui-spec.md); this is the main screen.
-
-```
- DuoHive   6 agents · ● 2 working · ◆ 2 need you                                            ? help 
-┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude · worktree retry-loop ──┐
-┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ ✓ go test ./... (14 passed)                    │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ ✓ Ready for review · 3 files changed           │
-┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                │
-┃▌│  │  ├─ auth-service ✉ 1     ● working    2m  ┃│ ❯                                              │
-┃ │  │  │   "Running go test ./..."              ┃│                                                │
-┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
-┃ │  │      "Allow edit to api.go?"              ┃│   (live terminal of the selected agent)        │
-┃ │  └─ ◇ QA                                     ┃│   enter type · z zoom · PgUp/PgDn scroll       │
-┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
-┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
-┃    ├─ squad-1                ~● working    1m  ┃│                                                │
-┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │
-┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                │
-┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
-┃ ◷ squad-3      quiet      6m                   ┃│                                                │
-┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                │
-┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
-┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────┐
-│ 10:05 you   what's blocking the Payments team?                                                   │
-│ 10:05 Duo   billing-api is waiting on a file-edit approval; auth-service is mid-test.            │
-│             → @auth-service "run the tests again"        queued (auth-service is working)        │
-│ ❯ _                                                                                              │
-└──────────────────────────────────────────────────────────────────────────────────────────────────┘
- tab pane · ↑↓ move · space give work · s start/stop · n new · e edit · z zoom · ? help
-```
+The exact visuals for every screen, with the diagram of the main screen, are in the [UI/UX spec](../ux/ui-spec.md) (§4.1). It has three panes: the org pane, with Needs you pinned at its bottom; the live agent pane; and the Duo chat pane.
 
 - **Status you can trust:**
   - **Exact where reported:** Claude Code reports its state through hooks, OpenCode through its events. Those states show plainly.
   - **Marked where read:** where a CLI reports nothing, DuoHive reads its screen and marks the state with `~`.
   - **Quiet agents surface:** a working agent with no output and no hook for the quiet threshold shows "quiet" and joins **Needs you**, so a stuck agent shows up even on a CLI that reports little.
 - **Org pane:**
-  - a connector-line tree, with status and how long each agent has been in that state;
-  - the last reply under each agent, which you can hide for a compact view;
-  - roll-ups on teams and roles;
+  - the org as grouped boxes: a box per team, a box per role inside it, and the agents in their role's box, each with its state as an icon alone; every team has its own colour, so you find it at a glance (a colour marks the group, never a state);
+  - the selected team, role or agent, and the agent you are typing into, are each marked in a way you cannot miss;
+  - roll-ups on every team and role box;
   - a **Needs you** list (waiting, quiet and errored agents, and pending approval cards), oldest first, so nothing waits unseen.
 - **Agent pane:** the selected agent's live terminal. One click inside the pane on a running agent, or `enter` on its row, starts typing into it (a click on its row only selects it); `ctrl+q` stops typing, and `z` zooms it.
 - **Desktop alerts:** for every Needs you entry, and when an agent other than Duo finishes.
@@ -398,6 +370,7 @@ Product milestones, each usable on its own; the technical plan maps onto these l
 | Merged worktrees | Normal, squash and rebase merges, against `origin`'s default branch (else local); re-checked on finish, after start-up, when the list opens and every 10 minutes | Normal merges only, on start | Squash and rebase merges are common; nothing piles up |
 | Benchmark platform | Targets gated on Apple M-series; Linux reported, not blocking. Hook states < 1 s / < 2 s; screen-read states < 2 s | One gate for all platforms | The author's machine is the target; screen reads are honestly slower |
 | UX checks | The phase 2 pass plus a pre-launch check of the phase 3–4 screens | One pass only | Later screens get the same scrutiny |
+| Org pane shape | Grouped boxes (team box, role box inside, agent rows), a state icon alone on each row, a colour per team from a fixed palette of four; the chip and solid-border marks for a selected team or role, a bar and wash for an agent, a solid row for the agent typed into (decided 2026-11-16) | The connector-line tree; custom colour per team and per role; colour chosen freely as hex | Grouping you can see; a manager scans many teams a day; a fixed palette keeps contrast and keeps colour from clashing with status; below 100 columns the compact tree stays |
 | Skipping permission prompts | Never allowed: `--dangerously-skip-permissions` and `--allow-dangerously-skip-permissions` are refused everywhere (decided 2026-10-18) | Allow per agent | Every risky action stays behind the CLI's own prompts and DuoHive's approvals |
 
 ---

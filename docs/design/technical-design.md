@@ -376,6 +376,7 @@ cli = "opencode"
 
 [[team]]
 name = "Payments"
+color = "teal"              # optional: teal | violet | slate | orchid
 # optional defaults: cli, flags, directory, model, effort, worktree, prompt
 [[team.role]]
 name = "Backend"
@@ -386,9 +387,12 @@ directory = "~/code/auth"
 
 [[role]]                    # roles directly under Duo
 name = "Generalist"
+color = "slate"             # optional, as on a team
 [[role.agent]]
 name = "squad-1"
 ```
+
+**Team colour.** `color` is a `TeamColour` in `duohive-core` (no I/O): one of `teal`, `violet`, `slate`, `orchid`, in that order, never a free hex value, so every hue's contrast is known (UI/UX spec §2.3 and §6). It is valid only on a `[[team]]` and on a `[[role]]` directly under Duo; a role inside a team takes its team's colour, and `color` there fails to parse like any unknown key, with its line. An unknown name fails with `unknown colour "tael"` and the four names. A team or top-level role created without one is given the first palette colour not yet used by a sibling (wrapping to the first after four), and the save writes it, so a shared `org.toml` looks the same everywhere. A hand-edited file without `color` is not rewritten: the core derives each missing colour from the group's position among its siblings (the nth takes the nth colour, wrapping), and the first save then writes the derived values. Which colours render, and how, belong to the theme (`duohive-tui`); the core only names them.
 
 A save writes `org.toml.tmp`, syncs it, copies the current file to `org.toml.bak`, renames the tmp over `org.toml`, then refreshes `<data_dir>/org.last-good.toml`. Loading never writes the last-good copy; the engine records an org it accepted through `Store::mark_last_good`. A parse error reports the 1-based line and the error's own text (for a bad CLI, `unknown CLI "claud"`).
 
