@@ -210,7 +210,7 @@ The diagram is plain text; the colours, the chips and the fills that mark select
 - **Chat pane (Duo):** §4.6 and §4.7.
 - **Footer:** the keys for the focused pane. The org footer shows `enter type` after `↑↓ move` only while `enter` on the selected row would start Typing (a running agent or Duo), not on a team, a role, or a stopped or errored agent.
 
-**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns the org pane keeps the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues and the Manager colour (§2.3) do not apply to it, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
+**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns, or below 30 rows (§3's mixed sizes: width and height each pick a row and the smaller applies), the org pane keeps the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues and the Manager colour (§2.3) do not apply to it, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
 
 ```
  DuoHive  ● 2 · ◆ 2                                                     ? help 
