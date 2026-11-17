@@ -233,7 +233,7 @@ The exact visuals for every screen, with the diagram of the main screen, are in 
   - the org as grouped boxes: a box per team, a box per role inside it, and the agents in their role's box, each with its state as an icon alone; every team has its own colour, so you find it at a glance (a colour marks the group, never a state);
   - Duo is the first box, the **Manager card**: Duo's name drawn as a block-letter mark from its first three characters, its status as a pill (amber when it is waiting on you), and what needs you; it follows a rename and never changes size;
   - the selected team, role, agent or Manager card, and the agent you are typing into, are each marked in a way you cannot miss; a selected agent opens a second line with its state, how long and its last reply;
-  - roll-ups on every team and role box;
+  - roll-ups on every team box and every role box directly under Duo;
   - a **Needs you** list (waiting, quiet and errored agents, and pending approval cards), oldest first, so nothing waits unseen.
 - **Agent pane:** the selected agent's live terminal. One click inside the pane on a running agent, or `enter` on its row, starts typing into it (a click on its row only selects it); `ctrl+q` stops typing, and `z` zooms it.
 - **Desktop alerts:** for every Needs you entry, and when an agent other than Duo finishes.

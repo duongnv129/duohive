@@ -35,7 +35,7 @@ Each state has a glyph and a word, so it reads without colour. Rows use the shor
 | `◆` | waiting (on you) | The CLI is asking you something | `status.attention` (amber) | yes |
 | `✓` | finished | The turn just ended and you haven't looked. Selecting the agent makes it idle | `status.done` | no (desktop alert) |
 | `◦` | idle | At rest with a live session and nothing new | `fg.muted` | no |
-| `✕` | errored | Failed to launch, or exited unexpectedly; the reason is on its row | `status.error` | yes |
+| `✕` | errored | Failed to launch, or exited unexpectedly; the reason is on its second line (§4.1.5) | `status.error` | yes |
 | `◷` | quiet | Overlay: a working or starting agent with no output and no hook for the quiet threshold. Replaces the working glyph | `status.attention` (amber) | yes |
 | `~` | marker before the glyph | The state was read from the screen, not reported by the CLI (`~● working`) | none; glyph only | – |
 
@@ -121,7 +121,7 @@ The pill's text and icon carry the state; its edge is never relied on. When the 
 
 - **Names:** agent names are monospace identifiers (`auth-service`), never title-cased.
 - **Times:** short form (`2m`, `4h`, `3d`); absolute times only in chat (`10:05`).
-- **Last reply:** shown in quotes on the selected agent's second line (§4.1.5); an unselected row has none. (The wordmark's block letters are art drawn from a name, not a second way of writing it: the name is always shown as typed.)
+- **Last reply:** shown in quotes on the selected agent's second line (§4.1.5); an unselected row has none, except a problem or notice line. (The wordmark's block letters are art drawn from a name, not a second way of writing it: the name is always shown as typed.)
 - **Labels:** sentence case everywhere ("Needs you", "Give work").
 - **Inherited values:** always `inherit: <value>`, in `fg.muted`.
 - **Truncation:**
@@ -263,7 +263,7 @@ At 80×24 the header uses the compact counts (§4.1) and the chip:
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-This mock draws the org pane as the compact tree to keep it short. In the boxes (§4.1.5) the filter keeps the matching agents and the boxes that hold them, with the same header chip and `esc` to clear it; a box with no matching agent is left out, and when nothing matches the pane shows the same one line.
+This mock draws the org pane as a tree to keep it short. In the boxes (§4.1.5) the filter keeps the matching agents and the boxes that hold them, with the same header chip and `esc` to clear it; a box with no matching agent is left out, and when nothing matches the pane shows the same one line.
 
 #### 4.1.2 Agent pane
 
@@ -420,7 +420,7 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   - **Title:** `⬢ Manager` on the top border, where a team's name sits, in the manager colour (§2.3). Like a team's, it takes a chip only while Duo is selected.
   - **Wordmark:** the first three characters of Duo's name as block letters, two rows high, at the left (the font is below). Fewer than three characters: just those, left-aligned. Case does not matter (`duo` and `Duo` both draw `DUO`). It follows a rename, and always occupies 11 columns so the text never moves.
   - **Line 1:** Duo's name, and its status as a pill at the right edge. The name has **16 columns** whatever the status (the widest pill, `◆ waiting`, takes 11), and a longer name is cut in the middle with `…` (`platform…r-agent`), as every name is (§2.4). The whole name is in the agent pane's title and in Edit org.
-  - **Line 2:** what needs you, with the header's counts: `<n> need you · <m> card` (`cards` for more than one); `nothing needs you` when both are zero.
+  - **Line 2:** what needs you, with the header's counts: `<n> need you` followed by ` · <m> card` (` · <m> cards` for more than one) only when `m` is more than zero, where `n` is the header's need-you count and `m` the pending approval cards among them (`2 need you`, `2 need you · 1 card`, `3 need you · 2 cards`); `nothing needs you` when `n` is zero.
   - **Status pill:** the state's icon and word, `◦ idle`, `● working`, `◆ waiting`, `✕ errored`, `○ stopped`, `◌ starting` or `◷ quiet`. Duo never shows `finished` (it goes straight to idle). Colours are in §2.3: amber only for `waiting` and `quiet`, red only for `errored`, as everywhere else.
   - **Name rules:** Duo's name is an identifier like every agent's: ASCII letters, digits, `-` and `_`, starting with a letter or digit, 1 to 40 characters (Edit org). Every such character has a glyph, so no name needs a fallback.
   - **Height:** always four rows, for any name and any status, so the list does not move when Duo is renamed or changes state.
@@ -448,8 +448,8 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   |---|---|
   | A team or a role | A **solid border** in its hue and its name on a **solid chip** (the hue as the background). Only that box changes: the roles inside a selected team keep their dimmer border, so the level you are on is clear. No wash and no bar |
   | The Manager card | A solid border in the manager colour, the `⬢ Manager` title on a chip, and a brighter wash behind the card's text, with the name in bold and the counts line in the same colour (white on `dark`, `fg` on `light`, never `fg.muted`). No `▌` bar: the chip and the border say it |
-  | An agent | A `▌` bar in its hue at the start of the row, the name in bold (white on `dark`, `fg` on `light`), the state icon in `fg` (its shape says the state; a status colour would fall below 4.5:1 on the wash), a **strong wash** (30%) of the hue, and the row **opens a second line** with what the icon cannot say: the state word, how long, and the last reply, `working 2m · "Running go test ./…"` (cut with `…` at the box's edge; `stopped 1d`, or `errored · <reason>`, when there is no reply; the reply is left out when the last-reply setting `v` is off, §4.10). The rows below move down one line, and the pane keeps the selected agent fully in view. A click on the second line is a click on the agent. An agent with a problem (an error, a missing directory, a failed worktree, an untested CLI version) shows its second line whether or not it is selected, in `status.error`, or in `fg.muted` for a notice |
-  | An agent you are typing into | The **whole row solid**, both lines, in its hue with dark bold text (the `▌` stays, in that same dark text), the state icon in that same dark text (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go. The Manager card, typed into, fills solid in the manager colour the same way |
+  | An agent | A `▌` bar in its hue at the start of the row, the name in bold (white on `dark`, `fg` on `light`), the state icon in `fg` (its shape says the state; a status colour would fall below 4.5:1 on the wash), a **strong wash** (30%) of the hue, and the row **opens a second line** with what the icon cannot say: the state word, how long, and the last reply, `working 2m · "Running go test ./…"` (cut with `…` at the box's edge; `stopped 1d`, or `errored · <reason>`, when there is no reply; the reply is left out when the last-reply setting `v` is off, §4.10). The rows below move down one line, and the pane keeps the selected agent fully in view. A click on the second line is a click on the agent. An agent with a problem (an error, a missing directory, a failed worktree, an untested CLI version) shows its second line whether or not it is selected: in `status.error` (`fg.muted` for a notice) when it is not selected, and in `fg` when it is, because a status colour would fall below 4.5:1 on the wash and the `✕` icon and the word already carry the error |
+  | An agent you are typing into | The **whole row solid**, both lines, in its hue with bold `bg` text (the `▌` stays, in that same text colour), the state icon in that same text colour (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go. The Manager card, typed into, fills solid in the manager colour the same way |
 
 - **Without colour:** the chip and the solid rows are reverse video, so they show under `auto` and `NO_COLOR`; the `▌` bar, the bold name and the second line always show. Under `auto` the washes are not painted (§2.3), leaving those.
 - **Needs you** (§4.1.3) follows the same rule for its rows at 100 columns and wider (the compact layout keeps its glyph-and-time rows): the icon, the name and the reason, with no state word and no time. The order, oldest first, is unchanged.
@@ -704,7 +704,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Edit org:** `e` on the Manager card (the Duo row, in the compact tree). It edits `org.toml`'s org-level defaults and Duo's name and CLI. Changing Duo's CLI restarts Duo after a confirmation. Duo's name follows the agent-name rules (ASCII letters, digits, `-` and `_`, 1 to 40 characters, not an existing agent's name), checked as you type; its first three characters draw the Manager card's wordmark, and the field shows them as you type, so the result is visible before you save.
+**Edit org:** `e` on the Manager card (the Duo row, in the compact tree). It edits `org.toml`'s org-level defaults and Duo's name and CLI. Changing Duo's CLI restarts Duo after a confirmation. Duo's name follows the agent-name rules (ASCII letters, digits, `-` and `_`, 1 to 40 characters, not an existing agent's name), checked as you type, and it changes only while Duo is stopped, as any agent's does (*Renaming*, above; the field is read-only with the reason otherwise); its first three characters draw the Manager card's wordmark, and the field shows them as you type, so the result is visible before you save.
 
 ```
 ┌─ Edit org · saved to org.toml ───────────────────────────────────────────────┐
@@ -747,7 +747,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 │ Delete         d       │
 │ Zoom           z       │
 │ Worktrees      w       │
-│ Hide replies   v       │
+│ Hide reply     v       │
 └────────────────────────┘
 ```
 
@@ -1009,10 +1009,10 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │    Desktop alerts       [x] needs you   [x] finished                     │
 │  Look                                                                    │
 │    Theme                [ auto ▾ ]                                       │
-│    Last reply on selected [x]      Reduce motion [ ]                     │
+│    Reply on selected [x]           Reduce motion [ ]                     │
 │  Keys                   [ Edit key bindings → ]                          │
 │  Org                    [ New org from template… ]                       │
-│    org defaults and Duo: e on Duo (Edit org)                             │
+│    org defaults and Duo: e on the Manager card (Edit org)                │
 │                                                                          │
 │  changes save immediately · esc back                                     │
 └──────────────────────────────────────────────────────────────────────────┘
@@ -1123,7 +1123,7 @@ Below 100 columns it becomes one scrolling column:
 
 ### 4.12 Errors and empty states
 
-**In the boxes (100 columns and wider).** The org-pane mocks in this section are drawn as the compact tree to keep them short; the same states show in the boxes of §4.1.5 like this. An agent's error is its `✕` icon on its row, and its reason is on its second line, shown whether or not the agent is selected (`errored · opencode not found · install it or change its CLI (e)`); a missing directory, a failed worktree and an untested CLI version are second lines in the same way. Duo's error is the red `✕ errored` pill on the Manager card, with the reason on line 2 in place of the counts (`opencode not found (code 127) · e Edit org`). The `org.toml` banner is unchanged. An empty role is its box with one line inside, `no agents yet · n to add one or ask Duo`.
+**In the boxes (100 columns and wider).** The org-pane mocks in this section are drawn as a tree to keep them short; the same states show in the boxes of §4.1.5 like this. An agent's error is its `✕` icon on its row, and its reason is on its second line, shown whether or not the agent is selected (`errored · opencode not found · install it or change its CLI (e)`); a missing directory, a failed worktree and an untested CLI version are second lines in the same way. Duo's error is the red `✕ errored` pill on the Manager card, with the reason on line 2 in place of the counts (`opencode not found (code 127) · e Edit org`). The `org.toml` banner is unchanged. An empty role is its box with one line inside, `no agents yet · n to add one or ask Duo`. An org with no teams or roles is the Manager card alone (the message is in the agent pane, as above).
 
 Errors are shown where they apply, with how to fix them.
 
@@ -1268,6 +1268,8 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | Manager status pill text, the lowest of the five (idle on its 28% fill on `light`, errored on `dark`) | 6.50 | 4.56 |
 | Selected agent row: the bold name and `fg` on the 30% wash of the lowest hue | 7.26 | 8.89 |
 | Manager card selected: the name on its 26% wash | 9.10 | 9.57 |
+| Manager card not selected: `manager` text on its 10% wash | 12.14 | 6.06 |
+| Manager card typed into: the lowest status-pill text on its tint (idle `#C9C1AB` on `dark`, stopped `#D8D2C0` on `light`) | 10.51 | 4.84 |
 
 - **No blinking text.**
 
