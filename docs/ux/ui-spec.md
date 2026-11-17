@@ -47,7 +47,7 @@ Each state has a glyph and a word, so it reads without colour. Rows use the shor
 
 | Glyph | Node |
 |---|---|
-| `⬢` | Duo, at the root of your org |
+| `⬢` | Duo: on the Manager card's title (§4.1.5), and as its row in the compact tree |
 | `▣` | Team |
 | `◇` | Role |
 | (none) | Agent: just its name |
@@ -82,7 +82,8 @@ There are three themes:
 | `status.attention` | ◆ ◷ glyphs, Needs you, approval cards | **ANSI yellow** | **#D9A94E** (amber) | **#835B10** |
 | `status.done` | ✓ glyph | ANSI green | #6DB585 | #2A6E43 |
 | `status.error` | ✕ glyph, error lines, the `org.toml` banner | ANSI red | #E07A7A | #A8323A |
-| Duo | ⬢ and Duo's name | bold `fg` | bold `fg` | bold `fg` |
+| Duo (compact tree row, chat title) | ⬢ and Duo's name | bold `fg` | bold `fg` | bold `fg` |
+| `manager` | The Manager card (§4.1.5, below) | terminal foreground | #EDE6D6 | #5C5646 |
 | `selection` | Selected row background | none: `▌` and bold | #1F2430 | #ECEFF5 |
 
 **Team hues.** A team, or a role directly under Duo, has one hue from this palette, and the roles inside a team use their team's. The first team takes `teal`, the next `violet`, and so on in this order, wrapping round after the fourth; `org.toml` can set one (`color`, TD §7). Every use of a hue is derived from it:
@@ -92,8 +93,8 @@ There are three themes:
 | Title text (a team's or a role's name) | the hue, bold |
 | Box border | the hue at 65% over `bg`; at 100% on the selected box |
 | Chip (a selected team or role; the selected one only) | the hue as background, `bg` as text |
-| Selected agent row | `▌` in the hue, the name bold, the hue at 16% over `bg` across the row |
-| Typing row | the hue as background and `bg` as text, the state icon included: the glyph keeps its shape but takes the row's text colour, with no cell of its own |
+| Selected agent row (both of its lines) | `▌` in the hue, the name bold (white on `dark`), the hue at 30% over `bg` across the row. Every other text on it, the `✉ n` and the second line included, is `fg`, never `fg.muted`, which would fall below 4.5:1 on the wash |
+| Typing row (both lines) | the hue as background and `bg` as text, the state icon included: the glyph keeps its shape but takes the row's text colour, with no cell of its own |
 
 | Hue | `dark` | `light` | `auto` (the terminal's colour, and reverse video for chips and fills) |
 |---|---|---|---|
@@ -104,11 +105,23 @@ There are three themes:
 
 Under `auto` DuoHive paints no background, so the 65% border, the wash and the dark text on a hue are not available: a border is the hue's ANSI colour, the wash is dropped (the bar and the bold name remain), and a chip or a solid row is the colour reversed. Chip text on `light` is `#FFFFFF`.
 
+**The Manager colour.** Duo is not a team, so it takes no team hue: it has its own warm neutral, `manager`, `#EDE6D6` (ivory) on `dark` and `#5C5646` on `light`, and the terminal's foreground under `auto` (chips and fills by reverse video). It is drawn like a team's hue: title text bold, border at 40% (100% when selected), a chip on the title when selected, a 10% wash on the card (26% when selected) and a solid fill when typed into. It is kept apart from the status colours, so ivory never reads as amber. The status pill (§4.1.5) is drawn like this:
+
+| Status | Pill background | Pill text |
+|---|---|---|
+| idle, starting | `manager` at 28% over `bg` | `manager` |
+| working | `fg` | `bg` |
+| waiting, quiet | `status.attention` | `bg` (`#FFFFFF` on `light`) |
+| errored | `status.error` | `bg` (`#FFFFFF` on `light`) |
+| stopped | `manager` at 16% over `bg` | `manager` |
+
+When the Manager card is typed into, its fill is solid `manager`, so a pill would vanish into it: the pill takes a lighter tint on `light` and a darker one on `dark`, with no cell of its own and no black cell (`dark`: idle and starting `#C9C1AB`, stopped `#CFC8B6`, working `#FFFFFF`; `light`: idle and starting `#E4DFD0`, stopped `#D8D2C0`, working `#FFFFFF`; the text is `bg` on `dark` and `manager` on `light`; waiting, quiet and errored keep their status colour). Under `auto` a pill is the status's ANSI colour reversed (`fg` reversed for idle, starting, working and stopped).
+
 ### 2.4 Text
 
 - **Names:** agent names are monospace identifiers (`auth-service`), never title-cased.
 - **Times:** short form (`2m`, `4h`, `3d`); absolute times only in chat (`10:05`).
-- **Last reply:** the agent's last reply goes under its row, in quotes.
+- **Last reply:** shown in quotes on the selected agent's second line (§4.1.5); an unselected row has none. (The wordmark's block letters are art drawn from a name, not a second way of writing it: the name is always shown as typed.)
 - **Labels:** sentence case everywhere ("Needs you", "Give work").
 - **Inherited values:** always `inherit: <value>`, in `fg.muted`.
 - **Truncation:**
@@ -142,37 +155,37 @@ Below 80×24, DuoHive shows only "Make the window at least 80×24" and the curre
 
 ### 4.1 Main screen
 
-Eight agents plus Duo, drawn in the `dark` theme. The agent pane has focus (Typing), and auth-service is the agent being typed into. The org pane is grouped boxes (§4.1.5): a team box holds a box per role, and a role box holds its agents.
+Five agents plus Duo, drawn in the `dark` theme. The agent pane has focus (Typing), and auth-service is the agent being typed into. The org pane is grouped boxes (§4.1.5): the Manager card (Duo), then a box per team holding a box per role and the agents in it, with no gap between boxes.
 
 ```
- DuoHive   8 agents · ● 3 working · ◆ 2 need you                                                                ? help
+ DuoHive   5 agents · ● 2 working · ◆ 2 need you                                                                ? help
 ┌─ Org ──────────────────────────────────────────┐┏━ auth-service · Claude · worktree retry-loop · ● working 2m ━━━━━━━┓
-│ ⬢ Duo · your manager agent                  ◦  │┃  > add exponential backoff to the retry loop, max 5 attempts       ┃
-│ ┌─ ▣ Payments ───────────────────── ● 1 ◆ 1 ─┐ │┃                                                                    ┃
-│ │ ╭────────────── ◇ Backend ───────────────╮ │ │┃  ● I'll add backoff in retry/loop.go and cover it with tests.      ┃
-│ │ │▌auth-service ✉ 1                     ● │ │ │┃                                                                    ┃
-│ │ │ billing-api                          ◆ │ │ │┃  ● Update(internal/retry/loop.go)                                  ┃
-│ │ ╰────────────────────────────────────────╯ │ │┃    ⎿  Added 14 lines, removed 3 lines                              ┃
-│ │ ╭───────────────── ◇ QA ─────────────────╮ │ │┃                                                                    ┃
-│ │ │ pay-qa                               ○ │ │ │┃  ● Bash(go test ./internal/retry/...)                              ┃
-│ │ ╰────────────────────────────────────────╯ │ │┃    ⎿  ok  github.com/acme/pay/internal/retry  0.412s               ┃
+│ ┌─ ⬢ Manager ────────────────────────────────┐ │┃  > add exponential backoff to the retry loop, max 5 attempts       ┃
+│ │  █▀▄ █ █ ▄▀▄   Duo                  ◦ idle │ │┃                                                                    ┃
+│ │  █▄▀ █▄█ ▀▄▀   2 need you · 1 card         │ │┃  ● I'll add backoff in retry/loop.go and cover it with tests.      ┃
 │ └────────────────────────────────────────────┘ │┃                                                                    ┃
-│ ┌─ ▣ Platform ───────────────────── ● 1 ✓ 1 ─┐ │┃  ✓ go test ./... (14 passed)                                       ┃
-│ │ ╭─────────────── ◇ Infra ────────────────╮ │ │┃  ✓ Ready for review · 3 files changed                              ┃
+│ ┌─ ▣ Payments ───────────────────── ● 1 ◆ 1 ─┐ │┃  ● Update(internal/retry/loop.go)                                  ┃
+│ │ ╭────────────── ◇ Backend ───────────────╮ │ │┃    ⎿  Added 14 lines, removed 3 lines                              ┃
+│ │ │▌auth-service ✉ 1                     ● │ │ │┃                                                                    ┃
+│ │ │ billing-api                          ◆ │ │ │┃  ● Bash(go test ./internal/retry/...)                              ┃
+│ │ ╰────────────────────────────────────────╯ │ │┃    ⎿  ok  github.com/acme/pay/internal/retry  0.412s               ┃
+│ │ ╭───────────────── ◇ QA ─────────────────╮ │ │┃                                                                    ┃
+│ │ │ pay-qa                               ○ │ │ │┃  ✓ go test ./... (14 passed)                                       ┃
+│ │ ╰────────────────────────────────────────╯ │ │┃  ✓ Ready for review · 3 files changed                              ┃
+│ └────────────────────────────────────────────┘ │┃                                                                    ┃
+│ ┌─ ▣ Platform ───────────────────── ● 1 ✓ 1 ─┐ │┃                                                                    ┃
+│ │ ╭─────────────── ◇ Infra ────────────────╮ │ │┃                                                                    ┃
 │ │ │ infra-1                              ✓ │ │ │┃                                                                    ┃
 │ │ │ infra-2                              ● │ │ │┃                                                                    ┃
 │ │ ╰────────────────────────────────────────╯ │ │┃                                                                    ┃
 │ └────────────────────────────────────────────┘ │┃                                                                    ┃
-│ ┌─ ◇ Generalist ─────────────── ● 1 ◷ 1 ◦ 1 ─┐ │┃                                                                    ┃
-│ │ squad-1                                  ● │ │┃                                                                    ┃
-│ │ squad-2                                  ◷ │ │┃                                                                    ┃
-│ │ squad-3                                  ◦ │ │┃                                                                    ┃
-│ └────────────────────────────────────────────┘ │┃                                                                    ┃
+│                                                │┃                                                                    ┃
+│                                                │┃                                                                    ┃
 │                                                │┃                                                                    ┃
 │                                                │┃                                                                    ┃
 ├─ Needs you (2) ────────────────────────────────┤┃                                                                    ┃
 │ ◆  billing-api  "Allow edit to api.go?"        │┃ ❯ now add jitter█                                                  ┃
-│ ◷  squad-2  quiet                              │┃ ctrl+q stop typing · z zoom · PgUp/PgDn scroll                     ┃
+│ ◆  Duo  approval  Add pay-web                  │┃ ctrl+q stop typing · z zoom · PgUp/PgDn scroll                     ┃
 └────────────────────────────────────────────────┘┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ┌─ ⬢ Duo · ◦ idle ─────────────────────────────────────────────────────────────────────────────────────────────────────┐
 │ 10:05 you   what's blocking the Payments team?                                                                       │
@@ -197,7 +210,7 @@ The diagram is plain text; the colours, the chips and the fills that mark select
 - **Chat pane (Duo):** §4.6 and §4.7.
 - **Footer:** the keys for the focused pane. The org footer shows `enter type` after `↑↓ move` only while `enter` on the selected row would start Typing (a running agent or Duo), not on a team, a role, or a stopped or errored agent.
 
-**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns the org pane keeps the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues (§2.3) do not apply to it.
+**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns the org pane keeps the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues and the Manager colour (§2.3) do not apply to it, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
 
 ```
  DuoHive  ● 2 · ◆ 2                                                     ? help 
@@ -387,22 +400,56 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 
 The org is a hierarchy, and the pane draws it as one: groups you can see, not a tree of lines. Each team has a hue (§2.3) that finds it at a glance.
 
-- **Shape (50-column pane, boxes 46 wide):**
-  - **Duo** is a row above the boxes: `⬢` and the name in bold, the state icon at the right edge.
+- **Shape (50-column pane, boxes 46 wide, stacked with no blank row between them: a box's bottom line is directly above the next box's top line):**
+  - **Duo** is the Manager card, the first box (below).
   - **A team** is a box: `┌─ ▣ Payments ──── ● 1 ◆ 1 ─┐`, its name and roll-up on the title line. It holds a role box per role.
   - **A role** is a box inside its team box, `╭──── ◇ Backend ────╮`, with the role name centred on its top line. It holds one row per agent.
   - **A role directly under Duo** is a box of its own, `┌─ ◇ Generalist ──── ● 1 ◷ 1 ─┐`, with the agent rows straight inside it (no second box).
   - **An agent row** is a marker column, the name (cut in the middle with `…` when too long), `✉ n` when messages wait, and the state icon at the right edge. Nothing else: no state word, no time, no last reply.
+- **The Manager card** is Duo, drawn as a four-row box with a square single-line border:
+
+  ```
+  ┌─ ⬢ Manager ────────────────────────────────┐
+  │  █▀▄ █ █ ▄▀▄   Duo                  ◦ idle │
+  │  █▄▀ █▄█ ▀▄▀   2 need you · 1 card         │
+  └────────────────────────────────────────────┘
+  ```
+
+  - **Title:** `⬢ Manager` on the top border, where a team's name sits, in the manager colour (§2.3). Like a team's, it takes a chip only while Duo is selected.
+  - **Wordmark:** the first three characters of Duo's name as block letters, two rows high, at the left (the font is below). Fewer than three characters: just those, left-aligned. Case does not matter (`duo` and `Duo` both draw `DUO`). It follows a rename, and always occupies 11 columns so the text never moves.
+  - **Line 1:** Duo's name, and its status as a pill at the right edge. The name has **16 columns** whatever the status (the widest pill, `◆ waiting`, takes 11), and a longer name is cut in the middle with `…` (`platform…r-agent`), as every name is (§2.4). The whole name is in the agent pane's title and in Edit org.
+  - **Line 2:** what needs you, with the header's counts: `<n> need you · <m> card` (`cards` for more than one); `nothing needs you` when both are zero.
+  - **Status pill:** the state's icon and word, `◦ idle`, `● working`, `◆ waiting`, `✕ errored`, `○ stopped`, `◌ starting` or `◷ quiet`. Duo never shows `finished` (it goes straight to idle). Colours are in §2.3: amber only for `waiting` and `quiet`, red only for `errored`, as everywhere else.
+  - **Name rules:** Duo's name is an identifier like every agent's: ASCII letters, digits, `-` and `_`, starting with a letter or digit, 1 to 40 characters (Edit org). Every such character has a glyph, so no name needs a fallback.
+  - **Height:** always four rows, for any name and any status, so the list does not move when Duo is renamed or changes state.
+
+  **The wordmark font:** 38 glyphs, each three columns wide and two rows high, drawn with half blocks. The chart is the font: a `▀` is a lit top half, a `▄` a lit bottom half, and a `█` both. (At this size `M` and `H`, and `N` and `W`, look alike; the name on line 1 always says which.)
+
+  ```
+  ▄▀▄  ██▄  ▄▀▀  █▀▄  ██▀  ██▀  ▄▀▀  █▄█  ▀█▀    █  █▄▀  █    █▄█
+  █▀█  █▄▀  ▀▄▄  █▄▀  █▄▄  █    ▀▄█  █ █  ▄█▄  ▀▄▀  █ █  █▄▄  █▀█
+   A    B    C    D    E    F    G    H    I    J    K    L    M
+
+  █▀▄  ▄▀▄  █▀▄  ▄▀▄  █▀▄  ▄█▀  ▀█▀  █ █  █ █  █ █  ▀▄▀  █ █  ▀▀█
+  █ █  ▀▄▀  █▀   ▀▄█  █▀▄  ▄▄▀   █   █▄█  ▀▄▀  ███  ▄▀▄   █   █▄▄
+   N    O    P    Q    R    S    T    U    V    W    X    Y    Z
+
+  █▀█  ▄█   ▀▀▄  ▀█▄  █ █  ██▀  ▄▀▀  ▀▀█  ███  █▀█  ▄▄▄
+  █▄█  ▄█▄  ▄█▄  ▄▄▀  ▀▀█  ▄▄▀  ▀█▀   █   █▄█  ▀▀█       ▄▄▄
+   0    1    2    3    4    5    6    7    8    9    -    _
+  ```
+
 - **Folding:** `enter` on a team or role folds its box to the title line, which keeps the hue and the roll-up (`┌─ ▣ Payments ▸ ───── ● 1 ◆ 1 ─┐`), and unfolds it. A click only selects (§4.1.2, Clicks), and a folded group still unfolds when a click or `enter` in Needs you selects one of its agents.
 - **Selection.** One thing is selected at a time, and each level has one signal:
 
   | Selected | What you see |
   |---|---|
   | A team or a role | A **solid border** in its hue and its name on a **solid chip** (the hue as the background). Only that box changes: the roles inside a selected team keep their dimmer border, so the level you are on is clear. No wash and no bar |
-  | An agent | A `▌` bar in its hue at the start of the row, the name in bold, and a **soft wash** of the hue across the row |
-  | An agent you are typing into | The **whole row solid** in its hue with dark bold text, the state icon in that same dark text (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go |
+  | The Manager card | A solid border in the manager colour, the `⬢ Manager` title on a chip, and a brighter wash behind the card's text with the name in bold white. No `▌` bar: the chip and the border say it |
+  | An agent | A `▌` bar in its hue at the start of the row, the name in bold white, a **strong wash** (30%) of the hue, and the row **opens a second line** with what the icon cannot say: the state word, how long, and the last reply, `working 2m · "Running go test ./…"` (cut with `…` at the box's edge; `stopped 1d`, or `errored · <reason>`, when there is no reply). The rows below move down one line, and the pane keeps the selected agent fully in view. A click on the second line is a click on the agent |
+  | An agent you are typing into | The **whole row solid**, both lines, in its hue with dark bold text, the state icon in that same dark text (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go. The Manager card, typed into, fills solid in the manager colour the same way |
 
-- **Without colour:** the chip and the solid row are reverse video, so they show under `auto` and `NO_COLOR`; the bar and the bold name always show. Under `auto` the wash is not painted (§2.3), leaving the bar and the bold name.
+- **Without colour:** the chip and the solid rows are reverse video, so they show under `auto` and `NO_COLOR`; the `▌` bar, the bold name and the second line always show. Under `auto` the washes are not painted (§2.3), leaving those.
 - **Needs you** (§4.1.3) follows the same rule for its rows: the icon, the name and the reason, with no state word and no time. The order, oldest first, is unchanged.
 - **No hover.** DuoHive does not follow the pointer (pointer motion is not read); the only mouse actions are clicks, drags and the wheel, as before.
 
@@ -655,7 +702,7 @@ Opened with `n` (new) or `e` (edit), or from the right-click menu.
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Edit org:** `e` on the Duo row. It edits `org.toml`'s org-level defaults and Duo's name and CLI. Changing Duo's CLI restarts Duo after a confirmation.
+**Edit org:** `e` on the Manager card (the Duo row, in the compact tree). It edits `org.toml`'s org-level defaults and Duo's name and CLI. Changing Duo's CLI restarts Duo after a confirmation. Duo's name follows the agent-name rules (ASCII letters, digits, `-` and `_`, 1 to 40 characters, not an existing agent's name), checked as you type; its first three characters draw the Manager card's wordmark, and the field shows them as you type, so the result is visible before you save.
 
 ```
 ┌─ Edit org · saved to org.toml ───────────────────────────────────────────────┐
@@ -1074,6 +1121,8 @@ Below 100 columns it becomes one scrolling column:
 
 ### 4.12 Errors and empty states
 
+**In the boxes (100 columns and wider).** The org-pane mocks in this section are drawn as the compact tree to keep them short; the same states show in the boxes of §4.1.5 like this. An agent's error is its `✕` icon on its row, and its reason is on its second line while it is selected (`errored · opencode not found · install it or change its CLI (e)`). Duo's error is the red `✕ errored` pill on the Manager card, with the reason on line 2 in place of the counts (`opencode not found (code 127) · e Edit org`). The `org.toml` banner is unchanged. An empty role is its box with one line inside, `no agents yet · n to add one or ask Duo`.
+
 Errors are shown where they apply, with how to fix them.
 
 **tmux missing (full screen, at start):**
@@ -1213,6 +1262,10 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | `violet` | 6.53 | 6.88 |
 | `slate` | 6.13 | 7.00 |
 | `orchid` | 7.36 | 5.83 |
+| `manager` (title text on `bg`, chip text on the colour) | 15.17 | 7.00 |
+| Manager status pill text, the lowest of the five (idle on its 28% fill on `light`, errored on `dark`) | 6.50 | 4.56 |
+| Selected agent row: the bold name and `fg` on the 30% wash of the lowest hue | 7.26 | 8.89 |
+| Manager card selected: the name on its 26% wash | 9.10 | 9.57 |
 
 - **No blinking text.**
 
