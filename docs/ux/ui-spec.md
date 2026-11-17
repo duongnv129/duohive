@@ -17,7 +17,7 @@ Living document, updated in place. It is the source of truth for what every scre
 
 **Anti-patterns:**
 
-- **No decoration:** no borders inside borders, no ASCII art, no banners. Two stated exceptions: the `@` / `/` suggestion popup, and the org boxes (§4.1.5), where role boxes sit inside team boxes because the grouping is the point.
+- **No decoration:** no borders inside borders, no ASCII art, no banners. Three stated exceptions: the `@` / `/` suggestion popup; the org boxes (§4.1.5), where role boxes sit inside team boxes because the grouping is the point; and the Manager card's block-letter mark of Duo's name.
 - **No motion except the working spinner.**
 - **No feature descriptions on screen:** the controls and the `?` map speak for themselves.
 
@@ -25,7 +25,7 @@ Living document, updated in place. It is the source of truth for what every scre
 
 ### 2.1 Status
 
-Each state has a glyph and a word, so it reads without colour. In the compact tree and in Needs you, rows use the short word ("waiting"); in the boxes a row is its icon alone (§4.1.5); definitions and help use the full one ("waiting on you").
+Each state has a glyph and a word, so it reads without colour. In the compact tree and in Needs you at the compact size, rows use the short word ("waiting"); in the boxes, and in the Needs you beside them, a row carries no state word (§4.1.5); definitions and help use the full one ("waiting on you").
 
 | Glyph | State | Meaning | Colour token | In Needs you |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ Each state has a glyph and a word, so it reads without colour. In the compact tr
 
 - **Duo:** goes straight to idle after a turn; it is never shown as finished.
 - **Working spinner:** the `●` cycles `◐◓◑◒` at 4 frames a second, only on rows on screen. The word stays fixed. With **Reduce motion** on (Settings), it stays `●`. Mock-ups draw the static `●`.
-- **State cell (the compact tree, and the second line in the boxes):** `~` marker (or a space), glyph, the word padded to 9 cells, then the time right-aligned in 4 cells (`● working    2m`). Times use `2m`, `4h`, `3d`.
+- **State cell (the compact tree only; the boxes' second line is `<word> <time> · "<reply>"`, §4.1.5):** `~` marker (or a space), glyph, the word padded to 9 cells, then the time right-aligned in 4 cells (`● working    2m`). Times use `2m`, `4h`, `3d`.
 
 ### 2.2 Tree glyphs
 
@@ -115,7 +115,7 @@ Under `auto` DuoHive paints no background, so the 65% border, the wash and the `
 | errored | `status.error` | `bg` (`#FFFFFF` on `light`) |
 | stopped | `manager` at 16% over `bg` | `manager` |
 
-The pill's text and icon carry the state; its edge is never relied on. When the Manager card is typed into, its fill is solid `manager`, so a pill would vanish into it: the pill takes a lighter tint on `light` and a darker one on `dark`, with no cell of its own and no black cell (`dark`: idle and starting `#C9C1AB`, stopped `#CFC8B6`, working `#FFFFFF`; `light`: idle and starting `#E4DFD0`, stopped `#D8D2C0`, working `#FFFFFF`; the text is `bg` on `dark` and `manager` on `light`; waiting, quiet and errored keep their status colour). Under `auto` a pill is the status's ANSI colour reversed (`fg` reversed for idle, starting, working and stopped).
+The pill's text and icon carry the state; its edge is never relied on. When the Manager card is typed into, its fill is solid `manager`, so a pill would vanish into it: the pill takes a tint that stands apart from the fill (lighter on `light`, darker on `dark`; the working pill is `#FFFFFF` on both), with no cell of its own and no black cell (`dark`: idle and starting `#C9C1AB`, stopped `#CFC8B6`, working `#FFFFFF`; `light`: idle and starting `#E4DFD0`, stopped `#D8D2C0`, working `#FFFFFF`; the text is `bg` on `dark` and `manager` on `light`; waiting, quiet and errored keep their status colour). Under `auto` a pill is the status's ANSI colour reversed (`fg` reversed for idle, starting, working and stopped).
 
 ### 2.4 Text
 
@@ -167,7 +167,7 @@ Five agents plus Duo, drawn in the `dark` theme. The agent pane has focus (Typin
 │ ┌─ ▣ Payments ───────────────────── ● 1 ◆ 1 ─┐ │┃  ● Update(internal/retry/loop.go)                                  ┃
 │ │ ╭────────────── ◇ Backend ───────────────╮ │ │┃    ⎿  Added 14 lines, removed 3 lines                              ┃
 │ │ │▌auth-service ✉ 1                     ● │ │ │┃                                                                    ┃
-│ │ │  working 2m · "Running go test ./…"    │ │ │┃                                                                    ┃
+│ │ │  working 2m · "Running go test ./..."  │ │ │┃                                                                    ┃
 │ │ │ billing-api                          ◆ │ │ │┃  ● Bash(go test ./internal/retry/...)                              ┃
 │ │ ╰────────────────────────────────────────╯ │ │┃    ⎿  ok  github.com/acme/pay/internal/retry  0.412s               ┃
 │ │ ╭───────────────── ◇ QA ─────────────────╮ │ │┃                                                                    ┃
@@ -420,12 +420,12 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   - **Title:** `⬢ Manager` on the top border, where a team's name sits, in the manager colour (§2.3). Like a team's, it takes a chip only while Duo is selected.
   - **Wordmark:** the first three characters of Duo's name as block letters, two rows high, at the left (the font is below). Fewer than three characters: just those, left-aligned. Case does not matter (`duo` and `Duo` both draw `DUO`). It follows a rename, and always occupies 11 columns so the text never moves.
   - **Line 1:** Duo's name, and its status as a pill at the right edge. The name has **16 columns** whatever the status (the widest pill, `◌ starting`, takes 12, so name and pill always fit the 28 columns), and a longer name is cut in the middle with `…` (`platform…r-agent`), as every name is (§2.4). The whole name is in the agent pane's title and in Edit org.
-  - **Line 2:** what needs you, with the header's counts: `<n> need you` followed by ` · <m> card` (` · <m> cards` for more than one) only when `m` is more than zero, where `n` is the header's need-you count and `m` the pending approval cards among them (`2 need you`, `2 need you · 1 card`, `3 need you · 2 cards`); `nothing needs you` when `n` is zero. When Duo is errored its reason replaces this line (`opencode not found (code 127) · e Edit org`); line 2 has 27 columns, so anything longer is cut with `…` at the card's edge, and the whole reason is in the agent pane. On a selected card, line 2 is in the selected text colour, never in `status.error`.
+  - **Line 2:** what needs you, with the header's counts: `<n> need you` followed by ` · <m> card` (` · <m> cards` for more than one) only when `m` is more than zero, where `n` is the header's need-you count and `m` the pending approval cards among them (`2 need you`, `2 need you · 1 card`, `3 need you · 2 cards`); `nothing needs you` when `n` is zero. When Duo is errored its reason replaces this line (`opencode not found (code 127) · e Edit org`); line 2 has 27 columns (one stays free at the right edge), so anything longer is cut with `…` at the card's edge, and the whole reason is in the agent pane. On a selected card, line 2 is in the selected text colour, never in `status.error`.
   - **Status pill:** the state's icon and word, `◦ idle`, `● working`, `◆ waiting`, `✕ errored`, `○ stopped`, `◌ starting` or `◷ quiet`. Duo never shows `finished` (it goes straight to idle). Colours are in §2.3: amber only for `waiting` and `quiet`, red only for `errored`, as everywhere else.
   - **Name rules:** Duo's name is an identifier like every agent's: ASCII letters, digits, `-` and `_`, starting with a letter or digit, 1 to 40 characters (Edit org). Every such character has a glyph, so no name needs a fallback.
   - **Height:** always four rows, for any name and any status, so the list does not move when Duo is renamed or changes state.
 
-  **The wordmark font:** 38 glyphs, each three columns wide and two rows high, drawn with half blocks. The chart is the font: a `▀` is a lit top half, a `▄` a lit bottom half, and a `█` both. (At this size `M` and `H`, and `N` and `W`, look alike; the name on line 1 always says which.)
+  **The wordmark font:** 38 glyphs, each three columns wide and two rows high, drawn with half blocks. The chart is the font: a `▀` is a lit top half, a `▄` a lit bottom half, and a `█` both. (At this size `M` and `H` look alike; the name on line 1 always says which.)
 
   ```
   ▄▀▄  ██▄  ▄▀▀  █▀▄  ██▀  ██▀  ▄▀▀  █▄█  ▀█▀    █  █▄▀  █    █▄█
@@ -448,7 +448,7 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   |---|---|
   | A team or a role | A **solid border** in its hue and its name on a **solid chip** (the hue as the background). Only that box changes: the roles inside a selected team keep their dimmer border, so the level you are on is clear. No wash and no bar |
   | The Manager card | A solid border in the manager colour, the `⬢ Manager` title on a chip, and a brighter wash behind the card's text, with the name in bold and the counts line in the same colour (white on `dark`, `fg` on `light`, never `fg.muted`). No `▌` bar: the chip and the border say it |
-  | An agent | A `▌` bar in its hue at the start of the row, the name in bold (white on `dark`, `fg` on `light`), the state icon in `fg` (its shape says the state; a status colour would fall below 4.5:1 on the wash), a **strong wash** (30%) of the hue, and the row **opens a second line** with what the icon cannot say: the state word, how long, and the last reply, `working 2m · "Running go test ./…"` (cut with `…` at the box's edge; `stopped 1d`, or `errored · <reason>`, when there is no reply; the reply is left out when the last-reply setting `v` is off, §4.11; a `~` leads the icon on the row when its state is read from the screen). The rows below move down one line, and the pane keeps the selected agent fully in view. A click on the second line is a click on the agent. An agent with a problem (an error, a missing directory, a failed worktree, an untested CLI version) shows its second line whether or not it is selected: in `status.error` (`fg.muted` for a notice) when it is not selected, and in `fg` when it is, because a status colour would fall below 4.5:1 on the wash and the `✕` icon and the word already carry the error. There is only ever one second line: a selected agent with a problem shows the problem in place of the state line (it starts with the state word, `errored · <reason>`), and a notice (an untested CLI version) follows the state line after a ` · `. A click on the top or bottom border of a box selects that box's team or role |
+  | An agent | A `▌` bar in its hue at the start of the row, the name in bold (white on `dark`, `fg` on `light`), the state icon in `fg` (its shape says the state; a status colour would fall below 4.5:1 on the wash), a **strong wash** (30%) of the hue, and the row **opens a second line** with what the icon cannot say: the state word, how long, and the last reply, `working 2m · "Running go test ./..."` (cut with `…` at the box's edge; `stopped 1d`, or `errored · <reason>`, when there is no reply; the reply is left out when the last-reply setting `v` is off, §4.11; a `~` leads the icon on the row when its state is read from the screen). The rows below move down one line, and the pane keeps the selected agent fully in view. A click on the second line is a click on the agent. An agent with a problem (an error, a missing directory, a failed worktree, an untested CLI version) shows its second line whether or not it is selected: in `status.error` (`fg.muted` for a notice) when it is not selected, and in `fg` when it is, because a status colour would fall below 4.5:1 on the wash and the `✕` icon and the word already carry the error. There is only ever one second line: a selected agent with a problem shows the problem in place of the state line (it starts with the state word, `errored · <reason>`), and a notice (an untested CLI version) follows the state line after a ` · `. A click on the top or bottom border of a box selects that box's team or role |
   | An agent you are typing into | The **whole row solid**, both lines, in its hue with bold `bg` text (the `▌` stays, in that same text colour), the state icon in that same text colour (its shape still says the state, its colour does not), and the agent pane takes the heavy border. It is the only solid row on the screen, so you can see where your keystrokes go. The Manager card, typed into, fills solid in the manager colour the same way |
 
 - **Without colour:** the chip and the solid rows are reverse video, so they show under `auto` and `NO_COLOR`; the `▌` bar, the bold name and the second line always show. Under `auto` the washes are not painted (§2.3), leaving those.
@@ -1035,7 +1035,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │    Desktop alerts       [x] needs you   [x] finished                     │
 │  Look                                                                    │
 │    Theme                [ auto ▾ ]                                       │
-│    Reply on selected [x]           Reduce motion [ ]                     │
+│    Reply on selected [x]  Reduce motion [ ]                              │
 │  Keys                   [ Edit key bindings → ]                          │
 │  Org                    [ New org from template… ]                       │
 │    org defaults and Duo: e on the Manager card (Edit org)                │
@@ -1149,7 +1149,7 @@ Below 100 columns it becomes one scrolling column:
 
 ### 4.12 Errors and empty states
 
-**In the boxes (100 columns and wider).** The org-pane mocks in this section are drawn as a tree to keep them short; the same states show in the boxes of §4.1.5 like this. An agent's error is its `✕` icon on its row, and its reason is on its second line, shown whether or not the agent is selected (`errored · opencode not found · install it or change its CLI (e)`); a missing directory, a failed worktree and an untested CLI version are second lines in the same way. Duo's error is the red `✕ errored` pill on the Manager card, with the reason on line 2 in place of the counts (`opencode not found (code 127) · e Edit org`). The `org.toml` banner is unchanged. An empty role is its box with one line inside, `no agents yet · n to add one or ask Duo`. An org with no teams or roles is the Manager card alone (the message is in the agent pane, as above).
+**In the boxes (100 columns and 30 rows or more).** The org-pane mocks in this section are drawn as a tree to keep them short; the same states show in the boxes of §4.1.5 like this. An agent's error is its `✕` icon on its row, and its reason is on its second line, shown whether or not the agent is selected (`errored · opencode not found · install it or change its CLI (e)`); a missing directory, a failed worktree and an untested CLI version are second lines in the same way. Duo's error is the red `✕ errored` pill on the Manager card, with the reason on line 2 in place of the counts (`opencode not found (code 127) · e Edit org`). The `org.toml` banner is unchanged. An empty role is its box with one line inside, `no agents yet · n to add one or ask Duo`. An org with no teams or roles is the Manager card alone (the message is in the agent pane, as above).
 
 Errors are shown where they apply, with how to fix them.
 
