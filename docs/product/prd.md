@@ -106,7 +106,7 @@ When **a story ticket comes in**, I want to **break it into small subtasks (back
 |---|---|---|
 | **Must** | Org chart: teams → roles → standing agents, edited in-app, saved to a shareable file; one org per install | The core of the hypothesis |
 | **Must** | Agent definition: name, CLI (Claude Code or OpenCode), flags, directory, prompt, model, effort; inherited from team and role, prompts stack | Instructions written once, not per session |
-| **Must** | One screen: org tree with live status and last reply, the selected agent's live terminal, chat with Duo | See and steer the whole team at a glance |
+| **Must** | One screen: the org as grouped boxes with live status (the selected agent opens its state, time and last reply), the selected agent's live terminal, chat with Duo | See and steer the whole team at a glance |
 | **Must** | Duo, a manager agent: chat, see the org, message agents, start and stop them, and propose org changes you approve through approval cards; every action visible | Direct the team in plain language |
 | **Must** | Agent-to-agent messages, delivered only when the receiver is at rest. Each sender is identified by a per-launch secret token DuoHive issues, never by a name anyone can set | Duo, and agents, can coordinate safely; no agent can pose as Duo to start a delegation chain |
 | **Must** | "Needs you" list (waiting, quiet and errored agents, and pending approval cards) and desktop notifications | Nobody stuck unnoticed |
@@ -140,7 +140,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
         └── web-app
 ```
 
-- **Colour:** each team (and each role directly under you) has one colour from a small fixed palette, given in order when it is created and changeable in its edit form; its roles and agents are drawn in it. It is saved in `org.toml`, so a shared org looks the same to everyone.
+- **Colour:** each team (and each role directly under you) has one colour from a small fixed palette, given in turn, among the teams and the roles directly under you, when it is created and changeable in its edit form; its roles and agents are drawn in it. It is saved in `org.toml`, so a shared org looks the same to everyone.
 - **Levels:** three fixed levels under you: team → role → agent.
   - Teams are optional: a role can sit directly under you.
   - Agents never sit under other agents.
@@ -188,7 +188,7 @@ You (the manager)                ← root; your manager agent, Duo, lives here
 - **Where the org lives:** in a readable file (`org.toml`) you can share or keep in git. DuoHive writes it, and hand edits are picked up on the next start. Live state (sessions, chat history) stays on your machine.
   - **One org per install in v1.** "New org from template" replaces the current org's teams, roles and agents after a confirmation, keeping Duo, the org defaults and a backup.
   - **A missing directory** makes only that agent invalid, with the error on its row; the rest of the org keeps working.
-  - **Org defaults vs Settings:** `org.toml` holds the org-level defaults (org prompt, default CLI, model, effort, worktree setting) and Duo's name and CLI, edited through **Edit org** on the Duo row. Settings are personal only: your name, theme, key bindings, alerts and the quiet threshold.
+  - **Org defaults vs Settings:** `org.toml` holds the org-level defaults (org prompt, default CLI, model, effort, worktree setting) and Duo's name and CLI, edited through **Edit org** on the Manager card (the Duo row in the compact tree). Settings are personal only: your name, theme, key bindings, alerts and the quiet threshold.
 
 ### Duo, the manager agent
 
@@ -300,7 +300,7 @@ The minimum to test the hypothesis is **every Must row**: an org chart of standi
 1. **Install:** `duohive` (one binary; needs tmux and at least one agent CLI).
 2. **First run:** set-up asks your name, creates Duo, then offers the templates (Agent Squad, Product Team, Engineering Org, Blank). You pick one, fill in its directories and CLI (Claude Code or OpenCode), and the org is ready; edit anything afterwards.
 3. **Give work:** select the agent, press `space`, type the task, and choose where it runs: the agent's own directory, or a fresh git worktree on a new branch (the agent's default is pre-selected). The agent starts and its status turns to working. An agent that is finished or idle takes the task as its next turn instead.
-4. **Watch:** the tree shows status and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
+4. **Watch:** the boxes show each agent's status, and the selected agent opens its state, time and last reply. When an agent needs you, it appears under **Needs you** and a desktop alert fires.
 5. **Steer through Duo:** ask "what's blocked?" or "tell billing-api to add tests", and Duo answers and acts, showing each action.
 6. **Close and come back:** quitting DuoHive leaves every agent running, and reopening shows the team exactly as it is.
 
