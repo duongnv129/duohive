@@ -62,7 +62,7 @@ Each state has a glyph and a word, so it reads without colour. In the compact tr
 
 The screen exists to show the agents' code, so DuoHive's own chrome stays quiet:
 
-- **One UI accent, for focus only.** `border.focus` colours the focused pane's title, and the selected row's `▌` in the compact tree. Nothing else uses it. Duo's row in the compact tree and in the chat title is bold, not coloured. The only other colours are a team's hue and the Manager colour (below), which find a team, or Duo, at a glance and never mean a state: amber, green and red stay reserved for status, and the palette keeps clear of them and of the blue accent.
+- **One UI accent, for focus only.** `border.focus` colours the focused pane's title. Nothing else uses it. Duo's row in the tree and in the chat title is bold, not coloured. The only other colours are a team's hue and the Manager colour (below), which find a team, or Duo, at a glance and never mean a state: amber, green and red stay reserved for status, and the palette keeps clear of them and of the blue accent.
 - **Colour only where you're needed.** `status.attention`, `status.error` and `status.done` colour their glyph, never the word or the time (which are `fg.muted`), except the Manager card's status pill, which is filled (§4.1.5). Working, starting, idle and stopped carry no colour: the spinner already says "working".
 - **Neutral lines.** Every pane border, focused or not, is `border`; the boxes inside the org pane take their hue (§4.1.5). Focus is the heavy border shape (§2.2) and the accent title. There is one surface colour: `bg.panel` is `bg`.
 - **Restrained colour.** One neutral family per theme; accents below 80% saturation.
@@ -77,14 +77,14 @@ There are three themes:
 | `fg` / `fg.muted` | Text / secondary text, status words and times, inherited values, worktree states | terminal foreground / terminal foreground, dim | #D4D4D8 / #8E8E99 | #27272A / #5E5E68 |
 | `bg` / `bg.panel` | Screen / focused pane (the same) | terminal background (not painted) | #111113 | #FAFAFA |
 | `border` | Every pane border, focused or not | terminal foreground, dim | #2A2A2E | #E4E4E7 |
-| `border.focus` | The accent: the focused pane's title, and the compact tree's selected row `▌` | ANSI blue | #7DA3E0 | #2F5BB8 |
+| `border.focus` | The accent: the focused pane's title | ANSI blue | #7DA3E0 | #2F5BB8 |
 | `status.working` | ● (no colour of its own) | `fg` | `fg` | `fg` |
 | `status.attention` | ◆ ◷ glyphs, Needs you, approval cards | **ANSI yellow** | **#D9A94E** (amber) | **#835B10** |
 | `status.done` | ✓ glyph | ANSI green | #6DB585 | #2A6E43 |
 | `status.error` | ✕ glyph, error lines, the `org.toml` banner | ANSI red | #E07A7A | #A8323A |
 | Duo (compact tree row, chat title) | ⬢ and Duo's name | bold `fg` | bold `fg` | bold `fg` |
 | `manager` | The Manager card (§4.1.5, below) | terminal foreground | #EDE6D6 | #5C5646 |
-| `selection` | Selected row background (the compact tree; the boxes use the hue washes below) | none: `▌` and bold | #1F2430 | #ECEFF5 |
+| `selection` | Selected row background in lists other than the org pane (the org pane, boxes and tree, uses the hue washes below) | none: `▌` and bold | #1F2430 | #ECEFF5 |
 
 **Team hues.** A team, or a role directly under Duo, has one hue from this palette, and the roles inside a team use their team's. The teams and the roles directly under Duo (the *siblings*) take the colours in turn, teams first and each kind in file order: the first takes `teal`, the next `violet`, then `slate`, then `orchid`, and the fifth wraps to `teal` again. A new team or top-level role takes the first colour no sibling uses, or, when all four are used, the colour its position gives (the fifth sibling takes `teal`, the sixth `violet`, and so on round the palette). `org.toml` can set one (`color`, TD §7). Every use of a hue is derived from it:
 
@@ -94,6 +94,8 @@ There are three themes:
 | Box border | the hue at 65% over `bg`; at 100% on the selected box |
 | Chip (a selected team or role; the selected one only) | the hue as background, `bg` as text |
 | Selected agent row (both of its lines) | `▌` in the hue, the name bold (white on `dark`), the hue at 30% over `bg` across the row. Every other text on it, the state icon, the `✉ n` and the second line included, is `fg`, never `fg.muted` or a status colour, which would fall below 4.5:1 on the wash |
+| Tree glyph and name (§4.1.6, at every tree size) | the `▣` or `◇` glyph and the team or role name in the hue, bold |
+| Selected tree row (§4.1.6) | `▌` in the hue, the name bold, the hue at 30% over `bg` across the row (Duo's row: `manager` at 26%); every other text on it is `fg` |
 | Typing row (both lines) | the hue as background and `bg` as text, the state icon included: the glyph keeps its shape but takes the row's text colour, with no cell of its own |
 
 | Hue | `dark` | `light` | `auto` (the terminal's colour, and reverse video for chips and fills) |
@@ -121,7 +123,7 @@ The pill's text and icon carry the state; its edge is never relied on. When the 
 
 - **Names:** agent names are monospace identifiers (`auth-service`), never title-cased.
 - **Times:** short form (`2m`, `4h`, `3d`); absolute times only in chat (`10:05`).
-- **Last reply:** shown in quotes on the selected agent's second line (§4.1.5); an unselected row has none, except a problem or notice line. (The wordmark's block letters are art drawn from a name, not a second way of writing it: the name is always shown as typed.)
+- **Last reply:** shown in quotes on the selected agent's second line in the boxes (§4.1.5), and under each agent's row in the tree (§4.1.6); in the boxes an unselected row has none, except a problem or notice line. (The wordmark's block letters are art drawn from a name, not a second way of writing it: the name is always shown as typed.)
 - **Labels:** sentence case everywhere ("Needs you", "Give work").
 - **Inherited values:** always `inherit: <value>`, in `fg.muted`.
 - **Truncation:**
@@ -137,8 +139,8 @@ The main screen has three panes (§4.1): the org pane (with Needs you pinned at 
 
 | Width × height | Org pane | Agent pane | Chat pane |
 |---|---|---|---|
-| ≥ 120 × 36 | 50 cols, grouped boxes (§4.1.5) | rest | 6 rows, grows to 12 while typing |
-| 100–119 × 30 | 50 cols, grouped boxes | rest | 6 rows |
+| ≥ 120 × 36 | 50 cols, grouped boxes (§4.1.5) or the tree (§4.1.6), per the Org layout setting (§4.10) | rest | 6 rows, grows to 12 while typing |
+| 100–119 × 30 | 50 cols, boxes or tree | rest | 6 rows |
 | 80–99 × 24 | 32 cols, compact tree (no connectors, no last replies) | rest | 4 rows |
 | < 80 × 24 | — | — | — |
 
@@ -155,7 +157,7 @@ Below 80×24, DuoHive shows only "Make the window at least 80×24" and the curre
 
 ### 4.1 Main screen
 
-Five agents plus Duo, drawn in the `dark` theme. The agent pane has focus (Typing), and auth-service is the agent being typed into. The org pane is grouped boxes (§4.1.5): the Manager card (Duo), then a box per team holding a box per role and the agents in it, with no gap between boxes.
+Five agents plus Duo, drawn in the `dark` theme. The agent pane has focus (Typing), and auth-service is the agent being typed into. The Org layout setting is on boxes (§4.10; the tree is §4.1.6), so the org pane is grouped boxes (§4.1.5): the Manager card (Duo), then a box per team holding a box per role and the agents in it, with no gap between boxes.
 
 ```
  DuoHive   5 agents · ● 2 working · ◆ 2 need you                                                                  ? help
@@ -203,14 +205,14 @@ The diagram is plain text; the colours, the chips and the fills that mark select
   - clicking a count filters the tree to that state (same as `f`);
   - `? help` opens the key map.
 - **Org pane:**
-  - **grouped boxes** (§4.1.5): a box per team, a box per role inside it, and the agents as rows inside the role box; a role directly under Duo is a box of its own. A row is the agent's name and, at the right edge, its state as an icon only: no state word, no time and no last reply on the row (the selected agent's second line carries its state word, time and last reply, and Needs you carries the reasons);
+  - **grouped boxes** (§4.1.5), or the tree (§4.1.6) when the Org layout setting is tree: a box per team, a box per role inside it, and the agents as rows inside the role box; a role directly under Duo is a box of its own. A row is the agent's name and, at the right edge, its state as an icon only: no state word, no time and no last reply on the row (the selected agent's second line carries its state word, time and last reply, and Needs you carries the reasons);
   - **roll-ups** on every team box's and top-level role box's title line (a role inside a team has none: its team's covers it), with a non-zero working or attention count (attention = waiting `◆`, quiet `◷` or errored `✕`; `● 1 ◆ 1`); a `~` leads the roll-up when any counted state is read from the screen (`~● 1 ◷ 1`);
   - **Needs you** is pinned at the bottom of the pane (§4.1.3).
 - **Agent pane:** the selected node's content (§4.1.2).
 - **Chat pane (Duo):** §4.6 and §4.7.
 - **Footer:** the keys for the focused pane. The org footer shows `enter type` after `↑↓ move` only while `enter` on the selected row would start Typing (a running agent or Duo), not on a team, a role, or a stopped or errored agent.
 
-**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns, or below 30 rows (§3's mixed sizes: width and height each pick a row and the smaller applies), the org pane keeps the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues and the Manager colour (§2.3) do not apply to it, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
+**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns, or below 30 rows (§3's mixed sizes: width and height each pick a row and the smaller applies), every Org layout setting draws the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues tint its `▣` and `◇` glyphs and names as in the wide tree (§4.1.6), its selected row is highlighted as there, the Manager colour does not apply, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
 
 ```
  DuoHive  ● 2 · ◆ 2                                                     ? help 
@@ -455,6 +457,38 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
 - **Needs you** (§4.1.3) follows the same rule for its rows when the boxes are drawn, at 100 columns and 30 rows or more (the compact layout keeps its glyph-and-time rows): the icon, the name and the reason, with no state word and no time. The order, oldest first, is unchanged.
 - **No hover.** DuoHive does not follow the pointer (pointer motion is not read); the only mouse actions are clicks, drags and the wheel, as before.
 
+#### 4.1.6 The tree layout
+
+The classic org pane. It is drawn when the Org layout setting is `tree` (§4.10) at 100 columns and 30 rows or more, and, whatever the setting, as the compact tree below that size (§4.1, compact layout). Six agents plus Duo, drawn without colour; the org pane has focus and auth-service is selected.
+
+```
+ DuoHive   6 agents · ● 2 working · ◆ 2 need you                                            ? help 
+┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude · worktree retry-loop ──┐
+┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ ✓ go test ./... (14 passed)                    │
+┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ ✓ Ready for review · 3 files changed           │
+┃ │  ├─ ◇ Backend               ● 1 ◆ 1          ┃│                                                │
+┃▌│  │  ├─ auth-service ✉ 1     ● working    2m  ┃│ ❯                                              │
+┃ │  │  │   "Running go test ./..."              ┃│                                                │
+┃ │  │  └─ billing-api          ◆ waiting    4m  ┃│                                                │
+┃ │  │      "Allow edit to api.go?"              ┃│   (live terminal of the selected agent)        │
+┃ │  └─ ◇ QA                                     ┃│   enter type · z zoom · PgUp/PgDn scroll       │
+┃ │     └─ pay-qa               ○ stopped    1d  ┃│                                                │
+┃ └─ ◇ Generalist              ~● 1 ◷ 1          ┃│                                                │
+┃    ├─ squad-1                ~● working    1m  ┃│                                                │
+┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                │
+┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                                │
+┃ ◷ squad-3      quiet      6m                   ┃│                                                │
+┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                                │
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└────────────────────────────────────────────────┘
+```
+
+- **Rows:** a connector-line tree. Duo is one row (`⬢ Duo · your manager agent`, its state cell). An agent row is its name, `✉ n` when messages wait and the state cell (§2.1: `~` marker, glyph, word, time). The last reply is under the agent, in quotes, while the last-reply setting `v` is on, and a problem or notice line comes with it. A team or role with a non-zero working or attention count shows its roll-up (`● 1 ◆ 1`), with a `~` when a counted state is read from the screen.
+- **Team hues:** the `▣` and `◇` glyphs and the team or role name are drawn in the node's hue, bold (§2.3). Connectors, state cells and replies keep their colours, and Duo's row is bold, not coloured.
+- **Selection:** the selected row has the `▌` bar and a 30% wash of its hue across the row (Duo's row: the `manager` colour at 26%). The name is bold and every other text on the row is `fg`, never `fg.muted` or a status colour, which would fall below 4.5:1 on the wash. Under `auto` and `NO_COLOR` no wash is painted and the `▌` bar and the bold name remain. Typing is unchanged: the agent pane takes the heavy border and the selected row keeps this style.
+- **Needs you:** rows are glyph, name, word, time and reason (§4.1.3), as in the compact layout.
+- **Everything else** works as in the boxes: folding, the filter (§4.1.1), clicks and keys (§4.1.2), drag and drop and the right-click menu (§4.4.2).
+
 ### 4.2 Zoomed agent
 
 `z` on an agent: its terminal fills the screen, in the same place it runs in the main screen, and the footer still shows the Needs you count. `z` or `esc` restores. `z` zooms an agent whatever its state; a stopped agent's zoomed pane shows its stopped line, and the footer reads `z restore · space give work`. On a team or role, `z` does nothing and the footer says "z zooms an agent".
@@ -490,6 +524,15 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 │                                                                      │
 │  enter next · esc quit (asks first)       [ Next → ]   [ Quit ]      │
 │                                                                      │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+Step 1 also asks the **Org layout**, one more row after `Duo runs on`; `←` `→` or a click choose, and `Boxes` is preselected (the same choice is in Settings, §4.10, and on `l`):
+
+```
+┌─ Step 1, the layout row ─────────────────────────────────────────────┐
+│  Org layout   (•) Boxes   ( ) Tree        ← → choose                 │
+│               boxes colour each team; the tree is the classic one    │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1035,7 +1078,8 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │    Desktop alerts       [x] needs you   [x] finished                     │
 │  Look                                                                    │
 │    Theme                [ auto ▾ ]                                       │
-│    Reply on selected [x]  Reduce motion [ ]                              │
+│    Org layout           [ boxes ▾ ]                                      │
+│    Last reply [x]  Reduce motion [ ]                                     │
 │  Keys                   [ Edit key bindings → ]                          │
 │  Org                    [ New org from template… ]                       │
 │    org defaults and Duo: e on the Manager card (Edit org)                │
@@ -1043,6 +1087,8 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  changes save immediately · esc back                                     │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Org layout** chooses how the org pane is drawn: `boxes` (§4.1.5) or `tree` (§4.1.6). It is personal, saved as `org_layout` in `settings.toml` (TD §7), and `enter`, a click or the key `l` cycles it. A settings file without it means `tree`, so an existing install does not change; first run asks (§4.3) and starts on `boxes`. The boxes need 100 columns and 30 rows (§3): below that every setting draws the compact tree, the row reads `boxes (needs 100×30)` while the screen is too small, and `l` still changes the setting and says so in the footer (`org layout: boxes · needs 100×30`).
 
 **Key bindings** (a phase 4 screen): a list of actions and their keys.
 
@@ -1062,7 +1108,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 ```
 
 - **Scrolling:** the list scrolls with `↑↓` and `PgUp/PgDn`, with `↓ more` at the foot when it doesn't fit.
-- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, Resume (v1.1), New, Edit, Move, Delete, Zoom, Last reply, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
+- **Rebindable actions:** the single-key actions in §4.11 (Give work, Start / stop, Resume (v1.1), New, Edit, Move, Delete, Zoom, Last reply, Org layout, Open org.toml, Settings, Worktrees, Filter, Key map, Approve / Edit / Reject card). Not rebindable (reserved: no action may take them, and the conflict check counts them): `tab`, `shift+tab`, `esc`, `ctrl+c`, `ctrl+q`, `q` (Quit), `ctrl+↑` / `ctrl+↓` (resize chat), arrows, `enter`, `PgUp/PgDn`, the chat's `enter` / `alt+enter` / `@` / `/`, and the keys of forms, dialogs and the text inputs.
 - **One key per action:** an action that appears in two panes (`space` Give work and `z` Zoom, in the org and agent panes) has one binding, and rebinding it changes both; the conflict check covers every context the action appears in.
 - **Capture:** `enter` shows `press the new key · esc cancels` on the row; the next key is taken (a modifier alone is not). `esc` cancels. A reserved key is refused with `<key> is reserved`.
 - **Conflicts:** a key is unique within its context (the card dialog's keys apply only while it is open, so `e` there doesn't clash with `e` in the org pane). The contexts are Everywhere, Org pane, Needs you, Agent pane, Chat and Card dialog; Everywhere conflicts with all of them, and the others don't conflict with each other (`e` is Edit in the org pane and Edit card in the card dialog). A clash is refused with `<key> is already <action> · rebind that first`, shown on the row.
@@ -1087,7 +1133,7 @@ Asked only for actions that stop work, remove something or replace the org. Ever
 │  ctrl+↑↓   resize chat            z         zoom agent             @ /       agents / commands   │
 │                                   v         last reply on/off      PgUp/Dn   scroll history      │
 │ Mouse                             o         open org.toml                                        │
-│  click     select                                                  Card dialog                   │
+│  click     select                 l         org layout             Card dialog                   │
 │  right     node menu             Needs you                                                       │
 │  wheel     scroll                 ↑↓        move                                                 │
 │  drag      move node              enter     go to agent or card      y e n     approve/edit/reject │
@@ -1131,7 +1177,8 @@ Below 100 columns it becomes one scrolling column:
 | | `m` | Move to… |
 | | `d` | Delete (stopped agents only) |
 | | `z` | Zoom the selected agent |
-| | `v` | Last reply on / off: whether the selected agent's second line carries its last reply (§4.1.5) |
+| | `v` | Last reply on / off: whether the last reply shows where the layout shows it (the selected agent's second line in the boxes, §4.1.5; under each agent in the tree, §4.1.6) |
+| | `l` | Org layout: boxes / tree (§4.10) |
 | | `o` | Open `org.toml` in `$EDITOR` |
 | Needs you | `↑` `↓`, `enter` | Move; go to the agent (start typing) or open its card (§4.6) |
 | Agent pane | `enter` / `ctrl+q` | Start / stop typing (a click inside the pane on a running agent also starts it; a click on an agent's row only selects it) |
@@ -1292,8 +1339,8 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | `orchid` | 7.36 | 5.83 |
 | `manager` (title text on `bg`, chip text on the colour) | 15.17 | 7.00 |
 | Manager status pill text, the lowest of the five (idle on its 28% fill on `light`, errored on `dark`) | 6.50 | 4.56 |
-| Selected agent row: the bold name and `fg` on the 30% wash of the lowest hue | 7.26 | 8.89 |
-| Manager card selected: the name on its 26% wash | 9.10 | 9.57 |
+| Selected agent row (boxes) or selected tree row: the bold name and `fg` on the 30% wash of the lowest hue | 7.26 | 8.89 |
+| Manager card selected, or Duo's selected tree row: the name on its 26% wash | 9.10 | 9.57 |
 | Manager card not selected: `manager` text on its 10% wash | 12.14 | 6.06 |
 | Manager card typed into: the lowest status-pill text on its tint (idle `#C9C1AB` on `dark`, stopped `#D8D2C0` on `light`) | 10.51 | 4.84 |
 

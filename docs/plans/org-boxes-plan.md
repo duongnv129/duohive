@@ -1,16 +1,16 @@
 # The org pane as grouped boxes, a colour per team and a Manager card — Implementation Plan
 
-**Status:** Plan, 2026-11-17. The design was approved by the author on 2026-11-17 and is written into the three living documents (commits `a8957dd`, `b6457a9`, `6100610` and the consistency pass after the Santa review on `docs/org-boxes`). Not built.
+**Status:** Plan, 2026-11-17, updated 2026-11-18 for the Org layout choice. The design was approved by the author (the boxes on 2026-11-17, the layout choice on 2026-11-18) and is written into the three living documents on `docs/org-boxes`. Not built.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans. Steps use checkbox syntax. The specs land first: the author opens a pull request from `docs/org-boxes` and merges it. Then cut the code branch from `main` (`git checkout -b feat/org-boxes main`), as the author's git rules require, and the author pushes it.
 
-**Goal:** At 100 columns and 30 rows or more the org pane draws grouped boxes (a Manager card for Duo, a box per team holding a box per role holding the agents), each team has a colour from a four-colour palette that is saved in `org.toml` and chosen in the team and top-level role forms, and the selected and typed-into states are marked as the spec says. Below that size the compact tree stays.
+**Goal:** The org pane has two layouts, chosen by a personal setting (first run, Settings, the key `l`): the classic tree, which stays the default for existing installs and gains team colours, and grouped boxes at 100 columns and 30 rows or more (a Manager card for Duo, a box per team holding a box per role holding the agents). Each team has a colour from a four-colour palette that is saved in `org.toml` and chosen in the team and top-level role forms, and the selected and typed-into states are marked as the spec says. Below that size both settings draw the compact tree.
 
-**Architecture:** The core gains a pure `TeamColour` and a `color` on teams and top-level roles; the store reads and writes it. The TUI gets a pure row builder (`boxes.rs`) that turns the existing `UiModel` into box lines, a painter (`render/org_boxes.rs`, `render/manager_card.rs`) that draws them with new palette tokens, a const wordmark font (`wordmark.rs`) and a `Colour` form row. The compact tree, `tree_rows` and every command stay as they are.
+**Architecture:** The core gains a pure `TeamColour` and a `color` on teams and top-level roles; the store reads and writes it. The TUI gets a pure row builder (`boxes.rs`) that turns the existing `UiModel` into box lines, a painter (`render/org_boxes.rs`, `render/manager_card.rs`) that draws them with new palette tokens, a const wordmark font (`wordmark.rs`) and a `Colour` form row. A new `OrgLayout` setting and one dispatch in `org_pane` choose between the boxes and the tree. The tree, `tree_rows` and every command stay, except that `CreateOrg` carries the first-run layout choice. The setting and its dispatch are built first, tree-only (OB.0), so the boxes land behind it.
 
 **Tech Stack:** Rust 1.99.0 (edition 2024), ratatui and crossterm (pinned with `=`), serde and toml (store), insta snapshots (existing).
 
-**Specs (the plan argues from these; they hold every rule, value and message text):** [UI/UX §2.1, §2.2, §2.3, §2.4, §3, §4.1, §4.1.3, §4.1.5, §4.4.1, §4.4.2, §4.6, §4.10, §4.11, §4.12, §6](../ux/ui-spec.md) · [PRD: org model, *One screen*, decisions log](../product/prd.md) · [TD §7 *Team colour*, *Org boxes and the Manager card*](../design/technical-design.md).
+**Specs (the plan argues from these; they hold every rule, value and message text):** [UI/UX §2.1, §2.2, §2.3, §2.4, §3, §4.1, §4.1.3, §4.1.5, §4.1.6, §4.3, §4.4.1, §4.4.2, §4.6, §4.10, §4.11, §4.12, §6](../ux/ui-spec.md) · [PRD: org model, *One screen*, decisions log](../product/prd.md) · [TD §7 *Team colour*, *Org boxes and the Manager card*](../design/technical-design.md).
 
 ## Global Constraints
 
@@ -27,19 +27,21 @@
 
 ## Decisions
 
-Only decisions that supersede older behaviour are recorded here; everything else is in the documents (the colour sibling rule in TD §7 and UI §2.3, the colour error texts in TD §7, boxes versus compact tree in UI §3 and §4.1, Needs you rows in UI §4.1.3 and §4.1.5, the drag marker in UI §4.4.2).
+Only decisions that supersede older behaviour are recorded here; everything else is in the documents (the colour sibling rule in TD §7 and UI §2.3, the colour error texts in TD §7, which layout is drawn in UI §3, §4.1, §4.1.6 and §4.10, Needs you rows in UI §4.1.3 and §4.1.5, the drag marker in UI §4.4.2).
 
 | # | Decision |
 |---|---|
 | OB-D1 | **One visible list.** `box_rows` returns every line of the pane, `Detail` lines included. Drawing, hit-testing, scrolling and the wheel all read it, so they cannot disagree about heights: in the boxes the row index half of `UiModel.org_scroll` (`Option<(usize, NodeKey)>`, unchanged in type) is an index into this list. The compact tree keeps `tree_rows`. |
-| OB-D2 | **The last-reply setting changes meaning** (it used to show a reply under every agent, and only at 120×36 or larger). The `replies: bool` the render functions already take, from `settings.show_last_reply && shows_replies(screen)`, now decides only whether a `Detail` line carries the reply, so `focus::shows_replies` becomes true at every non-compact size (`Size::Medium` and `Size::Large`), as UI §3 and §4.1.5 draw it. The key `v` and the setting stay; the Settings row (the const `LAST_REPLY` in `render/settings.rs`; `Reduce motion` follows it two spaces after the checkbox, so it moves left with the shorter text, as the UI §4.10 mock draws) reads `Reply on selected`, and the right-click row (in `input/menu.rs`) reads `Hide reply` or `Show reply`. |
+| OB-D2 | **The last-reply setting keeps one meaning in both layouts:** show the last reply where the layout shows it (under each agent in the tree, on the selected agent's second line in the boxes). The `replies: bool` the render functions take stays `settings.show_last_reply && shows_replies(screen)` for the tree (`shows_replies` is unchanged: 120×36 or larger); the boxes use `settings.show_last_reply` alone, since they draw at 100×30 too. The Settings row (the const `LAST_REPLY` in `render/settings.rs`) shortens to `Last reply`, so `Reduce motion`, which follows it two spaces after the checkbox, moves left, as the UI §4.10 mock draws; the right-click row (in `input/menu.rs`) reads `Hide reply` or `Show reply`. |
+| OB-D3 | **The first-run choice travels in `Command::CreateOrg`** as a new field `org_layout: OrgLayout`, like `your_name`, and the engine writes it to `settings.toml`. The Replace flow (`NewOrgFromTemplate`) leaves the setting alone. |
+| OB-D4 | **Switching layout is a redraw, not a model reset:** `m.selected` stays, and `m.org_scroll` is cleared so the next draw anchors on the selected node. |
 
 ## Review Focus
 
 1. **A 100-agent squad** (Agent Squad, one role of 100): the box is taller than the pane, the selected agent and its opened second line stay fully in view as `↓` moves and as the wheel scrolls, and `box_rows` stays linear (OB.5, OB.6).
 2. **Renaming Duo** to `a`, `-`, `_`, `7-eleven` and a 40-character name: the card is four rows, the wordmark is 11 columns, the name is cut at 16 columns with `…` in the middle, nothing slices a string mid-character (OB.4, OB.5, OB.6).
-3. **A hand-edited `org.toml`**: no `color`, an unknown colour, `color` on a role inside a team, two teams with the same colour. Each gives the specified result, and a file that loads is never rewritten until a save (OB.1, OB.2).
-4. **The size edge and resizes:** 99 columns and 29 rows draw the compact tree, 100 columns and 30 rows the boxes; a resize while Typing keeps Typing; a selected agent at the bottom edge with its second line cut off scrolls into view (OB.6).
+3. **A hand-edited `org.toml`**: no `color`, an unknown colour, `color` on a role inside a team, two teams with the same colour. Each gives the specified result, and a file that loads is never rewritten until a save (OB.1, OB.2). A `settings.toml` without `org_layout` (every existing install) keeps the tree (OB.0).
+4. **The size edge, resizes and layout switches:** 99 columns and 29 rows draw the compact tree under both settings, 100 columns and 30 rows the chosen layout; `l` below that size changes the setting and says why; a switch keeps the selected node and clears the scroll; a resize while Typing keeps Typing; a selected agent at the bottom edge with its second line cut off scrolls into view (OB.0, OB.6).
 5. **Selection and problems in awkward places:** an agent in a folded role, under an active filter, with a very long name or last reply, stopped or errored, with a missing directory (a second line even when not selected), and a click on the second line (OB.5, OB.6).
 
 ## File structure
@@ -53,11 +55,29 @@ Only decisions that supersede older behaviour are recorded here; everything else
 | `crates/duohive-tui/src/wordmark.rs` (new) | the 38-glyph font and `wordmark(name)` |
 | `crates/duohive-tui/src/boxes.rs`, `boxes_tests.rs` (new) | `box_rows`: the pure list of box lines |
 | `crates/duohive-tui/src/render/org_boxes.rs`, `render/org_boxes_tests.rs`, `render/manager_card.rs` (new) | drawing, scrolling, the wheel and hit-testing the boxes and the card |
-| `crates/duohive-tui/src/render/org_pane.rs`, `render/mod.rs`, `render/settings.rs` | dispatch on `l.compact`; module registration; the Settings label |
+| `crates/duohive-core/src/settings.rs`, `command.rs`, `engine/create_org.rs` | `OrgLayout`, the setting, and the first-run choice in `CreateOrg` |
+| `crates/duohive-tui/src/keymap.rs`, `input.rs`, `forms/settings.rs`, `render/settings.rs` | the key `l` and the Settings row |
+| `crates/duohive-tui/src/first_run/` | the layout row in step 1 |
+| `crates/duohive-tui/src/render/org_pane.rs`, `render/mod.rs` | the dispatch on `drawn_layout`, the tree's hue and selection (OB.3a); module registration |
 | `crates/duohive-tui/src/render/needs_you.rs` | the no-word, no-time rows |
 | `crates/duohive-tui/src/forms/{field,team,role,mod,org}.rs`, `render/form.rs` | the `Colour` row and the wordmark preview in Edit org |
 
 ---
+
+### Task OB.0: The Org layout setting, the dispatch, the Settings row and the key
+
+Built first and tree-only, so the boxes land behind it and nothing visible changes yet.
+
+**Files:**
+- Modify: `crates/duohive-core/src/settings.rs` (`OrgLayout`, `Settings.org_layout`), `crates/duohive-tui/src/keymap.rs` (`ActionId::OrgLayout`), `forms/settings.rs` (`SettingsRow::OrgLayout`, `toggled`), `render/settings.rs`, `render/org_pane.rs` (`drawn_layout` and the dispatch in `draw`, `key_at` and `wheel`), `input.rs` (the key)
+- Test: the `settings.rs` tests, the keymap tests, the settings form tests, `render/settings_tests.rs`, `render/pane_tests.rs`, and a store test next to the org file tests for a `settings.toml` round trip
+
+**Interfaces:**
+- Produces: `#[serde(rename_all = "lowercase")] enum OrgLayout { Tree, Boxes }` in `duohive_core::settings` (`Clone, Copy, Debug, Default` with `Tree` as the default, `PartialEq, Eq, Serialize, Deserialize`); `Settings.org_layout: OrgLayout` with `#[serde(default)]`; `pub(crate) fn drawn_layout(setting: OrgLayout, compact: bool) -> OrgLayout` in `render/org_pane.rs` (`Boxes` only when the setting is `Boxes` and `compact` is false); `ActionId::OrgLayout` (id `org_layout`, label `Org layout`, default key `l`, registered wherever `LastReply` is).
+
+- [ ] **Step 1: Failing tests.** In the core: `a_settings_file_without_org_layout_means_tree`; `org_layout_round_trips_in_lowercase` (`"boxes"` and `"tree"`); `an_unknown_org_layout_is_refused_with_its_line` (as an unknown theme is). In the keymap: `org_layout_defaults_to_l`, `l_clashes_are_reported_like_any_key`, `org_layout_is_rebindable_and_listed_on_the_keys_screen`. In the settings form: `the_org_layout_row_cycles_tree_and_boxes` and `a_click_on_the_row_cycles_it`. In render: `settings_org_layout_row_reads_the_choice` (`Org layout [ boxes ▾ ]`), `settings_row_reads_boxes_needs_100x30_while_compact`, and `drawn_layout_is_boxes_only_when_set_and_not_compact` (all four combinations). In input: `l_cycles_the_layout_and_saves_settings`, `l_below_100x30_changes_the_setting_and_says_why` (the footer reads `org layout: boxes · needs 100×30`), and `switching_layout_keeps_the_selected_node_and_clears_the_scroll` (OB-D4).
+- [ ] **Step 2: Implement** the enum and the field, the action and its default key, the Settings row (UI §4.10), the key handler (cycle, save through the existing settings save path, set the footer notice when compact, clear `m.org_scroll`), and `drawn_layout` with the dispatch: `org_pane::draw`, `key_at` and `wheel` call it, and until OB.6 the `Boxes` arm calls the tree path, so behaviour is unchanged.
+- [ ] **Step 3: Run** `cargo test --workspace` (pass; no existing snapshot changes, because `Settings::default()` is `Tree`), `make check`, commit `feat: an org layout setting, with the key l and a Settings row`.
 
 ### Task OB.1: `TeamColour` and the `color` field in the core
 
@@ -103,6 +123,19 @@ Only decisions that supersede older behaviour are recorded here; everything else
 - [ ] **Step 2: Implement** the tokens for `dark`, `light`, `auto`, mono with the exact hex values from UI §2.3; the pill table in UI §2.3 is the source of every pairing, including the lighter and darker tints used when the card is typed into.
 - [ ] **Step 3: Run** `cargo test -p duohive-tui colour` (pass), `make check`, commit `feat: team hue, manager and pill tokens in the palette`.
 
+### Task OB.3a: The tree's hue and selected row
+
+**Files:**
+- Modify: `crates/duohive-tui/src/render/org_pane.rs` (`draw_row` and the selected-row painting in `draw`)
+- Test: `render/colour_tests.rs`, `render/auto_tests.rs`, `render/a11y_tests.rs`
+
+**Interfaces:**
+- Consumes: `Palette::{hue, tint, tint_manager}` (OB.3), `Org::colour_of` (OB.1).
+
+- [ ] **Step 1: Failing tests.** `tree_glyphs_and_names_take_the_hue` (the `▣` and `◇` cells and the team or role name have `fg` of `hue(c)` and are bold; connectors, state cells and replies keep their colours; Duo's row stays bold `fg`); `the_compact_tree_tints_too`; `the_selected_tree_row_has_the_bar_and_a_30_percent_wash` (`▌` `fg` is the hue, every cell of the row has `bg` of `tint(hue, 30)`, and Duo's row `tint_manager(26)`); `the_selected_tree_rows_text_is_fg` (the state cell, `✉ n` and the reply on the row are `fg`, never `fg.muted` or a status colour); `auto_and_mono_paint_no_wash_and_keep_the_bar_and_bold`; `typing_leaves_the_tree_selection_unchanged`.
+- [ ] **Step 2: Implement** the tint and the wash as UI §4.1.6 and §2.3 say (the bar's colour moves from `border.focus` to the hue, so `border.focus` colours only the focused pane's title). The text snapshots do not change; the colour assertions in `colour_tests.rs` that named the old bar colour are updated.
+- [ ] **Step 3: Run** `cargo test -p duohive-tui` (pass), `make check`, commit `feat: team colour on the tree's icons and names, and a hue wash on its selected row`.
+
 ### Task OB.4: The wordmark font
 
 **Files:**
@@ -133,7 +166,7 @@ Only decisions that supersede older behaviour are recorded here; everything else
 
 **Files:**
 - Create: `crates/duohive-tui/src/render/org_boxes.rs`, `render/manager_card.rs`, `render/org_boxes_tests.rs` (declare the test module in `render/mod.rs`)
-- Modify: `render/org_pane.rs` (`draw`, `key_at` and `wheel` dispatch on `l.compact`), `render/mod.rs` (`org_key_at`, `org_wheel`), `UiModel.org_scroll` use
+- Modify: `render/org_pane.rs` (the `Boxes` arm of the dispatch from OB.0 now calls the box versions), `render/mod.rs` (`org_key_at`, `org_wheel`), `UiModel.org_scroll` use
 - Test: `render/org_boxes_tests.rs`, snapshots under `render/snapshots/`
 
 **Interfaces:**
@@ -141,9 +174,9 @@ Only decisions that supersede older behaviour are recorded here; everything else
 - Produces, with the same signatures as `org_pane`'s so the dispatch is one `if`: `pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool)`, `pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey>` and `pub(super) fn wheel(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize)` (the same signature as `org_pane::wheel`: it returns `()` and writes `org_scroll`). The Manager card's name slot is 16 columns, its pill right-aligned, per UI §4.1.5.
 
 - [ ] **Step 1: Failing snapshot tests** at 120×36 for `dark`: `boxes_screen_typing` (the org column above the Needs you separator equals the UI §4.1 diagram; OB.7 extends the check to the whole column), `boxes_screen_team_selected`, `boxes_screen_role_selected`, `boxes_screen_agent_selected` (the second line is there), `boxes_screen_manager_selected`, `boxes_screen_manager_typed_into`. Plus style assertions on the buffer: a selected team's top border `fg` is its hue and its title cell `bg` is the hue, and the roles inside it keep the 65% border; the Manager card's border is 40% idle and 100% selected; the typing row `bg` is the hue, its text `fg` is `bg`, the state icon cell has the same `bg` (no separate cell) and the `▌` is in the text colour; the selected agent's `▌` `fg` is the hue, its row `bg` is `tint(hue, 30)` and its icon `fg` is `fg`; the Manager card selected has no `▌`, and with Duo errored its line 2 is in the selected text colour, not `status.error`; a selected agent with a problem draws its second line in `fg`, and an unselected one in `status.error` (`fg.muted` for a notice); the status pill for each of idle, starting, working, waiting, quiet, errored and stopped has the background and text of UI §2.3, and the typed-into card uses the lighter or darker tints; under `auto` and mono the card's chip and fill carry `Modifier::REVERSED`.
-- [ ] **Step 2: Failing behaviour tests.** `a_click_on_the_second_line_selects_the_agent`; `a_click_on_a_role_title_selects_the_role`; `a_click_on_the_manager_card_selects_duo`; `a_click_on_a_box_border_selects_its_box` (a team's or role's top or bottom line, not the agent above it); `compact_draws_no_hues_and_duo_stays_one_row`; `scroll_keeps_the_selected_agent_and_its_second_line_in_view` (a 100-agent role, `↓` through all); `the_wheel_scrolls_box_lines` (`org_scroll` moves by lines of the visible list); `a_drag_marks_a_valid_target_with_a_marker` (`▹` in `fg`, UI §4.4.2); `99_columns_draws_the_compact_tree_and_100_the_boxes`; `110x24_is_compact_so_it_draws_the_tree`; `a_resize_while_typing_keeps_typing`; `the_second_line_carries_the_reply_at_100x30` (the setting on; and `working 2m` alone with it off); `enter_folds_and_unfolds_a_box_and_a_click_does_not` (the title shows `▸` folded, and a click in Needs you on a folded group's agent unfolds it); `a_click_on_a_problem_agents_second_line_selects_it`.
-- [ ] **Step 3: Implement** the painter: each `BoxLine` is laid out against the 46-column box and drawn with the Palette tokens as UI §4.1.5 and §2.3 say. Under `auto` and mono, paint no wash and use `Modifier::REVERSED` for chips and fills. `org_pane::draw`, `key_at` and `wheel` call the box versions when `!l.compact`: the box painter replaces only the tree part of `org_pane::draw` (the frame, the title and Needs you stay as they are). Delete the wide-tree drawing that becomes unreachable (`WIDE_RIGHT` and the non-compact branches of the row painter) so clippy's dead-code lint stays quiet; `tree_rows` stays, for the compact tree and for the arrow-key order in `input.rs` and `filter.rs`. Change `focus::shows_replies` to be true for `Size::Medium` and `Size::Large` (OB-D2) and update its tests, and correct the `Size::Compact` and `Layout.compact` doc comments in `focus.rs` (they still say 80–99 × 24; `Size::of` already takes the smaller of width and height).
-- [ ] **Step 4: Update the existing tests the new default changes.** Every snapshot under `crates/duohive-tui/src/render/snapshots/` that draws the org pane at 100×30 or larger changes (the 160×48 ones, and the form and dialog ones that show the org behind them), and some tests hard-code tree rows (`input/mouse_tests.rs`, `render/live_tests.rs`, the Duo-bold header check in `render/colour_tests.rs`). Run `cargo test -p duohive-tui`, review each changed snapshot with `cargo insta review` (it must differ only in the org pane), and fix the hard-coded rows. Add one fixture, `five_agent_org()`, whose org is the UI §4.1 diagram's (Payments with Backend and QA, Platform with Infra, Duo idle), for `boxes_screen_typing`.
+- [ ] **Step 2: Failing behaviour tests.** `a_click_on_the_second_line_selects_the_agent`; `a_click_on_a_role_title_selects_the_role`; `a_click_on_the_manager_card_selects_duo`; `a_click_on_a_box_border_selects_its_box` (a team's or role's top or bottom line, not the agent above it); `compact_draws_no_hues_and_duo_stays_one_row`; `scroll_keeps_the_selected_agent_and_its_second_line_in_view` (a 100-agent role, `↓` through all); `the_wheel_scrolls_box_lines` (`org_scroll` moves by lines of the visible list); `a_drag_marks_a_valid_target_with_a_marker` (`▹` in `fg`, UI §4.4.2); `99_columns_draws_the_compact_tree_and_100_the_boxes` (the setting on `Boxes`); `110x24_is_compact_so_it_draws_the_tree`; `the_tree_setting_at_120x36_still_draws_the_tree`; `a_resize_while_typing_keeps_typing`; `the_second_line_carries_the_reply_at_100x30` (the setting on; and `working 2m` alone with it off); `enter_folds_and_unfolds_a_box_and_a_click_does_not` (the title shows `▸` folded, and a click in Needs you on a folded group's agent unfolds it); `a_click_on_a_problem_agents_second_line_selects_it`.
+- [ ] **Step 3: Implement** the painter: each `BoxLine` is laid out against the 46-column box and drawn with the Palette tokens as UI §4.1.5 and §2.3 say. Under `auto` and mono, paint no wash and use `Modifier::REVERSED` for chips and fills. The `Boxes` arm of `org_pane::draw`, `key_at` and `wheel` (OB.0) calls the box versions: the box painter replaces only the tree part of `org_pane::draw` (the frame, the title and Needs you stay as they are). The tree path stays whole: `WIDE_RIGHT`, the non-compact row painter and `tree_rows` are still used by the tree and for the arrow-key order in `input.rs` and `filter.rs`. The boxes pass `replies` as `settings.show_last_reply` alone (OB-D2), while `focus::shows_replies` is unchanged. Correct the `Size::Compact` and `Layout.compact` doc comments in `focus.rs` (they still say 80–99 × 24; `Size::of` already takes the smaller of width and height).
+- [ ] **Step 4: The existing snapshots stay as they are,** because `Settings::default()` is `Tree` (OB.0); only the new box snapshots set `org_layout` to `Boxes` in their model. Add one fixture, `five_agent_org()`, whose org is the UI §4.1 diagram's (Payments with Backend and QA, Platform with Infra, Duo idle), for `boxes_screen_typing`, and run `cargo test -p duohive-tui` to confirm no existing snapshot changed.
 - [ ] **Step 5: Run** `cargo test -p duohive-tui` (pass), `make check`, commit `feat: draw the org pane as grouped boxes with a Manager card`.
 
 ### Task OB.7: Needs you rows when the boxes are drawn
@@ -153,7 +186,7 @@ Only decisions that supersede older behaviour are recorded here; everything else
 - Test: `render/pane_tests.rs` (or the existing Needs you tests)
 
 - [ ] **Step 1: Failing tests.** `wide_needs_you_rows_are_icon_name_reason` (`◆  billing-api  "Allow edit to api.go?"`, `◆  Duo  approval  Add pay-web`, `◷  squad-3  quiet`); `boxes_screen_typing_whole_column` (the whole org column of the UI §4.1 diagram, Needs you included); `compact_needs_you_keeps_glyph_and_time` (the existing 80×24 snapshot is unchanged).
-- [ ] **Step 2: Implement** the wide row format (UI §4.1.3 and §4.1.5); the order, oldest first, is unchanged.
+- [ ] **Step 2: Implement** the wide row format (UI §4.1.3 and §4.1.5) when `drawn_layout` is `Boxes`; the tree keeps its glyph, word and time rows (UI §4.1.6); the order, oldest first, is unchanged.
 - [ ] **Step 3: Run** `cargo test -p duohive-tui` (pass), `make check`, commit `feat: Needs you rows without a state word or time at 100 columns`.
 
 ### Task OB.8: The Colour row in the forms
@@ -170,13 +203,27 @@ Only decisions that supersede older behaviour are recorded here; everything else
 - [ ] **Step 2: Implement** the field, its default (`next_free` over the siblings), the draft mapping, the all-names draw path in `render/form.rs`, the card line and the Edit org preview.
 - [ ] **Step 3: Run** `cargo test -p duohive-tui` (pass), `make check`, commit `feat: choose a team colour in the team and root role forms`.
 
+### Task OB.8a: The first-run layout row
+
+**Files:**
+- Modify: `crates/duohive-core/src/command.rs` (`Command::CreateOrg` gains `org_layout: OrgLayout`), `engine/create_org.rs` (writes `settings.org_layout`, OB-D3), `crates/duohive-tui/src/first_run/{mod,steps,forms}.rs`
+- Test: `first_run/tests.rs`, the engine tests for `create_org`, snapshots under `first_run/snapshots/`
+
+**Interfaces:**
+- Consumes: `OrgLayout` (OB.0).
+- Produces: `Command::CreateOrg { template, your_name, duo_cli, org_layout }`; a wizard field `layout: OrgLayout` on step 1, `Boxes` by default.
+
+- [ ] **Step 1: Failing tests.** `step_1_has_the_layout_row_with_boxes_preselected`; `left_right_and_a_click_choose_the_layout`; `the_wizard_sends_the_chosen_layout_in_create_org`; `create_org_saves_the_layout_in_settings_toml`; `replace_mode_has_no_layout_row_and_leaves_the_setting_alone` (steps 2 and 3 only); `step_1_fits_80x24`.
+- [ ] **Step 2: Implement** the field, the row of UI §4.3, the command field and the engine write; update the step 1 snapshots (one more row).
+- [ ] **Step 3: Run** `cargo test --workspace` (pass), `make check`, commit `feat: choose the org layout in first run`.
+
 ### Task OB.9: Accessibility, the setting's label, and docs
 
 **Files:**
 - Test: `render/a11y_tests.rs`, `render/auto_tests.rs`, `render/settings_tests.rs`, `boxes_tests.rs`
 - Modify: `render/settings.rs` (the `LAST_REPLY` row and the `ORG_NOTE` text), `input/menu.rs` (the right-click row, with `input/menu_tests.rs`), the matching wording in `forms/settings.rs` (the action name `Last reply` in `keymap.rs` stays: UI §4.11 keeps it), `CHANGELOG.md`, `docs/README.md`, `docs/plans/status.md`, `README.md`
 
-- [ ] **Step 1: Failing tests.** `no_color_keeps_the_chip_the_bar_and_the_second_line` (mono: the chip and fills carry `Modifier::REVERSED`, the bar and the second line are present); `auto_paints_no_background_for_washes`; `box_rows_for_100_agents_is_linear` (the row count for 100 agents in one role is 100 + a fixed overhead); `settings_row_reads_reply_on_selected` (OB-D2; `Reduce motion` follows it, so the `settings_80x24` and `settings_160x48` snapshots change in that row and in the Org note, and `settings_matches_the_spec` in `settings_tests.rs` is updated to the UI §4.10 text, `e on the Manager card (Edit org)`); `the_right_click_row_reads_hide_reply_then_show_reply` (and the two menu snapshots).
+- [ ] **Step 1: Failing tests.** `no_color_keeps_the_chip_the_bar_and_the_second_line` (mono: the chip and fills carry `Modifier::REVERSED`, the bar and the second line are present); `auto_paints_no_background_for_washes`; `box_rows_for_100_agents_is_linear` (the row count for 100 agents in one role is 100 + a fixed overhead); `settings_row_reads_last_reply_and_reduce_motion_follows_it` (OB-D2; the `settings_80x24` and `settings_160x48` snapshots change in that row, in the new Org layout row (OB.0) and in the Org note, and `settings_matches_the_spec` in `settings_tests.rs` is updated to the UI §4.10 text, `e on the Manager card (Edit org)`); `the_right_click_row_reads_hide_reply_then_show_reply` (and the two menu snapshots).
 - [ ] **Step 2: Make them pass** (fixes only in the painter, the tokens or the Settings label), then run `cargo test --workspace`.
-- [ ] **Step 3: Docs.** `CHANGELOG.md` under `[Unreleased]`: `### Added` a colour per team, the Manager card, the Colour row; `### Changed` the org pane as boxes at 100 columns and 30 rows or more, a selected agent opens a second line, Needs you rows lose their state word and time at that size, and the last-reply setting now controls the second line. `docs/README.md`: add `[Org boxes](plans/org-boxes-plan.md)` to the plans row. `docs/plans/status.md`: a line for this plan. `README.md`: the sample screen at the top and the *Highlights* bullet on the org show the boxes and a per-team colour. `docs/guide.md` is on the unmerged branch `docs/user-guide` (PR #73): if it has merged into `main` by the time this branch is cut, update its screen description the same way; otherwise leave it, and say so in the pull request.
+- [ ] **Step 3: Docs.** `CHANGELOG.md` under `[Unreleased]`: `### Added` an org layout setting (first run, Settings, the key `l`) with grouped boxes at 100 columns and 30 rows or more, a colour per team, the Manager card, the Colour row; `### Changed` the tree's team icons and names take the team colour and its selected row a hue wash, and the last-reply setting also controls the boxes' second line (a settings file with no choice keeps the tree). `docs/README.md`: add `[Org boxes](plans/org-boxes-plan.md)` to the plans row. `docs/plans/status.md`: a line for this plan. `README.md`: the sample screen at the top and the *Highlights* bullet on the org show the boxes and a per-team colour. `docs/guide.md` is on the unmerged branch `docs/user-guide` (PR #73): if it has merged into `main` by the time this branch is cut, update its screen description the same way; otherwise leave it, and say so in the pull request.
 - [ ] **Step 4: Gate and commit.** `make check`, then `git add -A docs README.md CHANGELOG.md crates && git commit -m "feat: org boxes accessibility checks and docs"`. The 100-agent benchmark gate is the author's run (`duohive bench --gate`); CI also reports it.
