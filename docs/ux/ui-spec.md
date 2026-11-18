@@ -117,7 +117,7 @@ Under `auto` DuoHive paints no background, so the 65% border, the wash and the `
 | errored | `status.error` | `bg` (`#FFFFFF` on `light`) |
 | stopped | `manager` at 16% over `bg` | `manager` |
 
-The pill's text and icon carry the state; its edge is never relied on. When the Manager card is typed into, its fill is solid `manager`, so a pill would vanish into it: the pill takes a tint that stands apart from the fill (lighter on `light`, darker on `dark`; the working pill is `#FFFFFF` on both), with no cell of its own and no black cell (`dark`: idle and starting `#C9C1AB`, stopped `#CFC8B6`, working `#FFFFFF`; `light`: idle and starting `#E4DFD0`, stopped `#D8D2C0`, working `#FFFFFF`; the text is `bg` on `dark` and `manager` on `light`; waiting, quiet and errored keep their status colour). Under `auto` a pill is the status's ANSI colour reversed (`fg` reversed for idle, starting, working and stopped).
+The pill's text and icon carry the state; its edge is never relied on. When the Manager card is typed into, its fill is solid `manager`, so a pill would vanish into it: the pill takes a tint that stands apart from the fill (lighter on `light`, darker on `dark`; the working pill is `#FFFFFF` on both), with no cell of its own and no black cell (`dark`: idle and starting `#C9C1AB`, stopped `#CFC8B6`, working `#FFFFFF`; `light`: idle and starting `#E4DFD0`, stopped `#D8D2C0`, working `#FFFFFF`; the text is `bg` on `dark` and `manager` on `light`; waiting, quiet and errored keep their status colour and their usual text, `bg` on `dark` and `#FFFFFF` on `light`, never `manager`). Under `auto` a pill is the status's ANSI colour reversed (`fg` reversed for idle, starting, working and stopped).
 
 ### 2.4 Text
 
