@@ -183,6 +183,15 @@ impl Palette {
         }
     }
 
+    /// The colour of a selected row's bold name: white on `dark` (a wash behind it), else `fg`.
+    pub fn emphasis(&self) -> Color {
+        if self.look == Look::Dark {
+            hex(0xFFFFFF)
+        } else {
+            self.fg
+        }
+    }
+
     /// A team's hue: its own colour on `dark` and `light`, the ANSI colour under `auto`
     /// (`slate` is `fg.muted`), none under `NO_COLOR`.
     pub fn hue(&self, c: TeamColour) -> Color {

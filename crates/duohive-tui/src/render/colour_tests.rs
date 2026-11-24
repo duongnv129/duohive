@@ -1,6 +1,8 @@
 //! Quiet colour in every theme (UI §2.3, P2-D27): one accent for focus, colour only on
 //! the glyphs of states that need you, Duo bold, neutral borders.
 
+use duohive_core::colour::TeamColour;
+use duohive_core::org::NodeKey;
 use duohive_core::settings::Theme;
 use ratatui::buffer::{Buffer, Cell};
 use ratatui::style::Modifier;
@@ -45,7 +47,11 @@ fn is_muted(theme: Theme, cell: &Cell) -> bool {
 #[test]
 fn working_glyph_is_fg_and_word_is_muted() {
     for theme in THEMES {
-        let buf = screen(theme, Pane::NeedsYou);
+        // Select Duo: the selected row's text is all `fg` (UI §4.1.6), so not auth-service.
+        let mut m = spec_model();
+        m.focus.pane = Pane::NeedsYou;
+        m.selected = NodeKey::Duo;
+        let buf = render_buffer(&m, &ctx_for(theme), 160, 48);
         let p = palette_for(theme, false);
         let glyph = cell_at(&buf, "├─ auth-service", "●");
         assert_eq!(glyph.fg, p.fg, "{theme:?}");
@@ -95,16 +101,19 @@ fn focused_border_is_border_and_its_title_is_the_accent() {
 }
 
 #[test]
-fn only_auto_bolds_the_selected_row() {
+fn the_selected_tree_row_has_a_wash_of_its_hue_and_a_bold_name() {
     for theme in THEMES {
         let buf = screen(theme, Pane::Org);
         let row = cell_at(&buf, "├─ auth-service", "auth-service");
-        assert_eq!(
-            row.modifier.contains(Modifier::BOLD),
-            theme == Theme::Auto,
-            "{theme:?}"
-        );
-        assert_eq!(row.bg, palette_for(theme, false).selection, "{theme:?}");
+        assert!(row.modifier.contains(Modifier::BOLD), "{theme:?}");
+        let p = palette_for(theme, false);
+        match theme {
+            // The wash is the hue at 30%: Payments is teal.
+            Theme::Dark | Theme::Light => {
+                assert_eq!(row.bg, p.tint(TeamColour::Teal, 30), "{theme:?}");
+            }
+            Theme::Auto => assert_eq!(row.bg, p.bg, "{theme:?}"),
+        }
     }
 }
 
@@ -113,10 +122,16 @@ fn one_surface_colour() {
     for theme in [Theme::Dark, Theme::Light] {
         let buf = screen(theme, Pane::Chat);
         let p = palette_for(theme, false);
+        // The one selected row (and Duo's) carries a wash of its hue (UI §2.3).
+        let washes: Vec<_> = TeamColour::ALL
+            .iter()
+            .map(|c| p.tint(*c, 30))
+            .chain([p.tint_manager(26)])
+            .collect();
         let painted = buf
             .content
             .iter()
-            .filter(|c| c.bg != p.bg && c.bg != p.selection);
+            .filter(|c| c.bg != p.bg && c.bg != p.selection && !washes.contains(&c.bg));
         assert_eq!(painted.count(), 0, "{theme:?}");
     }
 }
@@ -333,5 +348,205 @@ mod tokens {
             panic!("rgb")
         };
         assert_eq!(r, 128);
+    }
+}
+
+// ---- the tree's hue and selected row (UI §4.1.6, OB.3a) ----
+
+mod tree_hue {
+    use super::*;
+    use crate::focus::AgentMode;
+    use ratatui::style::Color;
+
+    fn shown(theme: Theme, selected: NodeKey, w: u16, h: u16) -> Buffer {
+        let mut m = spec_model();
+        m.focus.pane = Pane::Org;
+        m.selected = selected;
+        render_buffer(&m, &ctx_for(theme), w, h)
+    }
+
+    fn payments() -> NodeKey {
+        NodeKey::Team(duohive_core::names::NodeName::parse("Payments").unwrap())
+    }
+
+    /// The org column's cells (the first 50) of the first row whose org text holds `row_text`;
+    /// the agent pane's title can hold the same words.
+    fn org_row(buf: &Buffer, row_text: &str) -> usize {
+        lines_of(buf)
+            .iter()
+            .position(|l| l.chars().take(50).collect::<String>().contains(row_text))
+            .unwrap()
+    }
+
+    fn cell_at<'a>(buf: &'a Buffer, row_text: &str, needle: &str) -> &'a Cell {
+        let y = org_row(buf, row_text);
+        let line: String = lines_of(buf)[y].chars().take(50).collect();
+        let i = line.find(needle).unwrap();
+        let x = line[..i].chars().count();
+        &buf[(u16::try_from(x).unwrap(), u16::try_from(y).unwrap())]
+    }
+
+    fn row_cells<'a>(buf: &'a Buffer, row_text: &str) -> Vec<&'a Cell> {
+        let y = org_row(buf, row_text);
+        (1..buf.area.width.min(50) - 1)
+            .map(|x| &buf[(x, u16::try_from(y).unwrap())])
+            .collect()
+    }
+
+    #[test]
+    fn tree_glyphs_and_names_take_the_hue() {
+        for theme in [Theme::Dark, Theme::Light, Theme::Auto] {
+            // Select an agent so the team and role rows are not selected.
+            let buf = shown(
+                theme,
+                NodeKey::Agent(duohive_core::testkit::n("auth-service")),
+                160,
+                48,
+            );
+            let p = palette_for(theme, false);
+            let teal = p.hue(TeamColour::Teal);
+            for (row, needle) in [
+                ("▣ Payments", "▣"),
+                ("▣ Payments", "Payments"),
+                ("◇ Backend", "◇"),
+                ("◇ Backend", "Backend"),
+            ] {
+                let c = cell_at(&buf, row, needle);
+                assert_eq!(c.fg, teal, "{theme:?} {needle}");
+                assert!(c.modifier.contains(Modifier::BOLD), "{theme:?} {needle}");
+            }
+            // The root role is the second sibling: violet.
+            let g = cell_at(&buf, "◇ Generalist", "Generalist");
+            assert_eq!(g.fg, p.hue(TeamColour::Violet), "{theme:?}");
+            // Connectors keep their colour, and Duo's row stays bold fg.
+            let connector = cell_at(&buf, "▣ Payments", "├");
+            assert_ne!(connector.fg, teal, "{theme:?}");
+            let duo = cell_at(&buf, "⬢ Duo", "Duo");
+            assert_eq!(duo.fg, p.fg, "{theme:?}");
+            assert!(duo.modifier.contains(Modifier::BOLD));
+        }
+    }
+
+    #[test]
+    fn the_compact_tree_tints_too() {
+        let buf = shown(
+            Theme::Dark,
+            NodeKey::Agent(duohive_core::testkit::n("auth-service")),
+            80,
+            24,
+        );
+        let p = palette_for(Theme::Dark, false);
+        // The compact tree draws `▾` for a team, and the name takes the hue.
+        let c = cell_at(&buf, "▾ Payments", "Payments");
+        assert_eq!(c.fg, p.hue(TeamColour::Teal));
+        let g = cell_at(&buf, "▾ Payments", "▾");
+        assert_eq!(g.fg, p.hue(TeamColour::Teal));
+    }
+
+    #[test]
+    fn the_selected_tree_row_has_the_bar_and_a_30_percent_wash() {
+        for theme in [Theme::Dark, Theme::Light] {
+            let p = palette_for(theme, false);
+            let buf = shown(theme, payments(), 160, 48);
+            let bar = cell_at(&buf, "▣ Payments", "▌");
+            assert_eq!(bar.fg, p.hue(TeamColour::Teal), "{theme:?}");
+            for c in row_cells(&buf, "▣ Payments") {
+                assert_eq!(c.bg, p.tint(TeamColour::Teal, 30), "{theme:?}");
+            }
+            let buf = shown(theme, NodeKey::Duo, 160, 48);
+            for c in row_cells(&buf, "⬢ Duo") {
+                assert_eq!(c.bg, p.tint_manager(26), "{theme:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_selected_tree_rows_text_is_fg() {
+        for theme in [Theme::Dark, Theme::Light] {
+            let p = palette_for(theme, false);
+            let buf = shown(
+                theme,
+                NodeKey::Agent(duohive_core::testkit::n("auth-service")),
+                160,
+                48,
+            );
+            let glyph = cell_at(&buf, "├─ auth-service", "●");
+            assert_eq!(glyph.fg, p.fg, "{theme:?}");
+            let word = cell_at(&buf, "├─ auth-service", "working");
+            assert_eq!(word.fg, p.fg, "{theme:?}");
+            let name = cell_at(&buf, "├─ auth-service", "auth-service");
+            let white = if theme == Theme::Dark {
+                Color::Rgb(255, 255, 255)
+            } else {
+                p.fg
+            };
+            assert_eq!(name.fg, white, "{theme:?}");
+            assert!(name.modifier.contains(Modifier::BOLD));
+            // A team row: glyph fg, name bold.
+            let buf = shown(theme, payments(), 160, 48);
+            assert_eq!(cell_at(&buf, "▣ Payments", "▣").fg, p.fg, "{theme:?}");
+            let team = cell_at(&buf, "▣ Payments", "Payments");
+            assert_eq!(team.fg, white, "{theme:?}");
+            assert!(team.modifier.contains(Modifier::BOLD));
+        }
+    }
+
+    #[test]
+    fn a_selected_tree_row_never_pairs_the_hue_with_its_own_wash() {
+        for theme in [Theme::Dark, Theme::Light] {
+            let p = palette_for(theme, false);
+            for colour in TeamColour::ALL {
+                let mut m = spec_model();
+                m.focus.pane = Pane::Org;
+                m.org.teams[0].color = Some(colour);
+                m.selected = payments();
+                let buf = render_buffer(&m, &ctx_for(theme), 160, 48);
+                for c in row_cells(&buf, "▣ Payments") {
+                    let clash = c.fg == p.hue(colour) && c.bg == p.tint(colour, 30);
+                    // Only the bar `▌` is the hue; it is a block, not text.
+                    assert!(!clash || c.symbol() == "▌", "{theme:?} {colour:?}: {c:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn auto_and_mono_paint_no_wash_and_keep_the_bar_and_bold() {
+        for (theme, no_color) in [(Theme::Auto, false), (Theme::Dark, true)] {
+            let mut m = spec_model();
+            m.focus.pane = Pane::Org;
+            m.selected = payments();
+            let ctx = RenderCtx {
+                palette: palette_for(theme, no_color),
+                ..ctx()
+            };
+            let buf = render_buffer(&m, &ctx, 160, 48);
+            for c in row_cells(&buf, "▣ Payments") {
+                assert_eq!(c.bg, Color::Reset, "{theme:?}/{no_color}");
+            }
+            assert_eq!(cell_at(&buf, "▣ Payments", "▌").symbol(), "▌");
+            assert!(
+                cell_at(&buf, "▣ Payments", "Payments")
+                    .modifier
+                    .contains(Modifier::BOLD)
+            );
+        }
+    }
+
+    #[test]
+    fn typing_leaves_the_tree_selection_unchanged() {
+        let theme = Theme::Dark;
+        let mut m = spec_model();
+        m.focus.pane = Pane::Org;
+        let before = render_buffer(&m, &ctx_for(theme), 160, 48);
+        m.focus.pane = Pane::Agent;
+        m.focus.agent_mode = AgentMode::Typing;
+        let after = render_buffer(&m, &ctx_for(theme), 160, 48);
+        for (a, b) in row_cells(&before, "├─ auth-service")
+            .into_iter()
+            .zip(row_cells(&after, "├─ auth-service"))
+        {
+            assert_eq!((a.fg, a.bg, a.modifier), (b.fg, b.bg, b.modifier));
+        }
     }
 }

@@ -90,13 +90,13 @@ fn auto_muted_and_borders_are_dim() {
     let corner = &buf[(u16::try_from(x).unwrap(), u16::try_from(y).unwrap())];
     assert_eq!(corner.fg, Color::Reset);
     assert!(corner.modifier.contains(Modifier::DIM), "{corner:?}");
-    // A muted age ("2m" for auth-service) is dim too.
+    // A muted age ("4m" for billing-api; the selected row's text is `fg`) is dim too.
     let row = lines
         .iter()
-        .position(|l| l.contains("├─ auth-service"))
+        .position(|l| l.contains("└─ billing-api"))
         .unwrap();
     let age_x = lines[row]
-        .find(" 2m")
+        .find(" 4m")
         .map(|i| lines[row][..i + 1].chars().count())
         .unwrap_or_else(|| panic!("no age in {:?}", lines[row]));
     let age = &buf[(u16::try_from(age_x).unwrap(), u16::try_from(row).unwrap())];
