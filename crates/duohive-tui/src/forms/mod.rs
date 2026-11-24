@@ -39,7 +39,8 @@ pub use line_edit::LineEdit;
 pub use move_to::{InheritedChange, MoveOption, MoveTo, node_name, valid_targets};
 pub use resume_picker::{RECENT_MS, ResumePicker, age_text, clean, size_text};
 pub use settings::{
-    SettingsRow, SettingsState, cycled, name_typed, quiet_stepped, quiet_typed, toggled,
+    SettingsRow, SettingsState, cycled, name_typed, other_layout, quiet_stepped, quiet_typed,
+    toggled,
 };
 
 use crate::input::Action;

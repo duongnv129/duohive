@@ -20,9 +20,9 @@ expression: narrow
 │  d          delete (stopped)                                                 │
 │  z          zoom agent                                                       │
 │  v          last reply on/off                                                │
+│  l          org layout                                                       │
 │  o          open org.toml                                                    │
 │Needs you                                                                     │
 │  ↑↓         move                                                             │
-│  enter      go to agent or card                                              │
 │↓ more · PgUp/PgDn scroll                                                     │
 └──────────────────────────────────────────────────────────────────────────────┘

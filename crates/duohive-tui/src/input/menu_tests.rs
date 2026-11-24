@@ -485,6 +485,7 @@ fn every_action_has_a_click_path() {
         .map(|r| r.action)
         .collect();
     let elsewhere = [
+        ActionId::OrgLayout, // the Settings row
         ActionId::OpenOrg,
         ActionId::Settings,
         ActionId::Filter,

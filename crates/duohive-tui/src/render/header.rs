@@ -302,7 +302,7 @@ fn confirm_keys(yes_label: &str) -> String {
 fn settings_keys(s: &SettingsState) -> &'static str {
     match s.row {
         _ if s.editing.is_some() => SETTINGS_EDIT_KEYS,
-        SettingsRow::Quiet | SettingsRow::Theme => SETTINGS_STEP_KEYS,
+        SettingsRow::Quiet | SettingsRow::Theme | SettingsRow::OrgLayout => SETTINGS_STEP_KEYS,
         _ => SETTINGS_KEYS,
     }
 }

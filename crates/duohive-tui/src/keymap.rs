@@ -26,6 +26,8 @@ pub enum ActionId {
     Zoom,
     /// Last reply on or off.
     LastReply,
+    /// Org layout: tree or boxes.
+    OrgLayout,
     /// Open `org.toml` in `$EDITOR`.
     OpenOrg,
     /// Open Settings.
@@ -46,7 +48,7 @@ pub enum ActionId {
 
 impl ActionId {
     /// Every action, in the order the key map and the editor list them.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::GiveWork,
         Self::StartStop,
         Self::Resume,
@@ -56,6 +58,7 @@ impl ActionId {
         Self::Delete,
         Self::Zoom,
         Self::LastReply,
+        Self::OrgLayout,
         Self::OpenOrg,
         Self::Settings,
         Self::Worktrees,
@@ -78,6 +81,7 @@ impl ActionId {
             Self::Delete => "delete",
             Self::Zoom => "zoom",
             Self::LastReply => "last_reply",
+            Self::OrgLayout => "org_layout",
             Self::OpenOrg => "open_org",
             Self::Settings => "settings",
             Self::Worktrees => "worktrees",
@@ -106,6 +110,7 @@ impl ActionId {
             Self::Delete => "Delete",
             Self::Zoom => "Zoom",
             Self::LastReply => "Last reply",
+            Self::OrgLayout => "Org layout",
             Self::OpenOrg => "Open org.toml",
             Self::Settings => "Settings",
             Self::Worktrees => "Worktrees",
@@ -332,6 +337,7 @@ fn defaults() -> BTreeMap<ActionId, Binding> {
         (ActionId::Delete, "d"),
         (ActionId::Zoom, "z"),
         (ActionId::LastReply, "v"),
+        (ActionId::OrgLayout, "l"),
         (ActionId::OpenOrg, "o"),
         (ActionId::Settings, ","),
         (ActionId::Worktrees, "w"),
@@ -485,6 +491,7 @@ pub fn contexts(action: ActionId) -> &'static [Context] {
         | ActionId::Move
         | ActionId::Delete
         | ActionId::LastReply
+        | ActionId::OrgLayout
         | ActionId::OpenOrg => &[Context::OrgPane],
         ActionId::Settings | ActionId::Worktrees | ActionId::Filter | ActionId::KeyMap => {
             &[Context::Everywhere]
@@ -573,6 +580,45 @@ mod tests {
     }
 
     #[test]
+    fn org_layout_defaults_to_l() {
+        assert_eq!(Keymap::default().key(ActionId::OrgLayout).label(), "l");
+        assert_eq!(ActionId::OrgLayout.id(), "org_layout");
+        assert_eq!(ActionId::OrgLayout.label(), "Org layout");
+        let at = ActionId::ALL
+            .iter()
+            .position(|a| *a == ActionId::OrgLayout)
+            .unwrap();
+        assert_eq!(ActionId::ALL[at - 1], ActionId::LastReply);
+    }
+
+    #[test]
+    fn l_clashes_are_reported_like_any_key() {
+        let mut k = Keymap::default();
+        assert_eq!(
+            k.rebind(ActionId::Edit, bind("l")),
+            Err(RebindError::Conflict {
+                key: "l".to_owned(),
+                action: ActionId::OrgLayout,
+            })
+        );
+    }
+
+    #[test]
+    fn org_layout_is_rebindable_and_listed_on_the_keys_screen() {
+        let mut k = Keymap::default();
+        assert_eq!(k.rebind(ActionId::OrgLayout, bind("x")), Ok(()));
+        assert_eq!(
+            k.action_for(Context::OrgPane, &key('x')),
+            Some(ActionId::OrgLayout)
+        );
+        assert_eq!(
+            k.overrides().get("org_layout").map(String::as_str),
+            Some("x")
+        );
+        assert!(ActionId::ALL.contains(&ActionId::OrgLayout));
+    }
+
+    #[test]
     fn defaults_match_the_spec() {
         let k = Keymap::default();
         let want = [
@@ -585,6 +631,7 @@ mod tests {
             (ActionId::Delete, "d"),
             (ActionId::Zoom, "z"),
             (ActionId::LastReply, "v"),
+            (ActionId::OrgLayout, "l"),
             (ActionId::OpenOrg, "o"),
             (ActionId::Settings, ","),
             (ActionId::Worktrees, "w"),

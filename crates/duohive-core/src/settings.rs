@@ -18,6 +18,17 @@ pub enum Theme {
     Light,
 }
 
+/// How the org pane is drawn (UI §3).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum OrgLayout {
+    /// The connector-line tree (the default for existing installs).
+    #[default]
+    Tree,
+    /// Grouped boxes at 100×30 or more; the compact tree below that.
+    Boxes,
+}
+
 /// Which desktop alerts are on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -51,6 +62,8 @@ pub struct Settings {
     pub alerts: AlertSettings,
     /// Show each agent's last reply under its row in the tree.
     pub show_last_reply: bool,
+    /// How the org pane is drawn.
+    pub org_layout: OrgLayout,
     /// Reduce motion.
     pub reduce_motion: bool,
     /// Key overrides.
@@ -65,6 +78,7 @@ impl Default for Settings {
             quiet_after_minutes: 5,
             alerts: AlertSettings::default(),
             show_last_reply: true,
+            org_layout: OrgLayout::Tree,
             reduce_motion: false,
             keys: BTreeMap::new(),
         }
@@ -108,6 +122,37 @@ mod tests {
         assert_eq!(s.quiet_after_minutes, 9);
         assert_eq!(s.theme, Theme::Dark);
         assert!(s.show_last_reply);
+    }
+
+    #[test]
+    fn a_settings_file_without_org_layout_means_tree() {
+        let s: Settings = toml::from_str("theme = \"dark\"").unwrap();
+        assert_eq!(s.org_layout, OrgLayout::Tree);
+        assert_eq!(Settings::default().org_layout, OrgLayout::Tree);
+    }
+
+    #[test]
+    fn org_layout_round_trips_in_lowercase() {
+        for (layout, word) in [(OrgLayout::Boxes, "boxes"), (OrgLayout::Tree, "tree")] {
+            let s = Settings {
+                org_layout: layout,
+                ..Default::default()
+            };
+            let text = toml::to_string(&s).unwrap();
+            assert!(text.contains(&format!("org_layout = \"{word}\"")), "{text}");
+            assert_eq!(
+                toml::from_str::<Settings>(&text).unwrap().org_layout,
+                layout
+            );
+        }
+    }
+
+    #[test]
+    fn an_unknown_org_layout_is_refused_with_its_line() {
+        let err = toml::from_str::<Settings>("theme = \"dark\"\norg_layout = \"grid\"")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("line 2"), "{err}");
     }
 
     #[test]

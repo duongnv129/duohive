@@ -2,6 +2,7 @@
 
 use duohive_core::names::AgentName;
 use duohive_core::org::NodeKey;
+use duohive_core::settings::OrgLayout;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
@@ -33,7 +34,25 @@ struct Slot {
     label_width: usize,
 }
 
+/// The layout actually drawn: the boxes only when chosen and the screen is not compact
+/// (UI §3); every other case is the tree.
+pub(crate) fn drawn_layout(setting: OrgLayout, compact: bool) -> OrgLayout {
+    if setting == OrgLayout::Boxes && !compact {
+        OrgLayout::Boxes
+    } else {
+        OrgLayout::Tree
+    }
+}
+
+/// Draws the org pane in the layout [`drawn_layout`] picks. Until the boxes land (OB.6) the
+/// `Boxes` arm draws the tree.
 pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
+    match drawn_layout(ctx.settings.org_layout, l.compact) {
+        OrgLayout::Tree | OrgLayout::Boxes => draw_tree(buf, l, m, ctx, replies),
+    }
+}
+
+fn draw_tree(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
     let p = &ctx.palette;
     let compact = l.compact;
     let r = Rect {
@@ -92,6 +111,12 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
 /// The node drawn on screen row `y` of the tree, as [`draw`] lays it out; a detail line
 /// (a reply, a problem) belongs to the node above it.
 pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
+    match drawn_layout(m.settings.org_layout, l.compact) {
+        OrgLayout::Tree | OrgLayout::Boxes => key_at_tree(l, m, replies, y),
+    }
+}
+
+fn key_at_tree(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
     let r = l.org;
     if r.width < 6 || r.height < 2 || y <= r.y {
         return None;
@@ -142,6 +167,12 @@ fn top_row(rows: &[TreeRow], m: &UiModel, height: usize) -> usize {
 
 /// The tree after one wheel tick: the top row moves by `lines`, the selection stays.
 pub(super) fn wheel(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
+    match drawn_layout(m.settings.org_layout, l.compact) {
+        OrgLayout::Tree | OrgLayout::Boxes => wheel_tree(l, m, replies, up, lines),
+    }
+}
+
+fn wheel_tree(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
     let r = l.org;
     if r.width < 6 || r.height < 2 {
         return;

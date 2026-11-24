@@ -3,7 +3,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use duohive_core::command::Command;
 use duohive_core::ports::OrgFileError;
-use duohive_core::settings::{Settings, Theme};
+use duohive_core::settings::{OrgLayout, Settings, Theme};
 
 use super::{Action, UiEffect, map_key, update};
 use crate::fixtures::spec_model;
@@ -258,4 +258,42 @@ fn settings_org_row_opens_replace_wizard() {
     assert_eq!(w.step, crate::first_run::Step::Template);
     assert!(w.available(duohive_core::cli_kind::CliKind::Claude));
     assert!(w.available(duohive_core::cli_kind::CliKind::Opencode));
+}
+
+#[test]
+fn enter_and_arrows_cycle_the_org_layout_row() {
+    let mut m = open();
+    m.settings = Settings::default();
+    go_to(&mut m, SettingsRow::OrgLayout);
+    let s = sent(&press(&mut m, code(KeyCode::Enter)));
+    assert_eq!(s.org_layout, OrgLayout::Boxes);
+    let s = sent(&press(&mut m, code(KeyCode::Left)));
+    assert_eq!(s.org_layout, OrgLayout::Tree);
+    let s = sent(&press(&mut m, code(KeyCode::Right)));
+    assert_eq!(s.org_layout, OrgLayout::Boxes);
+}
+
+#[test]
+fn a_click_on_the_row_cycles_it() {
+    let mut m = open();
+    m.settings = Settings::default();
+    m.screen = ratatui::layout::Rect::new(0, 0, 120, 36);
+    let ctx = crate::fixtures::ctx();
+    let lines = crate::fixtures::render_lines(&m, &ctx, 120, 36);
+    let (y, line) = lines
+        .iter()
+        .enumerate()
+        .find(|(_, l)| l.contains("Org layout"))
+        .expect("the row is drawn");
+    let x = line.chars().take_while(|c| *c != '[').count();
+    let at = ratatui::layout::Position {
+        x: u16::try_from(x + 2).unwrap(),
+        y: u16::try_from(y).unwrap(),
+    };
+    let keys = crate::render::keys_at(&m, at).expect("the row is clickable");
+    let mut last = Vec::new();
+    for a in keys {
+        last = update(&mut m, a);
+    }
+    assert_eq!(sent(&last).org_layout, OrgLayout::Boxes);
 }

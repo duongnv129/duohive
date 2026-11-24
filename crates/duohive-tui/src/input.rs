@@ -49,6 +49,8 @@ pub enum Action {
     Delete,
     /// Last reply on / off.
     ToggleReplies,
+    /// Org layout: boxes / tree.
+    CycleLayout,
     /// Open `org.toml` in `$EDITOR`, then reload it.
     OpenOrgFile,
     /// Quit; agents keep running.
@@ -311,6 +313,7 @@ fn mapped(id: ActionId) -> Action {
         ActionId::Delete => Action::Delete,
         ActionId::Zoom => Action::Zoom,
         ActionId::LastReply => Action::ToggleReplies,
+        ActionId::OrgLayout => Action::CycleLayout,
         ActionId::OpenOrg => Action::OpenOrgFile,
         ActionId::Settings => Action::Settings,
         ActionId::Worktrees => Action::Worktrees,
@@ -572,6 +575,7 @@ fn org_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
             m.settings.show_last_reply = !m.settings.show_last_reply;
             vec![UiEffect::Send(Command::UpdateSettings(m.settings.clone()))]
         }
+        Action::CycleLayout => cycle_layout(m),
         Action::OpenOrgFile => vec![UiEffect::OpenEditor(m.org_toml.clone())],
         Action::GiveWork => give_work::open(m),
         _ => Vec::new(),
@@ -980,3 +984,16 @@ mod tests;
 mod worktree_tests;
 #[cfg(test)]
 mod zoom_tests;
+
+/// `l`: the other org layout, saved at once. The scroll is cleared so the next draw anchors
+/// on the selected node (OB-D4); below 100×30 the setting still changes and the footer says
+/// why nothing seems to (UI §4.10).
+fn cycle_layout(m: &mut UiModel) -> Vec<UiEffect> {
+    use duohive_core::settings::OrgLayout;
+    m.settings.org_layout = crate::forms::other_layout(m.settings.org_layout);
+    m.org_scroll = None;
+    m.footer_note = (m.settings.org_layout == OrgLayout::Boxes
+        && crate::focus::is_compact(m.screen))
+    .then(|| "org layout: boxes · needs 100×30".to_owned());
+    vec![UiEffect::Send(Command::UpdateSettings(m.settings.clone()))]
+}

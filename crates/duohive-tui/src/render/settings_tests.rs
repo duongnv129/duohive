@@ -123,3 +123,35 @@ fn org_note_sits_under_an_org_heading() {
         );
     }
 }
+
+fn org_layout_line(m: &UiModel, w: u16, h: u16) -> String {
+    render_lines(m, &ctx(), w, h)
+        .into_iter()
+        .find(|l| l.contains("Org layout"))
+        .unwrap_or_default()
+}
+
+#[test]
+fn settings_org_layout_row_reads_the_choice() {
+    let mut m = shown();
+    m.settings.org_layout = duohive_core::settings::OrgLayout::Boxes;
+    assert!(org_layout_line(&m, 160, 48).contains("[ boxes ▾ ]"));
+    m.settings.org_layout = duohive_core::settings::OrgLayout::Tree;
+    assert!(org_layout_line(&m, 160, 48).contains("[ tree ▾ ]"));
+}
+
+#[test]
+fn settings_row_reads_boxes_needs_100x30_while_compact() {
+    use duohive_core::settings::OrgLayout;
+    let mut m = shown();
+    m.settings.org_layout = OrgLayout::Boxes;
+    assert!(org_layout_line(&m, 80, 24).contains("[ boxes (needs 100×30) ▾ ]"));
+    assert!(org_layout_line(&m, 100, 29).contains("[ boxes (needs 100×30) ▾ ]"));
+    assert!(!org_layout_line(&m, 100, 30).contains("needs"));
+    m.settings.org_layout = OrgLayout::Tree;
+    let line = org_layout_line(&m, 80, 24);
+    assert!(
+        line.contains("[ tree ▾ ]") && !line.contains("needs"),
+        "{line}"
+    );
+}

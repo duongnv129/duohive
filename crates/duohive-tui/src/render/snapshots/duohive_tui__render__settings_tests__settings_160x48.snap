@@ -17,7 +17,6 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
 ┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
 ┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
 ┃                                         ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐                                         │
 ┃                                         │                                                                          │                                         │
 ┃                                         │  You                                                                     │                                         │
@@ -27,6 +26,7 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃                                         │    Desktop alerts      [x] needs you   [ ] finished                      │                                         │
 ┃                                         │  Look                                                                    │                                         │
 ┃                                         │    Theme               [ auto ▾ ]                                        │                                         │
+┃                                         │    Org layout          [ tree ▾ ]                                        │                                         │
 ┃                                         │    Last reply under agents [x]  Reduce motion [ ]                        │                                         │
 ┃                                         │  Keys                  [ Edit key bindings → ]                           │                                         │
 ┃                                         │  Org                   [ New org from template… ]                        │                                         │
