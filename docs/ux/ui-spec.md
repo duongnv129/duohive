@@ -212,7 +212,7 @@ The diagram is plain text; the colours, the chips and the fills that mark select
 - **Chat pane (Duo):** §4.6 and §4.7.
 - **Footer:** the keys for the focused pane. The org footer shows `enter type` after `↑↓ move` only while `enter` on the selected row would start Typing (a running agent or Duo), not on a team, a role, or a stopped or errored agent.
 
-**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns, or below 30 rows (§3's mixed sizes: width and height each pick a row and the smaller applies), every Org layout setting draws the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues tint its `▣` and `◇` glyphs and names as in the wide tree (§4.1.6), its selected row is highlighted as there, the Manager colour does not apply, and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
+**Compact layout (80×24):** the boxes need a 50-column pane (§3), so below 100 columns, or below 30 rows (§3's mixed sizes: width and height each pick a row and the smaller applies), every Org layout setting draws the compact tree: no connectors and no last replies, folding with `▾` `▸`, the state cell keeping glyph and time, and the chat shrinking to 4 rows. Team hues tint its `▣` and `◇` glyphs and names as in the wide tree (§4.1.6), its selected row is highlighted as there (Duo's with the Manager wash), and Duo stays one row (`⬢ Duo`, its status icon and time), not the card.
 
 ```
  DuoHive  ● 2 · ◆ 2                                                     ? help 
@@ -386,7 +386,7 @@ When `Defaults` doesn't fit on one line, `model` goes on its own line under `CLI
 
 #### 4.1.3 Needs you
 
-- **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆ Duo  approval  Add pay-web` in the boxes; `◆ Duo  approval  1m  Add pay-web` in the trees, §4.6).
+- **Holds:** every waiting, quiet and errored agent, and every pending approval card (`◆  Duo  approval  Add pay-web` in the boxes; `◆ Duo  approval  1m  Add pay-web` in the trees, §4.6).
 - **Order:** oldest first, by time since entering the state.
 - **Keys:** it is a `tab` stop; `↑↓` move.
   - `enter` on an agent row selects the agent and starts Typing in the agent pane (Selected mode if the agent is stopped or errored). A click on an agent row selects the agent, unfolds its team and role, and keeps focus in Needs you, so `↑` `↓` keep moving; it starts no Typing. A click elsewhere in the pane focuses it.
@@ -422,7 +422,7 @@ The org is a hierarchy, and the pane draws it as one: groups you can see, not a 
   - **Title:** `⬢ Manager` on the top border, where a team's name sits, in the manager colour (§2.3). Like a team's, it takes a chip only while Duo is selected.
   - **Wordmark:** the first three characters of Duo's name as block letters, two rows high, at the left (the font is below). Fewer than three characters: just those, left-aligned. Case does not matter (`duo` and `Duo` both draw `DUO`). It follows a rename, and always occupies 11 columns so the text never moves.
   - **Line 1:** Duo's name, and its status as a pill at the right edge. The name has **16 columns** whatever the status (the widest pill, `◌ starting`, takes 12, so name and pill always fit the 28 columns), and a longer name is cut in the middle with `…` (`platform…r-agent`), as every name is (§2.4). The whole name is in the agent pane's title and in Edit org.
-  - **Line 2:** what needs you, with the header's counts: `<n> need you` followed by ` · <m> card` (` · <m> cards` for more than one) only when `m` is more than zero, where `n` is the header's need-you count and `m` the pending approval cards among them (`2 need you`, `2 need you · 1 card`, `3 need you · 2 cards`); `nothing needs you` when `n` is zero. When Duo is errored its short reason replaces this line (`opencode not found`); line 2 has 27 columns (one stays free at the right edge), so anything longer is cut with `…` at the card's edge. The whole reason and how to fix it (`e` Edit org) are in the agent pane, as §4.12 says. On a selected card, line 2 is in the selected text colour, never in `status.error`.
+  - **Line 2:** what needs you, with the header's counts: `<n> need you` followed by ` · <m> card` (` · <m> cards` for more than one) only when `m` is more than zero, where `n` is the header's need-you count and `m` the pending approval cards among them (`2 need you`, `2 need you · 1 card`, `3 need you · 2 cards`); `nothing needs you` when `n` is zero. When Duo is errored its short reason replaces this line (`opencode not found`; the short reason is the reason up to its first ` (` or ` · `, so `opencode not found (code 127)` gives `opencode not found`); line 2 has 27 columns (one stays free at the right edge), so anything longer is cut with `…` at the card's edge. The whole reason and how to fix it (`e` Edit org) are in the agent pane, as §4.12 says. On a selected card, line 2 is in the selected text colour, never in `status.error`.
   - **Status pill:** the state's icon and word, `◦ idle`, `● working`, `◆ waiting`, `✕ errored`, `○ stopped`, `◌ starting` or `◷ quiet`. Duo never shows `finished` (it goes straight to idle). Colours are in §2.3: amber only for `waiting` and `quiet`, red only for `errored`, as everywhere else.
   - **Name rules:** Duo's name is an identifier like every agent's: ASCII letters, digits, `-` and `_`, starting with a letter or digit, 1 to 40 characters (Edit org). Every such character has a glyph, so no name needs a fallback.
   - **Height:** always four rows, for any name and any status, so the list does not move when Duo is renamed or changes state.
@@ -527,7 +527,7 @@ Three steps, shown once, when no org exists. Every field has a sensible default;
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-Step 1 also asks the **Org layout**, one more row after `Duo runs on`; `←` `→` or a click choose, and `Boxes` is preselected (the same choice is in Settings, §4.10, and on `l`):
+Step 1 also asks the **Org layout**, two more lines after `Duo runs on` (the choice and its hint); `←` `→` or a click choose, and `Boxes` is preselected (the same choice is in Settings, §4.10, and on `l`):
 
 ```
 ┌─ Step 1, the layout row ─────────────────────────────────────────────┐
