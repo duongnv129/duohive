@@ -19,6 +19,7 @@ pub mod suggest;
 pub mod term_view;
 pub mod theme;
 pub mod tree;
+pub mod wordmark;
 
 #[cfg(test)]
 mod fixtures;
