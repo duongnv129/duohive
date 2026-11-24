@@ -225,6 +225,7 @@ mod tests {
                 org_card(OrgEdit::AddTeam(TeamDraft {
                     name: nn("Growth"),
                     defaults: Fields::default(),
+                    color: None,
                 })),
                 "add team Growth",
             ),

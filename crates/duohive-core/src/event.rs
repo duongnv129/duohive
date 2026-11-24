@@ -328,10 +328,12 @@ mod tests {
         let team = TeamDraft {
             name: nn("T"),
             defaults: Fields::default(),
+            color: None,
         };
         let role = RoleDraft {
             name: nn("R"),
             defaults: Fields::default(),
+            color: None,
         };
         let agent = AgentDraft {
             name: n("a-1"),

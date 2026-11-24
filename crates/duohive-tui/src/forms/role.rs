@@ -153,6 +153,7 @@ pub(super) fn edit(f: &Form) -> Option<OrgEdit> {
     let draft = RoleDraft {
         name: NodeName::parse(f.field(FieldId::Name)?.edit.text()).ok()?,
         defaults: f.fields_value(),
+        color: None,
     };
     Some(match &f.target {
         Target::NewRole(team) => OrgEdit::AddRole {

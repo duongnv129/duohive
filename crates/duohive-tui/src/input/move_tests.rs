@@ -127,6 +127,7 @@ fn move_refused_on_role_name_collision() {
         name: nn("Generalist"),
         defaults: Fields::default(),
         agents: Vec::new(),
+        color: None,
     });
     let mut m = model_for(org);
     m.selected = NodeKey::Role(RoleKey {
@@ -174,6 +175,7 @@ fn move_on_team_sends_a_position() {
         name: nn("Mobile"),
         defaults: Fields::default(),
         roles: Vec::new(),
+        color: None,
     });
     let mut m = model_for(org);
     m.selected = NodeKey::Team(nn("Mobile"));

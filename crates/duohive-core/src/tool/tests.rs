@@ -197,7 +197,8 @@ fn parse_call_accepts_each_tool() {
         ToolCall::ProposeOrgChange {
             change: Box::new(OrgEdit::AddTeam(TeamDraft {
                 name: node("Growth"),
-                defaults: Fields::default()
+                defaults: Fields::default(),
+                color: None,
             }))
         }
     );

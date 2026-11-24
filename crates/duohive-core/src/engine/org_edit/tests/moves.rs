@@ -85,6 +85,7 @@ fn move_role_to_team_and_root() {
         role: RoleDraft {
             name: nn("Backend"),
             defaults: Fields::default(),
+            color: None,
         },
         agents: 0,
     };
@@ -114,6 +115,7 @@ fn move_team_reorders() {
             OrgEdit::AddTeam(TeamDraft {
                 name: nn(name),
                 defaults: Fields::default(),
+                color: None,
             }),
         ));
     }

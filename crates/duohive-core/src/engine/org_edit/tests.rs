@@ -369,6 +369,7 @@ fn add_role_with_agent_count_creates_named_agents() {
     let role = RoleDraft {
         name: nn("Frontend"),
         defaults: Fields::default(),
+        color: None,
     };
     let ev = edit(
         &mut h,
@@ -404,6 +405,7 @@ fn add_team_and_edit_team_and_role() {
     let team = TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     };
     org_changed(&edit(&mut h, OrgEdit::AddTeam(team)));
     let renamed = TeamDraft {
@@ -412,6 +414,7 @@ fn add_team_and_edit_team_and_role() {
             model: Some("sonnet".into()),
             ..Fields::default()
         },
+        color: None,
     };
     let ev = edit(
         &mut h,
@@ -426,6 +429,7 @@ fn add_team_and_edit_team_and_role() {
     let draft = RoleDraft {
         name: nn("Testing"),
         defaults: Fields::default(),
+        color: None,
     };
     let ev = edit(&mut h, OrgEdit::EditRole { key: qa(), draft });
     let (org, _) = org_changed(&ev);
@@ -450,6 +454,7 @@ fn edits_refused_while_org_file_invalid() {
     let team = TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     };
     let ev = edit(&mut h, OrgEdit::AddTeam(team));
     assert_eq!(rejected(&ev), vec![BROKEN]);
@@ -472,6 +477,7 @@ fn org_save_failure_changes_nothing() {
     assert_eq!(session_names(&h), vec!["pay-qa"]);
 }
 
+mod colours;
 mod duo_reload_settings;
 mod moves;
 
@@ -481,6 +487,7 @@ fn preview_edit_applies_and_validates() {
     let growth = OrgEdit::AddTeam(TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     });
     let after = super::super::preview_edit(&org, &growth).unwrap();
     assert_eq!(after.teams.len(), 2);
@@ -488,6 +495,7 @@ fn preview_edit_applies_and_validates() {
     let dup = OrgEdit::AddTeam(TeamDraft {
         name: nn("Payments"),
         defaults: Fields::default(),
+        color: None,
     });
     let errs = super::super::preview_edit(&org, &dup).unwrap_err();
     assert_eq!(errs[0].path, "team[Payments].name");
@@ -497,6 +505,7 @@ fn preview_edit_applies_and_validates() {
         draft: TeamDraft {
             name: nn("Nope"),
             defaults: Fields::default(),
+            color: None,
         },
     };
     let errs = super::super::preview_edit(&org, &missing).unwrap_err();

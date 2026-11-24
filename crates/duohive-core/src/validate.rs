@@ -153,6 +153,9 @@ fn check_roles(
     }
 }
 
+/// Why a colour on a role inside a team is refused (TD §7).
+pub const NESTED_ROLE_COLOUR: &str = "a role inside a team takes its team's colour";
+
 /// Blocking problems: the org is not used while any remain.
 pub fn validate(org: &Org) -> Vec<FieldError> {
     let mut out = Vec::new();
@@ -175,6 +178,12 @@ pub fn validate(org: &Org) -> Vec<FieldError> {
             &mut seen,
             &mut out,
         );
+        for role in team.roles.iter().filter(|r| r.color.is_some()) {
+            out.push(err(
+                format!("{prefix}role[{}].color", role.name),
+                NESTED_ROLE_COLOUR.to_owned(),
+            ));
+        }
     }
     check_roles(
         "",
@@ -305,6 +314,7 @@ mod tests {
                     fields: Fields::default(),
                 })
                 .collect(),
+            color: None,
         }
     }
 
@@ -313,6 +323,7 @@ mod tests {
             name: nn(name),
             defaults: Fields::default(),
             roles,
+            color: None,
         }
     }
 

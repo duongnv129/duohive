@@ -432,6 +432,7 @@ fn empty_org_and_role_ask_duo() {
         name: nn("Frontend"),
         defaults: duohive_core::org::Fields::default(),
         agents: Vec::new(),
+        color: None,
     });
     let lines = render_lines(&model_for(org), &ctx(), 100, 30);
     let tree: Vec<String> = lines.iter().map(|l| cols(l, 50)).collect();

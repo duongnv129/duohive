@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::cli_kind::CliKind;
+use crate::colour::TeamColour;
 use crate::names::{AgentName, NodeName};
 use crate::org::{AgentDef, DuoConfig, Fields, Org, Role, Team};
 use crate::validate::FieldError;
@@ -234,6 +235,7 @@ fn one_agent(
             name: free_plain(base, taken),
             fields: Fields::default(),
         }],
+        color: None,
     })
 }
 
@@ -297,6 +299,7 @@ fn build_squad(s: &SquadInput, taken: &mut BTreeSet<AgentName>) -> Result<OrgTre
             name: node_name("role", "Generalist")?,
             defaults: role_fields(s.cli, &directory, s.worktrees, prompt),
             agents,
+            color: Some(TeamColour::Teal),
         }],
     })
 }
@@ -337,6 +340,7 @@ fn build_product(
             name,
             defaults: team_fields(p.cli, p.worktrees),
             roles,
+            color: Some(TeamColour::Teal),
         }],
         roles: Vec::new(),
     })
@@ -387,6 +391,7 @@ fn build_engineering(
             name: node,
             defaults: team_fields(e.cli, e.worktrees),
             roles,
+            color: Some(TeamColour::at(teams.len())),
         });
     }
     if teams.is_empty() {
@@ -494,6 +499,21 @@ mod tests {
         assert_eq!(role.name.as_str(), "Generalist");
         let names: Vec<String> = role.agents.iter().map(|a| a.name.to_string()).collect();
         assert_eq!(names, ["squad-1", "squad-2", "squad-3"]);
+    }
+
+    #[test]
+    fn agent_squad_generalist_is_teal() {
+        let tree = OrgTree::build(&squad(3), &BTreeSet::new()).expect("a tree");
+        assert_eq!(tree.roles[0].color, Some(TeamColour::Teal));
+    }
+
+    #[test]
+    fn product_team_colours_follow_the_palette_order() {
+        let tree = OrgTree::build(&product(), &BTreeSet::new()).expect("a tree");
+        assert_eq!(tree.teams[0].color, Some(TeamColour::Teal));
+        let tree = OrgTree::build(&engineering(), &BTreeSet::new()).expect("a tree");
+        let colours: Vec<_> = tree.teams.iter().map(|t| t.color).collect();
+        assert_eq!(colours, [Some(TeamColour::Teal), Some(TeamColour::Violet)]);
     }
 
     #[test]

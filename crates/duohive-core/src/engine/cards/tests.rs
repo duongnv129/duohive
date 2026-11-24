@@ -240,6 +240,7 @@ fn tool_returns_pending_with_card_id() {
     let team = OrgEdit::AddTeam(TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     });
     let (result, _) = propose(&mut h, team);
     assert_eq!(result, Ok(ToolOk::Pending { card: CardId(2) }));
@@ -317,6 +318,7 @@ fn propose_dangerous_flags_refused() {
                 draft: TeamDraft {
                     name: nn("Payments"),
                     defaults: flagged("--debug --dangerously-skip-permissions"),
+                    color: None,
                 },
             },
             SKIP,
@@ -325,6 +327,7 @@ fn propose_dangerous_flags_refused() {
             OrgEdit::AddTeam(TeamDraft {
                 name: nn("Growth"),
                 defaults: flagged("--allow-dangerously-skip-permissions=1"),
+                color: None,
             }),
             ALLOW_SKIP,
         ),
@@ -793,6 +796,7 @@ fn pending_cards_survive_restart() {
     let team = OrgEdit::AddTeam(TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     });
     pend(&mut first, team);
     // The newest card is answered: ids still continue after it.

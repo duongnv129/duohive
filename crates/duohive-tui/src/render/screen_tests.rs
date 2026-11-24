@@ -88,6 +88,7 @@ fn empty_org_and_empty_role() {
         name: NodeName::parse("Frontend").unwrap(),
         defaults: Fields::default(),
         agents: Vec::new(),
+        color: None,
     });
     let lines = render_lines(&model_for(org), &ctx(), 100, 30);
     let tree: Vec<String> = lines.iter().map(|l| cols(l, 50)).collect();

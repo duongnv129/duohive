@@ -192,6 +192,7 @@ fn org(agents: &[&str], cli: CliKind, duo_cli: CliKind, dir: &Path) -> Org {
                 fields: Fields::default(),
             })
             .collect(),
+        color: None,
     }];
     org
 }

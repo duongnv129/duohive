@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::card::{CardChange, CardId};
 use crate::cli_kind::CliKind;
+use crate::colour::TeamColour;
 use crate::launch::Token;
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
@@ -157,6 +158,10 @@ pub struct TeamDraft {
     pub name: NodeName,
     /// Its defaults.
     pub defaults: Fields,
+    /// Its colour; `None` takes the next free one when added and keeps the current one on
+    /// an edit (TD §7).
+    #[serde(default)]
+    pub color: Option<TeamColour>,
 }
 
 /// A role being added or edited.
@@ -166,6 +171,9 @@ pub struct RoleDraft {
     pub name: NodeName,
     /// Its defaults.
     pub defaults: Fields,
+    /// Its colour, for a role directly under Duo; refused on a role inside a team.
+    #[serde(default)]
+    pub color: Option<TeamColour>,
 }
 
 /// An agent being added or edited.

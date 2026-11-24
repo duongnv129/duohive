@@ -238,6 +238,7 @@ fn edit_role_card_lists_changed_fields() {
                 effort: Some("high".to_owned()),
                 ..Fields::default()
             },
+            color: None,
         },
     });
     assert_eq!(
@@ -255,6 +256,7 @@ fn edit_role_card_lists_changed_fields() {
         draft: RoleDraft {
             name: node("QA"),
             defaults: m.org.teams[0].roles[1].defaults.clone(),
+            color: None,
         },
     });
     assert_eq!(
@@ -327,6 +329,7 @@ fn prompt_change_shows_first_line_and_count() {
                     prompt: Some(prompt.to_owned()),
                     ..Fields::default()
                 },
+                color: None,
             },
         })
     };
@@ -468,6 +471,7 @@ fn edit_card_snapshot() {
                 prompt: Some("You test payments.\nRun the suite.\nFile bugs.".to_owned()),
                 ..Fields::default()
             },
+            color: None,
         },
     });
     let m = with_card(c);

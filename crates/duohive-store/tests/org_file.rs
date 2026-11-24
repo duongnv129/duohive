@@ -58,7 +58,9 @@ fn full_org() -> Org {
                 name: n("auth-service"),
                 fields: fields.clone(),
             }],
+            color: None,
         }],
+        color: None,
     }];
     org.roles = vec![Role {
         name: NodeName::parse("Generalist").unwrap(),
@@ -70,6 +72,7 @@ fn full_org() -> Org {
                 ..Fields::default()
             },
         }],
+        color: None,
     }];
     org
 }

@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cli_kind::CliKind;
+use crate::colour::TeamColour;
 use crate::names::{AgentName, NodeName};
 
 /// Breadcrumb separator.
@@ -69,6 +70,9 @@ pub struct Role {
     pub defaults: Fields,
     /// Its agents.
     pub agents: Vec<AgentDef>,
+    /// Its colour; only a role directly under Duo has one of its own (TD §7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<TeamColour>,
 }
 
 /// A team and its roles.
@@ -80,6 +84,9 @@ pub struct Team {
     pub defaults: Fields,
     /// Its roles.
     pub roles: Vec<Role>,
+    /// Its colour; `None` derives one from its position (TD §7).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<TeamColour>,
 }
 
 /// The whole org.
@@ -172,6 +179,79 @@ impl Org {
             })
         });
         in_teams.chain(at_root).collect()
+    }
+
+    /// The colour of a team or top-level role: its own, or the one its position among the
+    /// siblings gives (teams first, then roles under Duo). A role inside a team and an agent
+    /// take the enclosing team's or top-level role's; Duo, and a node the org lacks, have none.
+    pub fn colour_of(&self, key: &NodeKey) -> Option<TeamColour> {
+        match key {
+            NodeKey::Duo => None,
+            NodeKey::Team(t) => {
+                let at = self.teams.iter().position(|team| &team.name == t)?;
+                Some(self.teams[at].color.unwrap_or(TeamColour::at(at)))
+            }
+            NodeKey::Role(RoleKey {
+                team: Some(t),
+                role,
+            }) => {
+                let team = self.teams.iter().find(|team| &team.name == t)?;
+                team.roles.iter().any(|r| &r.name == role).then_some(())?;
+                self.colour_of(&NodeKey::Team(t.clone()))
+            }
+            NodeKey::Role(RoleKey { team: None, role }) => {
+                let at = self.roles.iter().position(|r| &r.name == role)?;
+                Some(
+                    self.roles[at]
+                        .color
+                        .unwrap_or(TeamColour::at(self.teams.len() + at)),
+                )
+            }
+            NodeKey::Agent(a) => {
+                let loc = self.find_agent(a)?;
+                let key = match loc.team {
+                    Some(t) => NodeKey::Team(t.name.clone()),
+                    None => NodeKey::Role(RoleKey {
+                        team: None,
+                        role: loc.role.name.clone(),
+                    }),
+                };
+                self.colour_of(&key)
+            }
+        }
+    }
+
+    /// Every sibling's effective colour, teams first then roles under Duo.
+    pub fn sibling_colours(&self) -> Vec<TeamColour> {
+        let teams = self.teams.iter().map(|t| NodeKey::Team(t.name.clone()));
+        let roles = self.roles.iter().map(|r| {
+            NodeKey::Role(RoleKey {
+                team: None,
+                role: r.name.clone(),
+            })
+        });
+        teams
+            .chain(roles)
+            .filter_map(|k| self.colour_of(&k))
+            .collect()
+    }
+
+    /// Writes every sibling's effective colour into the org, so a derived colour cannot shift
+    /// when positions change in a structural edit (TD §7).
+    pub fn fix_colours(&mut self) {
+        let teams = self.teams.len();
+        let team_colours: Vec<_> = (0..teams)
+            .map(|i| self.teams[i].color.unwrap_or(TeamColour::at(i)))
+            .collect();
+        let role_colours: Vec<_> = (0..self.roles.len())
+            .map(|i| self.roles[i].color.unwrap_or(TeamColour::at(teams + i)))
+            .collect();
+        for (t, c) in self.teams.iter_mut().zip(team_colours) {
+            t.color = Some(c);
+        }
+        for (r, c) in self.roles.iter_mut().zip(role_colours) {
+            r.color = Some(c);
+        }
     }
 
     /// Whether `name` is Duo's name.

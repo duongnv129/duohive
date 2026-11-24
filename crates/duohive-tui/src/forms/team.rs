@@ -52,6 +52,7 @@ pub(super) fn edit(f: &Form) -> Option<OrgEdit> {
     let draft = TeamDraft {
         name: NodeName::parse(f.field(FieldId::Name)?.edit.text()).ok()?,
         defaults: f.fields_value(),
+        color: None,
     };
     Some(match &f.target {
         Target::NewTeam => OrgEdit::AddTeam(draft),

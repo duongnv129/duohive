@@ -123,6 +123,7 @@ fn bench_org(agent: &str, dir: &str) -> Org {
             name: n(agent),
             fields: Fields::default(),
         }],
+        color: None,
     }];
     org
 }

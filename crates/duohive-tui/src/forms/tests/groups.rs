@@ -51,6 +51,7 @@ fn new_role_form_creates_agents() {
             role: RoleDraft {
                 name: nn("Frontend"),
                 defaults: Fields::default(),
+                color: None,
             },
             agents: 2,
         })
@@ -124,6 +125,7 @@ fn new_team_form() {
         FormOutcome::Edit(OrgEdit::AddTeam(TeamDraft {
             name: nn("Growth"),
             defaults: Fields::default(),
+            color: None,
         }))
     );
     // A taken team name is the engine's error, shown on the field.
@@ -166,6 +168,7 @@ fn edit_role_and_team_forms_save_their_defaults() {
                     cli: Some(CliKind::Opencode),
                     ..Fields::default()
                 },
+                color: None,
             },
         })
     );

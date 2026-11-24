@@ -153,6 +153,7 @@ impl RoleFile {
             name: self.name.clone(),
             agents: agents.into_iter().map(AgentFile::into_core).collect(),
             defaults: take_fields!(self),
+            color: None,
         }
     }
 }
@@ -164,6 +165,7 @@ impl TeamFile {
             name: self.name.clone(),
             roles: roles.into_iter().map(RoleFile::into_core).collect(),
             defaults: take_fields!(self),
+            color: None,
         }
     }
 }
