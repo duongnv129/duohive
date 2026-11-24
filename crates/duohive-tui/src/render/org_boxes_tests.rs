@@ -708,3 +708,55 @@ fn a_colour_set_in_the_org_recolours_the_boxes() {
         dark().hue(TeamColour::Orchid)
     );
 }
+
+/// The same column with Needs you under it (UI §4.1): icon, name and reason, no word or time.
+const WHOLE_COLUMN_TAIL: &str = "
+├─ Needs you (2) ────────────────────────────────┤
+│ ◆  billing-api  \"Allow edit to api.go?\"        │
+│ ◆  Duo  approval  Add pay-web                  │
+└────────────────────────────────────────────────┘";
+
+#[test]
+fn boxes_screen_typing_whole_column() {
+    let col = org_column(&typing_model(), 120, 36);
+    let whole: Vec<&str> = col.iter().take(28).map(String::as_str).collect();
+    assert_eq!(whole.join("\n"), format!("{DIAGRAM}{WHOLE_COLUMN_TAIL}"));
+}
+
+#[test]
+fn wide_needs_you_rows_are_icon_name_reason() {
+    let mut m = typing_model();
+    m.needs_you.push(duohive_core::event::NeedsYouItem {
+        agent: n("squad-3"),
+        state: AgentState::Working,
+        quiet: true,
+        since: crate::fixtures::ago(mins(6)),
+        excerpt: None,
+        card: None,
+    });
+    m.org.teams[0].roles[1].agents[0].name = n("squad-3");
+    let text = org_column(&m, 120, 36).join("\n");
+    assert!(
+        text.contains("◆  billing-api  \"Allow edit to api.go?\""),
+        "{text}"
+    );
+    assert!(text.contains("◆  Duo  approval  Add pay-web"), "{text}");
+    assert!(text.contains("◷  squad-3  quiet"), "{text}");
+    // No state word and no time on a row.
+    assert!(!text.contains("waiting  "), "{text}");
+}
+
+#[test]
+fn the_tree_keeps_its_word_and_time_needs_you_rows() {
+    let mut m = typing_model();
+    m.settings.org_layout = OrgLayout::Tree;
+    let c = RenderCtx {
+        settings: Settings {
+            org_layout: OrgLayout::Tree,
+            ..ctx().settings
+        },
+        ..ctx()
+    };
+    let text = render_lines(&m, &c, 120, 36).join("\n");
+    assert!(text.contains("billing-api  waiting    4m"), "{text}");
+}

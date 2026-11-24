@@ -4,7 +4,7 @@ use duohive_core::event::NeedsYouItem;
 use duohive_core::status::AgentState;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Color, Style};
 
 use super::card::capitalised;
 use super::{At, HEAVY, LIGHT, RenderCtx, edge, fg, glyph_color, put, put_pieces};
@@ -117,6 +117,10 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
         };
         put_pieces(buf, at, [(more, p.fg_muted)]);
     }
+    // With the boxes drawn a row is the icon, the name and the reason: no word padding and no
+    // time (UI §4.1.3, §4.1.5). The trees keep the glyph, word and time rows.
+    let boxes = super::org_pane::drawn_layout(ctx.settings.org_layout, compact)
+        == duohive_core::settings::OrgLayout::Boxes;
     let name_cells = if compact {
         COMPACT_NAME
     } else {
@@ -155,6 +159,10 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
         } else {
             glyph_color(p, glyph)
         };
+        if boxes {
+            draw_boxes_row(buf, (r.x + 2, y, content), item, (glyph, word, color), p);
+            continue;
+        }
         let name = pad_right(
             &truncate_middle(item.agent.as_str(), name_cells),
             name_cells,
@@ -175,6 +183,49 @@ pub(super) fn draw(buf: &mut Buffer, r: Rect, m: &UiModel, ctx: &RenderCtx, comp
             put_pieces(buf, at, [(excerpt, p.fg_muted)]);
         }
     }
+}
+
+/// A row when the boxes are drawn: `◆  billing-api  "Allow edit to api.go?"`, a card
+/// `◆  Duo  approval  Add pay-web`, a quiet agent `◷  squad-3  quiet`. The reason is the quoted
+/// excerpt when there is one, else the state word.
+fn draw_boxes_row(
+    buf: &mut Buffer,
+    (x, y, room): (u16, u16, usize),
+    item: &NeedsYouItem,
+    (glyph, word, color): (char, &str, Color),
+    p: &crate::theme::Palette,
+) {
+    let name = truncate_middle(item.agent.as_str(), WIDE_NAME_MAX);
+    let used = 3 + width(&name) + EXCERPT_GAP.len();
+    let left = room.saturating_sub(used);
+    let reason = match (&item.excerpt, item.card.is_some()) {
+        (Some(text), true) => {
+            let summary = truncate_end(
+                &capitalised(&one_line(text)),
+                left.saturating_sub(word.len() + 2),
+            );
+            format!("{word}{EXCERPT_GAP}{summary}")
+        }
+        (Some(text), false) if left > 2 => quoted(text, left),
+        _ => word.to_owned(),
+    };
+    let start = At { x, y, room };
+    put_pieces(
+        buf,
+        start,
+        [
+            (format!("{glyph}  "), color),
+            (format!("{name}{EXCERPT_GAP}"), p.fg),
+            (
+                truncate_end(&reason, left),
+                if item.card.is_some() {
+                    color
+                } else {
+                    p.fg_muted
+                },
+            ),
+        ],
+    );
 }
 
 /// The quoted excerpt after the age, cut to `room` (wide layout only). A card's is its
