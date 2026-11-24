@@ -8,8 +8,8 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 
 use super::{
-    At, RenderCtx, draw_box, fg, focus_title, glyph_color, needs_you, pane_style, put, put_pieces,
-    state_color,
+    At, RenderCtx, draw_box, fg, focus_title, glyph_color, needs_you, org_boxes, pane_style, put,
+    put_pieces, state_color,
 };
 use crate::focus::{Layout, Pane};
 use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_capped};
@@ -44,17 +44,23 @@ pub(crate) fn drawn_layout(setting: OrgLayout, compact: bool) -> OrgLayout {
     }
 }
 
-/// Draws the org pane in the layout [`drawn_layout`] picks. Until the boxes land (OB.6) the
-/// `Boxes` arm draws the tree.
+/// Draws the org pane in the layout [`drawn_layout`] picks.
 pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
     match drawn_layout(ctx.settings.org_layout, l.compact) {
-        OrgLayout::Tree | OrgLayout::Boxes => draw_tree(buf, l, m, ctx, replies),
+        OrgLayout::Tree => draw_tree(buf, l, m, ctx, replies),
+        OrgLayout::Boxes => org_boxes::draw(buf, l, m, ctx, replies),
     }
 }
 
-fn draw_tree(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
+/// The pane's frame, its title and Needs you, which both layouts share: the whole pane's
+/// rectangle and how many rows of it are the org's own, or `None` when it is too small.
+pub(super) fn draw_frame(
+    buf: &mut Buffer,
+    l: &Layout,
+    m: &UiModel,
+    ctx: &RenderCtx,
+) -> Option<(Rect, usize)> {
     let p = &ctx.palette;
-    let compact = l.compact;
     let r = Rect {
         height: l.org.height + l.needs_you.height,
         ..l.org
@@ -64,11 +70,17 @@ fn draw_tree(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies
     if m.focus.pane == Pane::Org {
         focus_title(buf, r, "Org", p);
     }
-    needs_you::draw(buf, l.needs_you, m, ctx, compact);
-    if r.width < 6 || l.org.height < 2 {
+    needs_you::draw(buf, l.needs_you, m, ctx, l.compact);
+    (r.width >= 6 && l.org.height >= 2).then(|| (r, usize::from(l.org.height - 1)))
+}
+
+fn draw_tree(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
+    let p = &ctx.palette;
+    let compact = l.compact;
+    let Some((r, tree_h)) = draw_frame(buf, l, m, ctx) else {
         return;
-    }
-    let tree_h = l.org.height - 1;
+    };
+    let tree_h = u16::try_from(tree_h).unwrap_or(u16::MAX);
     let content = usize::from(r.width - 4);
     let rows = wrap_problems(tree_rows(m, compact, replies, ctx.now), content);
     let right = if compact { COMPACT_RIGHT } else { WIDE_RIGHT };
@@ -127,7 +139,8 @@ fn selection_colours(p: &Palette, org: &Org, key: &NodeKey) -> (Color, Option<Co
 /// (a reply, a problem) belongs to the node above it.
 pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
     match drawn_layout(m.settings.org_layout, l.compact) {
-        OrgLayout::Tree | OrgLayout::Boxes => key_at_tree(l, m, replies, y),
+        OrgLayout::Tree => key_at_tree(l, m, replies, y),
+        OrgLayout::Boxes => org_boxes::key_at(l, m, replies, y),
     }
 }
 
@@ -183,7 +196,8 @@ fn top_row(rows: &[TreeRow], m: &UiModel, height: usize) -> usize {
 /// The tree after one wheel tick: the top row moves by `lines`, the selection stays.
 pub(super) fn wheel(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
     match drawn_layout(m.settings.org_layout, l.compact) {
-        OrgLayout::Tree | OrgLayout::Boxes => wheel_tree(l, m, replies, up, lines),
+        OrgLayout::Tree => wheel_tree(l, m, replies, up, lines),
+        OrgLayout::Boxes => org_boxes::wheel(l, m, replies, up, lines),
     }
 }
 
