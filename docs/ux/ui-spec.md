@@ -95,7 +95,7 @@ There are three themes:
 | Chip (a selected team or role; the selected one only) | the hue as background, `bg` as text |
 | Selected agent row (both of its lines) | `▌` in the hue, the name bold (white on `dark`), the hue at 30% over `bg` across the row. Every other text on it, the state icon, the `✉ n` and the second line included, is `fg`, never `fg.muted` or a status colour, which would fall below 4.5:1 on the wash |
 | Tree glyph and name (§4.1.6, at every tree size, on a row that is not selected) | the `▣` or `◇` glyph and the team or role name in the hue, bold |
-| Selected tree row (§4.1.6) | `▌` in the hue and the hue at 30% over `bg` across the row (Duo's row: `manager` at 26%). The team or role name is bold (white on `dark`) and the glyph and every other text on it is `fg`: the hue on its own 30% wash would fall below 4.5:1 for most hues, so the hue stays in the bar and the wash |
+| Selected tree row (§4.1.6) | `▌` in the hue and the hue at 30% over `bg` across the row (Duo's row: `manager` at 26%). The name (a team's, a role's or an agent's) is bold (white on `dark`; Duo's is bold `fg`) and the glyph and every other text on it is `fg`: the hue on its own 30% wash would fall below 4.5:1 for most hues, so the hue stays in the bar and the wash |
 | Typing row (both lines) | the hue as background and `bg` as text, the state icon included: the glyph keeps its shape but takes the row's text colour, with no cell of its own |
 
 | Hue | `dark` | `light` | `auto` (the terminal's colour, and reverse video for chips and fills) |
@@ -485,7 +485,7 @@ The classic org pane. It is drawn when the Org layout setting is `tree` (§4.10)
 
 - **Rows:** a connector-line tree. Duo is one row (`⬢ Duo · your manager agent`, its state cell). An agent row is its name, `✉ n` when messages wait and the state cell (§2.1: `~` marker, glyph, word, time). The last reply is under the agent, in quotes, while the last-reply setting `v` is on and the screen is 120×36 or larger (§3), and a problem or notice line comes with it. A team or role with a non-zero working or attention count shows its roll-up (`● 1 ◆ 1`), with a `~` when a counted state is read from the screen.
 - **Team hues:** on a row that is not selected, the `▣` and `◇` glyphs and the team or role name are drawn in the node's hue, bold (§2.3). Connectors, state cells and replies keep their colours, and Duo's row is bold, not coloured.
-- **Selection:** the selected row has the `▌` bar and a 30% wash of its hue across the row (Duo's row: the `manager` colour at 26%). The name is bold (white on `dark`) and every other text on the row, the glyph included, is `fg`, never the hue, `fg.muted` or a status colour, which would fall below 4.5:1 on the wash (§6). Under `auto` and `NO_COLOR` no wash is painted and the `▌` bar and the bold name remain. Typing is unchanged: the agent pane takes the heavy border and the selected row keeps this style.
+- **Selection:** the selected row has the `▌` bar and a 30% wash of its hue across the row (Duo's row: the `manager` colour at 26%). The name (a team's, a role's or an agent's) is bold (white on `dark`; Duo's is bold `fg`) and every other text on the row, the glyph included, is `fg`, never the hue, `fg.muted` or a status colour, which would fall below 4.5:1 on the wash (§6). Under `auto` and `NO_COLOR` no wash is painted and the `▌` bar and the bold name remain. Typing is unchanged: the agent pane takes the heavy border and the selected row keeps this style.
 - **Needs you:** rows are glyph, name, word, time and reason (§4.1.3), as in the compact layout.
 - **Everything else** works as in the boxes: folding, the filter (§4.1.1), clicks and keys (§4.1.2), drag and drop and the right-click menu (§4.4.2).
 
@@ -1342,7 +1342,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
 | Selected agent row (boxes) or selected tree row: the bold name and `fg` on the 30% wash of the lowest hue | 7.26 | 8.89 |
 | Manager card selected: the name (white on `dark`, `fg` on `light`) on its 26% wash | 9.10 | 9.57 |
 | Duo's selected tree row: bold `fg` on the 26% wash | 6.16 | 9.57 |
-| Manager card not selected: `manager` text on its 10% wash | 12.14 | 6.06 |
+| Manager card not selected: `manager` text on its 10% wash | 12.13 | 6.06 |
 | Manager card typed into: the lowest status-pill text on its tint (idle `#C9C1AB` on `dark`, stopped `#D8D2C0` on `light`) | 10.51 | 4.84 |
 
 - **No blinking text.**
