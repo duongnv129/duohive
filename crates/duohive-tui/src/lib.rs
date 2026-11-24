@@ -1,6 +1,7 @@
 //! The terminal UI: renders the engine's events and sends its commands.
 
 pub mod app;
+pub mod boxes;
 pub mod card_dialog;
 pub mod chat;
 pub mod dir_suggest;
@@ -21,6 +22,8 @@ pub mod theme;
 pub mod tree;
 pub mod wordmark;
 
+#[cfg(test)]
+mod boxes_tests;
 #[cfg(test)]
 mod fixtures;
 
