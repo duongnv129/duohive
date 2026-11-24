@@ -10,8 +10,11 @@ use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use duohive_core::cli_kind::CliKind;
+use duohive_core::colour::TeamColour;
 use duohive_core::names::{AgentName, NodeName};
-use duohive_core::org::{AgentDef, DuoConfig, Fields, Org, OrgDefaults, Role, Team};
+use duohive_core::org::{
+    AgentDef, DuoConfig, Fields, NodeKey, Org, OrgDefaults, Role, RoleKey, Team,
+};
 use duohive_core::ports::{OrgFileError, StoreError};
 use duohive_core::time::Millis;
 use serde::de::{self, Deserializer};
@@ -28,6 +31,13 @@ fn de_cli<'de, D: Deserializer<'de>>(d: D) -> Result<CliKind, D::Error> {
 fn de_opt_cli<'de, D: Deserializer<'de>>(d: D) -> Result<Option<CliKind>, D::Error> {
     let s = Option::<String>::deserialize(d)?;
     s.map(|s| CliKind::from_str(&s).map_err(de::Error::custom))
+        .transpose()
+}
+
+/// Reads a colour name, reporting a bad one with the colour error's own message (TD §7).
+fn de_opt_colour<'de, D: Deserializer<'de>>(d: D) -> Result<Option<TeamColour>, D::Error> {
+    let s = Option::<String>::deserialize(d)?;
+    s.map(|s| TeamColour::parse(&s).map_err(de::Error::custom))
         .transpose()
 }
 
@@ -66,8 +76,18 @@ node_file!(RoleFile(NodeName) {
     agent: Vec<AgentFile>
 });
 node_file!(TeamFile(NodeName) {
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_colour")]
+    color: Option<TeamColour>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     role: Vec<RoleFile>
+});
+// A role directly under Duo has a colour of its own; one inside a team takes its team's, so
+// `RoleFile` has no `color` key and a `color` there fails to parse with its line (TD §7).
+node_file!(TopRoleFile(NodeName) {
+    #[serde(default, skip_serializing_if = "Option::is_none", deserialize_with = "de_opt_colour")]
+    color: Option<TeamColour>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    agent: Vec<AgentFile>
 });
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -101,7 +121,7 @@ struct OrgFile {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     team: Vec<TeamFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    role: Vec<RoleFile>,
+    role: Vec<TopRoleFile>,
 }
 
 /// Splits the shared optional fields off a file node.
@@ -158,14 +178,26 @@ impl RoleFile {
     }
 }
 
+impl TopRoleFile {
+    fn into_core(mut self) -> Role {
+        let agents = std::mem::take(&mut self.agent);
+        Role {
+            name: self.name.clone(),
+            agents: agents.into_iter().map(AgentFile::into_core).collect(),
+            color: self.color,
+            defaults: take_fields!(self),
+        }
+    }
+}
+
 impl TeamFile {
     fn into_core(mut self) -> Team {
         let roles = std::mem::take(&mut self.role);
         Team {
             name: self.name.clone(),
             roles: roles.into_iter().map(RoleFile::into_core).collect(),
+            color: self.color,
             defaults: take_fields!(self),
-            color: None,
         }
     }
 }
@@ -178,8 +210,20 @@ fn role_file(r: &Role) -> RoleFile {
     file_node!(RoleFile, r.name.clone(), &r.defaults, agent: r.agents.iter().map(agent_file).collect())
 }
 
-fn team_file(t: &Team) -> TeamFile {
-    file_node!(TeamFile, t.name.clone(), &t.defaults, role: t.roles.iter().map(role_file).collect())
+fn top_role_file(org: &Org, r: &Role) -> TopRoleFile {
+    let key = NodeKey::Role(RoleKey {
+        team: None,
+        role: r.name.clone(),
+    });
+    file_node!(TopRoleFile, r.name.clone(), &r.defaults,
+        color: org.colour_of(&key),
+        agent: r.agents.iter().map(agent_file).collect())
+}
+
+fn team_file(org: &Org, t: &Team) -> TeamFile {
+    file_node!(TeamFile, t.name.clone(), &t.defaults,
+        color: org.colour_of(&NodeKey::Team(t.name.clone())),
+        role: t.roles.iter().map(role_file).collect())
 }
 
 fn org_file(org: &Org) -> OrgFile {
@@ -195,8 +239,8 @@ fn org_file(org: &Org) -> OrgFile {
             name: org.duo.name.clone(),
             cli: org.duo.cli,
         },
-        team: org.teams.iter().map(team_file).collect(),
-        role: org.roles.iter().map(role_file).collect(),
+        team: org.teams.iter().map(|t| team_file(org, t)).collect(),
+        role: org.roles.iter().map(|r| top_role_file(org, r)).collect(),
     }
 }
 
@@ -215,7 +259,7 @@ impl OrgFile {
                 cli: self.duo.cli,
             },
             teams: self.team.into_iter().map(TeamFile::into_core).collect(),
-            roles: self.role.into_iter().map(RoleFile::into_core).collect(),
+            roles: self.role.into_iter().map(TopRoleFile::into_core).collect(),
         }
     }
 }

@@ -295,7 +295,10 @@ async fn start_system_with_broken_files_uses_last_good_and_defaults() {
     std::fs::write(env.paths.settings_toml(), "quiet_after_minutes = \"x\"\n").unwrap();
     let mut h = start_system(&env.paths, fakes(), opts()).await.unwrap();
     let snap = first_snapshot(&mut h).await;
-    assert_eq!(snap.org, example_org());
+    // A save writes every effective colour, so the last-good copy has them spelled out.
+    let mut saved = example_org();
+    saved.fix_colours();
+    assert_eq!(snap.org, saved);
     assert!(snap.org_error.as_ref().unwrap().line.is_some(), "{snap:?}");
     assert!(snap.settings_error.is_some());
     h.shutdown().await;
