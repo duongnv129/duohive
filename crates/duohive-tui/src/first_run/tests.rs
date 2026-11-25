@@ -10,6 +10,7 @@ use duohive_core::adapter::CliPresence;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
 use duohive_core::event::Event;
+use duohive_core::settings::OrgLayout;
 use duohive_core::templates::{STARTER_PROMPTS, SquadInput, TemplateInput};
 use duohive_core::testkit::{FakeDirs, example_org, n};
 use duohive_core::validate::DirStatus;
@@ -335,6 +336,7 @@ fn first_run_creates_org_command() {
             }),
             your_name: Some("Duong".to_owned()),
             duo_cli: CliKind::Claude,
+            org_layout: OrgLayout::Boxes,
         })]
     );
 }
@@ -357,6 +359,7 @@ fn first_run_applies_name_and_duo_cli() {
             template: TemplateInput::Blank,
             your_name: Some("Duong".to_owned()),
             duo_cli: CliKind::Opencode,
+            org_layout: OrgLayout::Boxes,
         })]
     );
 }
@@ -766,4 +769,104 @@ fn clicking_a_button_with_the_popup_open_leaves_the_path_alone() {
     click(&mut m, "← Back");
     assert_eq!(wiz(&m).squad.directory.text(), "~/code/a");
     assert_eq!(wiz(&m).step, Step::Template);
+}
+
+#[test]
+fn step_1_has_the_layout_row_with_boxes_preselected() {
+    let w = FirstRun::new(both_found(), None);
+    assert_eq!(w.layout, OrgLayout::Boxes);
+    assert_eq!(w.controls(), 3);
+    let m = model(w);
+    let text = render_lines(&m, &ctx(), 100, 30).join("\n");
+    assert!(
+        text.contains("Org layout    (•) Boxes   ( ) Tree"),
+        "{text}"
+    );
+    assert!(
+        text.contains("boxes colour each team; the tree is the classic one"),
+        "{text}"
+    );
+}
+
+#[test]
+fn left_right_and_a_click_choose_the_layout() {
+    let mut m = model(FirstRun::new(both_found(), None));
+    press(&mut m, KeyCode::Down);
+    press(&mut m, KeyCode::Down); // the layout row
+    press(&mut m, KeyCode::Right);
+    assert_eq!(m.wizard.as_ref().unwrap().layout, OrgLayout::Tree);
+    press(&mut m, KeyCode::Left);
+    assert_eq!(m.wizard.as_ref().unwrap().layout, OrgLayout::Boxes);
+    // A click on `Tree` presses the keys it stands for.
+    m.screen = ratatui::layout::Rect::new(0, 0, 100, 30);
+    let lines = render_lines(&m, &ctx(), 100, 30);
+    let (y, line) = lines
+        .iter()
+        .enumerate()
+        .find(|(_, l)| l.contains("( ) Tree"))
+        .expect("the Tree choice");
+    let x = line.chars().take_while(|_| true).count() - line.trim_start_matches(|_| true).len();
+    let _ = x;
+    let at = line.find("( ) Tree").unwrap();
+    let col = line[..at].chars().count();
+    let keys = crate::render::keys_at(
+        &m,
+        ratatui::layout::Position {
+            x: u16::try_from(col + 2).unwrap(),
+            y: u16::try_from(y).unwrap(),
+        },
+    )
+    .expect("clickable");
+    for a in keys {
+        update(&mut m, a);
+    }
+    assert_eq!(m.wizard.as_ref().unwrap().layout, OrgLayout::Tree);
+}
+
+#[test]
+fn the_wizard_sends_the_chosen_layout_in_create_org() {
+    let mut m = model(FirstRun::new(both_found(), None));
+    press(&mut m, KeyCode::Down);
+    press(&mut m, KeyCode::Down);
+    press(&mut m, KeyCode::Right); // Tree
+    let w = m.wizard.as_mut().unwrap();
+    w.step = Step::Form;
+    w.cursor = TemplateChoice::ALL.len() - 1; // Blank
+    w.focus = w.controls() + 1;
+    let effects = press(&mut m, KeyCode::Enter);
+    let [UiEffect::Send(Command::CreateOrg { org_layout, .. })] = effects.as_slice() else {
+        panic!("not one CreateOrg: {effects:?}");
+    };
+    assert_eq!(*org_layout, OrgLayout::Tree);
+    // The wizard also sets it in the model, so this session draws it.
+    assert_eq!(m.settings.org_layout, OrgLayout::Tree);
+}
+
+#[test]
+fn replace_mode_has_no_layout_row_and_leaves_the_setting_alone() {
+    let mut m = model(FirstRun::replace(both_found(), None));
+    m.settings.org_layout = OrgLayout::Tree;
+    let text = render_lines(&m, &ctx(), 100, 30).join("\n");
+    assert!(!text.contains("Org layout"), "{text}");
+    let w = m.wizard.as_mut().unwrap();
+    w.step = Step::Form;
+    w.cursor = TemplateChoice::ALL.len() - 1;
+    w.focus = w.controls() + 1;
+    let effects = press(&mut m, KeyCode::Enter);
+    assert!(
+        effects
+            .iter()
+            .all(|e| !matches!(e, UiEffect::Send(Command::CreateOrg { .. })))
+    );
+    assert_eq!(m.settings.org_layout, OrgLayout::Tree);
+}
+
+#[test]
+fn step_1_fits_80x24() {
+    let m = model(FirstRun::new(both_found(), None));
+    let text = render_lines(&m, &ctx(), 80, 24).join("\n");
+    assert!(
+        text.contains("Org layout") && text.contains("[ Next →"),
+        "{text}"
+    );
 }

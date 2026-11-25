@@ -419,6 +419,13 @@ fn wizard_action(m: &mut UiModel, a: Action) -> Vec<UiEffect> {
         return Vec::new();
     };
     let (outcome, replace, template) = outcome;
+    // The wizard's layout shows this session and survives a later `UpdateSettings`, which
+    // sends the whole `Settings`, because `OrgCreated` does not carry settings (OB-D3).
+    if let crate::first_run::Outcome::Create(command) = &outcome
+        && let Command::CreateOrg { org_layout, .. } = &**command
+    {
+        m.settings.org_layout = *org_layout;
+    }
     match outcome {
         crate::first_run::Outcome::Continue => Vec::new(),
         crate::first_run::Outcome::Quit => vec![UiEffect::Quit],

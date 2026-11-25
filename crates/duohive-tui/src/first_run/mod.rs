@@ -9,6 +9,7 @@ mod tests;
 use duohive_core::adapter::CliPresence;
 use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command;
+use duohive_core::settings::OrgLayout;
 
 use crate::dir_suggest::DirSuggest;
 use crate::forms::LineEdit;
@@ -96,6 +97,8 @@ pub struct FirstRun {
     pub you: LineEdit,
     /// Duo's CLI, and the default for every template.
     pub duo_cli: CliKind,
+    /// The org layout chosen on step 1 (UI §4.3); `Boxes` is preselected.
+    pub layout: OrgLayout,
     /// The highlighted template.
     pub cursor: usize,
     /// The focused control: the step's fields, then its buttons.
@@ -127,6 +130,7 @@ impl FirstRun {
             step: Step::You,
             you: LineEdit::new(&your_name),
             duo_cli,
+            layout: OrgLayout::Boxes,
             cursor: 0,
             focus: 0,
             squad: SquadForm::new(duo_cli),
@@ -186,7 +190,7 @@ impl FirstRun {
     /// The controls before the buttons, for the current step.
     pub fn controls(&self) -> usize {
         match self.step {
-            Step::You => 2,
+            Step::You => 3,
             Step::Template => 1,
             Step::Form => match self.template() {
                 TemplateChoice::AgentSquad => 5,
@@ -231,6 +235,7 @@ impl FirstRun {
             template,
             your_name,
             duo_cli: self.duo_cli,
+            org_layout: self.layout,
         })
     }
 }

@@ -7,7 +7,6 @@ expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
                                                                                 
                                                                                 
                                                                                 
-                                                                                
     ┌─ Welcome to DuoHive · step 1 of 3 ───────────────────────────────────┐    
     │                                                                      │    
     │  DuoHive runs your AI coding agents as a team.                       │    
@@ -15,6 +14,8 @@ expression: "render_lines(&m, &ctx(), width, height).join(\"\\n\")"
     │                                                                      │    
     │▌ Your name     [Duong                       ]                        │    
     │  Duo runs on   (•) Claude Code   (-) OpenCode                        │    
+    │  Org layout    (•) Boxes   ( ) Tree        ← → choose                │    
+    │                boxes colour each team; the tree is the classic one   │    
     │  found: claude 2.1.0 · opencode not found                            │    
     │                                                                      │    
     │  enter next · esc quit (asks first)       [ Next → ]   [ Quit ]      │    

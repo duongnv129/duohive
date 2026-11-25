@@ -8,6 +8,7 @@ use crate::cli_kind::CliKind;
 use crate::event::Event;
 use crate::names::AgentName;
 use crate::org::Org;
+use crate::settings::OrgLayout;
 use crate::templates::{OrgTree, TemplateInput, first_run_org};
 use crate::validate::validate;
 
@@ -16,12 +17,13 @@ mod tests;
 
 impl Engine {
     /// Saves `template` as the org, with `[org] cli` and `[duo]` on `duo_cli`
-    /// and your name in `settings.toml`; refused once an org exists.
+    /// and your name and the chosen layout in `settings.toml`; refused once an org exists.
     pub(super) fn create_org(
         &mut self,
         template: &TemplateInput,
         your_name: Option<String>,
         duo_cli: CliKind,
+        org_layout: OrgLayout,
     ) -> Vec<Event> {
         if self.first_run.is_none() {
             return reject("an org already exists");
@@ -47,6 +49,7 @@ impl Engine {
         settings.your_name = your_name
             .map(|n| n.trim().to_owned())
             .filter(|n| !n.is_empty());
+        settings.org_layout = org_layout;
         if self.settings_error.is_none()
             && let Err(e) = self.ports.store.save_settings(&settings)
         {

@@ -8,7 +8,7 @@ use crate::colour::TeamColour;
 use crate::launch::Token;
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
-use crate::settings::Settings;
+use crate::settings::{OrgLayout, Settings};
 use crate::templates::TemplateInput;
 use crate::tool::{CallId, ToolCall};
 use crate::worktree::{RunIn, TaskId};
@@ -131,6 +131,8 @@ pub enum Command {
         your_name: Option<String>,
         /// Duo's CLI, which `[org] cli` takes.
         duo_cli: CliKind,
+        /// The org layout chosen in step 1, for `settings.toml` (OB-D3).
+        org_layout: OrgLayout,
     },
     /// Replace the org with the one `template` builds (UI §4.8): every agent
     /// the old tree has is stopped first, then the new org is written.

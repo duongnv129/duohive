@@ -96,6 +96,9 @@ fn you_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Out
         Action::Down => step_focus(w, true),
         Action::Left if w.focus == 1 => cycle_duo(w, false),
         Action::Right | Action::Char(' ') if w.focus == 1 => cycle_duo(w, true),
+        Action::Left | Action::Right | Action::Char(' ') if w.focus == 2 => {
+            w.layout = crate::forms::other_layout(w.layout);
+        }
         Action::Char(c) if w.focus == 0 && !c.is_control() => w.you.insert(c),
         Action::NewLine if w.focus == 0 => w.you.insert('\n'),
         Action::Backspace if w.focus == 0 => w.you.backspace(),
@@ -105,6 +108,9 @@ fn you_key(w: &mut FirstRun, a: Action, dirs: &dyn DirProbe, home: &Path) -> Out
         Action::Home if w.focus == 0 => w.you.home(),
         Action::End if w.focus == 0 => w.you.end(),
         Action::DialogEnter if w.focus == 0 => w.focus = 1,
+        Action::DialogEnter if w.focus == 1 => w.focus = 2,
+        // The last field: `enter` moves to Next (UI §4.3).
+        Action::DialogEnter if w.focus == 2 => w.focus = controls,
         Action::DialogEnter if w.focus >= controls => {
             return button(w, w.focus - controls, dirs, home);
         }
