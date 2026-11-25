@@ -109,24 +109,27 @@ pub fn form_for_card(card: &Card, m: &UiModel) -> Option<Form> {
                 Form::new_team(org, dirs, home),
                 d.name.as_str(),
                 &d.defaults,
-            ),
+            )
+            .with_colour(d.color),
             OrgEdit::EditTeam { key, draft } => filled(
                 Form::edit_team(org, key, dirs, home),
                 draft.name.as_str(),
                 &draft.defaults,
-            ),
+            )
+            .with_colour(draft.color),
             OrgEdit::AddRole { team, role, agents } => {
                 let mut f = Form::new_role(org, team.as_ref(), dirs, home);
                 if let Some(count) = f.field_mut(FieldId::Agents) {
                     count.edit = LineEdit::new(&agents.to_string());
                 }
-                filled(f, role.name.as_str(), &role.defaults)
+                filled(f, role.name.as_str(), &role.defaults).with_colour(role.color)
             }
             OrgEdit::EditRole { key, draft } => filled(
                 Form::edit_role(org, key, dirs, home),
                 draft.name.as_str(),
                 &draft.defaults,
-            ),
+            )
+            .with_colour(draft.color),
             OrgEdit::AddAgent { role, agent } => filled(
                 Form::new_agent(org, role, dirs, home),
                 agent.name.as_str(),
@@ -261,7 +264,7 @@ impl Form {
                     };
                     f.initial = f.selected;
                 }
-                FieldId::DuoCli | FieldId::Agents => {}
+                FieldId::DuoCli | FieldId::Agents | FieldId::Colour => {}
             }
         }
         self.ready(org, dirs, home)
@@ -512,6 +515,28 @@ impl Form {
             Target::NewTeam | Target::EditTeam(_) => team::edit(self),
             Target::Org { .. } => org::edit(self, org),
         }
+    }
+
+    /// The colour the Colour row shows, if the form has one.
+    pub(crate) fn colour_value(&self) -> Option<duohive_core::colour::TeamColour> {
+        let f = self.field(FieldId::Colour)?;
+        duohive_core::colour::TeamColour::ALL
+            .get(f.selected)
+            .copied()
+    }
+
+    /// Chooses `colour` in the Colour row, for a form that has one.
+    fn with_colour(mut self, colour: Option<duohive_core::colour::TeamColour>) -> Self {
+        let at = colour.and_then(|c| {
+            duohive_core::colour::TeamColour::ALL
+                .iter()
+                .position(|x| *x == c)
+        });
+        if let (Some(at), Some(f)) = (at, self.field_mut(FieldId::Colour)) {
+            f.selected = at;
+            f.initial = at;
+        }
+        self
     }
 
     /// The settings the fields hold; blank fields inherit.

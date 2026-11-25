@@ -30,6 +30,8 @@ pub enum FieldId {
     Prompt,
     /// How many agents a new role creates (D11).
     Agents,
+    /// A team's or top-level role's colour: one of the four hues (UI §4.4.1).
+    Colour,
 }
 
 /// How a field is edited.

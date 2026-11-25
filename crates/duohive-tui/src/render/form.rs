@@ -2,12 +2,14 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::{Color, Modifier, Style};
 
 use super::{LIGHT, draw_box, fg, put};
 use crate::dir_suggest::DirSuggest;
 use crate::format::{one_line, pad_right, truncate_end, width};
-use crate::forms::{Chooser, Field, FieldId, FieldKind, Form, PROMPT_MAX_ROWS, VISIBLE_ROWS};
+use crate::forms::{
+    Chooser, Field, FieldId, FieldKind, Form, PROMPT_MAX_ROWS, Target, VISIBLE_ROWS,
+};
 use crate::input::Action;
 use crate::theme::Palette;
 
@@ -173,8 +175,18 @@ fn rows<'a>(f: &'a Form, p: &Palette) -> Vec<Row<'a>> {
                 (1..h).map(move |k| Row::Cont(i, k))
             })
             .collect();
-        out.push(Row::Fields(group));
+        out.push(Row::Fields(group.clone()));
         out.extend(extra);
+        // The wordmark's second row, under the Name field of Edit org.
+        let named = group
+            .iter()
+            .filter_map(|i| f.fields.get(*i))
+            .find(|x| x.id == FieldId::Name);
+        if let (Some(name), Target::Org { .. }) = (named, &f.target) {
+            let mark = crate::wordmark::wordmark(name.edit.text());
+            let at = name.look.indent + name.look.label_w + 2 + name.look.inner + 2 + 3;
+            out.push(Row::Text(at, mark[1].clone(), p.fg_muted));
+        }
         out.extend(lines);
     }
     out.push(Row::Blank);
@@ -255,10 +267,21 @@ fn draw_fields<'a>(
         if focused && (fld.drop.open || fld.suggest.open) {
             *popup = Some((cx, line.y, fld));
         }
-        let (next, at) = draw_control(buf, line, cx, fld, focused, p);
-        record_field(f, i, fld, cx, next, line.y);
+        let (next, at) = if fld.id == FieldId::Colour {
+            (draw_colours(buf, line, cx, (f, i), focused, p), None)
+        } else {
+            let drawn = draw_control(buf, line, cx, fld, focused, p);
+            record_field(f, i, fld, cx, drawn.0, line.y);
+            drawn
+        };
         cursor = cursor.or(at);
         cx = next;
+        if fld.id == FieldId::Name && matches!(f.target, Target::Org { .. }) {
+            // The wordmark the new name will draw on the Manager card, as you type (UI §4.4.1).
+            let mark = crate::wordmark::wordmark(fld.edit.text());
+            let text = format!("{}   its mark on the card", mark[0]);
+            cx = line.put(cx + 3, &text, fg(p.fg_muted), buf);
+        }
         if let Some(s) = &fld.suffix {
             let color = match s.chars().next() {
                 Some('✓') => p.done,
@@ -305,6 +328,63 @@ fn record_field(f: &Form, i: usize, fld: &Field, from: u16, to: u16, y: u16) {
         },
         after_popup(f, keys),
     );
+}
+
+/// The Colour row: the four hue names, each drawn in its own hue, the chosen one marked `(•)`
+/// and bold; `←` `→` or a click on a name choose it (UI §4.4.1).
+fn draw_colours(
+    buf: &mut Buffer,
+    line: Line,
+    x: u16,
+    (f, i): (&Form, usize),
+    focused: bool,
+    p: &Palette,
+) -> u16 {
+    let Some(fld) = f.fields.get(i) else {
+        return x;
+    };
+    let FieldKind::Choice(names) = &fld.kind else {
+        return x;
+    };
+    let mut cx = x;
+    for (k, name) in names.iter().enumerate() {
+        let hue = duohive_core::colour::TeamColour::ALL
+            .get(k)
+            .map_or(p.fg, |c| p.hue(*c));
+        let chosen = k == fld.selected;
+        let mark = if chosen { "(•) " } else { "( ) " };
+        let start = cx;
+        let bracket = if focused && chosen {
+            p.border_focus
+        } else {
+            p.fg
+        };
+        cx = line.put(cx, mark, fg(bracket), buf);
+        let style = if chosen {
+            fg(hue).add_modifier(Modifier::BOLD)
+        } else {
+            fg(hue)
+        };
+        cx = line.put(cx, name, style, buf);
+        // A click on a name steps the choice there: `→` once per name to go.
+        let n = names.len();
+        let steps = (k + n - fld.selected) % n;
+        let mut keys = vec![Action::Tab; f.tabs_to(i)];
+        keys.extend(std::iter::repeat_n(Action::Right, steps));
+        if cx > start {
+            super::hits::record(
+                Rect {
+                    x: start,
+                    y: line.y,
+                    width: cx - start,
+                    height: 1,
+                },
+                after_popup(f, keys),
+            );
+        }
+        cx = line.put(cx, "   ", fg(p.fg), buf);
+    }
+    cx
 }
 
 /// `[ value ▾ ]` or `[ text____ ]`; returns the next x and, for focused text, the cursor.
