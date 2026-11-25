@@ -60,7 +60,8 @@ pub struct Settings {
     pub quiet_after_minutes: u32,
     /// Desktop alerts.
     pub alerts: AlertSettings,
-    /// Show each agent's last reply under its row in the tree.
+    /// Show each agent's last reply where the layout shows it: under its row in the tree, and
+    /// on the selected agent's second line in the boxes (UI §4.11).
     pub show_last_reply: bool,
     /// How the org pane is drawn.
     pub org_layout: OrgLayout,

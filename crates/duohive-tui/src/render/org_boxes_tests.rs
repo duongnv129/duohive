@@ -760,3 +760,46 @@ fn the_tree_keeps_its_word_and_time_needs_you_rows() {
     let text = render_lines(&m, &c, 120, 36).join("\n");
     assert!(text.contains("billing-api  waiting    4m"), "{text}");
 }
+
+#[test]
+fn no_color_keeps_the_bar_and_the_second_line() {
+    let c = RenderCtx {
+        palette: crate::theme::Palette::mono(),
+        settings: boxes_ctx().settings,
+        ..ctx()
+    };
+    let mut m = boxes_model();
+    m.focus.pane = Pane::Org;
+    let buf = render_buffer(&m, &c, 120, 36);
+    // The bar and the second line show without colour; the name is bold only where the
+    // palette marks it, and the typed row is reverse video (checked above).
+    assert_eq!(cell(&buf, "auth-service", "▌").symbol(), "▌");
+    let text = lines_of(&buf).join("\n");
+    assert!(text.contains("working 2m · \"Running go test ./...\""));
+}
+
+#[test]
+fn auto_paints_no_background_for_washes() {
+    let c = RenderCtx {
+        palette: crate::theme::Palette::auto(),
+        settings: boxes_ctx().settings,
+        ..ctx()
+    };
+    for selected in [
+        NodeKey::Duo,
+        NodeKey::Agent(n("auth-service")),
+        NodeKey::Team(NodeName::parse("Payments").unwrap()),
+    ] {
+        let mut m = boxes_model();
+        m.focus.pane = Pane::Org;
+        m.selected = selected.clone();
+        let buf = render_buffer(&m, &c, 120, 36);
+        // Only reverse-video chips may carry a background; no cell has an RGB one.
+        let painted = buf
+            .content
+            .iter()
+            .filter(|cell| matches!(cell.bg, ratatui::style::Color::Rgb(..)))
+            .count();
+        assert_eq!(painted, 0, "{selected:?}");
+    }
+}

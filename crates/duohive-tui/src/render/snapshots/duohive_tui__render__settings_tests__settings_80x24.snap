@@ -15,10 +15,10 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃ │  Look                                                                    │ │
 ┃ │    Theme               [ auto ▾ ]                                        │ │
 ┃ │    Org layout          [ tree ▾ ]                                        │ │
-┃ │    Last reply under agents [x]  Reduce motion [ ]                        │ │
+┃ │    Last reply [x]  Reduce motion [ ]                                     │ │
 ┃ │  Keys                  [ Edit key bindings → ]                           │ │
 ┣━│  Org                   [ New org from template… ]                        │ │
-┃ │    org defaults and Duo: e on Duo (Edit org)                             │ │
+┃ │    org defaults and Duo: e on the Manager card (Edit org)                │ │
 ┃ │                                                                          │ │
 ┗━│  changes save immediately · esc back                                     │─┘
 ┌─└──────────────────────────────────────────────────────────────────────────┘─┐

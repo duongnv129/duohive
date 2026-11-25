@@ -22,14 +22,14 @@ const GROUP_X: u16 = 2;
 const LABEL_X: u16 = 4;
 /// The label column: the control's marker sits in its last cell, so controls line up.
 const LABEL_W: u16 = 20;
-/// `Last reply under agents`, which the mock-up runs straight into its checkbox.
-const LAST_REPLY: &str = "Last reply under agents";
+/// `Last reply`, which the mock-up runs straight into its checkbox.
+const LAST_REPLY: &str = "Last reply";
 /// Cells a text box gives the text while it is being typed in.
 const BOX_W: usize = 14;
 const FOCUS: &str = "▌";
 const TITLE: &str = "Settings · saved to settings.toml";
 const FOOTER: &str = "changes save immediately · esc back";
-const ORG_NOTE: &str = "org defaults and Duo: e on Duo (Edit org)";
+const ORG_NOTE: &str = "org defaults and Duo: e on the Manager card (Edit org)";
 const BROKEN: &str = "settings.toml has an error · changes last until DuoHive quits";
 /// Border, blank, 3 headings and 6 control lines, the Keys row, the Org heading and its
 /// text, a note line, a blank, the footer, border.

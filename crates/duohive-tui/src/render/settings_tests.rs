@@ -36,9 +36,9 @@ fn settings_matches_the_spec() {
         "Look",
         "Theme",
         "[ auto ▾ ]",
-        "Last reply under agents [x]",
+        "Last reply [x]",
         "Reduce motion [ ]",
-        "org defaults and Duo: e on Duo (Edit org)",
+        "org defaults and Duo: e on the Manager card (Edit org)",
         "Keys",
         "[ Edit key bindings → ]",
         "changes save immediately · esc back",
@@ -117,7 +117,7 @@ fn org_note_sits_under_an_org_heading() {
         // A heading like You, Attention and Look, with the note under it.
         assert_eq!(col(&lines[org], "Org"), col(you, "You"), "{w}x{h}");
         assert!(
-            lines[org + 1].contains("org defaults and Duo: e on Duo (Edit org)"),
+            lines[org + 1].contains("org defaults and Duo: e on the Manager card (Edit org)"),
             "{w}x{h}: {}",
             lines[org + 1]
         );
@@ -154,4 +154,11 @@ fn settings_row_reads_boxes_needs_100x30_while_compact() {
         line.contains("[ tree ▾ ]") && !line.contains("needs"),
         "{line}"
     );
+}
+
+#[test]
+fn settings_row_reads_last_reply_and_reduce_motion_follows_it() {
+    let text = render_lines(&shown(), &ctx(), 100, 30).join("\n");
+    assert!(text.contains("Last reply [x]  Reduce motion [ ]"), "{text}");
+    assert!(!text.contains("under agents"), "{text}");
 }

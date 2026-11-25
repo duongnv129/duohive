@@ -22,7 +22,7 @@ pub enum SettingsRow {
     Theme,
     /// How the org pane is drawn.
     OrgLayout,
-    /// Last reply under agents.
+    /// Last reply: where the layout shows it.
     LastReply,
     /// Reduce motion.
     ReduceMotion,

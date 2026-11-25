@@ -12,15 +12,34 @@ DuoHive is an open-source terminal app (TUI, written in Rust) that manages **Cla
 > **Alpha.** DuoHive works from source and as a binary for macOS and Linux, but it is early: features and file formats can still change, and the 100-agent benchmark acceptance is not finished. See the [roadmap](docs/plans/v1-roadmap.md).
 
 ```text
- DuoHive   6 agents · ● 2 working · ◆ 2 need you                                  ? help
+ DuoHive   5 agents · ● 2 working · ◆ 2 need you                                  ? help
 ┏━ Org ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓┌─ auth-service · Claude ──────────────┐
-┃ ⬢ Duo · your manager agent    ◦ idle       1m  ┃│ ✓ go test ./... (14 passed)          │
-┃ ├─ ▣ Payments                 ● 1 ◆ 1          ┃│ ✓ Ready for review · 3 files changed │
-┃▌│  └─ auth-service ✉ 1        ● working    2m  ┃│ ❯                                    │
-┃ │     billing-api             ◆ waiting    4m  ┃│   (live terminal of the selected     │
-┃ └─ ◇ Generalist                                ┃│    agent)                            │
-┣━ Needs you (1) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                      │
-┃ ◆ billing-api  waiting    4m  "Allow edit to…" ┃│                                      │
+┃ ┌─ ⬢ Manager ────────────────────────────────┐ ┃│ ✓ go test ./... (14 passed)          │
+┃ │  █▀▄ █ █ ▄▀▄   Duo                  ◦ idle │ ┃│ ✓ Ready for review · 3 files changed │
+┃ │  █▄▀ █▄█ ▀▄▀   2 need you · 1 card         │ ┃│ ❯                                    │
+┃ └────────────────────────────────────────────┘ ┃│   (live terminal of the selected     │
+┃ ┌─ ▣ Payments ───────────────────── ● 1 ◆ 1 ─┐ ┃│    agent)                            │
+┃ │ ╭────────────── ◇ Backend ───────────────╮ │ ┃│                                      │
+┃ │ │▌auth-service ✉ 1                     ● │ │ ┃│                                      │
+┃ │ │  working 2m · "Running go test ./..."  │ │ ┃│                                      │
+┃ │ │ billing-api                          ◆ │ │ ┃│                                      │
+┃ │ ╰────────────────────────────────────────╯ │ ┃│                                      │
+┃ │ ╭───────────────── ◇ QA ─────────────────╮ │ ┃│                                      │
+┃ │ │ pay-qa                               ○ │ │ ┃│                                      │
+┃ │ ╰────────────────────────────────────────╯ │ ┃│                                      │
+┃ └────────────────────────────────────────────┘ ┃│                                      │
+┃ ┌─ ▣ Platform ───────────────────────── ● 1 ─┐ ┃│                                      │
+┃ │ ╭─────────────── ◇ Infra ────────────────╮ │ ┃│                                      │
+┃ │ │ infra-1                              ✓ │ │ ┃│                                      │
+┃ │ │ infra-2                              ● │ │ ┃│                                      │
+┃ │ ╰────────────────────────────────────────╯ │ ┃│                                      │
+┃ └────────────────────────────────────────────┘ ┃│                                      │
+┃                                                ┃│                                      │
+┃                                                ┃│                                      │
+┃                                                ┃│                                      │
+┣━ Needs you (2) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫│                                      │
+┃ ◆  billing-api  "Allow edit to api.go?"        ┃│                                      │
+┃ ◆  Duo  approval  Add pay-web                  ┃│                                      │
 ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛└──────────────────────────────────────┘
 ┌─ ⬢ Duo · ◦ idle ────────────────────────────────────────────────────────────────────────┐
 │ you   what's blocking the Payments team?                                                │
@@ -30,7 +49,7 @@ DuoHive is an open-source terminal app (TUI, written in Rust) that manages **Cla
 
 ## Highlights
 
-- **An org of standing agents.** Teams, roles and agents, each with its own name, instructions, directory and CLI. Start from a template (Agent Squad, Product Team, Engineering Org) or build your own.
+- **An org of standing agents.** Teams, roles and agents, each with its own name, instructions, directory and CLI, drawn as grouped boxes with a colour per team (or the classic tree: `l`). Start from a template (Agent Squad, Product Team, Engineering Org) or build your own.
 - **One glance answers "who needs me?"** Every agent shows working, waiting, finished, quiet or errored. The *Needs you* pane collects what is blocked on you.
 - **Duo, the manager agent.** Ask in plain language what is blocked, or hand work to a role. Anything that changes the org is a card you approve first.
 - **Watch and steer any agent.** Select one to see its live terminal, type into it, zoom it, or give it a task, optionally in its own git worktree. No `tmux attach`.
