@@ -1305,6 +1305,7 @@ Not in v1; built for v1.1 on the branch `feat/resume-session`, not released, wit
   - `Couldn't read <CLI>'s sessions: <reason>` is a footer note in `status.error`, not a dialog.
   - While the sessions are being read, `r` sets the footer note `reading <CLI>'s sessions…`; the picker opening or the `Couldn't read …` note replaces it, and the next action clears it. `r` is never locked out while it shows.
   - If a `settings.toml` from v1 already binds `r` to another action, that binding wins: Resume has no key until it is rebound (its footer hint, key-map row and menu key are then empty), and the Keys screen says `resume: r is taken by <action> · rebind it in Keys`. A saved `resume = "…"` is always honoured.
+  - The same holds for Org layout and `l`: a saved binding on `l` wins, Org layout has no key until it is rebound, and the Keys screen says `org_layout: l is taken by <action> · rebind it in Keys`. A saved `org_layout = "…"` is always honoured.
 - **Empty:** `No <CLI> sessions for <dir>` with `esc close`. **Unreadable** (an untested Claude Code session format, or `opencode session list` failing): `Couldn't read <CLI>'s sessions: <reason>` in `status.error`, and the agent is unchanged.
 
 ## 5. Interaction rules

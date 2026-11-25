@@ -354,13 +354,17 @@ fn defaults() -> BTreeMap<ActionId, Binding> {
     out
 }
 
+/// Actions whose default key arrived after some users saved their own bindings: Resume (v1.1)
+/// and Org layout. A saved binding on the same key wins over the default.
+const NEW_DEFAULTS: [ActionId; 2] = [ActionId::Resume, ActionId::OrgLayout];
+
 impl Keymap {
     /// The default bindings with `saved`'s overrides applied; a notice for each entry
     /// that is ignored (UI §4.10).
     pub fn from_settings(saved: &BTreeMap<String, String>) -> (Self, Vec<String>) {
         let mut out = Self::default();
         let mut notices = Vec::new();
-        let mut resume_saved = false;
+        let mut saved_actions = Vec::new();
         for (id, text) in saved {
             let Some(action) = ActionId::from_id(id) else {
                 notices.push(format!(
@@ -374,30 +378,33 @@ impl Keymap {
                 ));
                 continue;
             };
-            resume_saved |= action == ActionId::Resume;
+            saved_actions.push(action);
             out.bindings.insert(action, binding);
         }
-        if !resume_saved {
-            out.yield_resume_default(&mut notices);
+        for new in NEW_DEFAULTS {
+            if !saved_actions.contains(&new) {
+                out.yield_new_default(new, &mut notices);
+            }
         }
         (out, notices)
     }
 
-    /// Resume's default key is new in v1.1: when a saved binding already holds it, the
-    /// saved one wins, Resume has no key until rebound, and a notice says so.
-    fn yield_resume_default(&mut self, notices: &mut Vec<String>) {
-        let Some(own) = self.bindings.get(&ActionId::Resume).copied() else {
+    /// A default key that is new in a release: when a saved binding already holds it, the
+    /// saved one wins, the new action has no key until rebound, and a notice says so.
+    fn yield_new_default(&mut self, action: ActionId, notices: &mut Vec<String>) {
+        let Some(own) = self.bindings.get(&action).copied() else {
             return;
         };
         let holder = ActionId::ALL.into_iter().find(|other| {
-            *other != ActionId::Resume
+            *other != action
                 && self.bindings.get(other) == Some(&own)
-                && share_contexts(ActionId::Resume, *other)
+                && share_contexts(action, *other)
         });
         if let Some(other) = holder {
-            self.bindings.remove(&ActionId::Resume);
+            self.bindings.remove(&action);
             notices.push(format!(
-                "resume: {} is taken by {} · rebind it in Keys",
+                "{}: {} is taken by {} · rebind it in Keys",
+                action.id(),
                 own.label(),
                 other.id()
             ));
@@ -589,6 +596,28 @@ mod tests {
             .position(|a| *a == ActionId::OrgLayout)
             .unwrap();
         assert_eq!(ActionId::ALL[at - 1], ActionId::LastReply);
+    }
+
+    #[test]
+    fn a_saved_binding_on_l_wins_over_the_new_org_layout_default() {
+        for holder in ["worktrees", "filter", "open_org", "settings", "key_map"] {
+            let saved = BTreeMap::from([(holder.to_owned(), "l".to_owned())]);
+            let (k, notices) = Keymap::from_settings(&saved);
+            assert_eq!(
+                k.action_for(Context::OrgPane, &key('l')).map(ActionId::id),
+                Some(holder),
+                "{holder}"
+            );
+            assert_eq!(
+                notices,
+                [format!(
+                    "org_layout: l is taken by {holder} · rebind it in Keys"
+                )]
+            );
+        }
+        // A saved Org layout binding of its own is kept, with no notice.
+        let saved = BTreeMap::from([("org_layout".to_owned(), "l".to_owned())]);
+        assert!(Keymap::from_settings(&saved).1.is_empty());
     }
 
     #[test]

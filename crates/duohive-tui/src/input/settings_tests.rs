@@ -297,3 +297,17 @@ fn a_click_on_the_row_cycles_it() {
     }
     assert_eq!(sent(&last).org_layout, OrgLayout::Boxes);
 }
+
+#[test]
+fn switching_the_layout_in_settings_clears_the_scroll() {
+    let mut m = open();
+    m.settings = Settings::default();
+    m.org_scroll = Some((9, m.selected.clone()));
+    go_to(&mut m, SettingsRow::OrgLayout);
+    press(&mut m, code(KeyCode::Enter));
+    assert_eq!(m.settings.org_layout, OrgLayout::Boxes);
+    assert_eq!(
+        m.org_scroll, None,
+        "OB-D4: the next draw anchors on the selection"
+    );
+}

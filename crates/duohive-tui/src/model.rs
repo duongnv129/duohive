@@ -294,6 +294,10 @@ impl UiModel {
     /// Replaces the settings and rebuilds the key map from them (UI §4.11).
     pub fn set_settings(&mut self, settings: Settings) {
         let (keymap, notices) = Keymap::from_settings(&settings.keys);
+        // A new layout draws from the selection, not from the old layout's scroll (OB-D4).
+        if settings.org_layout != self.settings.org_layout {
+            self.org_scroll = None;
+        }
         self.settings = settings;
         self.keymap = keymap;
         self.keys_notices = notices;
