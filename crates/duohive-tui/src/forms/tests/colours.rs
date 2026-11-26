@@ -182,3 +182,80 @@ fn duo_name_is_read_only_unless_duo_is_stopped() {
     let f = Form::edit_org(&o, &stopped());
     assert!(f.field(FieldId::Name).unwrap().focusable());
 }
+
+fn card_form(edit: OrgEdit) -> Form {
+    let m = model();
+    let card = duohive_core::card::Card {
+        id: duohive_core::card::CardId(1),
+        change: duohive_core::card::CardChange::Org(edit),
+        source: duohive_core::card::CardSource::Duo,
+        raised_at: duohive_core::time::Millis(0),
+        answer: None,
+    };
+    super::super::form_for_card(&card, &m).expect("a form")
+}
+
+#[test]
+fn card_forms_show_and_return_an_explicit_proposal_colour() {
+    let o = org();
+    // The constructor default for a new team is slate, and Payments is teal: pick others.
+    let f = card_form(OrgEdit::AddTeam(TeamDraft {
+        name: nn("Growth"),
+        defaults: Fields::default(),
+        color: Some(TeamColour::Orchid),
+    }));
+    assert_eq!(colour(&f), TeamColour::Orchid);
+    let Some(OrgEdit::AddTeam(d)) = f.edit(&o) else {
+        panic!("no AddTeam");
+    };
+    assert_eq!(d.color, Some(TeamColour::Orchid));
+
+    let f = card_form(OrgEdit::EditTeam {
+        key: nn("Payments"),
+        draft: TeamDraft {
+            name: nn("Payments"),
+            defaults: Fields::default(),
+            color: Some(TeamColour::Violet),
+        },
+    });
+    assert_eq!(colour(&f), TeamColour::Violet);
+    let Some(OrgEdit::EditTeam { draft, .. }) = f.edit(&o) else {
+        panic!("no EditTeam");
+    };
+    assert_eq!(draft.color, Some(TeamColour::Violet));
+
+    // A top-level role: the default is slate (free), the saved colour violet.
+    let role_draft = |color| RoleDraft {
+        name: nn("Ops"),
+        defaults: Fields::default(),
+        color,
+    };
+    let f = card_form(OrgEdit::AddRole {
+        team: None,
+        role: role_draft(Some(TeamColour::Orchid)),
+        agents: 1,
+    });
+    assert_eq!(colour(&f), TeamColour::Orchid);
+    let Some(OrgEdit::AddRole { role, .. }) = f.edit(&o) else {
+        panic!("no AddRole");
+    };
+    assert_eq!(role.color, Some(TeamColour::Orchid));
+
+    let key = RoleKey {
+        team: None,
+        role: nn("Generalist"),
+    };
+    let f = card_form(OrgEdit::EditRole {
+        key,
+        draft: RoleDraft {
+            name: nn("Generalist"),
+            defaults: Fields::default(),
+            color: Some(TeamColour::Teal),
+        },
+    });
+    assert_eq!(colour(&f), TeamColour::Teal);
+    let Some(OrgEdit::EditRole { draft, .. }) = f.edit(&o) else {
+        panic!("no EditRole");
+    };
+    assert_eq!(draft.color, Some(TeamColour::Teal));
+}

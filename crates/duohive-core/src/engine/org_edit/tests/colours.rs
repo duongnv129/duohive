@@ -210,3 +210,33 @@ fn deleting_a_sibling_after_a_save_does_not_recolour_the_others() {
     assert_eq!(team_colour(&org, "Growth"), Some(Slate));
     assert_eq!(root_colour(&org, "Generalist"), Some(Violet));
 }
+
+#[test]
+fn moving_a_root_role_to_duo_keeps_its_colour() {
+    let mut h = Harness::new();
+    // Give the root role an explicit colour the next-free rule would not pick (slate).
+    edit(
+        &mut h,
+        OrgEdit::EditRole {
+            key: RoleKey {
+                team: None,
+                role: nn("Generalist"),
+            },
+            draft: role_draft("Generalist", Some(Orchid)),
+        },
+    );
+    let ev = edit(
+        &mut h,
+        OrgEdit::Move {
+            node: NodeKey::Role(RoleKey {
+                team: None,
+                role: nn("Generalist"),
+            }),
+            to: MoveTarget::Into(NodeKey::Duo),
+        },
+    );
+    // A move that changes nothing may be refused or accepted, but never recolours.
+    let org = h.engine.org.clone();
+    let _ = ev;
+    assert_eq!(root_colour(&org, "Generalist"), Some(Orchid));
+}

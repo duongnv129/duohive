@@ -544,3 +544,30 @@ fn box_rows_for_100_agents_is_linear() {
     // 100 agent rows, the card (4), the role box (2) and the selected agent's one detail line.
     assert_eq!(r.len(), 100 + 4 + 2 + 1);
 }
+
+#[test]
+fn a_long_error_reason_keeps_the_edit_hint_on_the_last_line() {
+    for in_team in [true, false] {
+        let mut m = five_agent_org();
+        let name = if in_team { "pay-qa" } else { "squad-1" };
+        if !in_team {
+            m.org.roles = vec![generalist("squad-1")];
+        }
+        let s = Status {
+            error: Some("word ".repeat(60)),
+            ..status(AgentState::Errored, mins(1))
+        };
+        m.agents.insert(n(name), view(s));
+        select(&mut m, name);
+        let r = rows(&m);
+        let d = details(&r, name);
+        assert_eq!(d.len(), 3, "{in_team}");
+        let last = &d[2].label;
+        assert!(last.ends_with("(e)"), "{in_team}: {last}");
+        assert!(
+            last.contains('…'),
+            "{in_team}: the cut is still marked: {last}"
+        );
+        assert!(width(last) <= crate::boxes::detail_width(in_team), "{last}");
+    }
+}

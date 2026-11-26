@@ -519,10 +519,12 @@ fn move_node(org: &mut Org, node: &NodeKey, to: &MoveTarget) -> Result<(), Strin
             let from = roles_mut(org, k.team.as_ref())?;
             let at = from.iter().position(|r| r.name == k.role);
             let mut role = from.remove(at.ok_or_else(|| no_role(k))?);
-            // A role in a team takes its team's colour; one leaving a team gets the next free.
-            role.color = match team {
-                Some(_) => None,
-                None => Some(TeamColour::next_free(&org.sibling_colours())),
+            // A role in a team takes its team's colour; one leaving a team gets the next free;
+            // a root role moved to the root keeps its own.
+            role.color = match (team, k.team.is_some()) {
+                (Some(_), _) => None,
+                (None, true) => Some(TeamColour::next_free(&org.sibling_colours())),
+                (None, false) => role.color,
             };
             roles_mut(org, team)?.push(role);
         }

@@ -12,7 +12,7 @@ use duohive_core::time::Millis;
 
 use crate::format::{
     age_of, format_age, one_line, quoted, status_glyph, status_word, truncate_end, truncate_middle,
-    width, wrap_capped,
+    width, wrap_capped, wrap_words,
 };
 use crate::model::UiModel;
 use crate::tree::{filter_keeps_nothing, roll_up, visible};
@@ -370,8 +370,8 @@ impl Cx<'_> {
     /// state line of a selected agent and stands alone under one that is not.
     fn details(&self, view: &AgentView, selected: bool, in_team: bool) -> Vec<(Tone, String)> {
         let room = detail_width(in_team);
-        if let Some(problem) = problem_text(&view.status, view) {
-            return wrap_capped(&problem, room, MAX_PROBLEM_LINES)
+        if let Some((problem, hint)) = problem_text(&view.status, view) {
+            return wrap_with_hint(&problem, hint, room)
                 .into_iter()
                 .map(|l| (Tone::Problem, l))
                 .collect();
@@ -423,14 +423,33 @@ fn group_label(glyph: &str, name: &NodeName) -> String {
 
 /// The problem line for an agent: an error with its reason, or a configuration problem, each
 /// ending with the `(e)` hint, or `None` when the agent has neither.
-fn problem_text(s: &Status, view: &AgentView) -> Option<String> {
+fn problem_text<'a>(s: &Status, view: &AgentView) -> Option<(String, &'a str)> {
     if s.state == AgentState::Errored {
-        return Some(match s.error.as_deref() {
-            Some(reason) => format!("errored{SEP}{reason}{EDIT_HINT}"),
-            None => format!("errored{EDIT_HINT}"),
-        });
+        let text = match s.error.as_deref() {
+            Some(reason) => format!("errored{SEP}{reason}"),
+            None => "errored".to_owned(),
+        };
+        return Some((text, EDIT_HINT));
     }
+    // A configuration problem carries its own hint already (`e to fix`).
     view.problem
         .as_deref()
-        .map(|p| p.strip_prefix("✕ ").unwrap_or(p).to_owned())
+        .map(|p| (p.strip_prefix("✕ ").unwrap_or(p).to_owned(), ""))
+}
+
+/// `text` and `hint` wrapped onto at most three lines. When the text is cut, the `…` goes
+/// before the hint, so the hint is always on the last line.
+fn wrap_with_hint(text: &str, hint: &str, room: usize) -> Vec<String> {
+    let whole = format!("{text}{hint}");
+    let lines = wrap_words(&whole, room);
+    if lines.len() <= MAX_PROBLEM_LINES || hint.is_empty() {
+        return wrap_capped(&whole, room, MAX_PROBLEM_LINES);
+    }
+    let mut kept = wrap_words(text, room);
+    kept.truncate(MAX_PROBLEM_LINES);
+    if let Some(last) = kept.last_mut() {
+        let cut = truncate_end(&format!("{last}…"), room.saturating_sub(width(hint)));
+        *last = format!("{}…{hint}", cut.trim_end_matches(['…', ' ']));
+    }
+    kept
 }
