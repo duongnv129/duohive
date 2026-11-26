@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use super::lifecycle::getting_ready;
 use super::{AgentRt, Engine, reject};
+use crate::colour::TeamColour;
 use crate::command::{MoveTarget, OrgEdit, RoleDraft};
 use crate::event::Event;
 use crate::inherit::{expand_home, resolve};
@@ -400,15 +401,29 @@ pub fn preview_edit(org: &Org, edit: &OrgEdit) -> Result<Org, Vec<FieldError>> {
 
 /// Applies `edit` to `org`; fails only when its target doesn't exist.
 fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
+    // A derived colour must not shift when a structural edit changes positions (TD §7).
+    org.fix_colours();
     match edit {
         OrgEdit::Move { node, to } => move_node(org, node, to)?,
-        OrgEdit::AddTeam(d) => org.teams.push(Team {
-            name: d.name.clone(),
-            defaults: d.defaults.clone(),
-            roles: Vec::new(),
-        }),
+        OrgEdit::AddTeam(d) => {
+            let color = d
+                .color
+                .unwrap_or_else(|| TeamColour::next_free(&org.sibling_colours()));
+            org.teams.push(Team {
+                name: d.name.clone(),
+                defaults: d.defaults.clone(),
+                roles: Vec::new(),
+                color: Some(color),
+            });
+        }
         OrgEdit::AddRole { team, role, agents } => {
-            let new = new_role(org, team.as_ref(), role, *agents);
+            let mut new = new_role(org, team.as_ref(), role, *agents);
+            if team.is_none() {
+                new.color = Some(
+                    role.color
+                        .unwrap_or_else(|| TeamColour::next_free(&org.sibling_colours())),
+                );
+            }
             roles_mut(org, team.as_ref())?.push(new);
         }
         OrgEdit::AddAgent { role, agent } => role_mut(org, role)?.agents.push(AgentDef {
@@ -419,11 +434,13 @@ fn apply(org: &mut Org, edit: &OrgEdit) -> Result<(), String> {
             let team = team_mut(org, key)?;
             team.name = draft.name.clone();
             team.defaults = draft.defaults.clone();
+            team.color = draft.color.or(team.color);
         }
         OrgEdit::EditRole { key, draft } => {
             let role = role_mut(org, key)?;
             role.name = draft.name.clone();
             role.defaults = draft.defaults.clone();
+            role.color = draft.color.or(role.color);
         }
         OrgEdit::EditAgent { key, draft } => {
             let agent = agent_mut(org, key)?;
@@ -451,6 +468,8 @@ fn new_role(org: &Org, team: Option<&NodeName>, draft: &RoleDraft, count: u8) ->
                 fields: Fields::default(),
             })
             .collect(),
+        // An add into a team keeps what the draft says, so `validate` can refuse it.
+        color: draft.color,
     }
 }
 
@@ -499,7 +518,14 @@ fn move_node(org: &mut Org, node: &NodeKey, to: &MoveTarget) -> Result<(), Strin
             roles_mut(org, team)?;
             let from = roles_mut(org, k.team.as_ref())?;
             let at = from.iter().position(|r| r.name == k.role);
-            let role = from.remove(at.ok_or_else(|| no_role(k))?);
+            let mut role = from.remove(at.ok_or_else(|| no_role(k))?);
+            // A role in a team takes its team's colour; one leaving a team gets the next free;
+            // a root role moved to the root keeps its own.
+            role.color = match (team, k.team.is_some()) {
+                (Some(_), _) => None,
+                (None, true) => Some(TeamColour::next_free(&org.sibling_colours())),
+                (None, false) => role.color,
+            };
             roles_mut(org, team)?.push(role);
         }
         (NodeKey::Team(t), MoveTarget::Before(_) | MoveTarget::End) => {

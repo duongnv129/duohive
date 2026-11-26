@@ -177,6 +177,7 @@ fn missing_running_agent_with_no_org_naming_it_is_held() {
     let team = TeamDraft {
         name: NodeName::parse("Growth").unwrap(),
         defaults: Fields::default(),
+        color: None,
     };
     let refused = h.send(Command::EditOrg(OrgEdit::AddTeam(team)));
     assert!(

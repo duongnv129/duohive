@@ -22,6 +22,7 @@ use duohive_core::cli_kind::CliKind;
 use duohive_core::command::Command as CoreCommand;
 use duohive_core::event::Event;
 use duohive_core::ports::{NoGit, NoNotifier};
+use duohive_core::settings::OrgLayout;
 use duohive_core::templates::TemplateInput;
 use duohive_store::Paths;
 
@@ -168,6 +169,7 @@ async fn first_run_shows_wizard_and_create_org_starts_no_agent() {
             template: TemplateInput::Blank,
             your_name: Some("Duong".to_owned()),
             duo_cli: CliKind::Claude,
+            org_layout: OrgLayout::Boxes,
         })
         .await
         .unwrap();
@@ -236,4 +238,68 @@ async fn a_second_instance_is_refused() {
         String::from_utf8(out.stderr.clone()).unwrap(),
         "DuoHive is already running\n"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_chosen_layout_is_saved_and_survives_a_later_settings_save() {
+    use duohive_core::settings::Settings;
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = paths(tmp.path());
+    let server = KillServer(paths.tmux_socket.clone());
+    let mut h = start_system(
+        &paths,
+        Arc::new(fake_adapters(Path::new(BIN))),
+        SystemOptions {
+            tap: None,
+            first_frame: None,
+            home: tmp.path().join("home"),
+            notifier: Some(Box::new(NoNotifier)),
+            git: Some(Box::new(NoGit)),
+            git_env: Vec::new(),
+        },
+    )
+    .await
+    .unwrap();
+    let Event::Snapshot(_) = next_event(&mut h).await else {
+        panic!("the first event is the start-up snapshot");
+    };
+    h.commands
+        .send(CoreCommand::CreateOrg {
+            template: TemplateInput::Blank,
+            your_name: None,
+            duo_cli: CliKind::Claude,
+            org_layout: OrgLayout::Boxes,
+        })
+        .await
+        .unwrap();
+    for _ in 0..20 {
+        if let Event::OrgCreated = next_event(&mut h).await {
+            break;
+        }
+    }
+    let text = std::fs::read_to_string(paths.settings_toml()).unwrap();
+    assert!(text.contains("org_layout = \"boxes\""), "{text}");
+    // The TUI sends the whole `Settings`, carrying the layout it set itself, so a later
+    // change (`v`, or a row in Settings) leaves the layout alone.
+    h.commands
+        .send(CoreCommand::UpdateSettings(Settings {
+            org_layout: OrgLayout::Boxes,
+            show_last_reply: false,
+            ..Settings::default()
+        }))
+        .await
+        .unwrap();
+    // The update is answered with no event; poll the file.
+    let mut ok = false;
+    for _ in 0..50 {
+        let text = std::fs::read_to_string(paths.settings_toml()).unwrap_or_default();
+        if text.contains("org_layout = \"boxes\"") && text.contains("show_last_reply = false") {
+            ok = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(ok, "settings.toml keeps the layout and takes the change");
+    h.shutdown().await;
+    drop(server);
 }

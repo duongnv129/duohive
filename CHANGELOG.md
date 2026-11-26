@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+### Added
+
+- An **Org layout** setting (first run, Settings, the key `l`): grouped boxes at 100 columns and 30 rows or more, or the classic tree. The boxes are a Manager card for Duo (with a block-letter mark of its name and a status pill) and a box per team holding a box per role and the agents in it; the selected agent opens a second line with its state, time and last reply. Each team has a colour (teal, violet, slate or orchid), saved as `color` in `org.toml` and chosen in the team and top-level role forms (a `Colour` row). Below 100×30 both settings draw the compact tree.
+- Edit org shows the mark Duo's new name draws on the Manager card, as you type.
+
+### Changed
+
+- The tree's team and role icons and names take the team colour, and its selected row a wash of that colour (Duo's the Manager colour). A `settings.toml` with no `org_layout` keeps the tree, so an existing install looks the same.
+- The last-reply setting (`v`) also controls the boxes' second line; its Settings row now reads `Last reply` and its right-click row `Hide reply` / `Show reply`. Settings' Org note now reads `e on the Manager card (Edit org)`.
+- `enter` on the Duo row of first-run step 1 moves on to the layout row, and `enter` there moves to Next.
+
 ## [0.1.0-alpha.5] - 2026-11-15
 
 ### Added

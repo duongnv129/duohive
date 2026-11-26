@@ -16,12 +16,12 @@ expression: wide
 │  ctrl+↑↓   resize chat                                d     delete (stopped)                               @ /        agents / commands                      │
 │                                                       z     zoom agent                                     PgUp/Dn    scroll history                         │
 │Mouse                                                  v     last reply on/off                                                                                │
-│  click     select                                     o     open org.toml                                Card dialog                                         │
-│  right     node menu                                                                                       y e n      approve/edit/reject                    │
-│  wheel     scroll                                   Needs you                                              ←→↑↓ enter choose a button, press it              │
-│  drag      move node                                  ↑↓    move                                           esc        close; the card stays                  │
+│  click     select                                     l     org layout                                   Card dialog                                         │
+│  right     node menu                                  o     open org.toml                                  y e n      approve/edit/reject                    │
+│  wheel     scroll                                                                                          ←→↑↓ enter choose a button, press it              │
+│  drag      move node                                Needs you                                              esc        close; the card stays                  │
+│                                                       ↑↓    move                                                                                             │
 │                                                       enter go to agent or card                                                                              │
-│                                                                                                                                                              │
 │                                                                                                                                                              │
 │                                                                                                                                                              │
 │                                                                                                                                                              │

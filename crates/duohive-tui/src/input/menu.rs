@@ -122,9 +122,9 @@ fn row(m: &UiModel, node: &NodeKey, action: ActionId) -> MenuRow {
         ActionId::Worktrees => ("Worktrees", None),
         ActionId::LastReply => (
             if m.settings.show_last_reply {
-                "Hide replies"
+                "Hide reply"
             } else {
-                "Show replies"
+                "Show reply"
             },
             None,
         ),

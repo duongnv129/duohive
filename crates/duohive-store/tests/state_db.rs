@@ -183,17 +183,23 @@ fn db_file_and_dir_are_owner_only() {
     assert_eq!(dir & 0o077, 0, "dir mode {dir:o}");
 }
 
+/// `org` as a save writes it and a load reads it back: every effective colour spelled out.
+fn fixed(mut org: duohive_core::org::Org) -> duohive_core::org::Org {
+    org.fix_colours();
+    org
+}
+
 #[test]
 fn store_load_org_uses_org_file_and_last_good() {
     let (_t, paths) = temp_paths();
     let mut store = SqliteStore::open(&paths).unwrap();
     assert_eq!(store.load_org(), Ok(None));
     store.save_org(&example_org()).unwrap();
-    assert_eq!(store.load_org(), Ok(Some(example_org())));
+    assert_eq!(store.load_org(), Ok(Some(fixed(example_org()))));
     std::fs::write(paths.org_toml(), "cli = \"claud\"\n").unwrap();
     let err = store.load_org().unwrap_err();
     assert!(err.line.is_some());
-    assert_eq!(store.last_good_org(), Some(example_org()));
+    assert_eq!(store.last_good_org(), Some(fixed(example_org())));
 }
 
 #[test]
@@ -204,11 +210,11 @@ fn mark_last_good_writes_last_good_and_load_does_not() {
     // Hand-write a valid org.toml via a scratch save, then drop last-good.
     store.save_org(&org).unwrap();
     std::fs::remove_file(paths.org_last_good()).unwrap();
-    assert_eq!(store.load_org(), Ok(Some(org.clone())));
+    assert_eq!(store.load_org(), Ok(Some(fixed(org.clone()))));
     assert!(!paths.org_last_good().exists());
     assert_eq!(store.last_good_org(), None);
     store.mark_last_good(&org).unwrap();
-    assert_eq!(store.last_good_org(), Some(org));
+    assert_eq!(store.last_good_org(), Some(fixed(org)));
 }
 
 #[test]
@@ -278,7 +284,7 @@ fn save_org_reports_a_last_good_failure_as_saved() {
     std::fs::create_dir(paths.org_last_good()).unwrap();
     let err = store.save_org(&example_org()).unwrap_err();
     assert!(err.0.contains("org.toml was saved"), "{}", err.0);
-    assert_eq!(store.load_org(), Ok(Some(example_org())));
+    assert_eq!(store.load_org(), Ok(Some(fixed(example_org()))));
     assert!(!paths.data_dir.join("org.last-good.toml.tmp").exists());
 }
 

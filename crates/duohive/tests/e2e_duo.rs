@@ -137,6 +137,7 @@ fn role(name: &str, agents: &[&str], defaults: Fields) -> Role {
                 fields: Fields::default(),
             })
             .collect(),
+        color: None,
     }
 }
 
@@ -155,6 +156,7 @@ fn duo_org(work: &Path) -> Org {
             ),
             role("QA", &["pay-qa"], Fields::default()),
         ],
+        color: None,
     }];
     org.roles = vec![role("Generalist", &["squad-1", "squad-2"], fields(work))];
     org

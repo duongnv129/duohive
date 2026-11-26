@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use duohive_core::colour::TeamColour;
 use duohive_core::command::{OrgEdit, RoleDraft};
 use duohive_core::inherit::inherited_for;
 use duohive_core::names::NodeName;
@@ -46,7 +47,11 @@ impl Form {
         };
         let target = Target::NewRole(team.cloned());
         let parent = parent(team);
-        let mut fields = group_fields(org, &parent, "", &Fields::default(), "Role prompt");
+        // A role in a team takes its team's colour, so only a top-level role has the row.
+        let colour = team
+            .is_none()
+            .then(|| TeamColour::next_free(&org.sibling_colours()));
+        let mut fields = group_fields(org, &parent, "", &Fields::default(), "Role prompt", colour);
         fields.push(Field::count(FieldId::Agents, "Agents", "1", top(0)));
         group_form(org, &parent, title, target, fields).ready(org, dirs, home)
     }
@@ -59,7 +64,12 @@ impl Form {
         );
         let own = find_role(org, key).unwrap_or_default();
         let parent = parent(key.team.as_ref());
-        let fields = group_fields(org, &parent, key.role.as_str(), &own, "Role prompt");
+        let colour = key
+            .team
+            .is_none()
+            .then(|| org.colour_of(&NodeKey::Role(key.clone())))
+            .flatten();
+        let fields = group_fields(org, &parent, key.role.as_str(), &own, "Role prompt", colour);
         group_form(org, &parent, title, Target::EditRole(key.clone()), fields)
             .ready(org, dirs, home)
     }
@@ -87,6 +97,7 @@ pub(super) fn group_fields(
     name: &str,
     own: &Fields,
     prompt_label: &str,
+    colour: Option<TeamColour>,
 ) -> Vec<Field> {
     let inherited = inherited_for(org, parent);
     let from = match parent {
@@ -99,7 +110,7 @@ pub(super) fn group_fields(
         )),
         ..default_look(0)
     };
-    vec![
+    let mut fields = vec![
         Field::text(FieldId::Name, "Name", Some(name), top(20)),
         cli_choice(&inherited, own.cli, cli_look),
         Field::text(
@@ -132,7 +143,24 @@ pub(super) fn group_fields(
         .with_placeholder(placeholder(inherited.flags.as_ref())),
         worktree_choice(&inherited, own.worktree, default_look(0)),
         Field::prompt(prompt_label, own.prompt.as_deref(), top(48)),
-    ]
+    ];
+    if let Some(c) = colour {
+        fields.insert(1, colour_field(c));
+    }
+    fields
+}
+
+/// The Colour row: the four hue names, `←` `→` or a click choosing one (UI §4.4.1).
+pub(super) fn colour_field(selected: TeamColour) -> Field {
+    let names = TeamColour::ALL
+        .iter()
+        .map(|c| c.name().to_owned())
+        .collect();
+    let at = TeamColour::ALL
+        .iter()
+        .position(|c| *c == selected)
+        .unwrap_or(0);
+    Field::choices(FieldId::Colour, "Colour", names, at, top(0))
 }
 
 /// A role or team form over `fields`, inheriting from `parent`.
@@ -153,6 +181,7 @@ pub(super) fn edit(f: &Form) -> Option<OrgEdit> {
     let draft = RoleDraft {
         name: NodeName::parse(f.field(FieldId::Name)?.edit.text()).ok()?,
         defaults: f.fields_value(),
+        color: f.colour_value(),
     };
     Some(match &f.target {
         Target::NewRole(team) => OrgEdit::AddRole {

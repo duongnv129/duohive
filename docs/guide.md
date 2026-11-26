@@ -21,7 +21,7 @@ Choose the CLI and the directories, then select *Create org*. Everything can be 
 
 ## 2. The screen
 
-- **Org** (top left): your teams, roles and agents, each with a status: `●` working, `◆` waiting on you, `✓` finished, `◦` idle, `○` stopped, `✕` errored.
+- **Org** (top left): your teams, roles and agents, each with a status (grouped boxes in a colour per team, with Duo as the Manager card above them, or the classic tree: switch with `l`, at 100×30 or larger): `●` working, `◆` waiting on you, `✓` finished, `◦` idle, `○` stopped, `✕` errored.
 - **Needs you** (below it): everything blocked on you, oldest first. Start here.
 - **Agent pane** (right): the live terminal of the selected agent.
 - **Duo pane** (bottom): chat with Duo, your manager agent.

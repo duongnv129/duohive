@@ -1,7 +1,7 @@
 //! Settings (UI §4.10, P2-D13): You, Attention and Look, saved as they change, and where
 //! the org's own settings live.
 
-use duohive_core::settings::Theme;
+use duohive_core::settings::{OrgLayout, Theme};
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Style;
@@ -22,18 +22,18 @@ const GROUP_X: u16 = 2;
 const LABEL_X: u16 = 4;
 /// The label column: the control's marker sits in its last cell, so controls line up.
 const LABEL_W: u16 = 20;
-/// `Last reply under agents`, which the mock-up runs straight into its checkbox.
-const LAST_REPLY: &str = "Last reply under agents";
+/// `Last reply`, which the mock-up runs straight into its checkbox.
+const LAST_REPLY: &str = "Last reply";
 /// Cells a text box gives the text while it is being typed in.
 const BOX_W: usize = 14;
 const FOCUS: &str = "▌";
 const TITLE: &str = "Settings · saved to settings.toml";
 const FOOTER: &str = "changes save immediately · esc back";
-const ORG_NOTE: &str = "org defaults and Duo: e on Duo (Edit org)";
+const ORG_NOTE: &str = "org defaults and Duo: e on the Manager card (Edit org)";
 const BROKEN: &str = "settings.toml has an error · changes last until DuoHive quits";
-/// Border, blank, 3 headings and 5 control lines, the Keys row, the Org heading and its
+/// Border, blank, 3 headings and 6 control lines, the Keys row, the Org heading and its
 /// text, a note line, a blank, the footer, border.
-const HEIGHT: u16 = 16;
+const HEIGHT: u16 = 17;
 
 /// One control or piece of text on a line.
 struct Piece {
@@ -86,6 +86,15 @@ fn text_box(st: &SettingsState, row: SettingsRow, shown: &str) -> Piece {
 /// `[x]`, `[ ]`: the state in characters, not colour.
 fn check(on: bool) -> &'static str {
     if on { "[x]" } else { "[ ]" }
+}
+
+/// `boxes` or `tree`; `boxes` says what it needs while the screen is too small (UI §4.10).
+fn layout_word(l: OrgLayout, too_small: bool) -> &'static str {
+    match (l, too_small) {
+        (OrgLayout::Boxes, true) => "boxes (needs 100×30)",
+        (OrgLayout::Boxes, false) => "boxes",
+        (OrgLayout::Tree, _) => "tree",
+    }
 }
 
 fn theme_word(t: Theme) -> &'static str {
@@ -215,28 +224,35 @@ pub(super) fn draw(
         &format!("[ {} ▾ ]", theme_word(s.theme)),
     );
     labelled(buf, 8, "Theme", &[theme]);
+    let too_small = s.org_layout == OrgLayout::Boxes && crate::focus::is_compact(area);
+    let layout = control(
+        st,
+        SettingsRow::OrgLayout,
+        &format!("[ {} ▾ ]", layout_word(s.org_layout, too_small)),
+    );
+    labelled(buf, 9, "Org layout", &[layout]);
     let reply = control(st, SettingsRow::LastReply, check(s.show_last_reply));
     let motion = control(st, SettingsRow::ReduceMotion, check(s.reduce_motion));
-    put(buf, label_x, at(9), LAST_REPLY, room, muted);
+    put(buf, label_x, at(10), LAST_REPLY, room, muted);
     let reply_x = label_x + u16::try_from(LAST_REPLY.chars().count()).unwrap_or(0);
     draw_pieces(
         buf,
         r,
-        (reply_x, at(9)),
+        (reply_x, at(10)),
         &[reply, plain("  Reduce motion"), motion],
         p,
     );
 
     let keys = control(st, SettingsRow::Keys, "[ Edit key bindings → ]");
-    put(buf, r.x + 1 + GROUP_X, at(10), "Keys", room, muted);
-    draw_pieces(buf, r, (control_x, at(10)), &[keys], p);
+    put(buf, r.x + 1 + GROUP_X, at(11), "Keys", room, muted);
+    draw_pieces(buf, r, (control_x, at(11)), &[keys], p);
 
-    group(buf, 11, "Org");
+    group(buf, 12, "Org");
     let org = control(st, SettingsRow::Org, "[ New org from template… ]");
-    draw_pieces(buf, r, (control_x, at(11)), &[org], p);
-    put(buf, label_x, at(12), ORG_NOTE, room, muted);
+    draw_pieces(buf, r, (control_x, at(12)), &[org], p);
+    put(buf, label_x, at(13), ORG_NOTE, room, muted);
     if m.settings_error.is_some() {
-        put(buf, label_x, at(13), BROKEN, room, fg(p.attention));
+        put(buf, label_x, at(14), BROKEN, room, fg(p.attention));
     }
     put(buf, r.x + 1 + GROUP_X, at(HEIGHT - 2), FOOTER, room, muted);
     cursor

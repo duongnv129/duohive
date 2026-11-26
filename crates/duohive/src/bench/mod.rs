@@ -368,6 +368,7 @@ fn bench_org(names: &[AgentName], dir: &Path) -> Org {
                 ..Fields::default()
             },
             agents,
+            color: None,
         }];
     }
     org

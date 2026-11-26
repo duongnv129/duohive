@@ -16,12 +16,12 @@ expression: "render_lines(&help_model(), &ctx(), 100, 30).join(\"\\n\")"
 │  ctrl+↑↓   resize chat            d     delete (stopped)           @ /        agents / commands  │
 │                                   z     zoom agent                 PgUp/Dn    scroll history     │
 │Mouse                              v     last reply on/off                                        │
-│  click     select                 o     open org.toml            Card dialog                     │
-│  right     node menu                                               y e n      approve/edit/rejec │
-│  wheel     scroll               Needs you                          ←→↑↓ enter choose a button, p │
-│  drag      move node              ↑↓    move                       esc        close; the card st │
+│  click     select                 l     org layout               Card dialog                     │
+│  right     node menu              o     open org.toml              y e n      approve/edit/rejec │
+│  wheel     scroll                                                  ←→↑↓ enter choose a button, p │
+│  drag      move node            Needs you                          esc        close; the card st │
+│                                   ↑↓    move                                                     │
 │                                   enter go to agent or card                                      │
-│                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │
 │                                                                                                  │

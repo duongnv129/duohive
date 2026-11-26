@@ -1,19 +1,20 @@
 //! The org pane: the tree with state cells and roll-ups, Needs you pinned at its bottom.
 
 use duohive_core::names::AgentName;
-use duohive_core::org::NodeKey;
+use duohive_core::org::{NodeKey, Org};
+use duohive_core::settings::OrgLayout;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Modifier;
+use ratatui::style::{Color, Modifier, Style};
 
 use super::{
-    At, RenderCtx, draw_box, fg, focus_title, glyph_color, needs_you, pane_style, put, put_pieces,
-    state_color,
+    At, RenderCtx, draw_box, fg, focus_title, glyph_color, needs_you, org_boxes, pane_style, put,
+    put_pieces, state_color,
 };
 use crate::focus::{Layout, Pane};
 use crate::format::{quoted, truncate_end, truncate_middle, width, wrap_capped};
 use crate::model::UiModel;
-use crate::theme::Palette;
+use crate::theme::{Look, Palette};
 use crate::tree::{TreeRow, TreeRowKind, agent_right, tree_rows};
 
 /// The right column: the 16-cell state cell plus one blank, or 7 + 1 when compact.
@@ -33,9 +34,33 @@ struct Slot {
     label_width: usize,
 }
 
+/// The layout actually drawn: the boxes only when chosen and the screen is not compact
+/// (UI §3); every other case is the tree.
+pub(crate) fn drawn_layout(setting: OrgLayout, compact: bool) -> OrgLayout {
+    if setting == OrgLayout::Boxes && !compact {
+        OrgLayout::Boxes
+    } else {
+        OrgLayout::Tree
+    }
+}
+
+/// Draws the org pane in the layout [`drawn_layout`] picks.
 pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
+    match drawn_layout(ctx.settings.org_layout, l.compact) {
+        OrgLayout::Tree => draw_tree(buf, l, m, ctx, replies),
+        OrgLayout::Boxes => org_boxes::draw(buf, l, m, ctx, replies),
+    }
+}
+
+/// The pane's frame, its title and Needs you, which both layouts share: the whole pane's
+/// rectangle and how many rows of it are the org's own, or `None` when it is too small.
+pub(super) fn draw_frame(
+    buf: &mut Buffer,
+    l: &Layout,
+    m: &UiModel,
+    ctx: &RenderCtx,
+) -> Option<(Rect, usize)> {
     let p = &ctx.palette;
-    let compact = l.compact;
     let r = Rect {
         height: l.org.height + l.needs_you.height,
         ..l.org
@@ -45,11 +70,17 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
     if m.focus.pane == Pane::Org {
         focus_title(buf, r, "Org", p);
     }
-    needs_you::draw(buf, l.needs_you, m, ctx, compact);
-    if r.width < 6 || l.org.height < 2 {
+    needs_you::draw(buf, l.needs_you, m, ctx, l.compact);
+    (r.width >= 6 && l.org.height >= 2).then(|| (r, usize::from(l.org.height - 1)))
+}
+
+fn draw_tree(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, replies: bool) {
+    let p = &ctx.palette;
+    let compact = l.compact;
+    let Some((r, tree_h)) = draw_frame(buf, l, m, ctx) else {
         return;
-    }
-    let tree_h = l.org.height - 1;
+    };
+    let tree_h = u16::try_from(tree_h).unwrap_or(u16::MAX);
     let content = usize::from(r.width - 4);
     let rows = wrap_problems(tree_rows(m, compact, replies, ctx.now), content);
     let right = if compact { COMPACT_RIGHT } else { WIDE_RIGHT };
@@ -66,18 +97,22 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
                     height: 1,
                 };
                 buf.set_style(bar, p.selected());
-                put(buf, r.x + 1, y, "▹", 1, fg(p.border_focus));
+                put(buf, r.x + 1, y, "▹", 1, fg(p.fg));
             }
         }
-        if row.key.as_ref() == Some(&m.selected) {
+        let selected = row.key.as_ref() == Some(&m.selected);
+        if let (true, Some(key)) = (selected, &row.key) {
+            let (bar_colour, wash) = selection_colours(p, &m.org, key);
             let bar = Rect {
                 x: r.x + 1,
                 y,
                 width: r.width - 2,
                 height: 1,
             };
-            buf.set_style(bar, p.selected());
-            put(buf, r.x + 1, y, "▌", 1, fg(p.border_focus));
+            if let Some(wash) = wash {
+                buf.set_style(bar, Style::default().bg(wash));
+            }
+            put(buf, r.x + 1, y, "▌", 1, fg(bar_colour));
         }
         let slot = Slot {
             x: r.x + 2,
@@ -85,13 +120,31 @@ pub(super) fn draw(buf: &mut Buffer, l: &Layout, m: &UiModel, ctx: &RenderCtx, r
             width: content,
             label_width: content.saturating_sub(right),
         };
-        draw_row(buf, &slot, row, m, ctx, compact);
+        draw_row(buf, &slot, row, m, ctx, (compact, selected));
+    }
+}
+
+/// The `▌` bar's colour and the wash behind a selected tree row (UI §4.1.6): the node's hue
+/// and the hue at 30% over `bg`; Duo's `manager` colour and 26%. Under `auto` and `NO_COLOR`
+/// no background is painted, so there is no wash.
+fn selection_colours(p: &Palette, org: &Org, key: &NodeKey) -> (Color, Option<Color>) {
+    let paints = matches!(p.look, Look::Dark | Look::Light);
+    match (key, org.colour_of(key)) {
+        (NodeKey::Duo, _) | (_, None) => (p.manager, paints.then(|| p.tint_manager(26))),
+        (_, Some(c)) => (p.hue(c), paints.then(|| p.tint(c, 30))),
     }
 }
 
 /// The node drawn on screen row `y` of the tree, as [`draw`] lays it out; a detail line
 /// (a reply, a problem) belongs to the node above it.
 pub(super) fn key_at(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
+    match drawn_layout(m.settings.org_layout, l.compact) {
+        OrgLayout::Tree => key_at_tree(l, m, replies, y),
+        OrgLayout::Boxes => org_boxes::key_at(l, m, replies, y),
+    }
+}
+
+fn key_at_tree(l: &Layout, m: &UiModel, replies: bool, y: u16) -> Option<NodeKey> {
     let r = l.org;
     if r.width < 6 || r.height < 2 || y <= r.y {
         return None;
@@ -142,6 +195,13 @@ fn top_row(rows: &[TreeRow], m: &UiModel, height: usize) -> usize {
 
 /// The tree after one wheel tick: the top row moves by `lines`, the selection stays.
 pub(super) fn wheel(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
+    match drawn_layout(m.settings.org_layout, l.compact) {
+        OrgLayout::Tree => wheel_tree(l, m, replies, up, lines),
+        OrgLayout::Boxes => org_boxes::wheel(l, m, replies, up, lines),
+    }
+}
+
+fn wheel_tree(l: &Layout, m: &mut UiModel, replies: bool, up: bool, lines: usize) {
     let r = l.org;
     if r.width < 6 || r.height < 2 {
         return;
@@ -179,9 +239,11 @@ fn draw_row(
     row: &TreeRow,
     m: &UiModel,
     ctx: &RenderCtx,
-    compact: bool,
+    (compact, selected): (bool, bool),
 ) {
     let p = &ctx.palette;
+    // On the selected row every text is `fg`, which holds 4.5:1 on the wash (UI §6).
+    let quiet = if selected { p.fg } else { p.fg_muted };
     let x = put(buf, s.x, s.y, &row.prefix, s.width, fg(p.fg_muted));
     let used = width(&row.prefix);
     let detail_room = s.width.saturating_sub(used);
@@ -201,19 +263,22 @@ fn draw_row(
             );
             let rest = label_room.saturating_sub(width(&head));
             let tail = row.label.strip_prefix(head.as_str()).unwrap_or_default();
-            put(buf, x, s.y, tail, rest, fg(p.fg_muted));
+            put(buf, x, s.y, tail, rest, fg(quiet));
         }
         TreeRowKind::Team | TreeRowKind::Role => {
-            let (glyph, name) = row.label.split_at(row.label.find(' ').map_or(0, |i| i + 1));
-            let x = put(buf, x, s.y, glyph, label_room, fg(p.fg_muted));
-            let room = label_room.saturating_sub(width(glyph));
-            put(buf, x, s.y, &truncate_middle(name, room), room, fg(p.fg));
+            let colours = GroupColours::of(row, m, p, selected);
+            draw_group(buf, (x, s.y), &row.label, label_room, &colours);
         }
         TreeRowKind::Agent => {
             let inbox = envelope(row.inbox, compact);
             let name_room = label_room.saturating_sub(width(&inbox));
             let name = truncate_middle(&row.label, name_room);
-            let x = put(buf, x, s.y, &name, name_room, fg(p.fg));
+            let name_style = if selected {
+                fg(p.emphasis()).add_modifier(Modifier::BOLD)
+            } else {
+                fg(p.fg)
+            };
+            let x = put(buf, x, s.y, &name, name_room, name_style);
             put(buf, x, s.y, &inbox, label_room - width(&name), fg(p.fg));
         }
         TreeRowKind::Reply => {
@@ -254,10 +319,49 @@ fn draw_row(
         room: s.width.saturating_sub(s.label_width),
     };
     match (&row.kind, &row.key) {
-        (TreeRowKind::Duo, _) => draw_state(buf, at, &m.org.duo.name, m, ctx, compact),
-        (TreeRowKind::Agent, Some(NodeKey::Agent(a))) => draw_state(buf, at, a, m, ctx, compact),
-        _ => draw_roll_up(buf, at, &row.right, &ctx.palette),
+        (TreeRowKind::Duo, _) => draw_state(buf, at, &m.org.duo.name, m, ctx, (compact, selected)),
+        (TreeRowKind::Agent, Some(NodeKey::Agent(a))) => {
+            draw_state(buf, at, a, m, ctx, (compact, selected));
+        }
+        _ => draw_roll_up(buf, at, &row.right, &ctx.palette, selected),
     }
+}
+
+/// The colours of a team's or role's glyph and name (UI §2.3, §4.1.6).
+struct GroupColours {
+    glyph: Style,
+    name: Style,
+}
+
+impl GroupColours {
+    /// Not selected: the glyph and name in the node's hue, bold. Selected: the glyph in `fg`
+    /// and the name bold, white on `dark`, so the hue stays in the bar and the wash.
+    fn of(row: &TreeRow, m: &UiModel, p: &Palette, selected: bool) -> Self {
+        let bold = Modifier::BOLD;
+        if selected {
+            return Self {
+                glyph: fg(p.fg),
+                name: fg(p.emphasis()).add_modifier(bold),
+            };
+        }
+        let hue = row
+            .key
+            .as_ref()
+            .and_then(|k| m.org.colour_of(k))
+            .map_or(p.fg, |c| p.hue(c));
+        Self {
+            glyph: fg(hue).add_modifier(bold),
+            name: fg(hue).add_modifier(bold),
+        }
+    }
+}
+
+/// A team or role row's label: the glyph, then the name cut in the middle to fit.
+fn draw_group(buf: &mut Buffer, (x, y): (u16, u16), label: &str, room: usize, c: &GroupColours) {
+    let (glyph, name) = label.split_at(label.find(' ').map_or(0, |i| i + 1));
+    let x = put(buf, x, y, glyph, room, c.glyph);
+    let left = room.saturating_sub(width(glyph));
+    put(buf, x, y, &truncate_middle(name, left), left, c.name);
 }
 
 /// ` ✉ 1` after an agent's name, ` ✉1` in the compact tree (UI §4.1); empty with none.
@@ -277,7 +381,7 @@ fn draw_state(
     agent: &AgentName,
     m: &UiModel,
     ctx: &RenderCtx,
-    compact: bool,
+    (compact, selected): (bool, bool),
 ) {
     let p = &ctx.palette;
     let status = &m.view(agent).status;
@@ -287,24 +391,32 @@ fn draw_state(
     let (marker, rest) = cell.split_at(1.min(cell.len()));
     let (state, age) = rest.split_at(rest.len().saturating_sub(AGE_CELLS));
     let text = |chars: &[char]| chars.iter().collect::<String>();
-    let colour = state_color(p, status);
+    let colour = if selected {
+        p.fg
+    } else {
+        state_color(p, status)
+    };
     // Under `auto` only the glyph carries the state's colour; the word is muted.
     let (glyph, word) = state.split_at(if p.glyph_only { 1.min(state.len()) } else { 0 });
-    let word_colour = if p.glyph_only { p.fg_muted } else { colour };
+    let word_colour = if p.glyph_only && !selected {
+        p.fg_muted
+    } else {
+        colour
+    };
     let parts = [
         (text(marker), p.fg),
         (text(glyph), colour),
         (text(word), word_colour),
-        (text(age), p.fg_muted),
+        (text(age), if selected { p.fg } else { p.fg_muted }),
     ];
     put_pieces(buf, at, parts);
 }
 
 /// A roll-up, each `glyph count` pair in its glyph's colour; the `~` marker in plain text.
-fn draw_roll_up(buf: &mut Buffer, at: At, text: &str, p: &Palette) {
+fn draw_roll_up(buf: &mut Buffer, at: At, text: &str, p: &Palette, selected: bool) {
     let mut current = p.fg;
     let pieces = text.chars().map(|c| {
-        if matches!(c, '●' | '◆' | '◷' | '✕') {
+        if matches!(c, '●' | '◆' | '◷' | '✕') && !selected {
             current = glyph_color(p, c);
         }
         let color = if c == '~' { p.fg } else { current };

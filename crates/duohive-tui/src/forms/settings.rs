@@ -1,6 +1,6 @@
 //! The Settings screen's state and the pure changes its controls make (UI §4.10).
 
-use duohive_core::settings::{Settings, Theme};
+use duohive_core::settings::{OrgLayout, Settings, Theme};
 
 use super::LineEdit;
 
@@ -20,7 +20,9 @@ pub enum SettingsRow {
     Finished,
     /// Theme.
     Theme,
-    /// Last reply under agents.
+    /// How the org pane is drawn.
+    OrgLayout,
+    /// Last reply: where the layout shows it.
     LastReply,
     /// Reduce motion.
     ReduceMotion,
@@ -32,12 +34,13 @@ pub enum SettingsRow {
 
 impl SettingsRow {
     /// Every control, top to bottom.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Name,
         Self::Quiet,
         Self::NeedsYou,
         Self::Finished,
         Self::Theme,
+        Self::OrgLayout,
         Self::LastReply,
         Self::ReduceMotion,
         Self::Keys,
@@ -91,6 +94,7 @@ pub fn toggled(s: &Settings, row: SettingsRow) -> Settings {
         SettingsRow::LastReply => out.show_last_reply = !s.show_last_reply,
         SettingsRow::ReduceMotion => out.reduce_motion = !s.reduce_motion,
         SettingsRow::Theme => out.theme = cycled(s.theme, true),
+        SettingsRow::OrgLayout => out.org_layout = other_layout(s.org_layout),
         SettingsRow::Name | SettingsRow::Quiet | SettingsRow::Keys | SettingsRow::Org => {}
     }
     out
@@ -102,6 +106,14 @@ pub fn cycled(t: Theme, forward: bool) -> Theme {
         (Theme::Auto, true) | (Theme::Light, false) => Theme::Dark,
         (Theme::Dark, true) | (Theme::Auto, false) => Theme::Light,
         (Theme::Light, true) | (Theme::Dark, false) => Theme::Auto,
+    }
+}
+
+/// The other layout: with two, forwards and backwards agree.
+pub fn other_layout(l: OrgLayout) -> OrgLayout {
+    match l {
+        OrgLayout::Tree => OrgLayout::Boxes,
+        OrgLayout::Boxes => OrgLayout::Tree,
     }
 }
 
@@ -134,5 +146,25 @@ pub fn name_typed(s: &Settings, text: &str) -> Settings {
     Settings {
         your_name: (!name.is_empty()).then(|| name.to_owned()),
         ..s.clone()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_org_layout_row_cycles_tree_and_boxes() {
+        assert!(SettingsRow::ALL.contains(&SettingsRow::OrgLayout));
+        assert_eq!(SettingsRow::Theme.next(), SettingsRow::OrgLayout);
+        assert_eq!(SettingsRow::OrgLayout.next(), SettingsRow::LastReply);
+        let tree = Settings::default();
+        assert_eq!(tree.org_layout, OrgLayout::Tree);
+        let boxes = toggled(&tree, SettingsRow::OrgLayout);
+        assert_eq!(boxes.org_layout, OrgLayout::Boxes);
+        assert_eq!(
+            toggled(&boxes, SettingsRow::OrgLayout).org_layout,
+            OrgLayout::Tree
+        );
     }
 }

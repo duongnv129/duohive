@@ -1,5 +1,6 @@
 //! Colour tokens (UI §2.3) and the palettes that map them.
 
+use duohive_core::colour::TeamColour;
 use duohive_core::settings::Theme;
 use ratatui::buffer::Buffer;
 use ratatui::style::{Color, Modifier, Style};
@@ -44,6 +45,42 @@ pub struct Palette {
     pub bold_marks: bool,
     /// Status colour goes on the glyph only; the word is `fg.muted` (P2-D27).
     pub glyph_only: bool,
+    /// `manager`: the Manager card's colour (UI §2.3).
+    pub manager: Color,
+    /// Which table of hues and pills applies.
+    pub(crate) look: Look,
+}
+
+/// The four ways a palette treats hues (UI §2.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Look {
+    /// Own hues, washes and pills, on a dark screen.
+    Dark,
+    /// Own hues, washes and pills, on a light screen.
+    Light,
+    /// The terminal's ANSI colours and reverse video; no background is painted.
+    Auto,
+    /// No colour at all.
+    Mono,
+}
+
+/// A state the Manager card's status pill can show (UI §2.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pill {
+    /// Idle.
+    Idle,
+    /// Starting.
+    Starting,
+    /// Working.
+    Working,
+    /// Waiting.
+    Waiting,
+    /// Quiet.
+    Quiet,
+    /// Errored.
+    Errored,
+    /// Stopped.
+    Stopped,
 }
 
 #[expect(
@@ -76,6 +113,8 @@ impl Palette {
             border_focused: border,
             bold_marks: false,
             glyph_only: true,
+            manager: hex(0xEDE6D6),
+            look: Look::Dark,
         }
     }
 
@@ -100,6 +139,8 @@ impl Palette {
             border_focused: border,
             bold_marks: false,
             glyph_only: true,
+            manager: hex(0x5C5646),
+            look: Look::Light,
         }
     }
 
@@ -123,6 +164,8 @@ impl Palette {
             border_focused: DIM_BORDER,
             bold_marks: true,
             glyph_only: true,
+            manager: Color::Reset,
+            look: Look::Auto,
         }
     }
 
@@ -137,6 +180,98 @@ impl Palette {
             style.add_modifier(Modifier::BOLD)
         } else {
             style
+        }
+    }
+
+    /// The colour of a selected row's bold name: white on `dark` (a wash behind it), else `fg`.
+    pub fn emphasis(&self) -> Color {
+        if self.look == Look::Dark {
+            hex(0xFFFFFF)
+        } else {
+            self.fg
+        }
+    }
+
+    /// A team's hue: its own colour on `dark` and `light`, the ANSI colour under `auto`
+    /// (`slate` is `fg.muted`), none under `NO_COLOR`.
+    pub fn hue(&self, c: TeamColour) -> Color {
+        let table = match self.look {
+            Look::Dark => [0x4FB8B0, 0xA08AE6, 0x8B93A7, 0xD48AC0],
+            Look::Light => [0x1F7A74, 0x5B45B0, 0x4F566B, 0x9B3F86],
+            Look::Auto => {
+                return match c {
+                    TeamColour::Teal => Color::Cyan,
+                    TeamColour::Violet => Color::Magenta,
+                    TeamColour::Slate => self.fg_muted,
+                    TeamColour::Orchid => Color::LightMagenta,
+                };
+            }
+            Look::Mono => return Color::Reset,
+        };
+        let at = TeamColour::ALL.iter().position(|x| *x == c).unwrap_or(0);
+        hex(table[at])
+    }
+
+    /// The hue at `percent` over `bg` (a wash). Under `auto` there is no background to paint,
+    /// so it is the hue's ANSI colour and the painter paints no wash; under mono, nothing.
+    pub fn tint(&self, c: TeamColour, percent: u8) -> Color {
+        self.tint_with(self.hue(c), percent)
+    }
+
+    /// `manager` at `percent` over `bg`.
+    pub fn tint_manager(&self, percent: u8) -> Color {
+        self.tint_with(self.manager, percent)
+    }
+
+    /// `top` at `percent` over `bg`, per channel, rounded to nearest with ties up. Only the
+    /// RGB palettes blend; any other colour is returned as it is.
+    pub fn tint_with(&self, top: Color, percent: u8) -> Color {
+        let (Color::Rgb(tr, tg, tb), Color::Rgb(br, bg, bb)) = (top, self.bg) else {
+            return top;
+        };
+        let p = u32::from(percent.min(100));
+        let mix = |t: u8, b: u8| {
+            let v = (u32::from(t) * p + u32::from(b) * (100 - p) + 50) / 100;
+            u8::try_from(v).unwrap_or(u8::MAX)
+        };
+        Color::Rgb(mix(tr, br), mix(tg, bg), mix(tb, bb))
+    }
+
+    /// The Manager card's status pill: its background and its text. Under `auto` and
+    /// `NO_COLOR` the background is the status's ANSI colour (or none) and the painter
+    /// reverses it. Typed into, the card's fill is solid `manager`, so the pill takes a
+    /// tint that stands apart from it (UI §2.3).
+    pub fn pill(&self, pill: Pill, typed_into: bool) -> (Color, Color) {
+        let white = hex(0xFFFFFF);
+        let dark = self.look == Look::Dark;
+        let on_status = if dark { self.bg } else { white };
+        let status = |c: Color| (c, on_status);
+        match self.look {
+            Look::Mono => return (Color::Reset, Color::Reset),
+            Look::Auto => {
+                return match pill {
+                    Pill::Waiting | Pill::Quiet => (self.attention, Color::Reset),
+                    Pill::Errored => (self.error, Color::Reset),
+                    _ => (Color::Reset, Color::Reset),
+                };
+            }
+            Look::Dark | Look::Light => {}
+        }
+        match (pill, typed_into) {
+            (Pill::Waiting | Pill::Quiet, _) => status(self.attention),
+            (Pill::Errored, _) => status(self.error),
+            (Pill::Working, false) => (self.fg, self.bg),
+            (Pill::Working, true) => (white, if dark { self.bg } else { self.manager }),
+            (Pill::Idle | Pill::Starting, false) => (self.tint_manager(28), self.manager),
+            (Pill::Stopped, false) => (self.tint_manager(16), self.manager),
+            (Pill::Idle | Pill::Starting, true) => {
+                let tint = if dark { 0xC9C1AB } else { 0xE4DFD0 };
+                (hex(tint), if dark { self.bg } else { self.manager })
+            }
+            (Pill::Stopped, true) => {
+                let tint = if dark { 0xCFC8B6 } else { 0xD8D2C0 };
+                (hex(tint), if dark { self.bg } else { self.manager })
+            }
         }
     }
 
@@ -158,6 +293,8 @@ impl Palette {
             border_focused: Color::Reset,
             bold_marks: false,
             glyph_only: false,
+            manager: Color::Reset,
+            look: Look::Mono,
         }
     }
 }

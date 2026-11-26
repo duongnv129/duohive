@@ -146,6 +146,86 @@ pub fn spec_model() -> UiModel {
     m
 }
 
+/// UI §4.1's diagram: Payments (Backend with auth-service and billing-api, QA with pay-qa),
+/// Platform (Infra with infra-1 and infra-2), Duo idle with a pending approval card, and
+/// auth-service (selected, with `✉ 1`) running a test.
+pub fn five_agent_org() -> UiModel {
+    let role = |name: &str, agents: &[&str]| duohive_core::org::Role {
+        name: NodeName::parse(name).unwrap(),
+        defaults: Fields::default(),
+        agents: agents
+            .iter()
+            .map(|a| duohive_core::org::AgentDef {
+                name: n(a),
+                fields: Fields::default(),
+            })
+            .collect(),
+        color: None,
+    };
+    let team = |name: &str, roles: Vec<duohive_core::org::Role>| duohive_core::org::Team {
+        name: NodeName::parse(name).unwrap(),
+        defaults: Fields::default(),
+        roles,
+        color: None,
+    };
+    let mut org = Org::blank(CliKind::Claude);
+    org.teams = vec![
+        team(
+            "Payments",
+            vec![
+                role("Backend", &["auth-service", "billing-api"]),
+                role("QA", &["pay-qa"]),
+            ],
+        ),
+        team("Platform", vec![role("Infra", &["infra-1", "infra-2"])]),
+    ];
+    let mut m = model_for(org);
+    let views = [
+        (
+            "auth-service",
+            AgentView {
+                inbox: 1,
+                ..replied(
+                    status(AgentState::Working, mins(2)),
+                    "Running go test ./...",
+                )
+            },
+        ),
+        (
+            "billing-api",
+            replied(
+                status(AgentState::Waiting, mins(4)),
+                "Allow edit to api.go?",
+            ),
+        ),
+        ("infra-1", view(status(AgentState::Finished, mins(3)))),
+        ("infra-2", view(status(AgentState::Working, mins(1)))),
+    ];
+    for (name, v) in views {
+        m.agents.insert(n(name), v);
+    }
+    m.needs_you = vec![
+        NeedsYouItem {
+            agent: n("billing-api"),
+            state: AgentState::Waiting,
+            quiet: false,
+            since: ago(mins(4)),
+            excerpt: Some("Allow edit to api.go?".to_owned()),
+            card: None,
+        },
+        NeedsYouItem {
+            agent: n("Duo"),
+            state: AgentState::Waiting,
+            quiet: false,
+            since: ago(mins(2)),
+            excerpt: Some("Add pay-web".to_owned()),
+            card: Some(CardId(1)),
+        },
+    ];
+    m.selected = NodeKey::Agent(n("auth-service"));
+    m
+}
+
 /// Static glyphs (mock-ups draw `●`), dark palette.
 pub fn ctx() -> RenderCtx {
     RenderCtx {

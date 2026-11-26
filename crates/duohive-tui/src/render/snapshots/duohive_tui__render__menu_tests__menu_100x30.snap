@@ -8,18 +8,18 @@ expression: text
 ┃ ├─ ▣ Payments                                  ┃│   ○ stopped · space to give work               │
 ┃ │  ├─ ◇ Backend                                ┃│                                                │
 ┃ │  │  ├─ auth-service         ○ stopped    1d  ┃│                                                │
-┃ │  │  └─ billing-a┌─ pay-qa ────────────┐  1d  ┃│                                                │
-┃ │  └─ ◇ QA        │ Give work     space │      ┃│                                                │
-┃▌│     └─ pay-qa   │ Start         s     │  1d  ┃│                                                │
-┃ └─ ◇ Generalist   │ Resume…       r     │      ┃│                                                │
-┃    ├─ squad-1     │ Edit          e     │  1d  ┃│                                                │
-┃    ├─ squad-2     │ New here…     n     │  1d  ┃│                                                │
-┃    └─ squad-3     │ Move to…      m     │  1d  ┃│                                                │
-┃                   │ Delete        d     │      ┃│                                                │
-┃                   │ Zoom          z     │      ┃│                                                │
-┃                   │ Worktrees     w     │      ┃│                                                │
-┃                   │ Hide replies  v     │      ┃│                                                │
-┃                   └─────────────────────┘      ┃│                                                │
+┃ │  │  └─ billing-a┌─ pay-qa ──────────┐    1d  ┃│                                                │
+┃ │  └─ ◇ QA        │ Give work   space │        ┃│                                                │
+┃▌│     └─ pay-qa   │ Start       s     │    1d  ┃│                                                │
+┃ └─ ◇ Generalist   │ Resume…     r     │        ┃│                                                │
+┃    ├─ squad-1     │ Edit        e     │    1d  ┃│                                                │
+┃    ├─ squad-2     │ New here…   n     │    1d  ┃│                                                │
+┃    └─ squad-3     │ Move to…    m     │    1d  ┃│                                                │
+┃                   │ Delete      d     │        ┃│                                                │
+┃                   │ Zoom        z     │        ┃│                                                │
+┃                   │ Worktrees   w     │        ┃│                                                │
+┃                   │ Hide reply  v     │        ┃│                                                │
+┃                   └───────────────────┘        ┃│                                                │
 ┃                                                ┃│                                                │
 ┃                                                ┃│                                                │
 ┃                                                ┃│                                                │

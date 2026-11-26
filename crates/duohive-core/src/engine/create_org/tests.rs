@@ -7,6 +7,7 @@ use crate::cli_kind::CliKind;
 use crate::command::Command;
 use crate::engine::Input;
 use crate::event::Event;
+use crate::settings::OrgLayout;
 use crate::templates::{SquadInput, TemplateInput};
 
 use super::super::harness::{Harness, Setup, all_found};
@@ -34,6 +35,7 @@ fn create(h: &mut Harness, template: &TemplateInput, your_name: Option<&str>) {
         template: template.clone(),
         your_name: your_name.map(ToOwned::to_owned),
         duo_cli: CliKind::Claude,
+        org_layout: OrgLayout::Tree,
     });
 }
 
@@ -44,6 +46,7 @@ fn create_org_saves_the_org_and_starts_no_agent() {
         template: template(),
         your_name: None,
         duo_cli: CliKind::Claude,
+        org_layout: OrgLayout::Tree,
     });
     assert!(events.contains(&Event::OrgCreated));
     assert!(h.calls().is_empty(), "no agent starts");
@@ -63,6 +66,7 @@ fn create_org_sets_your_name_and_duo_cli() {
         template: TemplateInput::Blank,
         your_name: Some(" Duong ".into()),
         duo_cli: CliKind::Opencode,
+        org_layout: OrgLayout::Tree,
     });
     let settings = h.store.state.lock().expect("lock").saved_settings.clone();
     assert_eq!(
@@ -81,6 +85,7 @@ fn create_org_refused_when_an_org_exists() {
         template: template(),
         your_name: None,
         duo_cli: CliKind::Claude,
+        org_layout: OrgLayout::Tree,
     });
     assert!(
         matches!(events.as_slice(), [Event::CommandRejected { .. }]),
@@ -112,6 +117,7 @@ fn create_org_updates_the_tracker_org() {
         template: template(),
         your_name: None,
         duo_cli: CliKind::Claude,
+        org_layout: OrgLayout::Tree,
     });
     let org = events
         .iter()
@@ -157,4 +163,20 @@ fn models_listed_input_becomes_an_event() {
         cli: CliKind::Claude,
         result: Ok(list)
     }));
+}
+
+#[test]
+fn create_org_saves_the_layout_in_settings_toml() {
+    let mut h = first_run();
+    h.send(Command::CreateOrg {
+        template: TemplateInput::Blank,
+        your_name: None,
+        duo_cli: CliKind::Claude,
+        org_layout: OrgLayout::Boxes,
+    });
+    let settings = h.store.state.lock().expect("lock").saved_settings.clone();
+    assert_eq!(
+        settings.last().map(|s| s.org_layout),
+        Some(OrgLayout::Boxes)
+    );
 }

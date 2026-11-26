@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use duohive_core::colour::TeamColour;
 use duohive_core::command::{OrgEdit, TeamDraft};
 use duohive_core::names::NodeName;
 use duohive_core::org::{Fields, NodeKey, Org};
@@ -15,7 +16,8 @@ const PROMPT: &str = "Team prompt";
 impl Form {
     /// A new team.
     pub fn new_team(org: &Org, dirs: &dyn DirProbe, home: &Path) -> Form {
-        let fields = group_fields(org, &NodeKey::Duo, "", &Fields::default(), PROMPT);
+        let colour = Some(TeamColour::next_free(&org.sibling_colours()));
+        let fields = group_fields(org, &NodeKey::Duo, "", &Fields::default(), PROMPT, colour);
         group_form(
             org,
             &NodeKey::Duo,
@@ -34,7 +36,8 @@ impl Form {
             .find(|t| &t.name == key)
             .map(|t| t.defaults.clone())
             .unwrap_or_default();
-        let fields = group_fields(org, &NodeKey::Duo, key.as_str(), &own, PROMPT);
+        let colour = org.colour_of(&NodeKey::Team(key.clone()));
+        let fields = group_fields(org, &NodeKey::Duo, key.as_str(), &own, PROMPT, colour);
         let title = format!("Edit team · {key}");
         group_form(
             org,
@@ -52,6 +55,7 @@ pub(super) fn edit(f: &Form) -> Option<OrgEdit> {
     let draft = TeamDraft {
         name: NodeName::parse(f.field(FieldId::Name)?.edit.text()).ok()?,
         defaults: f.fields_value(),
+        color: f.colour_value(),
     };
     Some(match &f.target {
         Target::NewTeam => OrgEdit::AddTeam(draft),

@@ -36,9 +36,9 @@ fn settings_matches_the_spec() {
         "Look",
         "Theme",
         "[ auto ▾ ]",
-        "Last reply under agents [x]",
+        "Last reply [x]",
         "Reduce motion [ ]",
-        "org defaults and Duo: e on Duo (Edit org)",
+        "org defaults and Duo: e on the Manager card (Edit org)",
         "Keys",
         "[ Edit key bindings → ]",
         "changes save immediately · esc back",
@@ -117,9 +117,48 @@ fn org_note_sits_under_an_org_heading() {
         // A heading like You, Attention and Look, with the note under it.
         assert_eq!(col(&lines[org], "Org"), col(you, "You"), "{w}x{h}");
         assert!(
-            lines[org + 1].contains("org defaults and Duo: e on Duo (Edit org)"),
+            lines[org + 1].contains("org defaults and Duo: e on the Manager card (Edit org)"),
             "{w}x{h}: {}",
             lines[org + 1]
         );
     }
+}
+
+fn org_layout_line(m: &UiModel, w: u16, h: u16) -> String {
+    render_lines(m, &ctx(), w, h)
+        .into_iter()
+        .find(|l| l.contains("Org layout"))
+        .unwrap_or_default()
+}
+
+#[test]
+fn settings_org_layout_row_reads_the_choice() {
+    let mut m = shown();
+    m.settings.org_layout = duohive_core::settings::OrgLayout::Boxes;
+    assert!(org_layout_line(&m, 160, 48).contains("[ boxes ▾ ]"));
+    m.settings.org_layout = duohive_core::settings::OrgLayout::Tree;
+    assert!(org_layout_line(&m, 160, 48).contains("[ tree ▾ ]"));
+}
+
+#[test]
+fn settings_row_reads_boxes_needs_100x30_while_compact() {
+    use duohive_core::settings::OrgLayout;
+    let mut m = shown();
+    m.settings.org_layout = OrgLayout::Boxes;
+    assert!(org_layout_line(&m, 80, 24).contains("[ boxes (needs 100×30) ▾ ]"));
+    assert!(org_layout_line(&m, 100, 29).contains("[ boxes (needs 100×30) ▾ ]"));
+    assert!(!org_layout_line(&m, 100, 30).contains("needs"));
+    m.settings.org_layout = OrgLayout::Tree;
+    let line = org_layout_line(&m, 80, 24);
+    assert!(
+        line.contains("[ tree ▾ ]") && !line.contains("needs"),
+        "{line}"
+    );
+}
+
+#[test]
+fn settings_row_reads_last_reply_and_reduce_motion_follows_it() {
+    let text = render_lines(&shown(), &ctx(), 100, 30).join("\n");
+    assert!(text.contains("Last reply [x]  Reduce motion [ ]"), "{text}");
+    assert!(!text.contains("under agents"), "{text}");
 }

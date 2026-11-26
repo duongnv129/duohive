@@ -1,4 +1,4 @@
-use duohive_core::settings::{Settings, Theme};
+use duohive_core::settings::{OrgLayout, Settings, Theme};
 use duohive_store::{load_settings, save_settings};
 
 #[test]
@@ -55,5 +55,24 @@ fn keys_round_trip() {
     s.keys.insert("nope".into(), "x".into());
     s.keys.insert("zoom".into(), "ctrl+g".into());
     save_settings(&path, &s).unwrap();
+    assert_eq!(load_settings(&path).unwrap(), s);
+}
+
+#[test]
+fn org_layout_round_trips_and_an_old_file_means_tree() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("settings.toml");
+    std::fs::write(&path, "theme = \"dark\"\n").unwrap();
+    assert_eq!(load_settings(&path).unwrap().org_layout, OrgLayout::Tree);
+    let s = Settings {
+        org_layout: OrgLayout::Boxes,
+        ..Default::default()
+    };
+    save_settings(&path, &s).unwrap();
+    assert!(
+        std::fs::read_to_string(&path)
+            .unwrap()
+            .contains("org_layout = \"boxes\"")
+    );
     assert_eq!(load_settings(&path).unwrap(), s);
 }

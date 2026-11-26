@@ -5,7 +5,8 @@ use duohive_core::settings::Settings;
 
 use super::{Action, UiEffect};
 use crate::forms::{
-    LineEdit, SettingsRow, SettingsState, cycled, name_typed, quiet_stepped, quiet_typed, toggled,
+    LineEdit, SettingsRow, SettingsState, cycled, name_typed, other_layout, quiet_stepped,
+    quiet_typed, toggled,
 };
 use crate::model::{Dialog, UiModel};
 
@@ -56,12 +57,16 @@ fn current(m: &UiModel, row: SettingsRow) -> String {
     }
 }
 
-/// `←→` on a control: Quiet after or Theme; the others have nothing to step.
+/// `←→` on a control: Quiet after, Theme or Org layout; the others have nothing to step.
 fn stepped(m: &UiModel, row: SettingsRow, forward: bool) -> Option<Settings> {
     match row {
         SettingsRow::Quiet => Some(quiet_stepped(&m.settings, forward)),
         SettingsRow::Theme => Some(Settings {
             theme: cycled(m.settings.theme, forward),
+            ..m.settings.clone()
+        }),
+        SettingsRow::OrgLayout => Some(Settings {
+            org_layout: other_layout(m.settings.org_layout),
             ..m.settings.clone()
         }),
         _ => None,

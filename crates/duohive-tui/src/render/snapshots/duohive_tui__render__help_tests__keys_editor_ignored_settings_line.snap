@@ -15,12 +15,12 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 ┃ │  Delete                  d                                               │ │
 ┃ │  Zoom                    z                                               │ │
 ┃ │  Last reply              v                                               │ │
+┃ │  Org layout              l                                               │ │
 ┃ │  Open org.toml           o                                               │ │
-┃ │  Settings                ,                                               │ │
-┣━│  Worktrees               w                                               │ │
+┣━│  Settings                ,                                               │ │
+┃ │  Worktrees               w                                               │ │
 ┃ │  Filter                  f                                               │ │
-┃ │  Key map                 ?                                               │ │
-┗━│  Approve card            y                                               │─┘
+┗━│  Key map                 ?                                               │─┘
 ┌─│  ↓ more                                                                  │─┐
 │ │  ignored in settings.toml: nope · using the default                      │ │
 │ │  enter rebind (press the new key) · backspace default · esc back         │ │

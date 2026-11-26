@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::card::{CardChange, CardId};
 use crate::cli_kind::CliKind;
+use crate::colour::TeamColour;
 use crate::launch::Token;
 use crate::names::{AgentName, NodeName};
 use crate::org::{DuoConfig, Fields, NodeKey, OrgDefaults, RoleKey};
-use crate::settings::Settings;
+use crate::settings::{OrgLayout, Settings};
 use crate::templates::TemplateInput;
 use crate::tool::{CallId, ToolCall};
 use crate::worktree::{RunIn, TaskId};
@@ -130,6 +131,8 @@ pub enum Command {
         your_name: Option<String>,
         /// Duo's CLI, which `[org] cli` takes.
         duo_cli: CliKind,
+        /// The org layout chosen in step 1, for `settings.toml` (OB-D3).
+        org_layout: OrgLayout,
     },
     /// Replace the org with the one `template` builds (UI §4.8): every agent
     /// the old tree has is stopped first, then the new org is written.
@@ -157,6 +160,10 @@ pub struct TeamDraft {
     pub name: NodeName,
     /// Its defaults.
     pub defaults: Fields,
+    /// Its colour; `None` takes the next free one when added and keeps the current one on
+    /// an edit (TD §7).
+    #[serde(default)]
+    pub color: Option<TeamColour>,
 }
 
 /// A role being added or edited.
@@ -166,6 +173,9 @@ pub struct RoleDraft {
     pub name: NodeName,
     /// Its defaults.
     pub defaults: Fields,
+    /// Its colour, for a role directly under Duo; refused on a role inside a team.
+    #[serde(default)]
+    pub color: Option<TeamColour>,
 }
 
 /// An agent being added or edited.

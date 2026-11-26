@@ -105,7 +105,7 @@ fn right_click_menu_lists_every_action_with_its_key() {
             ("Delete", "d"),
             ("Zoom", "z"),
             ("Worktrees", "w"),
-            ("Hide replies", "v"),
+            ("Hide reply", "v"),
         ]
     );
 }
@@ -485,6 +485,7 @@ fn every_action_has_a_click_path() {
         .map(|r| r.action)
         .collect();
     let elsewhere = [
+        ActionId::OrgLayout, // the Settings row
         ActionId::OpenOrg,
         ActionId::Settings,
         ActionId::Filter,
@@ -573,4 +574,24 @@ fn click_resume_menu_row_sends_list_sessions() {
         note.starts_with("reading ") && note.ends_with("'s sessions…"),
         "{note}"
     );
+}
+
+#[test]
+fn the_right_click_row_reads_hide_reply_then_show_reply() {
+    let label = |m: &UiModel| {
+        m.menu
+            .as_ref()
+            .unwrap()
+            .rows
+            .iter()
+            .find(|r| r.action == ActionId::LastReply)
+            .map(|r| r.label.clone())
+    };
+    let mut m = model();
+    open_menu(&mut m, "pay-qa");
+    assert_eq!(label(&m).as_deref(), Some("Hide reply"));
+    let mut off = model();
+    off.settings.show_last_reply = false;
+    open_menu(&mut off, "pay-qa");
+    assert_eq!(label(&off).as_deref(), Some("Show reply"));
 }

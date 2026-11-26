@@ -13,9 +13,11 @@ mod header;
 mod help;
 mod hits;
 mod keys_editor;
+mod manager_card;
 pub(crate) mod menu;
 mod move_to;
 mod needs_you;
+mod org_boxes;
 mod org_pane;
 mod resume;
 mod screens;
@@ -152,7 +154,7 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     }
     header::draw_header(buf, row(area.y + banner_rows), m, ctx, l.compact);
     header::draw_footer(buf, row(area.bottom() - 1), m, p, l.compact);
-    let replies = ctx.settings.show_last_reply && shows_replies(area);
+    let replies = org_replies(&ctx.settings, &l, area);
     org_pane::draw(buf, &l, m, ctx, replies);
     agent_pane::draw(buf, l.agent, m, ctx, live);
     let chat_cursor = chat_pane::draw(buf, l.chat, m, ctx, l.compact);
@@ -168,6 +170,16 @@ fn draw_live(frame: &mut Frame, m: &UiModel, ctx: &RenderCtx, live: Option<LiveS
     }
 }
 
+/// Whether the pane shows last replies. The setting keeps one meaning in both layouts (OB-D2):
+/// the tree shows them only at 120×36 or larger (UI §3); the boxes draw at 100×30 too, so they
+/// follow the setting alone.
+fn org_replies(settings: &Settings, l: &crate::focus::Layout, area: Rect) -> bool {
+    match org_pane::drawn_layout(settings.org_layout, l.compact) {
+        duohive_core::settings::OrgLayout::Boxes => settings.show_last_reply,
+        duohive_core::settings::OrgLayout::Tree => settings.show_last_reply && shows_replies(area),
+    }
+}
+
 /// One wheel tick over the org tree: it scrolls, the selection stays.
 pub(crate) fn org_wheel(m: &mut UiModel, up: bool, lines: usize) {
     let banners = header::banners(m, usize::from(m.screen.width)).len();
@@ -177,7 +189,7 @@ pub(crate) fn org_wheel(m: &mut UiModel, up: bool, lines: usize) {
         return;
     };
     let l = l.with_needs_you(m.needs_you.len());
-    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    let replies = org_replies(&m.settings, &l, m.screen);
     org_pane::wheel(&l, m, replies, up, lines);
 }
 
@@ -255,7 +267,7 @@ pub(crate) fn org_key_at(m: &UiModel, y: u16) -> Option<duohive_core::org::NodeK
     let typing = m.focus.pane == Pane::Chat;
     let l =
         layout_below(m.screen, rows, m.chat_rows_extra, typing)?.with_needs_you(m.needs_you.len());
-    let replies = m.settings.show_last_reply && shows_replies(m.screen);
+    let replies = org_replies(&m.settings, &l, m.screen);
     org_pane::key_at(&l, m, replies, y)
 }
 
@@ -470,6 +482,8 @@ mod live_tests;
 mod menu_tests;
 #[cfg(test)]
 mod move_tests;
+#[cfg(test)]
+mod org_boxes_tests;
 #[cfg(test)]
 mod pane_tests;
 #[cfg(test)]

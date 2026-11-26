@@ -15,14 +15,14 @@ expression: "render_lines(&m, &ctx(), 80, 24).join(\"\\n\")"
 ┃ │  Delete                  d                                               │ │
 ┃ │  Zoom                    z                                               │ │
 ┃ │  Last reply              v                                               │ │
+┃ │  Org layout              l                                               │ │
 ┃ │  Open org.toml           o                                               │ │
-┃ │  Settings                ,                                               │ │
-┣━│  Worktrees               w                                               │ │
+┣━│  Settings                ,                                               │ │
+┃ │  Worktrees               w                                               │ │
 ┃ │  Filter                  f                                               │ │
-┃ │  Key map                 ?                                               │ │
-┗━│  Approve card            y                                               │─┘
-┌─│  Edit card               e                                               │─┐
-│ │  Reject card             n                                               │ │
+┗━│  Key map                 ?                                               │─┘
+┌─│  Approve card            y                                               │─┐
+│ │  ↓ more                                                                  │ │
 │ │  enter rebind (press the new key) · backspace default · esc back         │ │
 └─└──────────────────────────────────────────────────────────────────────────┘─┘
  tab pane · ↑↓ move · enter type · space give work

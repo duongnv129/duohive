@@ -165,6 +165,11 @@ pub fn shows_replies(area: Rect) -> bool {
     Size::of(area) == Some(Size::Large)
 }
 
+/// Whether `area` is too small for the boxes (UI §3: they need 100×30).
+pub fn is_compact(area: Rect) -> bool {
+    Size::of(area).is_none_or(|s| s == Size::Compact)
+}
+
 /// The panes for a terminal of `area`, or `None` below 80×24.
 pub fn layout(area: Rect, chat_rows_extra: i16, chat_typing: bool) -> Option<Layout> {
     layout_below(area, 0, chat_rows_extra, chat_typing)

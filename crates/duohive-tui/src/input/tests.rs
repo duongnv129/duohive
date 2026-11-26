@@ -351,6 +351,48 @@ fn v_toggles_replies_and_saves() {
 }
 
 #[test]
+fn l_cycles_the_layout_and_saves_settings() {
+    use duohive_core::settings::OrgLayout;
+    let mut m = spec_model();
+    m.screen = ratatui::layout::Rect::new(0, 0, 120, 36);
+    assert_eq!(m.settings.org_layout, OrgLayout::Tree);
+    assert_eq!(map_key(&m, key('l')), Some(Action::CycleLayout));
+    let effects = update(&mut m, Action::CycleLayout);
+    let mut expected = m.settings.clone();
+    expected.org_layout = OrgLayout::Boxes;
+    assert_eq!(effects, send(Command::UpdateSettings(expected)));
+    assert_eq!(m.settings.org_layout, OrgLayout::Boxes);
+    assert_eq!(m.footer_note, None);
+    update(&mut m, Action::CycleLayout);
+    assert_eq!(m.settings.org_layout, OrgLayout::Tree);
+}
+
+#[test]
+fn l_below_100x30_changes_the_setting_and_says_why() {
+    use duohive_core::settings::OrgLayout;
+    let mut m = spec_model();
+    m.screen = ratatui::layout::Rect::new(0, 0, 99, 40);
+    update(&mut m, Action::CycleLayout);
+    assert_eq!(m.settings.org_layout, OrgLayout::Boxes);
+    assert_eq!(
+        m.footer_note.as_deref(),
+        Some("org layout: boxes · needs 100×30")
+    );
+}
+
+#[test]
+fn switching_layout_keeps_the_selected_node_and_clears_the_scroll() {
+    let mut m = spec_model();
+    m.screen = ratatui::layout::Rect::new(0, 0, 120, 36);
+    m.selected = duohive_core::org::NodeKey::Agent(duohive_core::testkit::n("auth-service"));
+    m.org_scroll = Some((3, m.selected.clone()));
+    let before = m.selected.clone();
+    update(&mut m, Action::CycleLayout);
+    assert_eq!(m.selected, before);
+    assert_eq!(m.org_scroll, None);
+}
+
+#[test]
 fn o_opens_org_toml_in_editor() {
     let mut m = spec_model();
     m.org_toml = PathBuf::from("/cfg/org.toml");

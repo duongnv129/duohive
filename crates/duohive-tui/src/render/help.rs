@@ -80,6 +80,7 @@ fn groups(km: &Keymap) -> Vec<Group> {
                 pair(&key(km, ActionId::Delete), "delete (stopped)"),
                 pair(&key(km, ActionId::Zoom), "zoom agent"),
                 pair(&key(km, ActionId::LastReply), "last reply on/off"),
+                pair(&key(km, ActionId::OrgLayout), "org layout"),
                 pair(&key(km, ActionId::OpenOrg), "open org.toml"),
             ],
         },

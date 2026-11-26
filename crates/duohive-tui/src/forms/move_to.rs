@@ -349,6 +349,7 @@ mod tests {
             name: nn("Mobile"),
             defaults: Default::default(),
             roles: Vec::new(),
+            color: None,
         });
         let opts = valid_targets(&org, &NodeKey::Team(nn("Payments")));
         assert_eq!(labels(&opts), ["before Mobile", "at the end"]);

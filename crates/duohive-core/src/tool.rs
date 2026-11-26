@@ -597,6 +597,7 @@ fn parse_change(v: &Value) -> Result<OrgEdit, ToolError> {
         "add_team" => OrgEdit::AddTeam(TeamDraft {
             name: named("name")?,
             defaults: c.fields().map_err(prefixed)?,
+            color: None,
         }),
         "add_role" => {
             let agents = match map.get("agents") {
@@ -611,6 +612,7 @@ fn parse_change(v: &Value) -> Result<OrgEdit, ToolError> {
                 role: RoleDraft {
                     name: named("name")?,
                     defaults: c.fields().map_err(prefixed)?,
+                    color: None,
                 },
                 agents: u8::try_from(agents).unwrap_or(0),
             }
@@ -627,6 +629,7 @@ fn parse_change(v: &Value) -> Result<OrgEdit, ToolError> {
             draft: TeamDraft {
                 name: named("name")?,
                 defaults: c.fields().map_err(prefixed)?,
+                color: None,
             },
         },
         "edit_role" => OrgEdit::EditRole {
@@ -634,6 +637,7 @@ fn parse_change(v: &Value) -> Result<OrgEdit, ToolError> {
             draft: RoleDraft {
                 name: named("name")?,
                 defaults: c.fields().map_err(prefixed)?,
+                color: None,
             },
         },
         "edit_agent" => OrgEdit::EditAgent {

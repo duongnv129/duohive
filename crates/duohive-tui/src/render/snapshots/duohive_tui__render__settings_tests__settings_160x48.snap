@@ -17,7 +17,6 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃    ├─ squad-1                ~● working    1m  ┃│                                                                                                            │
 ┃    ├─ squad-2                 ✓ finished   3m  ┃│                                                                                                            │
 ┃    └─ squad-3                 ◷ quiet      6m  ┃│                                                                                                            │
-┃                                                ┃│                                                                                                            │
 ┃                                         ┌─ Settings · saved to settings.toml ──────────────────────────────────────┐                                         │
 ┃                                         │                                                                          │                                         │
 ┃                                         │  You                                                                     │                                         │
@@ -27,10 +26,11 @@ expression: "render_lines(&m, &ctx(), w, h).join(\"\\n\")"
 ┃                                         │    Desktop alerts      [x] needs you   [ ] finished                      │                                         │
 ┃                                         │  Look                                                                    │                                         │
 ┃                                         │    Theme               [ auto ▾ ]                                        │                                         │
-┃                                         │    Last reply under agents [x]  Reduce motion [ ]                        │                                         │
+┃                                         │    Org layout          [ tree ▾ ]                                        │                                         │
+┃                                         │    Last reply [x]  Reduce motion [ ]                                     │                                         │
 ┃                                         │  Keys                  [ Edit key bindings → ]                           │                                         │
 ┃                                         │  Org                   [ New org from template… ]                        │                                         │
-┃                                         │    org defaults and Duo: e on Duo (Edit org)                             │                                         │
+┃                                         │    org defaults and Duo: e on the Manager card (Edit org)                │                                         │
 ┃                                         │                                                                          │                                         │
 ┃                                         │  changes save immediately · esc back                                     │                                         │
 ┃                                         └──────────────────────────────────────────────────────────────────────────┘                                         │

@@ -107,6 +107,8 @@ Phases 0 to 3 have no open task boxes.
 
 ## Later (v1.1)
 
+Org boxes (the org pane as grouped boxes or the classic tree, a colour per team and a Manager card; plan: [org-boxes-plan](org-boxes-plan.md), tasks OB.0 to OB.9; specified in the PRD, UI §2.3, §4.1.5, §4.1.6, §4.10 and TD §6.5, §7) are built on the branch `feat/org-boxes` (2026-11-25), not merged. The 100-agent benchmark gate (`duohive bench --gate`) and a hand check of the boxes in iTerm2 at 100×30 and 160×48, in `dark`, `light` and `auto`, are **Open: author**.
+
 Click to type (a click inside the agent pane, or `enter` on an agent's row, starts typing; since 2026-11-15 a click on a row only selects it, [org-click-select-plan](org-click-select-plan.md)) is built on the branch `feat/click-to-type-impl` (2026-11-05; plan: [click-to-type-plan](click-to-type-plan.md), tasks CT.1 to CT.5; specified in the PRD, UI §4.1.2 and TD `PaneView`). It is not merged; the hand check (CT.6 step 2: iTerm2, Claude Code and OpenCode, 80x24 and 160x48) is **Open: author**.
 
 Approval cards in a dialog (superseding the docked cards of [card-dock-plan](card-dock-plan.md): a card opens in a centred dialog like the forms, from its Needs you row, and the arrow keys move between items in every form; plan: [card-dialog-plan](card-dialog-plan.md), tasks CDL.1 to CDL.4; specified in the PRD, UI §4.6 and §4.4.1, TD *Card dialog*) are built on the branch `feat/card-dialog` (2026-11-08), not merged. The hand check (CDL.4: a real session with a queue of 3 cards, an edit, clicks on each button, 80x24) is **Open: author**.

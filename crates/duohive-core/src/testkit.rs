@@ -51,6 +51,7 @@ fn role(name: &str, agents: &[&str]) -> Role {
         name: NodeName::parse(name).unwrap(),
         defaults: Fields::default(),
         agents: agents.iter().map(|a| agent(a)).collect(),
+        color: None,
     }
 }
 
@@ -64,6 +65,7 @@ pub fn example_org() -> Org {
             role("Backend", &["auth-service", "billing-api"]),
             role("QA", &["pay-qa"]),
         ],
+        color: None,
     }];
     org.roles = vec![role("Generalist", &["squad-1", "squad-2", "squad-3"])];
     org
@@ -931,6 +933,7 @@ pub fn change_examples() -> Vec<(serde_json::Value, crate::command::OrgEdit)> {
             OrgEdit::AddTeam(TeamDraft {
                 name: node("Growth"),
                 defaults: Fields::default(),
+                color: None,
             }),
         ),
         (
@@ -941,6 +944,7 @@ pub fn change_examples() -> Vec<(serde_json::Value, crate::command::OrgEdit)> {
                 role: RoleDraft {
                     name: node("Frontend"),
                     defaults: web_fields,
+                    color: None,
                 },
                 agents: 1,
             },
@@ -963,6 +967,7 @@ pub fn change_examples() -> Vec<(serde_json::Value, crate::command::OrgEdit)> {
                 draft: TeamDraft {
                     name: node("Growth"),
                     defaults: Fields::default(),
+                    color: None,
                 },
             },
         ),
@@ -977,6 +982,7 @@ pub fn change_examples() -> Vec<(serde_json::Value, crate::command::OrgEdit)> {
                         worktree: Some(true),
                         ..Fields::default()
                     },
+                    color: None,
                 },
             },
         ),

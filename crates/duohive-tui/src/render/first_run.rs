@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use duohive_core::cli_kind::CliKind;
 use duohive_core::inherit::expand_home;
+use duohive_core::settings::OrgLayout;
 use duohive_core::validate::DirStatus;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Position, Rect};
@@ -158,7 +159,7 @@ fn title(w: &FirstRun) -> String {
 
 fn row_count(w: &FirstRun) -> usize {
     match w.step {
-        Step::You => 10,
+        Step::You => 12,
         Step::Template => 8 + preview(w).len(),
         Step::Form => match w.template() {
             TemplateChoice::AgentSquad => 9,
@@ -180,6 +181,8 @@ fn you(line: &mut Line, w: &FirstRun, p: &Palette) -> Option<Position> {
     line.down();
     cli_line(line, "Duo runs on", w.duo_cli, w, w.focus == 1, p);
     line.down();
+    layout_line(line, w, p);
+    line.down();
     line.text(&found_line(w), p.fg_muted);
     line.down();
     if w.ask_quit {
@@ -188,6 +191,46 @@ fn you(line: &mut Line, w: &FirstRun, p: &Palette) -> Option<Position> {
     line.down();
     buttons(line, w, p, "enter next · esc quit (asks first)", true);
     cursor
+}
+
+/// `Org layout   (•) Boxes   ( ) Tree        ← → choose`, and its hint under it (UI §4.3). A
+/// click on a name focuses the row and chooses it.
+fn layout_line(line: &mut Line, w: &FirstRun, p: &Palette) {
+    let focused = w.focus == 2;
+    line.put(0, if focused { FOCUS } else { " " }, fg(p.border_focus));
+    line.put(
+        2,
+        &format!("{:<width$}", "Org layout", width = usize::from(LABEL_W)),
+        fg(p.fg),
+    );
+    let mut dx = 2 + LABEL_W;
+    for (layout, name) in [(OrgLayout::Boxes, "Boxes"), (OrgLayout::Tree, "Tree")] {
+        let chosen = layout == w.layout;
+        let text = format!("{} {name}", if chosen { "(•)" } else { "( )" });
+        // Down to the row (or up), then `→` when it is not the chosen one.
+        let mut keys = match w.focus {
+            f if f < 2 => vec![Action::Down; 2 - f],
+            f if f > 2 => vec![Action::Up; f - 2],
+            _ => Vec::new(),
+        };
+        if !chosen {
+            keys.push(Action::Right);
+        }
+        line.record(dx, &text, keys);
+        let color = if chosen && focused {
+            p.border_focus
+        } else {
+            p.fg
+        };
+        dx = line.put(dx, &text, fg(color)) + 3;
+    }
+    line.put(dx + 5, "← → choose", fg(p.fg_muted));
+    line.down();
+    line.put(
+        2 + LABEL_W,
+        "boxes colour each team; the tree is the classic one",
+        fg(p.fg_muted),
+    );
 }
 
 fn template(line: &mut Line, w: &FirstRun, p: &Palette) -> Option<Position> {

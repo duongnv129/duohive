@@ -5,6 +5,7 @@ pub mod alert;
 pub mod card;
 pub mod chat;
 pub mod cli_kind;
+pub mod colour;
 pub mod command;
 pub mod duo;
 pub mod engine;

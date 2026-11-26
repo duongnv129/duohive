@@ -144,3 +144,13 @@ fn keys_screen_lists_resume_and_conflict_check_counts_it() {
     assert_eq!(ActionId::from_id("resume"), Some(ActionId::Resume));
     assert_eq!(ActionId::Resume.label(), "Resume");
 }
+
+#[test]
+fn the_key_map_lists_l_org_layout() {
+    let text = render_lines(&help_model(), &ctx(), 160, 48).join("\n");
+    let row = text
+        .lines()
+        .find(|l| l.contains("org layout"))
+        .expect("org layout row");
+    assert!(row.contains(" l "), "{row}");
+}

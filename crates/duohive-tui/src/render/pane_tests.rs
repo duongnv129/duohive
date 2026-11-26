@@ -432,6 +432,7 @@ fn empty_org_and_role_ask_duo() {
         name: nn("Frontend"),
         defaults: duohive_core::org::Fields::default(),
         agents: Vec::new(),
+        color: None,
     });
     let lines = render_lines(&model_for(org), &ctx(), 100, 30);
     let tree: Vec<String> = lines.iter().map(|l| cols(l, 50)).collect();
@@ -590,4 +591,14 @@ fn selected_footer_adds_r_resume_for_stopped_and_errored() {
         footer(AgentState::Stopped, NodeKey::Duo),
         " z zoom · space give work"
     );
+}
+
+#[test]
+fn drawn_layout_is_boxes_only_when_set_and_not_compact() {
+    use super::org_pane::drawn_layout;
+    use duohive_core::settings::OrgLayout::{Boxes, Tree};
+    assert_eq!(drawn_layout(Boxes, false), Boxes);
+    assert_eq!(drawn_layout(Boxes, true), Tree);
+    assert_eq!(drawn_layout(Tree, false), Tree);
+    assert_eq!(drawn_layout(Tree, true), Tree);
 }

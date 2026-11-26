@@ -213,6 +213,7 @@ fn reload_removing_running_agent_refused() {
     let team = TeamDraft {
         name: nn("Growth"),
         defaults: Fields::default(),
+        color: None,
     };
     assert_eq!(
         rejected(&edit(&mut h, OrgEdit::AddTeam(team))),

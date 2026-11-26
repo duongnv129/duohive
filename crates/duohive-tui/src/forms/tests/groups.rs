@@ -24,7 +24,12 @@ fn new_role_and_edit_org_follow_spec_4_4_1() {
     org.duo.cli = CliKind::Opencode;
     m.dialog = Some(Dialog::Form(Box::new(Form::edit_org(&org, &stopped()))));
     // Model and effort are text (D14), so only the CLI row differs.
-    follows_mock(&box_rows(&m, 80), &mock("Edit org"), &["CLI "]);
+    // The Name row also carries the wordmark preview (its own mock-up, below the first).
+    follows_mock(
+        &box_rows(&m, 80),
+        &mock("Edit org"),
+        &["CLI ", "    Name  "],
+    );
 }
 
 #[test]
@@ -51,6 +56,7 @@ fn new_role_form_creates_agents() {
             role: RoleDraft {
                 name: nn("Frontend"),
                 defaults: Fields::default(),
+                color: None,
             },
             agents: 2,
         })
@@ -124,6 +130,7 @@ fn new_team_form() {
         FormOutcome::Edit(OrgEdit::AddTeam(TeamDraft {
             name: nn("Growth"),
             defaults: Fields::default(),
+            color: Some(duohive_core::colour::TeamColour::Slate),
         }))
     );
     // A taken team name is the engine's error, shown on the field.
@@ -166,6 +173,7 @@ fn edit_role_and_team_forms_save_their_defaults() {
                     cli: Some(CliKind::Opencode),
                     ..Fields::default()
                 },
+                color: Some(duohive_core::colour::TeamColour::Teal),
             },
         })
     );

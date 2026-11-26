@@ -119,24 +119,9 @@ pub fn tree_rows(m: &UiModel, compact: bool, show_replies: bool, now: Millis) ->
         rows: Vec::new(),
     };
     c.duo();
-    let org = &m.org;
     let filter = m.filter;
-    // A role is kept when the filter keeps one of its agents; a team when it keeps a role.
-    let keeps = |r: &&Role| {
-        filter == Filter::Off || r.agents.iter().any(|a| filter.matches(m.view(&a.name)))
-    };
-    let teams: Vec<(&Team, Vec<&Role>)> = org
-        .teams
-        .iter()
-        .map(|t| (t, t.roles.iter().filter(keeps).collect::<Vec<_>>()))
-        .filter(|(_, roles)| filter == Filter::Off || !roles.is_empty())
-        .collect();
-    let roots: Vec<&Role> = org.roles.iter().filter(keeps).collect();
-    if filter != Filter::Off
-        && teams.is_empty()
-        && roots.is_empty()
-        && !filter.matches(m.view(&org.duo.name))
-    {
+    let Visible { teams, roots } = visible(m);
+    if filter_keeps_nothing(m, &teams, &roots) {
         let label = format!("no agent is {} · esc clears the filter", filter.word());
         c.rows.push(TreeRow::detail(
             TreeRowKind::FilterEmpty,
@@ -175,6 +160,44 @@ pub fn tree_rows(m: &UiModel, compact: bool, show_replies: bool, now: Millis) ->
         c.role(role, key, "", teams.len() + i + 1 == children, "");
     }
     c.rows
+}
+
+/// The teams and roles the filter keeps, in order: a role when it keeps one of its agents, a
+/// team when it keeps a role. Both layouts walk this, so they agree on what is shown.
+pub(crate) struct Visible<'a> {
+    /// Each kept team with its kept roles.
+    pub teams: Vec<(&'a Team, Vec<&'a Role>)>,
+    /// The kept roles directly under Duo.
+    pub roots: Vec<&'a Role>,
+}
+
+/// What the filter keeps of `m`'s org.
+pub(crate) fn visible(m: &UiModel) -> Visible<'_> {
+    let filter = m.filter;
+    let keeps = |r: &&Role| {
+        filter == Filter::Off || r.agents.iter().any(|a| filter.matches(m.view(&a.name)))
+    };
+    let teams = m
+        .org
+        .teams
+        .iter()
+        .map(|t| (t, t.roles.iter().filter(keeps).collect::<Vec<_>>()))
+        .filter(|(_, roles)| filter == Filter::Off || !roles.is_empty())
+        .collect();
+    let roots = m.org.roles.iter().filter(keeps).collect();
+    Visible { teams, roots }
+}
+
+/// Whether an active filter keeps no agent at all, Duo included.
+pub(crate) fn filter_keeps_nothing(
+    m: &UiModel,
+    teams: &[(&Team, Vec<&Role>)],
+    roots: &[&Role],
+) -> bool {
+    m.filter != Filter::Off
+        && teams.is_empty()
+        && roots.is_empty()
+        && !m.filter.matches(m.view(&m.org.duo.name))
 }
 
 impl Ctx<'_> {
